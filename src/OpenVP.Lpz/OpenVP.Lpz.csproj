@@ -9,4 +9,8 @@
     <ProjectReference Include="../SplusFacades/SplusLibrary/SplusLibrary.csproj" />
     <ProjectReference Include="../SplusFacades/SmartThreadPoolCE/SmartThreadPoolCE.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Loaded in place of Crestron's JSON library when a program uses it. -->
+    <ProjectReference Include="../Compat/SimplSharpNewtonsoft/SimplSharpNewtonsoft.csproj" />
+  </ItemGroup>
 </Project>

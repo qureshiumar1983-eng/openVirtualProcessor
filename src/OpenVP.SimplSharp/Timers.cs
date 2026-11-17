@@ -84,7 +84,8 @@ namespace Crestron.SimplSharp
         public void Enter() => Monitor.Enter(_lock);
         public bool TryEnter() => Monitor.TryEnter(_lock);
         public void Leave() => Monitor.Exit(_lock);
-        public void Dispose() { }
+        public bool Disposed { get; private set; }
+        public void Dispose() { Disposed = true; }
     }
 
     public class CMutex : IDisposable

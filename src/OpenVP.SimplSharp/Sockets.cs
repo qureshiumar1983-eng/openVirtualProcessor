@@ -48,6 +48,7 @@ namespace Crestron.SimplSharp.CrestronSockets
         private NetworkStream _stream;
         private SocketStatus _status = SocketStatus.SOCKET_STATUS_NO_CONNECT;
 
+        public TCPClient() : this("", 0, 4096) { }
         public TCPClient(string addressToConnectTo, int portNumber, int bufferSize)
         {
             AddressClientConnectedTo = addressToConnectTo;

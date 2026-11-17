@@ -3,10 +3,15 @@ namespace OpenVP.Core;
 /// <summary>The three Crestron signal types, always in this order: digital, analog, serial.</summary>
 public enum SigKind { Digital, Analog, Serial }
 
-/// <summary>A join on a device: its type plus its 1-based join number.</summary>
+/// <summary>A join on a device: its type plus its 1-based join number. SmartObject is the Smart Graphics
+/// object ID the join belongs to (0 = the device's own joins).</summary>
 public readonly record struct JoinKey(SigKind Kind, uint Join)
 {
-    public override string ToString() => $"{KindLetter(Kind)}{Join}";
+    public JoinKey(SigKind kind, uint join, uint smartObject) : this(kind, join) { SmartObject = smartObject; }
+
+    public uint SmartObject { get; init; }
+
+    public override string ToString() => SmartObject == 0 ? $"{KindLetter(Kind)}{Join}" : $"so{SmartObject}.{KindLetter(Kind)}{Join}";
 
     public static char KindLetter(SigKind k) => k switch
     {

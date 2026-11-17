@@ -19,7 +19,7 @@ namespace OpenVP.Splus
                 try
                 {
                     var converted = new object[args.Length];
-                    for (int k = 0; k < args.Length; k++) converted[k] = args[k] is CrestronString cs ? cs.Value : args[k];
+                    for (int k = 0; k < args.Length; k++) converted[k] = args[k] is CrestronString cs ? cs.Str : args[k];
                     return string.Format(CultureInfo.InvariantCulture, format, converted);
                 }
                 catch (FormatException) { /* fall through to printf-style */ }
@@ -65,7 +65,7 @@ namespace OpenVP.Splus
         private static long ToLong(object o, bool signed) => o switch
         {
             null => 0,
-            CrestronString s => long.TryParse(s.Value, out var v) ? v : 0,
+            CrestronString s => long.TryParse(s.Str, out var v) ? v : 0,
             ushort u => u,
             short s16 => s16,
             uint u32 => u32,
@@ -88,11 +88,11 @@ namespace OpenVP.Splus
 namespace Crestron.Logos.SplusLibrary
 {
     /// <summary>SIMPL+ built-in functions. Strings are 1-based, as in SIMPL+.</summary>
-    public static class Functions
+    public static partial class Functions
     {
         private static readonly Random Rng = new Random();
 
-        private static string S(CrestronString s) => s?.Value ?? string.Empty;
+        private static string S(CrestronString s) => s?.Str ?? string.Empty;
 
         // ---------------- truth and integers
 
@@ -107,8 +107,8 @@ namespace Crestron.Logos.SplusLibrary
         public static int Abs(int v) => Math.Abs(v);
         public static int Max(int a, int b) => Math.Max(a, b);
         public static int Min(int a, int b) => Math.Min(a, b);
-        public static int SMax(int a, int b) => Math.Max((short)a, (short)b);
-        public static int SMin(int a, int b) => Math.Min((short)a, (short)b);
+        public static uint SMax(int a, int b) => (uint)Math.Max(a, b);
+        public static uint SMin(int a, int b) => (uint)Math.Min(a, b);
         public static ushort High(ushort v) => (ushort)(v >> 8);
         public static ushort Low(ushort v) => (ushort)(v & 0xFF);
         public static ushort HighWord(uint v) => (ushort)(v >> 16);
@@ -217,7 +217,7 @@ namespace Crestron.Logos.SplusLibrary
 
         /// <summary>Atoi: the first run of digits in the string (sign ignored), 0 if none.</summary>
         public static ushort Atoi(CrestronString s) => (ushort)(ParseDigits(S(s), false) & 0xFFFF);
-        public static int Atol(CrestronString s) => (int)ParseDigits(S(s), false);
+        public static uint Atol(CrestronString s) => (uint)ParseDigits(S(s), false);
         public static short Atosi(CrestronString s) => (short)ParseDigits(S(s), true);
         public static int Atosl(CrestronString s) => (int)ParseDigits(S(s), true);
 
@@ -309,7 +309,8 @@ namespace Crestron.Logos.SplusLibrary
             {
                 socket.Udp?.Dispose();
                 socket.Udp = new System.Net.Sockets.UdpClient(port) { EnableBroadcast = true };
-                socket.Remote = new System.Net.IPEndPoint(System.Net.IPAddress.Parse(address), port);
+                socket.Remote = new System.Net.IPEndPoint(System.Net.IPAddress.TryParse(address, out var ip) ? ip : System.Net.Dns.GetHostAddresses(address)[0], port);
+                socket.PortNumber = port;
                 socket.SocketStatus = 2;
                 _ = ReceiveUdp(socket);
                 return 0;
@@ -330,6 +331,7 @@ namespace Crestron.Logos.SplusLibrary
                 try
                 {
                     var r = await udp.ReceiveAsync();
+                    socket.LastSender = r.RemoteEndPoint;
                     socket.SocketRxBuf.UpdateValue(S(socket.SocketRxBuf) + Encoding.Latin1.GetString(r.Buffer));
                     socket.Raise(socket.OnSocketReceive);
                 }

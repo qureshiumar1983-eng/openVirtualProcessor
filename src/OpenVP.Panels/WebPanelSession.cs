@@ -84,7 +84,9 @@ public sealed class WebPanelSession
     private void OnFeedback(JoinDevice dev, JoinKey key, object value)
     {
         var t = key.Kind switch { SigKind.Digital => "b", SigKind.Analog => "n", _ => "s" };
-        Queue(new JsonObject { ["t"] = t, ["j"] = key.Join, ["v"] = JsonValue.Create(value) });
+        var msg = new JsonObject { ["t"] = t, ["j"] = key.Join, ["v"] = JsonValue.Create(value) };
+        if (key.SmartObject != 0) msg["so"] = key.SmartObject;
+        Queue(msg);
     }
 
     private void Queue(JsonObject msg) => _outbox.Writer.TryWrite(msg.ToJsonString());
@@ -130,7 +132,8 @@ public sealed class WebPanelSession
                 SigKind.Analog => (ushort)Math.Clamp(v.GetInt32(), 0, 65535),
                 _ => v.ValueKind == JsonValueKind.String ? v.GetString()! : v.ToString()
             };
-            _device?.ReceiveInput(new JoinKey(kind, join), value);
+            var so = root.TryGetProperty("so", out var soEl) && soEl.ValueKind == JsonValueKind.Number ? soEl.GetUInt32() : 0u;
+            _device?.ReceiveInput(new JoinKey(kind, join, so), value);
         }
         catch (Exception)
         {

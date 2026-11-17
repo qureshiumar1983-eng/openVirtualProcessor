@@ -107,8 +107,10 @@ public sealed class LpzPackage
         using var zip = ZipFile.OpenRead(Path);
         foreach (var e in zip.Entries)
         {
-            if (!e.Name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) || CrestronRuntime.Contains(e.Name) ||
-                e.Name.StartsWith("SimplSharp", StringComparison.OrdinalIgnoreCase)) continue;
+            // Everything but the SIMPL+ runtime itself: Crestron libraries OpenVP has facades for are
+            // extracted too but never loaded (the load context prefers the facade).
+            if (!e.Name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ||
+                e.Name is "SplusLibrary.dll" or "SplusObjects.dll" or "SmartThreadPoolCE.dll") continue;
             e.ExtractToFile(System.IO.Path.Combine(dir, e.Name), overwrite: true);
         }
     }

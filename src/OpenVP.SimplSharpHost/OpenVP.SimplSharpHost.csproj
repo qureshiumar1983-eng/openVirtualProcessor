@@ -20,4 +20,8 @@
     <ProjectReference Include="../Facades/SimplSharpSQLHelperInterface/SimplSharpSQLHelperInterface.csproj" />
     <ProjectReference Include="../Facades/SimplSharpTimerEventInterface/SimplSharpTimerEventInterface.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Loaded in place of Crestron's JSON library when a program uses it. -->
+    <ProjectReference Include="../Compat/SimplSharpNewtonsoft/SimplSharpNewtonsoft.csproj" />
+  </ItemGroup>
 </Project>

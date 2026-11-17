@@ -5,6 +5,8 @@ namespace Crestron.SimplSharp
     {
         public SimplSharpString() : this(string.Empty) { }
         public SimplSharpString(string value) { ToString_ = value ?? string.Empty; }
+        public SimplSharpString(string value, CrestronStringEncoding encoding) : this(value) { StringEncoding = encoding; }
+        public CrestronStringEncoding StringEncoding { get; set; } = CrestronStringEncoding.eEncodingASCII;
         private string ToString_;
         public override string ToString() => ToString_;
         public static implicit operator string(SimplSharpString s) => s?.ToString_ ?? string.Empty;

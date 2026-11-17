@@ -32,17 +32,15 @@ internal sealed class LpzLoadContext : AssemblyLoadContext
         // Compact Framework references (mscorlib 3.5, System, System.Core) bind to the running framework.
         if (simple is "mscorlib" or "System" or "System.Core" or "System.Xml" or "System.Data") return null;
 
-        var isRuntime = Runtime.Contains(simple) || simple.StartsWith("SimplSharp", StringComparison.OrdinalIgnoreCase) ||
-                        simple.StartsWith("Crestron.SimplSharp", StringComparison.OrdinalIgnoreCase);
-        if (isRuntime)
-        {
-            var p = Path.Combine(_shimDir, simple + ".dll");
-            if (File.Exists(p)) return LoadFromAssemblyPath(p);
-            Unresolved.Add(simple);
-            return null;
-        }
+        // Crestron runtime names OpenVP has a facade for go to OpenVP; other Crestron-shipped libraries
+        // (SimplSharpNewtonsoft, Newtonsoft.Json.Compact, …) load from the program, like any library.
+        var crestronName = Runtime.Contains(simple) || simple.StartsWith("SimplSharp", StringComparison.OrdinalIgnoreCase) ||
+                           simple.StartsWith("Crestron.SimplSharp", StringComparison.OrdinalIgnoreCase);
+        var shim = Path.Combine(_shimDir, simple + ".dll");
+        if (crestronName && File.Exists(shim)) return LoadFromAssemblyPath(shim);
         var local = Path.Combine(_programDir, simple + ".dll");
         if (File.Exists(local)) return LoadFromAssemblyPath(local);
+        if (crestronName) { Unresolved.Add(simple); return null; }
         if (!simple.StartsWith("System", StringComparison.Ordinal) && simple != "netstandard") Unresolved.Add(simple);
         return null; // framework assemblies come from the default context
     }
@@ -107,7 +105,7 @@ internal sealed class SplusNode : LpzRuntime.Node, ISplusHost
         if (InputOf(pin) is var (kind, id)) _module.Input(kind, id, n);
     }
 
-    public void Stop() => _module.Stop();
+    public override void Stop() => _module.Stop();
 
     // ---------------- ISplusHost
 

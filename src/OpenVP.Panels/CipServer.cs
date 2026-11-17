@@ -236,6 +236,7 @@ internal sealed class CipSession
 
     private void OnFeedback(JoinDevice dev, JoinKey key, object value)
     {
+        if (key.SmartObject != 0) return; // Smart Graphics over CIP isn't implemented yet (web panels get them)
         var packet = key.Kind switch
         {
             SigKind.Digital => Cip.Digital(key.Join, (bool)value),

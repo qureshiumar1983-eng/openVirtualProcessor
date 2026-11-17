@@ -12,13 +12,13 @@ namespace Crestron.Logos.SplusObjects
 {
     using Amib.Threading.Internal;
 
-    public class SplusExecutionContext
+    public partial class SplusExecutionContext
     {
         public int SourceCodeLine { get; set; }
     }
 
     /// <summary>Passed to an event handler: which input changed.</summary>
-    public class SignalEventArgs : EventArgs
+    public partial class SignalEventArgs : EventArgs
     {
         public SignalEventArgs(object source, uint id, uint arrayStart)
         {
@@ -35,7 +35,7 @@ namespace Crestron.Logos.SplusObjects
         public ushort ArrayIndex => ArrayStart == uint.MaxValue ? (ushort)0 : (ushort)(Id - ArrayStart + 1);
     }
 
-    public class InputChangeHandlerWrapper
+    public partial class InputChangeHandlerWrapper
     {
         public InputChangeHandlerWrapper(SmartThreadSPLUSGLobalEventHandler handler, bool flag)
         {
@@ -47,13 +47,13 @@ namespace Crestron.Logos.SplusObjects
         public bool Flag { get; }
     }
 
-    public class SocketHandlerWrapper : InputChangeHandlerWrapper
+    public partial class SocketHandlerWrapper : InputChangeHandlerWrapper
     {
         public SocketHandlerWrapper(SmartThreadSPLUSGLobalEventHandler handler, bool flag) : base(handler, flag) { }
     }
 
     /// <summary>DIGITAL_INPUT. Value is 1 or 0. PUSH, RELEASE and CHANGE handlers live in these lists.</summary>
-    public class DigitalInput
+    public partial class DigitalInput
     {
         public DigitalInput(uint id, SplusObject owner) : this(id, uint.MaxValue, owner) { }
 
@@ -77,7 +77,7 @@ namespace Crestron.Logos.SplusObjects
     }
 
     /// <summary>ANALOG_INPUT.</summary>
-    public class AnalogInput
+    public partial class AnalogInput
     {
         public AnalogInput(uint id, SplusObject owner) : this(id, uint.MaxValue, owner) { }
 
@@ -102,7 +102,7 @@ namespace Crestron.Logos.SplusObjects
     }
 
     /// <summary>DIGITAL_OUTPUT.</summary>
-    public class DigitalOutput
+    public partial class DigitalOutput
     {
         private int _value;
 
@@ -124,7 +124,7 @@ namespace Crestron.Logos.SplusObjects
     }
 
     /// <summary>ANALOG_OUTPUT.</summary>
-    public class AnalogOutput
+    public partial class AnalogOutput
     {
         private ushort _value;
 
@@ -146,7 +146,7 @@ namespace Crestron.Logos.SplusObjects
     }
 
     /// <summary>Input/output arrays. SIMPL+ arrays are 1-based; index 0 is unused.</summary>
-    public class InOutArray<T>
+    public partial class InOutArray<T>
     {
         private readonly T[] _items;
 
@@ -178,7 +178,7 @@ namespace Crestron.Logos.SplusObjects
         void Set(object value);
     }
 
-    public class UShortParameter : ISplusParameter
+    public partial class UShortParameter : ISplusParameter
     {
         public UShortParameter(uint id, SplusObject owner) : this(id, uint.MaxValue, owner) { }
         public UShortParameter(uint id, uint arrayStart, SplusObject owner) { Id = id; }
@@ -187,7 +187,7 @@ namespace Crestron.Logos.SplusObjects
         void ISplusParameter.Set(object v) => Value = (ushort)Math.Clamp(Convert.ToInt64(v ?? 0), 0, 65535);
     }
 
-    public class ShortParameter : ISplusParameter
+    public partial class ShortParameter : ISplusParameter
     {
         public ShortParameter(uint id, SplusObject owner) : this(id, uint.MaxValue, owner) { }
         public ShortParameter(uint id, uint arrayStart, SplusObject owner) { Id = id; }
@@ -196,7 +196,7 @@ namespace Crestron.Logos.SplusObjects
         void ISplusParameter.Set(object v) => Value = unchecked((short)Convert.ToInt64(v ?? 0));
     }
 
-    public class UIntParameter : ISplusParameter
+    public partial class UIntParameter : ISplusParameter
     {
         public UIntParameter(uint id, SplusObject owner) : this(id, uint.MaxValue, owner) { }
         public UIntParameter(uint id, uint arrayStart, SplusObject owner) { Id = id; }
@@ -205,7 +205,7 @@ namespace Crestron.Logos.SplusObjects
         void ISplusParameter.Set(object v) => Value = unchecked((uint)Convert.ToInt64(v ?? 0));
     }
 
-    public class IntParameter : ISplusParameter
+    public partial class IntParameter : ISplusParameter
     {
         public IntParameter(uint id, SplusObject owner) : this(id, uint.MaxValue, owner) { }
         public IntParameter(uint id, uint arrayStart, SplusObject owner) { Id = id; }
@@ -215,45 +215,73 @@ namespace Crestron.Logos.SplusObjects
     }
 
     [AttributeUsage(AttributeTargets.All, AllowMultiple = true)]
-    public class SplusStructAttribute : Attribute
+    public partial class SplusStructAttribute : Attribute
     {
         public SplusStructAttribute(int order, bool a, bool b) { Order = order; }
         public int Order { get; }
     }
 
     /// <summary>Base of SIMPL+ STRUCTUREs, including the module's non-volatile variables.</summary>
-    public class SplusStructureBase
+    public partial class SplusStructureBase
     {
         public SplusStructureBase(SplusObject owner) : this(owner, false) { }
         public SplusStructureBase(SplusObject owner, bool flag) { Owner = owner; }
-        public SplusObject Owner { get; }
+        public SplusObject Owner;
         public uint PopulateCustomAttributeList(bool flag) => 0;
     }
 
-    /// <summary>A pending WAIT.</summary>
-    public class Wait
+    /// <summary>A pending WAIT. Can be paused, resumed, retimed and cancelled (PAUSEWAIT, RESUMEWAIT, …).</summary>
+    public partial class Wait
     {
         internal Wait(SplusObject owner, string name) { Owner = owner; Name = name; }
         public SplusObject Owner { get; }
         public string Name { get; }
+        public string WaitName => Name;
+        internal SplusObject.WaitFunction Callback;
         internal System.Threading.Timer Timer;
         internal readonly System.Threading.ManualResetEventSlim Done = new System.Threading.ManualResetEventSlim(false);
+        private long _due;
+        private long _remainingMs = -1;
+
+        internal void Start(int ticks)
+        {
+            Timer?.Dispose();
+            var ms = Math.Max(0, ticks) * 10L;
+            _due = Environment.TickCount64 + ms;
+            _remainingMs = -1;
+            Timer = new System.Threading.Timer(_ => Owner.RunWait(this), null, ms, System.Threading.Timeout.Infinite);
+        }
+
         public void RemoveFromList() => Owner?.RemoveWait(this);
+        public void Cancel() => Owner?.RemoveWait(this);
+        public void Pause()
+        {
+            if (_remainingMs >= 0) return;
+            Timer?.Dispose();
+            _remainingMs = Math.Max(0, _due - Environment.TickCount64);
+        }
+        public void Resume()
+        {
+            if (_remainingMs < 0) return;
+            Start((int)(_remainingMs / 10));
+        }
+        public void Retime(int ticks) => Start(ticks);
     }
 
-    public class SimplPlusException : Exception
+    public partial class SimplPlusException : Exception
     {
         public SimplPlusException(Exception inner, SplusObject owner) : base(inner?.Message, inner) { }
     }
 
     /// <summary>File search result for FindFirst/FindNext.</summary>
-    public struct FILE_INFO
+    public partial struct FILE_INFO
     {
         public CrestronString Name;
         public ushort iAttributes;
         public ushort iTime;
         public ushort iDate;
         public uint lSize;
+        internal DateTime Modified;
 
         public void PopulateDefaults()
         {

@@ -28,7 +28,7 @@ public sealed class LpzLoader : IProgramLoader
 /// changes, every node reading it runs, and its outputs drive further signals until the logic settles.
 /// Everything happens on the slot thread, one change at a time.
 /// </summary>
-public sealed class LpzRuntime : IProgramRuntime
+public sealed partial class LpzRuntime : IProgramRuntime
 {
     private const int MaxStepsPerSolve = 500_000;
 
@@ -100,8 +100,10 @@ public sealed class LpzRuntime : IProgramRuntime
                 {
                     var dev = new DeviceNode(this, sym, (uint)ipid);
                     _devices.Add(dev);
+                    _devicesByPath[sym.Path] = dev;
                     Register(dev);
                 }
+                else if (BuildSpecial(sym)) { }
                 else if (sym.Type == -48)
                 {
                     var node = CreateModule(sym);
@@ -111,6 +113,7 @@ public sealed class LpzRuntime : IProgramRuntime
                 continue;
             }
             if (sym.Type == 31) continue; // compile header
+            if (BuildSpecial(sym)) continue;
             var prim = PrimitiveLibrary.Create(sym.Type);
             if (prim == null) { Count(sym.Type); continue; }
             Register(new LogicNode(this, sym, prim));
@@ -291,6 +294,9 @@ public sealed class LpzRuntime : IProgramRuntime
     {
         _running = false;
         foreach (var m in _modules) m.Stop();
+        foreach (var n in _nodes)
+            if (n is not SplusNode)
+                try { n.Stop(); } catch (Exception) { }
         _store.Flush();
         lock (_timers)
         {
@@ -345,6 +351,7 @@ public sealed class LpzRuntime : IProgramRuntime
         public abstract SigKind? OutputKind(int pin);
         public virtual bool WatchesOutputs => false;
         public virtual void Start() { }
+        public virtual void Stop() { }
         public abstract void OnInput(int pin, object oldValue, object newValue);
     }
 
@@ -388,6 +395,9 @@ public sealed class LpzRuntime : IProgramRuntime
         public void NextWave(Action action) => Runtime.Defer(action);
         public object? Recall(int pin) => Runtime._store.Get($"{Symbol.Path}#{pin}");
         public void Remember(int pin, object value) => Runtime._store.Set($"{Symbol.Path}#{pin}", value);
+        public object? RecallKey(string key) => Runtime._store.Get(key);
+        public void RememberKey(string key, object value) => Runtime._store.Set(key, value);
+        public ProgramSlot Slot => Runtime._slot;
     }
 
     /// <summary>
@@ -401,6 +411,8 @@ public sealed class LpzRuntime : IProgramRuntime
         private readonly int _inDigital, _inAnalogEnd, _outDigital, _outAnalogEnd;
         private JoinDevice? _device;
         private bool _eisc;
+        public JoinDevice? Device => _device;
+        public Dictionary<uint, SmartObjectNode> SmartObjects { get; } = new();
 
         public DeviceNode(LpzRuntime rt, BinSymbol sym, uint ipId) : base(rt, sym)
         {
@@ -440,6 +452,7 @@ public sealed class LpzRuntime : IProgramRuntime
             if (_eisc) Runtime._slot.Processor.Bus.Attach(_device);
             for (int pin = 1; pin <= Symbol.Inputs.Length; pin++)
                 if (Symbol.Inputs[pin - 1] > 1) Feedback(pin, Runtime.Value(Symbol.Inputs[pin - 1]));
+            foreach (var so in SmartObjects.Values) so.PushAll();
         }
 
         public void Detach()
@@ -456,6 +469,11 @@ public sealed class LpzRuntime : IProgramRuntime
 
         private void OnDeviceInput(JoinDevice dev, JoinKey key, object value)
         {
+            if (key.SmartObject != 0)
+            {
+                if (SmartObjects.TryGetValue(key.SmartObject, out var so)) so.FromPanel(key, value);
+                return;
+            }
             var pin = OutPin(key);
             if (pin < 1) return;
             var sig = Symbol.Outputs[pin - 1];

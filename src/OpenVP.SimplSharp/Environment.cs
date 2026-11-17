@@ -41,6 +41,29 @@ namespace Crestron.SimplSharp
 
     public static class CrestronEnvironment
     {
+        public static eCrestronSeries ProgramCompatibility => eCrestronSeries.Series4;
+        public static string NewLine => "\r\n";
+
+        /// <summary>Scales value from [inLow, inHigh] to [outLow, outHigh], clamped.</summary>
+        public static int ScaleWithLimits(int value, int inHigh, int inLow, int outHigh, int outLow)
+        {
+            if (inHigh == inLow) return outLow;
+            var v = Math.Clamp(value, Math.Min(inLow, inHigh), Math.Max(inLow, inHigh));
+            return (int)Math.Round(outLow + (v - inLow) * (double)(outHigh - outLow) / (inHigh - inLow));
+        }
+
+        public static class OSVersion
+        {
+            public static string Firmware => "OpenVP " + typeof(CrestronEnvironment).Assembly.GetName().Version;
+            public static string Version => Firmware;
+        }
+
+        public static class SystemInfo
+        {
+            public static string SerialNumber => "OPENVP" + System.Environment.MachineName.ToUpperInvariant();
+            public static string MACAddress => "00:00:00:00:00:00";
+        }
+
         public static event ProgramStatusEventHandler ProgramStatusEventHandler;
         public static event SystemEventHandler SystemEventHandler;
         public static event EthernetEventHandler EthernetEventHandler;
@@ -51,8 +74,6 @@ namespace Crestron.SimplSharp
         public static eRuntimeEnvironment RuntimeEnvironment => eRuntimeEnvironment.SimplSharpPro;
 
         public static string SystemInfoDomainName => System.Net.Dns.GetHostName();
-
-        public static int ProgramCompatibility => 4;
 
         public static void Sleep(int milliseconds) => System.Threading.Thread.Sleep(milliseconds);
 
@@ -77,6 +98,8 @@ namespace Crestron.SimplSharp
     public static class InitialParametersClass
     {
         public delegate string ResolveHostNameFunctionDelegate(string hostName);
+
+        public static uint NumberOfExternalEthernetInterfaces => 1;
 
         /// <summary>Custom host-name resolver some libraries install. Kept for compatibility.</summary>
         public static ResolveHostNameFunctionDelegate ResolveHostName { get; set; }
@@ -108,9 +131,9 @@ namespace Crestron.SimplSharp
     public static class CrestronInvoke
     {
         /// <summary>Run work in the background. Runs on the thread pool, not the slot thread, so it may block.</summary>
-        public static void BeginInvoke(CrestronSharpHelperDelegate callbackFunction) => BeginInvoke(callbackFunction, null);
+        public static object BeginInvoke(CrestronSharpHelperDelegate callbackFunction) => BeginInvoke(callbackFunction, null);
 
-        public static void BeginInvoke(CrestronSharpHelperDelegate callbackFunction, object userObject)
+        public static object BeginInvoke(CrestronSharpHelperDelegate callbackFunction, object userObject)
         {
             var slot = OpenVPBridge.Slot;
             System.Threading.ThreadPool.QueueUserWorkItem(_ =>
@@ -118,6 +141,7 @@ namespace Crestron.SimplSharp
                 try { callbackFunction(userObject); }
                 catch (Exception e) { slot?.Log("Error", "Exception in CrestronInvoke: " + e); }
             });
+            return null;
         }
     }
 }

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- OpenVP's stand-in for the JSON library Crestron ships with SIMPL# (SimplSharpNewtonsoft / Newtonsoft.Json.Compact):
+       the commonly used Newtonsoft.Json API on System.Text.Json. Loaded in place of Crestron's copy. -->
+  <PropertyGroup>
+    <AssemblyName>SimplSharpNewtonsoft</AssemblyName>
+    <RootNamespace>Newtonsoft.Json</RootNamespace>
+    <Nullable>disable</Nullable>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+  </PropertyGroup>
+</Project>

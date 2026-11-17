@@ -17,7 +17,7 @@ namespace Crestron.Logos.SplusObjects
     /// ObjectFinallyHandler. Delay, ProcessLogic, Gather and WaitForInitializationComplete hand the baton
     /// over while they wait, so other events can run.
     /// </summary>
-    public class SplusObject : ISplusModule
+    public partial class SplusObject : ISplusModule
     {
         public delegate void WaitFunction(object waitObject);
 
@@ -25,6 +25,26 @@ namespace Crestron.Logos.SplusObjects
         private readonly List<Wait> _waits = new List<Wait>();
         private readonly Dictionary<(bool, uint), SigKind> _pins = new Dictionary<(bool, uint), SigKind>();
         private readonly ManualResetEventSlim _initialized = new ManualResetEventSlim(false);
+
+        // Program-wide start-up barrier (this assembly is loaded once per program): events and
+        // WaitForInitializationComplete wait until every module's Function Main has got going, i.e. has
+        // called WaitForInitializationComplete, returned, or run for two seconds.
+        private static int _modulesStarting;
+        private static readonly ManualResetEventSlim AllStarted = new ManualResetEventSlim(false);
+        private int _readyFlag;
+
+        static SplusObject()
+        {
+            // SIMPL+ runs every event on its own thread; make sure the pool doesn't throttle them.
+            ThreadPool.GetMinThreads(out var w, out var io);
+            if (w < 256) ThreadPool.SetMinThreads(256, Math.Max(io, 64));
+        }
+
+        private void MarkReady()
+        {
+            if (Interlocked.Exchange(ref _readyFlag, 1) == 1) return;
+            if (Interlocked.Decrement(ref _modulesStarting) <= 0) AllStarted.Set();
+        }
         private readonly object _bufferGate = new object();
         private volatile bool _stopped;
         private ISplusHost _host;
@@ -37,6 +57,8 @@ namespace Crestron.Logos.SplusObjects
             InstanceName = instanceName;
             ReferenceID = referenceId;
             InheritedStringEncoding = encoding == CrestronStringEncoding.eEncodingUnknown ? CrestronStringEncoding.eEncodingASCII : encoding;
+            Interlocked.Increment(ref _modulesStarting);
+            AllStarted.Reset();
         }
 
         public string InstanceName { get; }
@@ -79,7 +101,8 @@ namespace Crestron.Logos.SplusObjects
         public void ObjectCatchHandler(Exception e)
         {
             if (e is ThreadInterruptedException || e is OperationCanceledException) return;
-            Log("Error", $"SIMPL+ {InstanceName}: {e.GetType().Name}: {e.Message}");
+            Log("Error", $"SIMPL+ {InstanceName}: {e.GetType().Name}: {e.Message}" +
+                (Environment.GetEnvironmentVariable("OPENVP_SPLUS_DEBUG") == "1" ? "\n" + e.StackTrace : ""));
         }
 
         private void Enter()
@@ -116,7 +139,8 @@ namespace Crestron.Logos.SplusObjects
 
         public int WaitForInitializationComplete()
         {
-            Yield(() => _initialized.Wait(TimeSpan.FromSeconds(30)));
+            MarkReady();
+            Yield(() => AllStarted.Wait(TimeSpan.FromSeconds(10)));
             return 0;
         }
 
@@ -136,19 +160,26 @@ namespace Crestron.Logos.SplusObjects
                 Yield(() => pending.Done.Wait());
                 return;
             }
-            var w = new Wait(this, name);
+            var w = new Wait(this, name) { Callback = callback };
             lock (_waits) _waits.Add(w);
-            w.Timer = new Timer(_ =>
+            w.Start(time);
+        }
+
+        internal void RunWait(Wait w)
+        {
+            try
             {
-                try
-                {
-                    if (_stopped) return;
-                    lock (_waits) _waits.Remove(w);
-                    callback(w);
-                }
-                catch (Exception e) { ObjectCatchHandler(e); }
-                finally { w.Done.Set(); }
-            }, null, Math.Max(0, time) * 10, Timeout.Infinite);
+                if (_stopped) return;
+                lock (_waits) _waits.Remove(w);
+                w.Callback?.Invoke(w);
+            }
+            catch (Exception e) { ObjectCatchHandler(e); }
+            finally { w.Done.Set(); }
+        }
+
+        internal Wait[] FindWaits(string name)
+        {
+            lock (_waits) return _waits.Where(x => name == null || x.Name == name).ToArray();
         }
 
         internal void RemoveWait(Wait w)
@@ -164,7 +195,7 @@ namespace Crestron.Logos.SplusObjects
 
         public ushort Byte(CrestronString s, int position)
         {
-            var v = s?.Value ?? "";
+            var v = s?.Str ?? "";
             return position >= 1 && position <= v.Length ? (ushort)(v[position - 1] & 0xFF) : (ushort)0;
         }
 
@@ -198,6 +229,7 @@ namespace Crestron.Logos.SplusObjects
         public short StartFileOperations() => 0;
         public short EndFileOperations() => 0;
         public ushort CheckForNVRAMDisk() => 1;
+        public ushort CheckForDisk() => 1;
 
         private string MapPath(string crestronPath)
         {
@@ -214,7 +246,7 @@ namespace Crestron.Logos.SplusObjects
         {
             try
             {
-                var path = MapPath(name?.Value);
+                var path = MapPath(name?.Str);
                 Directory.CreateDirectory(Path.GetDirectoryName(path));
                 // SIMPL+ flags: _O_RDONLY 0, _O_WRONLY 1, _O_RDWR 2, _O_APPEND 8, _O_CREAT 256, _O_TRUNC 512, _O_EXCL 1024
                 var write = (flags & 3) != 0;
@@ -245,7 +277,7 @@ namespace Crestron.Logos.SplusObjects
         {
             FileStream fs; lock (_files) _files.TryGetValue(handle, out fs);
             if (fs == null) return -1;
-            var bytes = Encoding.Latin1.GetBytes(data?.Value ?? "");
+            var bytes = Encoding.Latin1.GetBytes(data?.Str ?? "");
             var n = Math.Min(count == 0 ? bytes.Length : count, bytes.Length);
             fs.Write(bytes, 0, n);
             fs.Flush();
@@ -256,9 +288,9 @@ namespace Crestron.Logos.SplusObjects
         {
             try
             {
-                var full = MapPath(pattern?.Value);
+                var full = MapPath(pattern?.Str);
                 var dir = Path.GetDirectoryName(full);
-                _findResults = Directory.Exists(dir) ? Directory.GetFiles(dir, Path.GetFileName(full)) : Array.Empty<string>();
+                _findResults = Directory.Exists(dir) ? Directory.GetFileSystemEntries(dir, Path.GetFileName(full)) : Array.Empty<string>();
                 _findIndex = 0;
                 return FindNext(ref info);
             }
@@ -271,6 +303,8 @@ namespace Crestron.Logos.SplusObjects
             var f = new FileInfo(_findResults[_findIndex++]);
             info.Name = new CrestronString(f.Name);
             info.lSize = (uint)f.Length;
+            info.Modified = f.LastWriteTime;
+            info.iAttributes = (ushort)((int)f.Attributes & 0x3F);
             return 0;
         }
 
@@ -375,6 +409,7 @@ namespace Crestron.Logos.SplusObjects
             foreach (var h in handlers.ToArray())
                 ThreadPool.QueueUserWorkItem(_ =>
                 {
+                    if (!AllStarted.IsSet) AllStarted.Wait(TimeSpan.FromSeconds(10));
                     if (_stopped) return;
                     try { h.Handler(args); }
                     catch (Exception e) { ObjectCatchHandler(e); }
@@ -387,11 +422,11 @@ namespace Crestron.Logos.SplusObjects
             {
                 try { FunctionMain(null); }
                 catch (Exception e) { ObjectCatchHandler(e); }
-                finally { _initialized.Set(); }
+                finally { _initialized.Set(); MarkReady(); }
             }) { IsBackground = true, Name = "S+ " + InstanceName };
             t.Start();
             // Initialization is complete once Main has had a moment to set up (Main may never return).
-            ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(50); _initialized.Set(); });
+            ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(50); _initialized.Set(); Thread.Sleep(1950); MarkReady(); });
         }
 
         void ISplusModule.Stop()
@@ -401,18 +436,19 @@ namespace Crestron.Logos.SplusObjects
             lock (_files) { foreach (var f in _files.Values) f.Dispose(); _files.Clear(); }
             lock (_bufferGate) Monitor.PulseAll(_bufferGate);
             _initialized.Set();
+            MarkReady();
         }
     }
 
     // ------------------------------------------------------------------ sockets (minimal for now)
 
-    public class SocketEventInfo
+    public partial class SocketEventInfo
     {
         public SocketEventInfo(SocketInfo socket) { Socket = socket; }
         public SocketInfo Socket { get; }
     }
 
-    public class SocketInfo
+    public partial class SocketInfo
     {
         public SocketInfo(int bufferSize, SplusObject owner)
         {
@@ -421,8 +457,8 @@ namespace Crestron.Logos.SplusObjects
         }
 
         public SplusObject Owner { get; }
-        public CrestronString SocketRxBuf { get; }
-        public short SocketStatus { get; internal set; }
+        public CrestronString SocketRxBuf;
+        public short SocketStatus;
 
         public List<SocketHandlerWrapper> OnSocketConnect = new List<SocketHandlerWrapper>();
         public List<SocketHandlerWrapper> OnSocketDisconnect = new List<SocketHandlerWrapper>();
@@ -453,27 +489,27 @@ namespace Crestron.Logos.SplusObjects
         }
     }
 
-    public class SplusTcpClient : SocketInfo
+    public partial class SplusTcpClient : SocketInfo
     {
         public SplusTcpClient(int bufferSize, SplusObject owner) : base(bufferSize, owner) { }
         internal System.Net.Sockets.TcpClient Client;
     }
 
-    public class SplusTcpServer : SocketInfo
+    public partial class SplusTcpServer : SocketInfo
     {
         public SplusTcpServer(int bufferSize, SplusObject owner) : base(bufferSize, owner) { }
         internal System.Net.Sockets.TcpListener Listener;
         internal System.Net.Sockets.TcpClient Client;
     }
 
-    public class SplusUdpSocket : SocketInfo
+    public partial class SplusUdpSocket : SocketInfo
     {
         public SplusUdpSocket(int bufferSize, SplusObject owner) : base(bufferSize, owner) { }
         internal System.Net.Sockets.UdpClient Udp;
         internal System.Net.IPEndPoint Remote;
     }
 
-    public class SocketString : StringInput
+    public partial class SocketString : StringInput
     {
         public SocketString(uint id, int maxLength, SplusObject owner) : base(id, maxLength, owner) { }
     }

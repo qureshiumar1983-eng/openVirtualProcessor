@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System;
 using System.Text;
 using OpenVP.SimplSharp;
@@ -27,9 +28,54 @@ namespace Crestron.SimplSharp.CrestronIO
         }
     }
 
+    public delegate void AsyncCallback(IAsyncResult result);
+
+    public interface IAsyncResult
+    {
+        object AsyncState { get; }
+        bool IsCompleted { get; }
+    }
+
+    internal sealed class AsyncResult : IAsyncResult
+    {
+        public object AsyncState { get; set; }
+        public bool IsCompleted => Task.IsCompleted;
+        public System.Threading.Tasks.Task<int> Task;
+    }
+
+    public class FileNotFoundException : SIO.FileNotFoundException
+    {
+        public FileNotFoundException() { }
+        public FileNotFoundException(string message) : base(message) { }
+    }
+
+    public abstract class FileSystemInfo
+    {
+        public abstract string FullName { get; }
+        public abstract string Name { get; }
+        public abstract bool Exists { get; }
+    }
+
     /// <summary>Stream with the SIMPL# API shape, wrapping a .NET stream.</summary>
     public class Stream : IDisposable
     {
+        public IAsyncResult BeginRead(byte[] buffer, int offset, int count, AsyncCallback callback, object state)
+        {
+            var r = new AsyncResult { AsyncState = state };
+            r.Task = Inner.ReadAsync(buffer, offset, count);
+            r.Task.ContinueWith(_ => callback?.Invoke(r));
+            return r;
+        }
+        public int EndRead(IAsyncResult result) => ((AsyncResult)result).Task.GetAwaiter().GetResult();
+        public IAsyncResult BeginWrite(byte[] buffer, int offset, int count, AsyncCallback callback, object state)
+        {
+            var r = new AsyncResult { AsyncState = state };
+            r.Task = Inner.WriteAsync(buffer, offset, count).ContinueWith(_ => count);
+            r.Task.ContinueWith(_ => callback?.Invoke(r));
+            return r;
+        }
+        public void EndWrite(IAsyncResult result) => ((AsyncResult)result).Task.GetAwaiter().GetResult();
+
         protected internal SIO.Stream Inner;
         protected Stream() { }
         protected internal Stream(SIO.Stream inner) { Inner = inner; }
@@ -56,6 +102,7 @@ namespace Crestron.SimplSharp.CrestronIO
         public FileStream(string path, FileMode mode, FileAccess access, FileShare share)
             : base(Open(path, mode, access, share)) { Name = path; }
         public string Name { get; }
+        public void Write(string text, Encoding encoding) { var b = (encoding ?? Encoding.UTF8).GetBytes(text ?? ""); Write(b, 0, b.Length); }
         private static SIO.Stream Open(string path, FileMode mode, FileAccess access, FileShare share)
         {
             var full = Paths.Map(path);
@@ -68,6 +115,10 @@ namespace Crestron.SimplSharp.CrestronIO
     {
         public MemoryStream() : base(new SIO.MemoryStream()) { }
         public MemoryStream(byte[] buffer) : base(new SIO.MemoryStream(buffer)) { }
+        public MemoryStream(byte[] buffer, bool writable) : base(new SIO.MemoryStream(buffer, writable)) { }
+        public MemoryStream(byte[] buffer, int index, int count) : base(new SIO.MemoryStream(buffer, index, count)) { }
+        public MemoryStream(byte[] buffer, int index, int count, bool writable) : base(new SIO.MemoryStream(buffer, index, count, writable)) { }
+        public MemoryStream(int capacity) : base(new SIO.MemoryStream(capacity)) { }
         public byte[] ToArray() => ((SIO.MemoryStream)Inner).ToArray();
         public byte[] GetBuffer() => ((SIO.MemoryStream)Inner).GetBuffer();
     }
@@ -87,6 +138,8 @@ namespace Crestron.SimplSharp.CrestronIO
     {
         public StreamReader(Stream stream) { Inner = new SIO.StreamReader(stream.Inner); }
         public StreamReader(Stream stream, Encoding encoding) { Inner = new SIO.StreamReader(stream.Inner, encoding); }
+        public StreamReader(Stream stream, bool detectEncoding) { Inner = new SIO.StreamReader(stream.Inner, detectEncoding); }
+        public StreamReader(Stream stream, Encoding encoding, bool detectEncoding) { Inner = new SIO.StreamReader(stream.Inner, encoding, detectEncoding); }
         public StreamReader(string path) { Inner = new SIO.StreamReader(Paths.Map(path)); }
         public StreamReader(string path, Encoding encoding) { Inner = new SIO.StreamReader(Paths.Map(path), encoding); }
         public bool EndOfStream => ((SIO.StreamReader)Inner).EndOfStream;
@@ -134,7 +187,14 @@ namespace Crestron.SimplSharp.CrestronIO
     public class BinaryReader : IDisposable
     {
         private readonly SIO.BinaryReader _r;
-        public BinaryReader(Stream stream) { _r = new SIO.BinaryReader(stream.Inner); }
+        private readonly Stream _base;
+        public BinaryReader(Stream stream) { _base = stream; _r = new SIO.BinaryReader(stream.Inner); }
+        public Stream BaseStream => _base;
+        public long Length => _base.Length;
+        public long Position { get => _base.Position; set => _base.Position = value; }
+        public int ReadInt32() => _r.ReadInt32();
+        public short ReadInt16() => _r.ReadInt16();
+        public string ReadString() => _r.ReadString();
         public byte[] ReadBytes(int count) => _r.ReadBytes(count);
         public byte ReadByte() => _r.ReadByte();
         public void Close() => _r.Dispose();
@@ -150,6 +210,10 @@ namespace Crestron.SimplSharp.CrestronIO
         public static void Copy(string from, string to, bool overwrite) => SIO.File.Copy(Paths.Map(from), Paths.Map(to), overwrite);
         public static FileStream Create(string path) => new FileStream(path, FileMode.Create, FileAccess.ReadWrite);
         public static FileStream Open(string path, FileMode mode) => new FileStream(path, mode);
+        public static FileStream Open(string path, FileMode mode, FileAccess access) => new FileStream(path, mode, access);
+        public static FileStream Open(string path, FileMode mode, FileAccess access, FileShare share) => new FileStream(path, mode, access, share);
+        public static string ReadToEnd(string path) => SIO.File.ReadAllText(Paths.Map(path));
+        public static void WriteAllText(string path, string text) => SIO.File.WriteAllText(Paths.Map(path), text);
         public static FileStream OpenRead(string path) => new FileStream(path, FileMode.Open, FileAccess.Read);
         public static FileStream OpenWrite(string path) => new FileStream(path, FileMode.OpenOrCreate, FileAccess.Write);
         public static StreamReader OpenText(string path) => new StreamReader(path);
@@ -163,7 +227,9 @@ namespace Crestron.SimplSharp.CrestronIO
     {
         public static bool Exists(string path) => SIO.Directory.Exists(Paths.Map(path));
         public static void Create(string path) => SIO.Directory.CreateDirectory(Paths.Map(path));
-        public static void CreateDirectory(string path) => SIO.Directory.CreateDirectory(Paths.Map(path));
+        public static DirectoryInfo CreateDirectory(string path) { Create(path); return new DirectoryInfo(path); }
+        public static DateTime GetLastWriteTime(string path) => SIO.Directory.GetLastWriteTime(Paths.Map(path));
+        public static DateTime GetCreationTime(string path) => SIO.Directory.GetCreationTime(Paths.Map(path));
         public static void Delete(string path) => SIO.Directory.Delete(Paths.Map(path));
         public static void Delete(string path, bool recursive) => SIO.Directory.Delete(Paths.Map(path), recursive);
         public static string[] GetFiles(string path) => SIO.Directory.GetFiles(Paths.Map(path));
@@ -173,14 +239,14 @@ namespace Crestron.SimplSharp.CrestronIO
         public static string GetApplicationRootDirectory() => OpenVPBridge.Slot?.Processor.DataDirectory ?? SIO.Path.GetTempPath();
     }
 
-    public class FileInfo
+    public class FileInfo : FileSystemInfo
     {
         private readonly SIO.FileInfo _f;
         public FileInfo(string path) { _f = new SIO.FileInfo(Paths.Map(path)); }
         public long Length => _f.Exists ? _f.Length : 0;
-        public bool Exists => _f.Exists;
-        public string Name => _f.Name;
-        public string FullName => _f.FullName;
+        public override bool Exists => _f.Exists;
+        public override string Name => _f.Name;
+        public override string FullName => _f.FullName;
         public DateTime LastWriteTime => _f.LastWriteTime;
         public DateTime CreationTime => _f.CreationTime;
     }
@@ -192,6 +258,10 @@ namespace Crestron.SimplSharp.CrestronIO
         public static string GetFileNameWithoutExtension(string p) => SIO.Path.GetFileNameWithoutExtension(p);
         public static string GetExtension(string p) => SIO.Path.GetExtension(p);
         public static string GetDirectoryName(string p) => SIO.Path.GetDirectoryName(p);
-        public static char DirectorySeparatorChar => SIO.Path.DirectorySeparatorChar;
+        public static readonly char DirectorySeparatorChar = SIO.Path.DirectorySeparatorChar;
+        public static string ChangeExtension(string p, string ext) => SIO.Path.ChangeExtension(p, ext);
+        public static char[] GetInvalidPathChars() => SIO.Path.GetInvalidPathChars();
+        public static char[] GetInvalidFileNameChars() => SIO.Path.GetInvalidFileNameChars();
+        public static string GetFullPath(string p) => SIO.Path.GetFullPath(p);
     }
 }

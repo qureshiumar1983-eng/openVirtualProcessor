@@ -1,9 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
-// API-compatible SSH surface so modules that reference it load and run.
-// The transport itself is not implemented yet: Connect raises SshConnectionException,
-// which modules treat as "device unreachable" and retry, leaving the rest of the program running.
+// SSH client API in the SIMPL# shape, on OpenVP's own SSH-2 transport (SshTransport.cs).
 
 namespace Crestron.SimplSharp.Ssh.Messages.Transport
 {
@@ -33,6 +32,12 @@ namespace Crestron.SimplSharp.Ssh.Common
         public SshConnectionException(string message) : base(message) { }
         public SshConnectionException(string message, DisconnectReason reason) : base(message) { DisconnectReason = reason; }
         public DisconnectReason DisconnectReason { get; private set; }
+    }
+
+    public class SshOperationTimeoutException : SshException
+    {
+        public SshOperationTimeoutException() { }
+        public SshOperationTimeoutException(string message) : base(message) { }
     }
 
     public class SshAuthenticationException : SshException
@@ -111,8 +116,9 @@ namespace Crestron.SimplSharp.Ssh
         internal void Raise(AuthenticationPromptEventArgs e) => AuthenticationPrompt?.Invoke(this, e);
     }
 
-    public class ConnectionInfo
+    public class ConnectionInfo : IDisposable
     {
+        public void Dispose() { }
         public ConnectionInfo(string host, string username, params AuthenticationMethod[] methods) : this(host, 22, username, methods) { }
         public ConnectionInfo(string host, int port, string username, params AuthenticationMethod[] methods)
         { Host = host; Port = port; Username = username; AuthenticationMethods = methods ?? Array.Empty<AuthenticationMethod>(); }
@@ -129,20 +135,48 @@ namespace Crestron.SimplSharp.Ssh
 
     public abstract class BaseClient : IDisposable
     {
+        internal OpenVP.SimplSharp.SshCore.SshConnection Connection;
+
         protected BaseClient(ConnectionInfo info) { ConnectionInfo = info; }
         public ConnectionInfo ConnectionInfo { get; private set; }
-        public virtual bool IsConnected { get; protected set; }
+        public virtual bool IsConnected => Connection?.IsConnected == true;
         public TimeSpan KeepAliveInterval { get; set; }
         public event EventHandler<ExceptionEventArgs> ErrorOccurred;
         public event EventHandler<HostKeyEventArgs> HostKeyReceived;
 
         public virtual void Connect()
         {
-            OpenVP.SimplSharp.OpenVPBridge.Slot?.Log("Warning", $"SSH to {ConnectionInfo?.Host}:{ConnectionInfo?.Port} isn't supported yet.");
-            throw new SshConnectionException("SSH is not supported by OpenVP yet.", DisconnectReason.ServiceNotAvailable);
+            var info = ConnectionInfo;
+            var password = info.AuthenticationMethods.OfType<PasswordAuthenticationMethod>().FirstOrDefault()?.Password;
+            var kbd = info.AuthenticationMethods.OfType<KeyboardInteractiveAuthenticationMethod>().FirstOrDefault();
+            var conn = new OpenVP.SimplSharp.SshCore.SshConnection();
+            conn.HostKeyCheck = (key, fingerprint) =>
+            {
+                var e = new HostKeyEventArgs(key, fingerprint);
+                HostKeyReceived?.Invoke(this, e);
+                return e.CanTrust;
+            };
+            if (kbd != null)
+                conn.KeyboardInteractive = (name, instruction, prompts) =>
+                {
+                    var list = prompts.Select((p, i) => new AuthenticationPrompt(i, p.echo, p.prompt)).ToList();
+                    kbd.Raise(new AuthenticationPromptEventArgs(info.Username, instruction, "", list));
+                    return list.Select(p => p.Response ?? password ?? "").ToList();
+                };
+            conn.Closed += e => OnError(e);
+            try
+            {
+                conn.Connect(info.Host, info.Port, info.Username, password, kbd != null || password != null, info.Timeout);
+            }
+            catch (Exception e)
+            {
+                conn.Dispose();
+                throw new SshConnectionException(Environment.GetEnvironmentVariable("OPENVP_SSH_DEBUG") == "1" ? e.ToString() : e.Message, DisconnectReason.ConnectionLost);
+            }
+            Connection = conn;
         }
 
-        public virtual void Disconnect() { IsConnected = false; }
+        public virtual void Disconnect() { Connection?.Dispose(); Connection = null; }
         public void SendKeepAlive() { }
         protected void OnError(Exception e) => ErrorOccurred?.Invoke(this, new ExceptionEventArgs(e));
         protected void OnHostKey(HostKeyEventArgs e) => HostKeyReceived?.Invoke(this, e);
@@ -151,19 +185,52 @@ namespace Crestron.SimplSharp.Ssh
 
     public class ShellStream : IDisposable
     {
-        internal ShellStream() { }
+        private readonly OpenVP.SimplSharp.SshCore.SshConnection _conn;
+        private readonly System.Text.StringBuilder _buffer = new System.Text.StringBuilder();
+
+        internal ShellStream(OpenVP.SimplSharp.SshCore.SshConnection conn)
+        {
+            _conn = conn;
+            conn.DataReceived += data =>
+            {
+                lock (_buffer) _buffer.Append(System.Text.Encoding.Latin1.GetString(data));
+                DataReceived?.Invoke(this, new ShellDataEventArgs(data));
+            };
+            conn.Closed += e => ErrorOccurred?.Invoke(this, new ExceptionEventArgs(e));
+        }
+
         public event EventHandler<ShellDataEventArgs> DataReceived;
         public event EventHandler<ExceptionEventArgs> ErrorOccurred;
-        public bool DataAvailable => false;
-        public string Read() => string.Empty;
-        public string ReadLine() => null;
-        public void Write(string text) => throw new SshConnectionException("Not connected.", DisconnectReason.ConnectionLost);
-        public void WriteLine(string line) => Write(line + "\n");
+        public bool DataAvailable { get { lock (_buffer) return _buffer.Length > 0; } }
+        public long Length { get { lock (_buffer) return _buffer.Length; } }
+
+        public string Read()
+        {
+            lock (_buffer) { var s = _buffer.ToString(); _buffer.Clear(); return s; }
+        }
+
+        public string ReadLine()
+        {
+            lock (_buffer)
+            {
+                var s = _buffer.ToString();
+                var i = s.IndexOf('\n');
+                if (i < 0) return null;
+                _buffer.Remove(0, i + 1);
+                return s.Substring(0, i).TrimEnd('\r');
+            }
+        }
+
+        public void Write(string text)
+        {
+            if (!_conn.IsConnected) throw new SshConnectionException("Not connected.", DisconnectReason.ConnectionLost);
+            _conn.Send(System.Text.Encoding.Latin1.GetBytes(text ?? ""));
+        }
+
+        public void WriteLine(string line) => Write(line + "\r\n");
         public void Flush() { }
         public void Close() { }
         public void Dispose() { }
-        internal void Raise(ShellDataEventArgs e) => DataReceived?.Invoke(this, e);
-        internal void RaiseError(Exception e) => ErrorOccurred?.Invoke(this, new ExceptionEventArgs(e));
     }
 
     public class SshClient : BaseClient
@@ -176,7 +243,8 @@ namespace Crestron.SimplSharp.Ssh
         public ShellStream CreateShellStream(string terminalName, uint columns, uint rows, uint width, uint height, int bufferSize)
         {
             if (!IsConnected) throw new SshConnectionException("Client not connected.", DisconnectReason.ConnectionLost);
-            return new ShellStream();
+            Connection.OpenShell(terminalName, columns, rows, width, height);
+            return new ShellStream(Connection);
         }
     }
 }

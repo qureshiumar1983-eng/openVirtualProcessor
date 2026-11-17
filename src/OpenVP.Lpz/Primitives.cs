@@ -27,6 +27,10 @@ public interface IPrimitiveContext
     /// <summary>Non-volatile storage for this symbol, kept in the slot's folder across restarts.</summary>
     object? Recall(int outputPin);
     void Remember(int outputPin, object value);
+    /// <summary>Non-volatile storage shared by key (for addressed memory like Analog RAM).</summary>
+    object? RecallKey(string key);
+    void RememberKey(string key, object value);
+    ProgramSlot Slot { get; }
 }
 
 public abstract class Primitive
@@ -532,6 +536,36 @@ public static class PrimitiveLibrary
         [56] = () => new DebouncePrim(),
         [23] = () => new RingCounterPrim(),
         [61] = () => new WhenPrim(),
+        [4] = () => new XorPrim(),
+        [6] = () => new TransitionPrim(false),
+        [7] = () => new TransitionPrim(true),
+        [19] = () => new TruthTablePrim(),
+        [20] = () => new AnalogRampPrim(false),
+        [223] = () => new AnalogRampPrim(true),
+        [30] = () => new AnalogScalerPrim(),
+        [36] = () => new AnalogRamPrim(),
+        [37] = () => new AnalogStepPrim(),
+        [52] = () => new DecadePrim(),
+        [80] = () => new AnalogFollowPrim(),
+        [82] = () => new AnalogToSerialPrim(),
+        [87] = () => new AnalogFlipPrim(),
+        [93] = () => new SerialGatherPrim(),
+        [99] = () => new AnalogScalerSignedPrim(),
+        [106] = () => new AnalogToDigitalPrim(),
+        [121] = () => new NoOpPrim(),
+        [122] = () => new SerialMergePrim(),
+        [136] = () => new DivModPrim(),
+        [202] = () => new ConsolePrim(),
+        [203] = () => new WaveDelayPrim(),
+        [207] = () => new InterlockTogglePrim(),
+        [224] = () => new AnalogScalerLimitsPrim(),
+        [230] = () => new AnalogIncrementPrim(),
+        [236] = () => new AnalogIncrementPrim(),
+        [237] = () => new AnalogClampPrim(),
+        [241] = () => new StepperProgressPrim(),
+        [266] = () => new MultiSerialSendPrim(),
+        [85] = () => new XsigPrim(),
+        [161] = () => new NoOpPrim(),
     };
 
     public static bool Supports(int type) => Factories.ContainsKey(type);

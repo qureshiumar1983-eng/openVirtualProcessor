@@ -22,9 +22,15 @@ namespace Crestron.SimplSharp
         public bool TryToEnqueue(T item) => _q.TryAdd(item);
         public T Dequeue() => _q.Take();
         public T Dequeue(int timeoutMs) => _q.TryTake(out var v, timeoutMs) ? v : default;
+        public T Dequeue(uint timeoutMs) => _q.TryTake(out var v, timeoutMs == uint.MaxValue ? -1 : (int)Math.Min(timeoutMs, int.MaxValue)) ? v : default;
+        public bool Dequeue(ref T item) { if (_q.TryTake(out var v)) { item = v; return true; } return false; }
+        public bool Enqueue(T item, uint timeoutMs) => _q.TryAdd(item, (int)Math.Min(timeoutMs, int.MaxValue));
+        public T TryToDequeue() => _q.TryTake(out var v) ? v : default;
+        public T Peek() { foreach (var v in _q) return v; return default; }
+        public bool Disposed { get; private set; }
         public bool TryToDequeue(out T item) => _q.TryTake(out item);
         public void Clear() { while (_q.TryTake(out _)) { } }
-        public void Dispose() => _q.Dispose();
+        public void Dispose() { Disposed = true; _q.Dispose(); }
     }
 
     /// <summary>IP address type used by the SIMPL# socket classes.</summary>
@@ -77,6 +83,19 @@ namespace Crestron.SimplSharp
         }
 
         public static short GetAdapterdIdForSpecifiedAdapterType(EthernetAdapterType type) => 0;
+
+        public enum PortForwardingUserPatRetCodes { NoErr = 0, Error = 1 }
+        public class PortForward
+        {
+            public ushort ExternalPort { get; set; }
+            public ushort InternalPort { get; set; }
+            public string IPAddress { get; set; }
+            public string IPProtocol { get; set; }
+        }
+        // A virtual processor has no control-subnet router; port forwarding requests succeed without effect.
+        public static PortForwardingUserPatRetCodes AddPortForwarding(ushort ext, ushort internalPort, string address, string protocol) => PortForwardingUserPatRetCodes.NoErr;
+        public static PortForwardingUserPatRetCodes RemovePortForwarding(ushort ext, ushort internalPort, string address, string protocol) => PortForwardingUserPatRetCodes.NoErr;
+        public static PortForwardingUserPatRetCodes ListPortForward(ref List<PortForward> list) { list ??= new List<PortForward>(); return PortForwardingUserPatRetCodes.NoErr; }
 
         public static string GetEthernetParameter(ETHERNET_PARAMETER_TO_GET what, short adapter)
         {
@@ -176,6 +195,24 @@ namespace Crestron.SimplSharp.CrestronDataStore
         public static CrestronDataStore.CDS_ERROR SetGlobalDoubleValue(string t, double v) => Set(true, t, v);
         public static CrestronDataStore.CDS_ERROR SetGlobalStringValue(string t, string v) => Set(true, t, v);
 
+        public static CrestronDataStore.CDS_ERROR SetGlobalLongValue(string t, ulong v) => Set(true, t, v);
+        public static CrestronDataStore.CDS_ERROR SetLocalLongValue(string t, ulong v) => Set(false, t, v);
+        public static bool Flush() => true;
+        public static CrestronDataStore.CDS_ERROR clearLocal(string tag) => Clear(false, tag);
+        public static CrestronDataStore.CDS_ERROR clearGlobal(string tag) => Clear(true, tag);
+        private static CrestronDataStore.CDS_ERROR Clear(bool global, string tag)
+        {
+            lock (Gate)
+            {
+                if (_local == null) InitCrestronDataStore();
+                var d = global ? _global : _local;
+                if (!d.Remove(tag ?? "")) return CrestronDataStore.CDS_ERROR.CDS_TAG_NOT_FOUND;
+                var path = global ? GlobalPath : LocalPath;
+                System.IO.File.WriteAllText(path, JsonSerializer.Serialize(d));
+            }
+            return CrestronDataStore.CDS_ERROR.CDS_SUCCESS;
+        }
+
         public static CrestronDataStore.CDS_ERROR GetLocalBoolValue(string t, ref bool v) => Get(false, t, ref v);
         public static CrestronDataStore.CDS_ERROR GetLocalIntValue(string t, ref int v) => Get(false, t, ref v);
         public static CrestronDataStore.CDS_ERROR GetLocalUintValue(string t, ref uint v) => Get(false, t, ref v);
@@ -196,6 +233,7 @@ namespace Crestron.SimplSharp.CrestronDataStore
 namespace Crestron.SimplSharp.CrestronSockets
 {
     public delegate void UDPServerReceiveCallback(UDPServer server, int numberOfBytesReceived);
+    public delegate void UDPServerSendCallbackEx(UDPServer server, int numberOfBytesSent, object userObject);
 
     /// <summary>UDP endpoint with the SIMPL# API shape. Callbacks run on the slot thread.</summary>
     public class UDPServer : IDisposable
@@ -205,6 +243,10 @@ namespace Crestron.SimplSharp.CrestronSockets
 
         public UDPServer() : this("0.0.0.0", 0, 1024) { }
         public UDPServer(string address, int port, int bufferSize) : this(address, port, bufferSize, port) { }
+        public UDPServer(string address, int port, int bufferSize, EthernetAdapterType adapter, int localPort) : this(address, port, bufferSize, localPort) { }
+        public UDPServer(string address, int port, int bufferSize, EthernetAdapterType adapter) : this(address, port, bufferSize, port) { }
+        public EthernetAdapterType EthernetAdapterToBindTo { get; set; }
+        public bool ClearIncomingDataBuffer { get; set; }
         public UDPServer(string address, int port, int bufferSize, int localPort)
         {
             AddressToAcceptConnectionFrom = address;
@@ -218,7 +260,8 @@ namespace Crestron.SimplSharp.CrestronSockets
         public int PortNumber { get; set; }
         public int LocalPort { get; set; }
         public byte[] IncomingDataBuffer { get; private set; }
-        public Crestron.SimplSharp.IPEndPoint IPAddressLastMessageReceivedFrom { get; private set; }
+        public string IPAddressLastMessageReceivedFrom { get; private set; } = "";
+        public int IPPortLastMessageReceivedFrom { get; private set; }
 
         public SocketErrorCodes EnableUDPServer()
         {
@@ -260,6 +303,13 @@ namespace Crestron.SimplSharp.CrestronSockets
             return SocketErrorCodes.SOCKET_OK;
         }
 
+        public SocketErrorCodes SendDataAsync(byte[] data, int length, string address, int port, UDPServerSendCallbackEx callback, object userObject)
+        {
+            if (_udp == null) return SocketErrorCodes.SOCKET_NOT_CONNECTED;
+            _udp.SendAsync(data, length, address, port).ContinueWith(t => OpenVPBridge.Post(() => callback?.Invoke(this, t.IsFaulted ? -1 : t.Result, userObject)));
+            return SocketErrorCodes.SOCKET_OPERATION_PENDING;
+        }
+
         public SocketErrorCodes ReceiveDataAsync(UDPServerReceiveCallback callback)
         {
             if (_udp == null) return SocketErrorCodes.SOCKET_NOT_CONNECTED;
@@ -271,7 +321,8 @@ namespace Crestron.SimplSharp.CrestronSockets
                     var r = t.Result;
                     IncomingDataBuffer = r.Buffer;
                     n = r.Buffer.Length;
-                    IPAddressLastMessageReceivedFrom = new Crestron.SimplSharp.IPEndPoint(new Crestron.SimplSharp.IPAddress(r.RemoteEndPoint.Address.GetAddressBytes()), r.RemoteEndPoint.Port);
+                    IPAddressLastMessageReceivedFrom = r.RemoteEndPoint.Address.ToString();
+                    IPPortLastMessageReceivedFrom = r.RemoteEndPoint.Port;
                 }
                 OpenVPBridge.Post(() => callback?.Invoke(this, n));
             });
