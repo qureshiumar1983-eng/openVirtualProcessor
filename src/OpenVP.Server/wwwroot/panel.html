@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenVP test panel</title>
+<style>
+  :root { --bg:#111418; --card:#1b2027; --line:#2c333d; --text:#e6e9ee; --muted:#8b95a3; --on:#2f9e6e; --accent:#4c8dff; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--text); }
+  header { display:flex; gap:12px; align-items:center; padding:12px 16px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0 8px 0 0; }
+  .dot { width:10px; height:10px; border-radius:50%; background:#c0392b; display:inline-block; }
+  .dot.ok { background:var(--on); }
+  input, button { font:inherit; color:var(--text); background:var(--card); border:1px solid var(--line); border-radius:6px; padding:6px 8px; }
+  main { padding:16px; display:grid; gap:16px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:0 0 10px; }
+  .grid { display:grid; grid-template-columns: repeat(5, 1fr); gap:8px; }
+  .btn { padding:14px 0; text-align:center; border-radius:8px; user-select:none; touch-action:none; cursor:pointer; }
+  .btn.fb { background:var(--on); border-color:var(--on); }
+  .btn.down { outline:2px solid var(--accent); }
+  .row { display:grid; grid-template-columns: 40px 1fr 60px; gap:8px; align-items:center; margin-bottom:8px; }
+  .srow { display:grid; grid-template-columns: 40px 1fr; gap:8px; align-items:center; margin-bottom:8px; }
+  .fbtext { color:var(--muted); font-family: ui-monospace, monospace; font-size:12px; grid-column: 2; min-height:16px; }
+  small { color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>OpenVP test panel</h1>
+  <span class="dot" id="dot"></span><span id="status">connecting…</span>
+  <label>IP ID <input id="ipid" size="3"></label>
+  <label>Slot <input id="slot" size="2" placeholder="any"></label>
+  <button id="go">Connect</button>
+  <small>Hold a button to keep the join high. Green = feedback from the program.</small>
+</header>
+<main>
+  <section><h2>Digital joins 1–20</h2><div class="grid" id="digitals"></div></section>
+  <section><h2>Analog joins 1–4, 10</h2><div id="analogs"></div></section>
+  <section><h2>Serial joins 1–4, 10</h2><div id="serials"></div></section>
+</main>
+<script src="openvp-crcomlib.js"></script>
+<script>
+  const q = new URLSearchParams(location.search);
+  document.getElementById("ipid").value = q.get("ipid") || "03";
+  document.getElementById("slot").value = q.get("slot") || "";
+  document.getElementById("go").onclick = () => {
+    const p = new URLSearchParams({ ipid: document.getElementById("ipid").value });
+    const s = document.getElementById("slot").value; if (s) p.set("slot", s);
+    location.search = p.toString();
+  };
+  const dot = document.getElementById("dot"), status = document.getElementById("status");
+  OpenVP.on("open", () => { dot.className = "dot ok"; status.textContent = "connected to IPID " + OpenVP.config.ipid; });
+  OpenVP.on("close", () => { dot.className = "dot"; status.textContent = "disconnected, retrying…"; });
+  OpenVP.on("hello", m => status.textContent = `IPID ${m.ipid.toString(16).padStart(2,"0").toUpperCase()} · slot ${m.slot} · ${m.type}`);
+
+  const dg = document.getElementById("digitals");
+  for (let j = 1; j <= 20; j++) {
+    const b = document.createElement("div");
+    b.className = "btn"; b.textContent = j;
+    const down = e => { e.preventDefault(); b.setPointerCapture?.(e.pointerId); b.classList.add("down"); CrComLib.publishEvent("b", String(j), true); };
+    const up = () => { if (!b.classList.contains("down")) return; b.classList.remove("down"); CrComLib.publishEvent("b", String(j), false); };
+    b.addEventListener("pointerdown", down);
+    ["pointerup", "pointercancel", "lostpointercapture"].forEach(t => b.addEventListener(t, up));
+    b.addEventListener("contextmenu", e => e.preventDefault());
+    CrComLib.subscribeState("b", String(j), v => b.classList.toggle("fb", !!v));
+    dg.appendChild(b);
+  }
+
+  const an = document.getElementById("analogs");
+  for (const j of [1, 2, 3, 4, 10]) {
+    const row = document.createElement("div"); row.className = "row";
+    row.innerHTML = `<span>a${j}</span><input type="range" min="0" max="65535" value="0"><span>0</span><div class="fbtext"></div>`;
+    const [_, range, val, fb] = row.children;
+    range.oninput = () => { val.textContent = range.value; CrComLib.publishEvent("n", String(j), +range.value); };
+    CrComLib.subscribeState("n", String(j), v => fb.textContent = "feedback: " + v);
+    an.appendChild(row);
+  }
+
+  const se = document.getElementById("serials");
+  for (const j of [1, 2, 3, 4, 10]) {
+    const row = document.createElement("div"); row.className = "srow";
+    row.innerHTML = `<span>s${j}</span><input placeholder="type and press Enter"><div class="fbtext"></div>`;
+    const [_, input, fb] = row.children;
+    input.onkeydown = e => { if (e.key === "Enter") { CrComLib.publishEvent("s", String(j), input.value); input.select(); } };
+    CrComLib.subscribeState("s", String(j), v => fb.textContent = "feedback: " + v);
+    se.appendChild(row);
+  }
+</script>
+</body>
+</html>
