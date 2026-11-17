@@ -53,7 +53,7 @@ public static class CipTests
         Assert.Equal(Cip.WhoAreYou, who.type, "server asks who we are");
 
         // Connect as IPID 03 (layout as community clients send it).
-        s.Write(Cip.Frame(Cip.ConnectRequest, 0x00, 0x00, 0x00, 0x00, 0x03, 0x40, 0xFF, 0xFF, 0xF1, 0x01));
+        s.Write(Cip.Frame(Cip.ConnectRequest, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x40, 0xFF, 0xFF, 0xF1, 0x01));
         var resp = Read(s);
         Assert.Equal(Cip.ConnectResponse, resp.type, "connect response");
         Assert.Eventually(() => p.Slot(1).FindDevice(0x03)!.Online, "panel online in program");

@@ -54,6 +54,9 @@ public sealed class CipServer : IDisposable
         if (LogPackets) _processor.Slot(1).Log("Info", "[CIP] " + message);
     }
 
+    /// <summary>Connection events are always logged.</summary>
+    internal void Event(int slot, string message) => _processor.Slot(Math.Max(1, slot)).Log("Notice", "[Panel] " + message);
+
     public void Dispose()
     {
         _cts.Cancel();
@@ -92,7 +95,7 @@ public static class Cip
 
     public static byte[] WhoAreYouPacket() => Frame(WhoAreYou, 0x02);
 
-    public static byte[] ConnectOk(uint ipId) => Frame(ConnectResponse, 0x00, 0x00, 0x00, (byte)ipId);
+    public static byte[] ConnectOk(uint ipId) => Frame(ConnectResponse, 0x00, 0x00, 0x00, 0x1F);
 
     public static byte[] ConnectRefused() => Frame(ConnectResponse, 0xFF, 0xFF, 0x02);
 
@@ -151,13 +154,22 @@ public static class Cip
         return null;
     }
 
-    /// <summary>IP ID from a connect request. Community captures put it at payload offset 4.</summary>
+    /// <summary>
+    /// IP ID from a connect request. Panels send "00 00 00 00 00 [IPID] 40 FF FF F1 01" (11 bytes); some
+    /// clients send one leading zero fewer. The IP ID is the byte just before the 0x40.
+    /// </summary>
     public static uint? DecodeConnectIpId(byte type, ReadOnlySpan<byte> p)
     {
         if (type is not (ConnectRequest or ConnectRequestAlt)) return null;
+        if (p.Length > 6 && p[6] == 0x40) return p[5];
+        if (p.Length > 5 && p[5] == 0x40) return p[4];
+        if (p.Length >= 11) return p[5];
         if (p.Length > 4) return p[4];
         return null;
     }
+
+    /// <summary>Sent after a full update so the panel knows the snapshot is complete.</summary>
+    public static byte[] UpdateComplete() => Frame(Data, 0x00, 0x00, 0x02, 0x03, 0x16);
 }
 
 internal sealed class CipSession
@@ -180,6 +192,8 @@ internal sealed class CipSession
     {
         using var _ = _client;
         _stream = _client.GetStream();
+        var remote = _client.Client.RemoteEndPoint?.ToString() ?? "?";
+        _server.Event(1, $"connection from {remote}");
         _processor.DeviceUnregistered += OnUnregistered;
         try
         {
@@ -199,6 +213,7 @@ internal sealed class CipSession
         finally
         {
             _processor.DeviceUnregistered -= OnUnregistered;
+            _server.Event(_device?.Slot ?? 1, $"{remote} disconnected" + (_device != null ? $" (IP ID {_device.IpId:X2})" : ""));
             Detach();
         }
     }
@@ -208,7 +223,9 @@ internal sealed class CipSession
         if (Cip.DecodeConnectIpId(type, payload) is uint ipId)
         {
             Detach();
+            var known = _processor.FindDevice(ipId) != null;
             _device = DeviceDirectory.Resolve(_processor, ipId, null);
+            _server.Event(_device.Slot, $"panel registered as IP ID {ipId:X2}" + (known ? $" (slot {_device.Slot}, {_device.Type})" : " — no loaded program has this IP ID; check the panel's IP ID"));
             _device.FeedbackChanged += OnFeedback;
             _device.AttachConnection();
             await Send(Cip.ConnectOk(ipId));
@@ -228,6 +245,7 @@ internal sealed class CipSession
             // Panel asks for everything: send a full snapshot.
             if (_device != null)
                 foreach (var (k, v) in _device.FeedbackSnapshot()) OnFeedback(_device, k, v);
+            await Send(Cip.UpdateComplete());
             return;
         }
         if (Cip.DecodeJoin(type, payload) is var (key, value) && _device != null)
