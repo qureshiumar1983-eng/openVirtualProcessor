@@ -10,10 +10,14 @@ public sealed class LpzLoader : IProgramLoader
     public IProgramRuntime Load(string path, ProgramSlot slot)
     {
         var pkg = LpzPackage.Open(path);
-        if (pkg.Signals == null)
+        // A .sig next to the program comes from the same compile; the one inside the source archive
+        // can be from the compile before (the archive is written first), so it is checked before use.
+        var sigPath = Path.ChangeExtension(path, ".sig");
+        if (File.Exists(sigPath)) pkg.UseSignals(SigTable.Parse(File.ReadAllBytes(sigPath)));
+        else if (pkg.Signals != null && !SigCheck.Matches(pkg.Logic, pkg.Signals, out var agreement))
         {
-            var sigPath = Path.ChangeExtension(path, ".sig");
-            if (File.Exists(sigPath)) pkg.UseSignals(SigTable.Parse(File.ReadAllBytes(sigPath)));
+            slot.Log("Warning", $"Signal names inside the archive don't match this compile ({agreement:P0} agree); showing signal numbers. Upload the .sig from the compile folder to get names.");
+            pkg.UseSignals(null);
         }
         return new LpzRuntime(slot, pkg);
     }
@@ -70,6 +74,11 @@ public sealed class LpzRuntime : IProgramRuntime
         _values[1] = true; // constant "1"
     }
 
+    private LpzLoadContext? _alc;
+    private readonly List<SplusNode> _modules = new();
+
+    internal ProgramSlot Slot => _slot;
+
     public string Kind => "SIMPL Windows (compiled)";
     public string ProgramName => _pkg.ProgramName;
     public LpzPackage Package => _pkg;
@@ -94,7 +103,11 @@ public sealed class LpzRuntime : IProgramRuntime
                     Register(dev);
                 }
                 else if (sym.Type == -48)
-                    Count(sym.Type); // SIMPL+ module: not yet
+                {
+                    var node = CreateModule(sym);
+                    if (node != null) { _modules.Add(node); Register(node); }
+                    else Count(sym.Type);
+                }
                 continue;
             }
             if (sym.Type == 31) continue; // compile header
@@ -104,6 +117,44 @@ public sealed class LpzRuntime : IProgramRuntime
         }
 
         void Count(int t) => Unsupported[t] = Unsupported.GetValueOrDefault(t) + 1;
+    }
+
+    private readonly HashSet<string> _moduleErrors = new();
+
+    /// <summary>Load and instantiate the SIMPL+ module a −48 record points at.</summary>
+    private SplusNode? CreateModule(BinSymbol sym)
+    {
+        var dll = sym.Params.Count > 1 ? sym.Params[1].Text : null;
+        if (string.IsNullOrEmpty(dll)) return null;
+        try
+        {
+            if (_alc == null)
+            {
+                var dir = Path.Combine(_slot.Directory, "lpz");
+                _pkg.ExtractAssemblies(dir);
+                _alc = new LpzLoadContext(_slot.Number, dir, AppContext.BaseDirectory);
+                // Point the SIMPL# runtime used by modules and their libraries at this slot.
+                var shim = _alc.LoadFromAssemblyName(new System.Reflection.AssemblyName("OpenVP.SimplSharp"));
+                shim.GetType("OpenVP.SimplSharp.OpenVPBridge")?.GetProperty("Slot")?.SetValue(null, _slot);
+            }
+            var asm = _alc.LoadFromAssemblyName(new System.Reflection.AssemblyName(Path.GetFileNameWithoutExtension(dll)));
+            var splusObject = _alc.LoadFromAssemblyName(new System.Reflection.AssemblyName("SplusObjects"))
+                .GetType("Crestron.Logos.SplusObjects.SplusObject", throwOnError: true)!;
+            var type = asm.GetTypes().FirstOrDefault(t => !t.IsAbstract && splusObject.IsAssignableFrom(t))
+                ?? throw new InvalidDataException("no SIMPL+ module class");
+            var ctor = type.GetConstructors().First(c => c.GetParameters().Length == 3);
+            var encType = ctor.GetParameters()[2].ParameterType;
+            var instance = ctor.Invoke(new object[] { sym.Path, sym.Path, Enum.ToObject(encType, 1) });
+            return new SplusNode(this, sym, (ISplusModule)instance);
+        }
+        catch (Exception e)
+        {
+            var inner = e is System.Reflection.TargetInvocationException t && t.InnerException != null ? t.InnerException : e;
+            var unresolved = _alc?.Unresolved.Count > 0 ? $" (missing: {string.Join(", ", _alc.Unresolved.Distinct())})" : "";
+            if (_moduleErrors.Add(dll!))
+                _slot.Log("Warning", $"SIMPL+ module {dll} can't run yet: {inner.GetType().Name}: {inner.Message}{unresolved}");
+            return null;
+        }
     }
 
     private void Register(Node node)
@@ -229,7 +280,7 @@ public sealed class LpzRuntime : IProgramRuntime
         });
 
         var total = _pkg.Logic.Symbols.Count;
-        _slot.Log("Notice", $"Compiled program: {_nodes.Count - _devices.Count} logic symbols and {_devices.Count} devices running" +
+        _slot.Log("Notice", $"Compiled program: {_nodes.Count - _devices.Count - _modules.Count} logic symbols, {_modules.Count} SIMPL+ modules and {_devices.Count} devices running" +
                              (_pkg.Signals == null ? " (no .sig: signals shown by number)" : ""));
         if (Unsupported.Count > 0)
             _slot.Log("Warning", $"Not supported yet: " + string.Join(", ",
@@ -239,6 +290,7 @@ public sealed class LpzRuntime : IProgramRuntime
     public void Stop()
     {
         _running = false;
+        foreach (var m in _modules) m.Stop();
         _store.Flush();
         lock (_timers)
         {
@@ -276,7 +328,12 @@ public sealed class LpzRuntime : IProgramRuntime
         return true;
     }
 
-    public void Dispose() => Stop();
+    public void Dispose()
+    {
+        Stop();
+        _alc?.Unload();
+        _alc = null;
+    }
 
     // ------------------------------------------------------------------ nodes
 

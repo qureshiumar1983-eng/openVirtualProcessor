@@ -30,7 +30,7 @@ public sealed class LpzPackage
     public string Path { get; private init; } = string.Empty;
 
     /// <summary>Use a .sig from outside the package (written next to the .smw at compile time).</summary>
-    public void UseSignals(SigTable table) => Signals = table;
+    public void UseSignals(SigTable? table) => Signals = table;
     public Dictionary<string, string> Boot { get; } = new(StringComparer.OrdinalIgnoreCase);
     public List<IpTableEntry> IpTable { get; } = new();
     /// <summary>Device model per IP ID, from the .dsc file (e.g. 03 → TS-1080).</summary>
@@ -98,6 +98,19 @@ public sealed class LpzPackage
                 pkg.SplusModules.Add(new SplusModule(e.Name, e.Length));
         }
         return pkg;
+    }
+
+    /// <summary>Extract the program's own assemblies (SIMPL+ modules, SIMPL# libraries) to a folder.</summary>
+    public void ExtractAssemblies(string dir)
+    {
+        Directory.CreateDirectory(dir);
+        using var zip = ZipFile.OpenRead(Path);
+        foreach (var e in zip.Entries)
+        {
+            if (!e.Name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) || CrestronRuntime.Contains(e.Name) ||
+                e.Name.StartsWith("SimplSharp", StringComparison.OrdinalIgnoreCase)) continue;
+            e.ExtractToFile(System.IO.Path.Combine(dir, e.Name), overwrite: true);
+        }
     }
 
     private static byte[] ReadAll(ZipArchiveEntry e)

@@ -76,4 +76,41 @@ Signals inside user modules are named `::localName:S-path.XXXXXXXX`, where the s
 
 ## SIMPL+ modules
 
-Each `.usp` in a program becomes one `.dll` in the `.lpz`, a .NET assembly referencing `SplusObjects`, `SplusLibrary`, `SimplSharpHelperInterface` and `SmartThreadPoolCE`. It defines `UserModule_<NAME>.UserModuleClass_<NAME>`, built on `Crestron.Logos.SplusObjects` types (`SplusObject`, `DigitalInput`, `AnalogOutput`, `CrestronString`, `InOutArray<T>`, `SplusExecutionContext`, …) and calls `Crestron.Logos.SplusLibrary.Functions` for the SIMPL+ built-ins. OpenVP's plan is to run these through a clean-room implementation of that API, the same way it runs SIMPL# programs.
+Each `.usp` in a program becomes one `.dll` in the `.lpz`, a .NET assembly referencing `SplusObjects`, `SplusLibrary`, `SimplSharpHelperInterface` and `SmartThreadPoolCE`. It defines `UserModule_<NAME>.UserModuleClass_<NAME>`, built on `Crestron.Logos.SplusObjects` types (`SplusObject`, `DigitalInput`, `AnalogOutput`, `CrestronString`, `InOutArray<T>`, `SplusExecutionContext`, …) and calls `Crestron.Logos.SplusLibrary.Functions` for the SIMPL+ built-ins. OpenVP runs these through a clean-room implementation of that API (`src/OpenVP.Splus`), loaded into the slot's
+load context under the original assembly names through type-forwarding facades (`src/SplusFacades`).
+
+### The −48 record
+
+| Field | Meaning |
+|---|---|
+| 10 | number of digital inputs |
+| 12 | total inputs (digital + analog/serial) |
+| 11 | number of digital outputs |
+| 13 | total outputs |
+| 3 / 2 | parameters, in order: `[0]` module name, `[1]` `.dll` name, then the module's parameters |
+
+Input pin *n* (1-based) is digital input id *n−1* while *n ≤ field 10*; after that, the analog/serial ids restart at 0.
+Outputs split the same way with fields 11/13. Parameter id *n* in the module is `Params[n]`.
+
+### Module shape
+
+The constructor is `(string instanceName, string referenceId, CrestronStringEncoding)`. `LogosSplusInitialize` creates
+each input/output with a literal id constant (for example `NAME__DigitalInput__`), adds it to `m_DigitalInputList`,
+`m_StringOutputList` and so on, and attaches handlers as
+`InputChangeHandlerWrapper(SmartThreadSPLUSGLobalEventHandler, bool)` on `OnDigitalPush`/`OnDigitalRelease`/
+`OnDigitalChange`/`OnAnalogChange`/`OnSerialChange`. `FunctionMain` is Function Main. Every handler starts with
+`SplusThreadStartCode(...)` and ends with `ObjectFinallyHandler(...)`.
+
+### Runtime behavior
+
+- **Threading.** Each event runs on its own thread; one baton per module means only one runs at a time. The baton is
+  taken in `SplusThreadStartCode` and given back in `ObjectFinallyHandler`. `Delay`, `ProcessLogic`, `Gather`,
+  `WaitForInitializationComplete` and a blocked `CreateWait` hand it over while waiting.
+- **WAIT.** `CreateWait(label, time, callback)` starts a timer (1/100 s). If a WAIT with the same label is still pending,
+  the thread waits (baton released) until it has run, which is what makes `WHILE (1) { WAIT (...) }` tick once per period.
+- **MakeString.** The compiler emits .NET composite formats (`"{0:d}:{1:d2}"`); printf-style is a fallback.
+- **Files** map under the slot folder; **CrestronDataStore** keeps JSON per slot (local) and per processor (global).
+- Set `OPENVP_SPLUS_TRACE=1` to log baton, event and output activity.
+
+`samples/SplusModule` is a module written the way the compiler emits it; the test suite runs it inside a synthetic
+`.lpz`.

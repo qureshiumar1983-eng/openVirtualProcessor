@@ -58,6 +58,8 @@ namespace Crestron.SimplSharp
 
         public static long GetTickCount() => Environment.TickCount64;
 
+        public static int TickCount => Environment.TickCount;
+
         public static DateTime GetLocalTime() => DateTime.Now;
 
         public static string GetTimeZone() => TimeZoneInfo.Local.Id;
@@ -74,6 +76,11 @@ namespace Crestron.SimplSharp
     /// <summary>Program-level facts (slot number, room ID, program folder).</summary>
     public static class InitialParametersClass
     {
+        public delegate string ResolveHostNameFunctionDelegate(string hostName);
+
+        /// <summary>Custom host-name resolver some libraries install. Kept for compatibility.</summary>
+        public static ResolveHostNameFunctionDelegate ResolveHostName { get; set; }
+
         public static uint ApplicationNumber => (uint)(OpenVPBridge.Slot?.Number ?? 1);
 
         public static string ProgramIDTag => OpenVPBridge.Slot?.Runtime?.ProgramName ?? string.Empty;

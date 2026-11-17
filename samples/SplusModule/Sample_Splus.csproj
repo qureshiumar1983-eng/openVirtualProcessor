@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A SIMPL+ module written the way the SIMPL+ compiler emits C# (class UserModule_X.UserModuleClass_X,
+    LogosSplusInitialize registering I/O, handlers wrapped in SplusThreadStartCode / ObjectFinallyHandler).
+    Built against the SplusObjects stub so tests can run a module without any Crestron files.
+  -->
+  <PropertyGroup>
+    <AssemblyName>Sample_Splus</AssemblyName>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../SplusStub/SplusObjects.csproj" />
+  </ItemGroup>
+</Project>

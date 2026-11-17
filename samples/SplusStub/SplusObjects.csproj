@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Test-only stand-in for Crestron's SIMPL+ runtime: the OpenVP SIMPL+ API compiled under the name "SplusObjects".
+    The sample module builds against this, so its DLL references "SplusObjects" like a module compiled by
+    the SIMPL+ compiler. OpenVP then runs it through the SplusObjects facade. Never ship this.
+  -->
+  <PropertyGroup>
+    <AssemblyName>SplusObjects</AssemblyName>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <NoWarn>$(NoWarn);CS0067;CS0618;CS0649</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/OpenVP.Splus/**/*.cs" Exclude="../../src/OpenVP.Splus/obj/**;../../src/OpenVP.Splus/bin/**" />
+    <ProjectReference Include="../../src/OpenVP.Core/OpenVP.Core.csproj" />
+    <ProjectReference Include="../../src/OpenVP.SimplSharp/OpenVP.SimplSharp.csproj" />
+  </ItemGroup>
+</Project>

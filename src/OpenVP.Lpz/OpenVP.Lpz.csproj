@@ -2,5 +2,11 @@
   <!-- Reads and runs compiled SIMPL Windows programs (.lpz). Format notes: docs/lpz-format.md -->
   <ItemGroup>
     <ProjectReference Include="../OpenVP.Core/OpenVP.Core.csproj" />
+    <!-- Runtime pieces loaded per slot for SIMPL+ modules and the SIMPL# libraries they use. -->
+    <ProjectReference Include="../OpenVP.SimplSharpHost/OpenVP.SimplSharpHost.csproj" />
+    <ProjectReference Include="../OpenVP.Splus/OpenVP.Splus.csproj" />
+    <ProjectReference Include="../SplusFacades/SplusObjects/SplusObjects.csproj" />
+    <ProjectReference Include="../SplusFacades/SplusLibrary/SplusLibrary.csproj" />
+    <ProjectReference Include="../SplusFacades/SmartThreadPoolCE/SmartThreadPoolCE.csproj" />
   </ItemGroup>
 </Project>

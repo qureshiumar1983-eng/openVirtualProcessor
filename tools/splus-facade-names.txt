@@ -1,0 +1,4 @@
+# Assembly names compiled SIMPL+ modules reference for the SIMPL+ runtime.
+SplusObjects
+SplusLibrary
+SmartThreadPoolCE

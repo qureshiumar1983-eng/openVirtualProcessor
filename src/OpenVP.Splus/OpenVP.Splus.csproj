@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Clean-room implementation of the API that compiled SIMPL+ modules call (Crestron.Logos.SplusObjects,
+    Crestron.Logos.SplusLibrary, Amib.Threading.Internal). Written from the module side: what the modules
+    reference and SIMPL+ language semantics. Contains no Crestron code. Facades named SplusObjects,
+    SplusLibrary and SmartThreadPoolCE forward to it (see tools/FacadeGen).
+  -->
+  <PropertyGroup>
+    <RootNamespace>Crestron.Logos.SplusObjects</RootNamespace>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <NoWarn>$(NoWarn);CS0067;CS0618;CS0660;CS0661</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../OpenVP.Core/OpenVP.Core.csproj" />
+    <ProjectReference Include="../OpenVP.SimplSharp/OpenVP.SimplSharp.csproj" />
+  </ItemGroup>
+</Project>

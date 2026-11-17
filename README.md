@@ -133,8 +133,8 @@ If a program fails with "needs Crestron assemblies OpenVP has no facade for: X",
 
 ## Roadmap
 
-- More SIMPL# API: `TCPServer`, `UDPServer`, `CrestronIO`, `CrestronDataStore`, smart objects, HTTP client
-- More SIMPL symbols: Analog Ramp, Serial I/O, Analog/Serial conversions, Stepper, Counter…; SIMPL+ modules (translate `.usp` to C#)
+- More SIMPL# API: `TCPServer`, SSH transport (API is in place, connect not yet), smart objects, HTTP(S) client, CWS server
+- More SIMPL symbols: Analog Ramp, Serial I/O, Analog/Serial conversions, Stepper, Counter…
 - Confirm SIMPL symbol codes and IP ID storage from real `.smw` files
 - Validate CIP against real touch panels; remote EISC between processors
 - **Run compiled SIMPL Windows programs (`.lpz`) directly** so every program works, with or without its source. Progress:
@@ -143,7 +143,7 @@ If a program fails with "needs Crestron assemblies OpenVP has no facade for: X",
   - [x] Map compiled primitives to SIMPL symbols (matched across 36 programs that ship their source)
   - [x] Run compiled logic: 36 primitive types so far, plus IP devices (panels, EISC, DM/NVX joins) and permanent strings. **Load a `.lpz` like any other program**
   - [ ] Remaining primitives (Truth Table, Analog RAM, Analog Scaler, Analog to Serial, crosspoint routing, …)
-  - [ ] Run compiled SIMPL+ modules (.NET) through a clean-room `SplusObjects` / `SplusLibrary`
+  - [x] Run compiled SIMPL+ modules (.NET) through a clean-room `SplusObjects` / `SplusLibrary`: events, PUSH/RELEASE/CHANGE, WAIT, DELAY, MakeString, parameters, files, sockets. On a 230-module production program every module loads
   - [ ] Confirm behavior against a real processor (side-by-side signal traces)
 
 ## License

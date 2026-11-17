@@ -13,5 +13,6 @@
   <ItemGroup>
     <!-- Build the sample program first so tests can load it. -->
     <ProjectReference Include="../../samples/SampleProgram/SampleProgram.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../samples/SplusModule/Sample_Splus.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>
