@@ -189,7 +189,7 @@ $("#filter").oninput = renderSignals;
 $("#upload").onclick = async () => {
   const files = $("#file").files; if (!files.length) return alert("Choose a .cpz, .dll or .smw first.");
   const fd = new FormData();
-  const main = [...files].find(f => /\.(cpz|dll|zip|smw)$/i.test(f.name)) || files[0];
+  const main = [...files].find(f => /\.(lpz|cpz|dll|zip|smw)$/i.test(f.name)) || files[0];
   fd.append("file", main);
   for (const f of files) if (f !== main) fd.append("extra", f);
   try { await api(`/api/slots/${sel}/program`, { method: "POST", body: fd }); }

@@ -10,7 +10,7 @@ namespace OpenVP.Tests;
 /// </summary>
 public static class LpzTests
 {
-    private static byte[] Field(int tag, byte[] value)
+    internal static byte[] Field(int tag, byte[] value)
     {
         var f = new byte[4 + value.Length];
         BitConverter.GetBytes((ushort)(value.Length + 2)).CopyTo(f, 0);
@@ -19,23 +19,27 @@ public static class LpzTests
         return f;
     }
 
-    private static byte[] Record(int type, string path, int[] ins, int[] outs, params byte[][] extraFields)
+    /// <summary>One record in the documented layout: header, fields, outputs, inputs.</summary>
+    internal static byte[] Record(int type, string path, int[] ins, int[] outs, params byte[][] extraFields)
     {
         var fields = new List<byte>(Field(4, Encoding.Unicode.GetBytes(path)));
         foreach (var f in extraFields) fields.AddRange(f);
-        var insAt = 16 + fields.Count;
-        var outsAt = insAt + ins.Length * 4;
-        var size = outsAt + outs.Length * 4;
+        var outsAt = 16 + fields.Count;
+        var insAt = outsAt + outs.Length * 4;
+        var size = insAt + ins.Length * 4;
         var r = new List<byte>();
         r.AddRange(BitConverter.GetBytes(size));
         r.AddRange(BitConverter.GetBytes(type));
-        r.AddRange(BitConverter.GetBytes(outsAt));
         r.AddRange(BitConverter.GetBytes(insAt));
+        r.AddRange(BitConverter.GetBytes(outsAt));
         r.AddRange(fields);
-        foreach (var i in ins) r.AddRange(BitConverter.GetBytes(i));
         foreach (var o in outs) r.AddRange(BitConverter.GetBytes(o));
+        foreach (var i in ins) r.AddRange(BitConverter.GetBytes(i));
         return r.ToArray();
     }
+
+    internal static byte[] Int(int tag, int v) => Field(tag, BitConverter.GetBytes(v));
+    internal static byte[] Str(int tag, string v) => Field(tag, Encoding.Unicode.GetBytes(v));
 
     private static byte[] SampleBin() => Record(31, "LeadingREM", [], [], Field(15, BitConverter.GetBytes(1)), Field(3, Encoding.Unicode.GetBytes("Program File: test.smw")))
         .Concat(Record(-12, "IP-ID-03", [0, 0], [10, 11], Field(6, BitConverter.GetBytes(3))))

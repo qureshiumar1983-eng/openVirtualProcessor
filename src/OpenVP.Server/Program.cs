@@ -18,6 +18,7 @@ var cfg = builder.Configuration.GetSection("OpenVP");
 var processor = new Processor(cfg["DataDirectory"] ?? "data", cfg.GetValue("Slots", 10));
 processor.AddLoader(new SimplSharpLoader());
 processor.AddLoader(new SimplLoader(Path.Combine(processor.DataDirectory, "symbols.json")));
+processor.AddLoader(new LpzLoader());
 processor.LogWritten += e => Console.WriteLine($"{e.Time:HH:mm:ss} [slot {e.Slot:00}] {e.Level,-7} {e.Message}");
 builder.Services.AddSingleton(processor);
 
@@ -96,8 +97,6 @@ app.MapPost("/api/slots/{n:int}/program", async (int n, HttpRequest req) =>
         await using var fs = File.Create(Path.Combine(dir, Path.GetFileName(extra.FileName)));
         await extra.CopyToAsync(fs);
     }
-    if (LpzInspect.IsLpz(path))
-        return Results.UnprocessableEntity(new { error = "Compiled SIMPL Windows programs (.lpz) can be inspected but not run yet. Use Inspect to see coverage.", report = LpzInspect.Report(path) });
     var start = !string.Equals(form["start"], "false", StringComparison.OrdinalIgnoreCase);
     try { processor.LoadProgram(n, path, start); }
     catch (Exception e) { return Results.UnprocessableEntity(new { error = e.Message, slot = SlotDto(processor.Slot(n)) }); }
@@ -133,6 +132,7 @@ app.MapPost("/api/slots/{n:int}/console", (int n, JsonElement body) =>
 app.MapGet("/api/slots/{n:int}/compat", (int n) => processor.Slot(n).Runtime switch
 {
     SimplSharpRuntime s => Results.Text(s.Compat.ToString()),
+    LpzRuntime l => Results.Text(LpzReport.Build(l.Package, l.Package.Signals)),
     SimplRuntime r => Results.Text(r.Unsupported.Count == 0
         ? "Every wired symbol has a behavior."
         : "Symbols without a behavior yet:\n" + string.Join('\n', r.Unsupported.Select(u => $"  {u} pins in={u.Inputs.Count} out={u.Outputs.Count}"))),

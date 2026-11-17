@@ -1,3 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Reader for compiled SIMPL Windows programs (.lpz). Format notes: docs/lpz-format.md -->
+  <!-- Reads and runs compiled SIMPL Windows programs (.lpz). Format notes: docs/lpz-format.md -->
+  <ItemGroup>
+    <ProjectReference Include="../OpenVP.Core/OpenVP.Core.csproj" />
+  </ItemGroup>
 </Project>

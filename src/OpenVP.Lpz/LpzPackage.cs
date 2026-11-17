@@ -28,8 +28,15 @@ public sealed class LpzPackage
     };
 
     public string Path { get; private init; } = string.Empty;
+
+    /// <summary>Use a .sig from outside the package (written next to the .smw at compile time).</summary>
+    public void UseSignals(SigTable table) => Signals = table;
     public Dictionary<string, string> Boot { get; } = new(StringComparer.OrdinalIgnoreCase);
     public List<IpTableEntry> IpTable { get; } = new();
+    /// <summary>Device model per IP ID, from the .dsc file (e.g. 03 → TS-1080).</summary>
+    public Dictionary<int, string> DeviceModels { get; } = new();
+    /// <summary>Signal names: the .sig inside the source archive, if the package has one.</summary>
+    public SigTable? Signals { get; private set; }
     public List<SplusModule> SplusModules { get; } = new();
     public List<string> Files { get; } = new();
     public BinProgram Logic { get; private set; } = new();
@@ -62,9 +69,30 @@ public sealed class LpzPackage
                 pkg.IpTable.Add(new IpTableEntry(Convert.ToInt32(id, 16), ini.GetValueOrDefault($"addr{i}") ?? ""));
         }
 
+        var dsc = zip.Entries.FirstOrDefault(e => e.Name.EndsWith(".dsc", StringComparison.OrdinalIgnoreCase));
+        if (dsc != null)
+        {
+            // "Slot : 2.IP-ID : 03;3;Touchpanels(Enet);TS-1080;;TS-1080;-12"
+            foreach (var line in Encoding.Latin1.GetString(ReadAll(dsc)).Split('\n'))
+            {
+                var m = System.Text.RegularExpressions.Regex.Match(line, @"IP-ID : ([0-9A-Fa-f]{2});[^;]*;[^;]*;([^;]*);");
+                if (m.Success) pkg.DeviceModels[Convert.ToInt32(m.Groups[1].Value, 16)] = m.Groups[2].Value.Trim();
+            }
+        }
+
         foreach (var e in zip.Entries)
         {
-            if (e.Name.EndsWith("_archive.zip", StringComparison.OrdinalIgnoreCase)) pkg.SourceArchive = e.Name;
+            if (e.Name.EndsWith("_archive.zip", StringComparison.OrdinalIgnoreCase))
+            {
+                pkg.SourceArchive = e.Name;
+                try
+                {
+                    using var inner = new ZipArchive(new MemoryStream(ReadAll(e)));
+                    var sig = inner.Entries.FirstOrDefault(x => x.Name.EndsWith(".sig", StringComparison.OrdinalIgnoreCase));
+                    if (sig != null) pkg.Signals = SigTable.Parse(ReadAll(sig));
+                }
+                catch (InvalidDataException) { /* archive unreadable: names are optional */ }
+            }
             else if (e.Name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) && !CrestronRuntime.Contains(e.Name) &&
                      !e.Name.StartsWith("SimplSharp", StringComparison.OrdinalIgnoreCase))
                 pkg.SplusModules.Add(new SplusModule(e.Name, e.Length));

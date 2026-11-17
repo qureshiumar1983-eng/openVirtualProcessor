@@ -3,7 +3,7 @@
 OpenVP runs control programs on any Linux, Windows or macOS machine, like Crestron's VC-4 does, but it's open source and needs no license server. It runs both kinds of program:
 
 - **SIMPL# Pro programs**: the compiled `.cpz` archive or the program `.dll`
-- **SIMPL Windows programs**: interpreted straight from the `.smw` source file
+- **SIMPL Windows programs**: the compiled `.lpz` (no source needed), or the `.smw` source file
 
 You get up to 10 program slots, browser panels and (experimental) real touch panels over CIP, EISC links between slots, a per-slot console, and a web debugger where each slot's signals stay separate.
 
@@ -140,9 +140,11 @@ If a program fails with "needs Crestron assemblies OpenVP has no facade for: X",
 - **Run compiled SIMPL Windows programs (`.lpz`) directly** so every program works, with or without its source. Progress:
   - [x] Read the package, IP table, compiled logic (`.bin`) and signal names (`.sig`). Checked against 101 real programs; see [docs/lpz-format.md](docs/lpz-format.md)
   - [x] **Inspect .lpz** in the web console: what's in a program and how much of it OpenVP can run
-  - [ ] Identify and implement the logic-engine primitives (99 seen; ~40 cover nearly everything)
+  - [x] Map compiled primitives to SIMPL symbols (matched across 36 programs that ship their source)
+  - [x] Run compiled logic: 36 primitive types so far, plus IP devices (panels, EISC, DM/NVX joins) and permanent strings. **Load a `.lpz` like any other program**
+  - [ ] Remaining primitives (Truth Table, Analog RAM, Analog Scaler, Analog to Serial, crosspoint routing, …)
   - [ ] Run compiled SIMPL+ modules (.NET) through a clean-room `SplusObjects` / `SplusLibrary`
-  - [ ] Map device records to joins (panels, EISC, DM/NVX over CIP)
+  - [ ] Confirm behavior against a real processor (side-by-side signal traces)
 
 ## License
 

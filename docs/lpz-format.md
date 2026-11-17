@@ -27,11 +27,11 @@ A flat sequence of records. Each one is a compiled symbol. The record count equa
 ```
 record  := u32 size
            i32 type          primitive type (see below)
-           u32 outputsAt     byte offset of outputs within the record
            u32 inputsAt      byte offset of inputs within the record
-           field*            from byte 16 up to inputsAt
-           u32 input*        signal indices, (outputsAt - inputsAt) / 4 of them
-           u32 output*       signal indices, (size - outputsAt) / 4 of them
+           u32 outputsAt     byte offset of outputs within the record
+           field*            from byte 16 up to outputsAt
+           u32 output*       signal indices, (inputsAt - outputsAt) / 4 of them
+           u32 input*        signal indices, (size - inputsAt) / 4 of them
 field   := u16 n, u16 tag, (n - 2) bytes
 ```
 
@@ -54,7 +54,13 @@ The first record is always type 31 (`LeadingREM`), with the compile header as a 
 
 The compiler lowers SIMPL symbols into logic-engine primitives and flattens user modules. Record types are therefore **not** the `.smw` symbol codes (`SmC`). For example, the 1,393 type −12 records in one program are slots, cards and IP devices.
 
-Across the 101 programs there are **99 distinct types**. About 40 of them account for nearly all records. The working names and status are in `src/OpenVP.Lpz/PrimitiveCatalog.cs`. Types are identified by matching each record's input and output signals, by name via the `.sig` file, against the source symbol that drives the same signals.
+Across the 101 programs there are **99 distinct types**. Types are identified by matching each record's output signals, by name via the `.sig`, against the source symbol that drives the same signals. 36 programs ship their source, which gives a clean one-to-one mapping (AND = 0, NOT = 1, OR = 2, Toggle = 10, Interlock = 11, One Shot = 15, Buffer = 18, Delay = 27, Analog Initialize = 38, Analog Equate = 51, Analog Buffer = 67, Serial Buffer = 88, Serial I/O = 97, …). The full table is in `src/OpenVP.Lpz/PrimitiveCatalog.cs`.
+
+Pins appear in the same order as on the SIMPL symbol. Unconnected pins point at signal 0 or 1. Times are in 1/100 s.
+
+### IP devices
+
+Records of type −12 named `IP-ID-xx` are the program's IP devices. Inputs are feedback to the device and outputs come from it. Field 10 is the number of digital inputs and field 12 the end of the analog inputs, so serial inputs follow. Fields 11 and 13 split the outputs the same way. Within each group, position n is join n.
 
 ## Signal names (.sig)
 

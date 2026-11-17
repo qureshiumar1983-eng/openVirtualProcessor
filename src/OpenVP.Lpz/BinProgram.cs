@@ -45,10 +45,10 @@ public sealed class BinSymbol
 /// Decoder for the logic file inside a .lpz (the .bin named in boot.bt).
 ///
 /// Layout, little-endian, as observed across 101 programs from 3-Series and 4-Series targets:
-///   record  := u32 size, i32 type, u32 outputsOffset, u32 inputsOffset, fields, inputs, outputs
-///   fields  := { u16 n, u16 tag, (n-2) bytes }   from byte 16 up to inputsOffset
-///   inputs  := u32 signal index × ((outputsOffset - inputsOffset) / 4)
-///   outputs := u32 signal index × ((size - outputsOffset) / 4)
+///   record  := u32 size, i32 type, u32 inputsOffset, u32 outputsOffset, fields, outputs, inputs
+///   fields  := { u16 n, u16 tag, (n-2) bytes }   from byte 16 up to outputsOffset
+///   outputs := u32 signal index × ((inputsOffset - outputsOffset) / 4)
+///   inputs  := u32 signal index × ((size - inputsOffset) / 4)
 /// Field tags seen: 4 = path (UTF-16), 2 = numeric parameter, 3 = string parameter (UTF-16),
 /// 15 = parameter count, 6 = slot / IP ID on hardware records.
 /// The first record (type 31, "LeadingREM") holds the compile header as a string parameter.
@@ -70,23 +70,23 @@ public sealed class BinProgram
         {
             var size = BitConverter.ToInt32(data, off);
             var type = BitConverter.ToInt32(data, off + 4);
-            var outsAt = BitConverter.ToInt32(data, off + 8);
-            var insAt = BitConverter.ToInt32(data, off + 12);
-            if (size < 16 || off + size > data.Length || insAt < 16 || insAt > outsAt || outsAt > size)
-                throw new InvalidDataException($"Bad record at 0x{off:X}: size={size} ins@{insAt} outs@{outsAt}");
+            var insAt = BitConverter.ToInt32(data, off + 8);
+            var outsAt = BitConverter.ToInt32(data, off + 12);
+            if (size < 16 || off + size > data.Length || outsAt < 16 || outsAt > insAt || insAt > size)
+                throw new InvalidDataException($"Bad record at 0x{off:X}: size={size} outs@{outsAt} ins@{insAt}");
 
             var sym = new BinSymbol
             {
                 Offset = off,
                 Type = type,
-                Inputs = ReadInts(data, off + insAt, (outsAt - insAt) / 4),
-                Outputs = ReadInts(data, off + outsAt, (size - outsAt) / 4)
+                Outputs = ReadInts(data, off + outsAt, (insAt - outsAt) / 4),
+                Inputs = ReadInts(data, off + insAt, (size - insAt) / 4)
             };
             var p = off + 16;
-            while (p + 4 <= off + insAt)
+            while (p + 4 <= off + outsAt)
             {
                 int n = BitConverter.ToUInt16(data, p), tag = BitConverter.ToUInt16(data, p + 2);
-                if (n < 2 || p + 2 + n > off + insAt) break;
+                if (n < 2 || p + 2 + n > off + outsAt) break;
                 var value = data.AsSpan(p + 4, n - 2).ToArray();
                 sym.Fields.Add((tag, value));
                 switch (tag)

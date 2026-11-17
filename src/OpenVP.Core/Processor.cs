@@ -39,7 +39,7 @@ public sealed class Processor : IDisposable
     {
         var slot = Slot(slotNumber);
         var loader = _loaders.FirstOrDefault(l => l.CanLoad(path))
-            ?? throw new NotSupportedException($"No runtime can load '{Path.GetFileName(path)}'. Supported: .cpz/.dll (SIMPL#), .smw (SIMPL Windows).");
+            ?? throw new NotSupportedException($"No runtime can load '{Path.GetFileName(path)}'. Supported: .cpz/.dll (SIMPL#), .lpz (compiled SIMPL Windows), .smw (SIMPL Windows source).");
         slot.Unload();
         System.IO.Directory.CreateDirectory(slot.Directory);
         IProgramRuntime runtime;
