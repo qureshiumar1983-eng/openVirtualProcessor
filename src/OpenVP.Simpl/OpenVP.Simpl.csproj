@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../OpenVP.Core/OpenVP.Core.csproj" />
+  </ItemGroup>
+</Project>
