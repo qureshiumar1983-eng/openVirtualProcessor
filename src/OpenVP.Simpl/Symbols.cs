@@ -223,7 +223,13 @@ public sealed class SerialSendSymbol : SymbolBehavior
 /// </summary>
 public sealed class SymbolLibrary
 {
-    private readonly Dictionary<int, string> _byCode = new();
+    /// <summary>SmC codes confirmed from real SIMPL Windows 4.x programs.</summary>
+    private readonly Dictionary<int, string> _byCode = new()
+    {
+        [1] = "AND", [3] = "OR", [9] = "One Shot", [13] = "Toggle", [16] = "Delay", [19] = "Interlock",
+        [20] = "Buffer", [32] = "Analog Initialize", [38] = "Analog Equate", [46] = "Analog Buffer",
+        [56] = "Serial Buffer", [205] = "NOT",
+    };
     private readonly Dictionary<string, Func<SymbolBehavior>> _factories = new(StringComparer.OrdinalIgnoreCase)
     {
         ["AND"] = () => new AndSymbol(),

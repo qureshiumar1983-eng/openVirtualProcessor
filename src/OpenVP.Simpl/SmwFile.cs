@@ -56,6 +56,8 @@ public sealed class SmwFile
     public List<SmwBlock> Blocks { get; } = new();
     public Dictionary<int, SmwSymbol> Symbols { get; } = new();
     public Dictionary<int, SmwSignal> Signals { get; } = new();
+    /// <summary>Dv blocks (hardware/devices). Ad= holds the IP ID or Cresnet ID in hex.</summary>
+    public Dictionary<int, SmwBlock> Devices { get; } = new();
     public SmwBlock? Header { get; private set; }
     public string ProgramName => Header?.Get("PgmNm") ?? Header?.Get("Nm") ?? "SIMPL Windows program";
 
@@ -110,6 +112,9 @@ public sealed class SmwFile
         {
             case "Hd":
                 Header = b;
+                break;
+            case "Dv":
+                Devices[b.GetInt("H")] = b;
                 break;
             case "Sg":
                 var sg = new SmwSignal { Handle = b.GetInt("H"), Name = b.Get("Nm") ?? string.Empty };

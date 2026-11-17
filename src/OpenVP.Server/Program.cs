@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
 using OpenVP.Core;
+using OpenVP.Lpz;
 using OpenVP.Panels;
 using OpenVP.Simpl;
 using OpenVP.SimplSharpHost;
@@ -95,6 +96,8 @@ app.MapPost("/api/slots/{n:int}/program", async (int n, HttpRequest req) =>
         await using var fs = File.Create(Path.Combine(dir, Path.GetFileName(extra.FileName)));
         await extra.CopyToAsync(fs);
     }
+    if (LpzInspect.IsLpz(path))
+        return Results.UnprocessableEntity(new { error = "Compiled SIMPL Windows programs (.lpz) can be inspected but not run yet. Use Inspect to see coverage.", report = LpzInspect.Report(path) });
     var start = !string.Equals(form["start"], "false", StringComparison.OrdinalIgnoreCase);
     try { processor.LoadProgram(n, path, start); }
     catch (Exception e) { return Results.UnprocessableEntity(new { error = e.Message, slot = SlotDto(processor.Slot(n)) }); }
@@ -134,6 +137,29 @@ app.MapGet("/api/slots/{n:int}/compat", (int n) => processor.Slot(n).Runtime swi
         ? "Every wired symbol has a behavior."
         : "Symbols without a behavior yet:\n" + string.Join('\n', r.Unsupported.Select(u => $"  {u} pins in={u.Inputs.Count} out={u.Outputs.Count}"))),
     _ => Results.Text("No program loaded.")
+});
+
+// Inspect a compiled program (.lpz, optional .sig) without loading it.
+app.MapPost("/api/inspect", async (HttpRequest req) =>
+{
+    if (!req.HasFormContentType) return Results.BadRequest("Send the .lpz (and optionally its .sig) as multipart/form-data.");
+    var form = await req.ReadFormAsync();
+    var dir = Directory.CreateTempSubdirectory("openvp-inspect").FullName;
+    try
+    {
+        string? lpz = null, sig = null;
+        foreach (var f in form.Files)
+        {
+            var path = Path.Combine(dir, Path.GetFileName(f.FileName));
+            await using (var fs = File.Create(path)) await f.CopyToAsync(fs);
+            if (path.EndsWith(".lpz", StringComparison.OrdinalIgnoreCase)) lpz = path;
+            if (path.EndsWith(".sig", StringComparison.OrdinalIgnoreCase)) sig = path;
+        }
+        if (lpz == null) return Results.BadRequest("No .lpz file in the upload.");
+        try { return Results.Text(LpzInspect.Report(lpz, sig)); }
+        catch (InvalidDataException e) { return Results.UnprocessableEntity(new { error = e.Message }); }
+    }
+    finally { Directory.Delete(dir, true); }
 });
 
 app.MapGet("/api/log", (int? slot, int? max) => processor.RecentLog(slot, max ?? 500));

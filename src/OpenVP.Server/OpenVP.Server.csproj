@@ -12,5 +12,6 @@
     <ProjectReference Include="../OpenVP.SimplSharpHost/OpenVP.SimplSharpHost.csproj" />
     <ProjectReference Include="../OpenVP.Simpl/OpenVP.Simpl.csproj" />
     <ProjectReference Include="../OpenVP.Panels/OpenVP.Panels.csproj" />
+    <ProjectReference Include="../OpenVP.Lpz/OpenVP.Lpz.csproj" />
   </ItemGroup>
 </Project>

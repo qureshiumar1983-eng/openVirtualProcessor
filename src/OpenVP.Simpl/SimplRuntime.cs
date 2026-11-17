@@ -324,6 +324,10 @@ public sealed class SimplRuntime : IProgramRuntime
                 if (Runtime._options.Ipids.TryGetValue(Symbol.Handle.ToString(), out var s) &&
                     uint.TryParse(s, System.Globalization.NumberStyles.HexNumber, null, out var fromFile))
                     return fromFile;
+                // Real files: the symbol points at a Dv block (DvH) whose Ad= is the IP ID in hex.
+                if (Runtime._file.Devices.TryGetValue(Symbol.DeviceHandle, out var dv) &&
+                    uint.TryParse(dv.Get("Ad"), System.Globalization.NumberStyles.HexNumber, null, out var ad) && ad is > 0 and < 0xFF)
+                    return ad;
                 // Look for an explicit IPID parameter on the symbol or its parent slot.
                 foreach (var sym in new[] { Symbol, Runtime._file.Symbols.GetValueOrDefault(Symbol.Parent) })
                 {

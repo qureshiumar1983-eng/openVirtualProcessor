@@ -50,8 +50,9 @@
     <section style="margin-top:16px">
       <h2>Slot <span id="sel-num">1</span></h2>
       <div class="bar">
-        <input type="file" id="file" accept=".cpz,.dll,.zip,.smw,.json" multiple>
+        <input type="file" id="file" accept=".cpz,.dll,.zip,.smw,.json,.lpz,.sig" multiple>
         <button id="upload">Load &amp; start</button>
+        <button id="inspect" title="Report what OpenVP can run in a compiled .lpz (add its .sig for names)">Inspect .lpz</button>
       </div>
       <div class="bar">
         <button data-act="start">Start</button><button data-act="stop">Stop</button><button data-act="unload">Unload</button>
@@ -200,6 +201,13 @@ document.querySelectorAll("[data-act]").forEach(b => b.onclick = async () => {
   try { await api(`/api/slots/${sel}/${b.dataset.act}`, { method: "POST" }); } catch (e) { alert(e.message); }
   refreshSlots(); refreshSignals();
 });
+
+$("#inspect").onclick = async () => {
+  const files = $("#file").files; if (!files.length) return alert("Choose a .lpz (and optionally its .sig) first.");
+  const fd = new FormData(); for (const f of files) fd.append("file", f);
+  try { $("#console-out").textContent = await api("/api/inspect", { method: "POST", body: fd }); }
+  catch (e) { alert(e.message); }
+};
 
 $("#compat").onclick = async () => { $("#console-out").textContent = await api(`/api/slots/${sel}/compat`); };
 

@@ -8,6 +8,7 @@
     <ProjectReference Include="../../src/OpenVP.SimplSharpHost/OpenVP.SimplSharpHost.csproj" />
     <ProjectReference Include="../../src/OpenVP.Simpl/OpenVP.Simpl.csproj" />
     <ProjectReference Include="../../src/OpenVP.Panels/OpenVP.Panels.csproj" />
+    <ProjectReference Include="../../src/OpenVP.Lpz/OpenVP.Lpz.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- Build the sample program first so tests can load it. -->

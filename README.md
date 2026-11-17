@@ -137,7 +137,12 @@ If a program fails with "needs Crestron assemblies OpenVP has no facade for: X",
 - More SIMPL symbols: Analog Ramp, Serial I/O, Analog/Serial conversions, Stepper, Counter…; SIMPL+ modules (translate `.usp` to C#)
 - Confirm SIMPL symbol codes and IP ID storage from real `.smw` files
 - Validate CIP against real touch panels; remote EISC between processors
-- Running compiled `.lpz` files is **not** planned: it would mean reimplementing Crestron's closed runtime format
+- **Run compiled SIMPL Windows programs (`.lpz`) directly** so every program works, with or without its source. Progress:
+  - [x] Read the package, IP table, compiled logic (`.bin`) and signal names (`.sig`). Checked against 101 real programs; see [docs/lpz-format.md](docs/lpz-format.md)
+  - [x] **Inspect .lpz** in the web console: what's in a program and how much of it OpenVP can run
+  - [ ] Identify and implement the logic-engine primitives (99 seen; ~40 cover nearly everything)
+  - [ ] Run compiled SIMPL+ modules (.NET) through a clean-room `SplusObjects` / `SplusLibrary`
+  - [ ] Map device records to joins (panels, EISC, DM/NVX over CIP)
 
 ## License
 
