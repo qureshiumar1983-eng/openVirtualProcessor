@@ -1,0 +1,8 @@
+bin/
+obj/
+out/
+artifacts/
+data/
+*.user
+.vs/
+.idea/

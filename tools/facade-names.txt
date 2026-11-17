@@ -1,0 +1,18 @@
+# Assembly names a compiled SIMPL# / SIMPL# Pro program may reference.
+# If a program fails with "could not load SomeName", add the name here and run tools/regen-facades.sh.
+SimplSharpPro
+SimplSharpCustomAttributesInterface
+SimplSharpHelperInterface
+SimplSharpTimerEventInterface
+SimplSharpReflectionInterface
+SimplSharpExceptionsInterface
+SimplSharpCryptographyInterface
+SimplSharpCWSHelperInterface
+SimplSharpOnlineUpdateInterface
+SimplSharpAutoUpdateInterface
+SimplSharpSQLHelperInterface
+SimplSharpProgrammingInterfaces
+Crestron.SimplSharpPro.DeviceSupport
+Crestron.SimplSharpPro.UI
+Crestron.SimplSharpPro.EthernetCommunications
+Crestron.SimplSharpPro.Diagnostics

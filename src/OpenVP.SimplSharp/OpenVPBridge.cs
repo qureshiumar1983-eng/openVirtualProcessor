@@ -1,0 +1,60 @@
+using System;
+using System.Collections.Generic;
+using OpenVP.Core;
+
+namespace OpenVP.SimplSharp
+{
+    /// <summary>
+    /// Connects this copy of the API to the slot it runs in. Each program slot loads its own copy
+    /// of this assembly into its own load context, so these statics are per slot.
+    /// </summary>
+    public static class OpenVPBridge
+    {
+        private static readonly object Gate = new object();
+        private static readonly List<IDisposable> Resources = new List<IDisposable>();
+
+        /// <summary>Set by the host right after loading this assembly into a slot.</summary>
+        public static ProgramSlot Slot { get; set; }
+
+        /// <summary>The control system instance created from the program.</summary>
+        public static Crestron.SimplSharpPro.CrestronControlSystem ControlSystem { get; internal set; }
+
+        [ThreadStatic] internal static Action<string> ConsoleSink;
+
+        internal static ProgramSlot RequireSlot =>
+            Slot ?? throw new InvalidOperationException("This SIMPL# API only works inside an OpenVP program slot.");
+
+        internal static void Post(Action action)
+        {
+            var slot = Slot;
+            if (slot == null) { action(); return; }
+            slot.Dispatcher.Post(action);
+        }
+
+        internal static void Log(string level, string message) => Slot?.Log(level, message);
+
+        internal static void Track(IDisposable resource)
+        {
+            lock (Gate) Resources.Add(resource);
+        }
+
+        internal static void Untrack(IDisposable resource)
+        {
+            lock (Gate) Resources.Remove(resource);
+        }
+
+        /// <summary>Called by the host when the slot stops: tell the program, then release timers and sockets.</summary>
+        public static void Shutdown()
+        {
+            try { Crestron.SimplSharp.CrestronEnvironment.Raise(Crestron.SimplSharp.eProgramStatusEventType.Stopping); }
+            catch (Exception e) { Log("Error", "Program's Stopping handler threw: " + e.Message); }
+
+            IDisposable[] items;
+            lock (Gate) { items = Resources.ToArray(); Resources.Clear(); }
+            foreach (var r in items)
+            {
+                try { r.Dispose(); } catch { /* best effort */ }
+            }
+        }
+    }
+}

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Clean-room implementation of the Crestron SIMPL# / SIMPL# Pro API surface.
+    Written from public documentation and from what programs call; contains no Crestron code.
+    Type names and namespaces match so compiled programs bind to it through the facade
+    assemblies in src/Facades (see tools/FacadeGen).
+  -->
+  <PropertyGroup>
+    <RootNamespace>Crestron.SimplSharp</RootNamespace>
+    <!-- Programs are compiled with Crestron's own warnings in mind; keep ours quiet. -->
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <NoWarn>$(NoWarn);CS0067;CS0618</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../OpenVP.Core/OpenVP.Core.csproj" />
+  </ItemGroup>
+</Project>

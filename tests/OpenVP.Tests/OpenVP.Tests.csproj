@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Dependency-free test runner (dotnet run). Builds offline; no test framework packages needed. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/OpenVP.Core/OpenVP.Core.csproj" />
+    <ProjectReference Include="../../src/OpenVP.SimplSharpHost/OpenVP.SimplSharpHost.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Build the sample program first so tests can load it. -->
+    <ProjectReference Include="../../samples/SampleProgram/SampleProgram.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

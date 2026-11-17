@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../OpenVP.Core/OpenVP.Core.csproj" />
+    <!-- The API shim and its facades are loaded per slot at runtime, never called directly. -->
+    <ProjectReference Include="../OpenVP.SimplSharp/OpenVP.SimplSharp.csproj" />
+    <ProjectReference Include="../Facades/Crestron.SimplSharpPro.DeviceSupport/Crestron.SimplSharpPro.DeviceSupport.csproj" />
+    <ProjectReference Include="../Facades/Crestron.SimplSharpPro.Diagnostics/Crestron.SimplSharpPro.Diagnostics.csproj" />
+    <ProjectReference Include="../Facades/Crestron.SimplSharpPro.EthernetCommunications/Crestron.SimplSharpPro.EthernetCommunications.csproj" />
+    <ProjectReference Include="../Facades/Crestron.SimplSharpPro.UI/Crestron.SimplSharpPro.UI.csproj" />
+    <ProjectReference Include="../Facades/SimplSharpAutoUpdateInterface/SimplSharpAutoUpdateInterface.csproj" />
+    <ProjectReference Include="../Facades/SimplSharpCWSHelperInterface/SimplSharpCWSHelperInterface.csproj" />
+    <ProjectReference Include="../Facades/SimplSharpCryptographyInterface/SimplSharpCryptographyInterface.csproj" />
+    <ProjectReference Include="../Facades/SimplSharpCustomAttributesInterface/SimplSharpCustomAttributesInterface.csproj" />
+    <ProjectReference Include="../Facades/SimplSharpExceptionsInterface/SimplSharpExceptionsInterface.csproj" />
+    <ProjectReference Include="../Facades/SimplSharpHelperInterface/SimplSharpHelperInterface.csproj" />
+    <ProjectReference Include="../Facades/SimplSharpOnlineUpdateInterface/SimplSharpOnlineUpdateInterface.csproj" />
+    <ProjectReference Include="../Facades/SimplSharpPro/SimplSharpPro.csproj" />
+    <ProjectReference Include="../Facades/SimplSharpProgrammingInterfaces/SimplSharpProgrammingInterfaces.csproj" />
+    <ProjectReference Include="../Facades/SimplSharpReflectionInterface/SimplSharpReflectionInterface.csproj" />
+    <ProjectReference Include="../Facades/SimplSharpSQLHelperInterface/SimplSharpSQLHelperInterface.csproj" />
+    <ProjectReference Include="../Facades/SimplSharpTimerEventInterface/SimplSharpTimerEventInterface.csproj" />
+  </ItemGroup>
+</Project>

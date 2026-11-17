@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- A small SIMPL# Pro program used for tests and as a demo. Real programs target net472 with Crestron's SDK. -->
+  <PropertyGroup>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../RefStub/SimplSharpPro.csproj" Private="false" />
+  </ItemGroup>
+</Project>

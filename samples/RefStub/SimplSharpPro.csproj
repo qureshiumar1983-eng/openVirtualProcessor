@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Test-only stand-in for Crestron's SDK: the OpenVP API compiled under the name "SimplSharpPro".
+    The sample program builds against this, so its compiled DLL references "SimplSharpPro" exactly
+    like a program built with Crestron's real SDK. OpenVP then runs it through the facades.
+    Never ship this; real programs are built with Crestron's SDK.
+  -->
+  <PropertyGroup>
+    <AssemblyName>SimplSharpPro</AssemblyName>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <NoWarn>$(NoWarn);CS0067;CS0618</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/OpenVP.SimplSharp/**/*.cs" Exclude="../../src/OpenVP.SimplSharp/obj/**;../../src/OpenVP.SimplSharp/bin/**" />
+    <ProjectReference Include="../../src/OpenVP.Core/OpenVP.Core.csproj" />
+  </ItemGroup>
+</Project>
