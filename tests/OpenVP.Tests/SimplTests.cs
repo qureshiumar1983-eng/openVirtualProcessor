@@ -57,8 +57,7 @@ public static class SimplTests
         p.LoadProgram(2, SampleSmw);
         var slot = p.Slot(2);
         Assert.Equal(SlotState.Running, slot.State, "running: " + slot.LastError);
-        var panel = slot.FindDevice(0x03)!;
-        Assert.True(panel != null, "panel IPID 03 from sidecar");
+        var panel = slot.FindDevice(0x03) ?? throw new AssertException("panel IPID 03 from sidecar");
 
         // startup pulse from the "1" signal
         Assert.Eventually(() => (string)panel.GetFeedback(new JoinKey(SigKind.Serial, 2)) == "SIMPL program running", "start pulse ran Serial Send");

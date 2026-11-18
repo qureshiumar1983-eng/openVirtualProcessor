@@ -83,8 +83,13 @@ public static class Cip
     public const byte SubAnalog = 0x14;
     public const byte SubSerialMarker = 0x34;
 
+    /// <summary>Longest serial string one CIP message can carry (its length byte also counts 4 header bytes).</summary>
+    public const int MaxSerialBytes = 255 - 4;
+
     public static byte[] Frame(byte type, params byte[] payload)
     {
+        if (payload.Length > ushort.MaxValue)
+            throw new ArgumentException($"CIP payload is {payload.Length} bytes; a frame holds at most {ushort.MaxValue}.", nameof(payload));
         var f = new byte[3 + payload.Length];
         f[0] = type;
         f[1] = (byte)(payload.Length >> 8);
@@ -115,10 +120,15 @@ public static class Cip
         return Frame(Data, 0x00, 0x00, 0x05, SubAnalog, (byte)(j >> 8), (byte)j, (byte)(value >> 8), (byte)value);
     }
 
+    /// <summary>
+    /// Serial join. Text longer than <see cref="MaxSerialBytes"/> is cut to fit, because the message's
+    /// length field is one byte; without this, the length would wrap and the panel would misread the frame.
+    /// </summary>
     public static byte[] Serial(uint join, string text)
     {
         var j = join - 1;
         var bytes = Encoding.Latin1.GetBytes(text);
+        if (bytes.Length > MaxSerialBytes) bytes = bytes[..MaxSerialBytes];
         var payload = new byte[8 + bytes.Length];
         payload[3] = (byte)(4 + bytes.Length);
         payload[4] = SubSerialMarker;
@@ -255,6 +265,8 @@ internal sealed class CipSession
     private void OnFeedback(JoinDevice dev, JoinKey key, object value)
     {
         if (key.SmartObject != 0) return; // Smart Graphics over CIP isn't implemented yet (web panels get them)
+        if (key.Kind == SigKind.Serial && value is string text && text.Length > Cip.MaxSerialBytes)
+            _processor.Slot(dev.Slot).Log("Warning", $"[CIP] IPID {dev.IpId:X2} serial join {key.Join} is {text.Length} chars; sent the first {Cip.MaxSerialBytes} to the panel");
         var packet = key.Kind switch
         {
             SigKind.Digital => Cip.Digital(key.Join, (bool)value),

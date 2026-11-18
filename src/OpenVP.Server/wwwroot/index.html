@@ -82,12 +82,15 @@
     </div>
   </div>
 </main>
+<script src="openvp-auth.js"></script>
 <script>
+openvpAuth.init();
 const $ = s => document.querySelector(s);
 let sel = 1, ws = null;
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
+  if (openvpAuth.check(r)) throw new Error("Log in with the access key first.");
   const ct = r.headers.get("content-type") || "";
   const body = ct.includes("json") ? await r.json() : await r.text();
   if (!r.ok) throw new Error(body.error || body || r.statusText);

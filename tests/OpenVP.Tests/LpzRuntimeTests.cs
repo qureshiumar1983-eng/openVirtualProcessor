@@ -47,8 +47,7 @@ public static class LpzRuntimeTests
         p.AddLoader(new LpzLoader());
         p.LoadProgram(1, BuildProgram());
         Assert.Equal(SlotState.Running, p.Slot(1).State, "running: " + p.Slot(1).LastError);
-        var panel = p.Slot(1).FindDevice(3)!;
-        Assert.True(panel != null, "panel 03 registered from the compiled device record");
+        var panel = p.Slot(1).FindDevice(3) ?? throw new AssertException("panel 03 registered from the compiled device record");
         return (p, panel);
     }
 

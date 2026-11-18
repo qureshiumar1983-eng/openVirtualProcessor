@@ -193,7 +193,9 @@
 
 <div id="menu"></div>
 
+<script src="openvp-auth.js"></script>
 <script>
+openvpAuth.init();
 const $ = s => document.querySelector(s);
 const MAX_TRACE = 5000;
 const store = {
@@ -214,6 +216,7 @@ for (const k of Object.keys(opts)) { $("#" + k).value = opts[k]; $("#" + k).onch
 
 async function api(path, init) {
   const r = await fetch(path, init);
+  if (openvpAuth.check(r)) throw new Error("Log in with the access key first.");
   const ct = r.headers.get("content-type") || "";
   const body = ct.includes("json") ? await r.json() : await r.text();
   if (!r.ok) throw new Error(body.error || body || r.statusText);
