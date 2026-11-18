@@ -107,6 +107,26 @@ if (Run("interlock"))
     Console.WriteLine();
 }
 
+// ------------------------------------------------------------ LPZ: wide AND/OR/NOR gates (every input change re-evaluates the gate)
+if (Run("wide"))
+{
+    int W = 64, G = Q(48), K = Q(40_000);
+    var path = WideGatesProgram(data, "wide", W, G);
+    using var p = Start(path, out var panel);
+    var slot = p.Slot(1);
+    Warm(slot, panel, 200, i => (new JoinKey(SigKind.Digital, (uint)(i % W + 1)), i % 2 == 0));
+    var (sec, bytes, gcs) = Measure(() =>
+    {
+        // Press all W inputs high one by one, then release them: every press re-runs all G gates.
+        for (int i = 0; i < K; i++)
+            panel.ReceiveInput(new JoinKey(SigKind.Digital, (uint)(i % W + 1)), (i / W) % 2 == 0);
+        slot.Dispatcher.Invoke(() => { });
+    });
+    long evals = (long)K * G;
+    Console.WriteLine($"{$"LPZ {G} gates (AND/OR/NOR) of {W} inputs each ({K} presses)",-74} {evals / sec,12:N0} gate evals/s   {sec * 1e9 / evals,6:N1} ns/eval   {bytes / (double)K,6:N1} B/press   gen0 GCs {gcs}");
+    Console.WriteLine();
+}
+
 // ------------------------------------------------------------ latency: panel press → feedback
 if (Run("latency"))
 {
@@ -403,6 +423,16 @@ static string InterlockProgram(string dir, string name, int w)
     var fb = Enumerable.Range(10 + w, w).ToArray();
     bin.AddRange(Panel(3, fb, presses));
     bin.AddRange(Record(11, "S-1", [0, .. presses], fb));
+    return Pack(dir, name, bin);
+}
+// press d1..dw → g gates (AND, OR and NOR in turn) that each read all w presses → g feedback joins
+static string WideGatesProgram(string dir, string name, int w, int g)
+{
+    var bin = Header(name);
+    var presses = Enumerable.Range(10, w).ToArray();
+    var fb = Enumerable.Range(10 + w, g).ToArray();
+    bin.AddRange(Panel(3, fb, presses));
+    for (int i = 0; i < g; i++) bin.AddRange(Record(i % 3 == 0 ? 0 : i % 3 == 1 ? 2 : 3, $"S-{i + 1}", presses, [fb[i]]));
     return Pack(dir, name, bin);
 }
 // press d1 → retriggerable one-shot, 10 s
