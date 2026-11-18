@@ -74,6 +74,39 @@ public static class CipTests
         Assert.True(sawHeartbeat, "heartbeat answered");
     }
 
+    [Test]
+    public static void Feedback_burst_arrives_complete_and_in_order()
+    {
+        using var p = new Processor(Paths.TempData());
+        p.AddLoader(new SimplSharpLoader());
+        p.LoadProgram(1, Paths.SampleDll);
+        using var server = new CipServer(p, 0, IPAddress.Loopback);
+        server.Start();
+        using var client = new TcpClient();
+        client.Connect(IPAddress.Loopback, server.Port);
+        var s = client.GetStream();
+        s.ReadTimeout = 3000;
+        Read(s); // who are you
+        s.Write(Cip.Frame(Cip.ConnectRequest, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x40, 0xFF, 0xFF, 0xF1, 0x01));
+        Assert.Equal(Cip.ConnectResponse, Read(s).type, "connect response");
+        var dev = p.Slot(1).FindDevice(0x03)!;
+        Assert.Eventually(() => dev.Online, "panel online");
+
+        const int n = 3000;
+        for (uint j = 1; j <= n; j++) dev.SetFeedback(new JoinKey(SigKind.Analog, 100 + j), (ushort)j); // one burst, many packets per write
+        uint next = 1;
+        while (next <= n)
+        {
+            var (type, payload) = Read(s);
+            if (Cip.DecodeJoin(type, payload) is var (k, v) && k.Kind == SigKind.Analog && k.Join > 100 && k.Join <= 100 + n)
+            {
+                Assert.Equal(100 + next, k.Join, "analog join order");
+                Assert.Equal((ushort)next, (ushort)v, "analog value");
+                next++;
+            }
+        }
+    }
+
     private static (byte type, byte[] payload) Read(NetworkStream s)
     {
         var h = new byte[3];
