@@ -116,6 +116,8 @@ Programs see the folders under their usual processor paths:
 | `\USER\config\rooms.json`, `/user/config/rooms.json` | `data/program01/user/config/rooms.json` |
 | `Path.Combine(Directory.GetApplicationRootDirectory(), "user", "x.json")` | `data/program01/user/x.json` |
 
+**Program folders.** On a processor, SIMPL+ `MakeProgramFilename("\NVRAM\config.txt")` gives each program its own folder: `\NVRAM\{Program Name}\config.txt`, using the Program Name from the SIMPL Windows program header. OpenVP does the same. For a `.lpz` it reads the name from the compile header or the archived `.smw`, and falls back to the `.smw` file name. When a program is loaded, the Files section shows that folder's name with a button to create or open it, so your config file goes in the right place.
+
 The folder names match whatever case the program uses (`\USER`, `/user` and `\User` are the same folder, on Linux too). This works for SIMPL# (`Crestron.SimplSharp.CrestronIO`) and SIMPL+ file functions. A program can't reach outside its slot's folder. The files stay when you load a new program into the slot.
 
 ### Debugger

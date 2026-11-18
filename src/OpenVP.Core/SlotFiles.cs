@@ -62,6 +62,31 @@ public static class SlotFiles
         && name.IndexOfAny(['/', '\\', ':', '*', '?', '"', '<', '>', '|']) < 0
         && name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
 
+    /// <summary>A program name made safe to use as a folder name.</summary>
+    public static string FolderName(string? programName)
+    {
+        var bad = Path.GetInvalidFileNameChars().Concat(['/', '\\', ':', '*', '?', '"', '<', '>', '|']).ToHashSet();
+        var s = new string((programName ?? "").Select(c => bad.Contains(c) ? '_' : c).ToArray()).Trim().TrimEnd('.');
+        return s.Length == 0 ? "Program" : s;
+    }
+
+    /// <summary>
+    /// What SIMPL+ MakeProgramFilename returns: the program's folder inserted after the top folder,
+    /// so <c>\NVRAM\config.txt</c> becomes <c>\NVRAM\{program}\config.txt</c>. A bare name goes
+    /// under <c>\USER\{program}\</c>.
+    /// </summary>
+    public static string ProgramFilename(string? name, string? programName)
+    {
+        var folder = FolderName(programName);
+        var p = (name ?? "").Replace('/', '\\').TrimStart('\\');
+        var cut = p.IndexOf('\\');
+        var first = cut < 0 ? p : p[..cut];
+        foreach (var known in KnownRoots)
+            if (first.Equals(known, StringComparison.OrdinalIgnoreCase))
+                return "\\" + first + "\\" + folder + (cut < 0 ? "\\" : p[cut..]);
+        return "\\USER\\" + folder + "\\" + p;
+    }
+
     private static string Inside(string top, string candidate, string original)
     {
         var full = Path.GetFullPath(candidate);

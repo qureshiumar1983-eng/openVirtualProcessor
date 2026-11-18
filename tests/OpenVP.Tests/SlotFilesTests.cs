@@ -74,3 +74,46 @@ public static class SlotFilesTests
         Assert.Equal(Path.Combine(dir, "user", "x.json"), p.Slot(1).MapPath(@"\USER\x.json"), "slot MapPath");
     }
 }
+
+public static class ProgramFolderTests
+{
+    [Test]
+    public static void MakeProgramFilenameInsertsTheProgramFolder()
+    {
+        Assert.Equal(@"\NVRAM\Lobby AV\config.txt", SlotFiles.ProgramFilename(@"\NVRAM\config.txt", "Lobby AV"), "NVRAM file");
+        Assert.Equal(@"\nvram\Lobby AV\sub\a.txt", SlotFiles.ProgramFilename("/nvram/sub/a.txt", "Lobby AV"), "keeps case, slashes become backslashes");
+        Assert.Equal(@"\USER\Lobby AV\x.json", SlotFiles.ProgramFilename(@"\USER\x.json", "Lobby AV"), "USER file");
+        Assert.Equal(@"\NVRAM\Lobby AV\", SlotFiles.ProgramFilename(@"\NVRAM", "Lobby AV"), "bare root");
+        Assert.Equal(@"\USER\Lobby AV\x.json", SlotFiles.ProgramFilename("x.json", "Lobby AV"), "no top folder");
+        Assert.Equal(@"\NVRAM\A_B\c.txt", SlotFiles.ProgramFilename(@"\NVRAM\c.txt", "A/B"), "unsafe characters replaced");
+        Assert.Equal(@"\NVRAM\Program\c.txt", SlotFiles.ProgramFilename(@"\NVRAM\c.txt", null), "no program loaded");
+    }
+
+    static string Lpz(string header, string? archivedSmw = null)
+    {
+        var path = Path.Combine(Paths.TempData(), "p.lpz");
+        var bin = LpzTests.Record(31, "LeadingREM", [], [], LpzTests.Int(15, 1), LpzTests.Str(3, header));
+        using (var zip = System.IO.Compression.ZipFile.Open(path, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            void Put(string name, byte[] data) { using var s = zip.CreateEntry(name).Open(); s.Write(data); }
+            Put("boot.bt", System.Text.Encoding.ASCII.GetBytes("[LG_BOOT_DATA]\r\nBinFileName=p.bin\r\nSMWFileName=file_name.smw\r\n"));
+            Put("p.bin", bin);
+            if (archivedSmw != null)
+            {
+                var ms = new MemoryStream();
+                using (var inner = new System.IO.Compression.ZipArchive(ms, System.IO.Compression.ZipArchiveMode.Create, true))
+                using (var s = inner.CreateEntry("file_name.smw").Open()) s.Write(System.Text.Encoding.ASCII.GetBytes(archivedSmw));
+                Put("file_name_archive.zip", ms.ToArray());
+            }
+        }
+        return path;
+    }
+
+    [Test]
+    public static void LpzProgramNameComesFromTheHeader()
+    {
+        Assert.Equal("Lobby AV", OpenVP.Lpz.LpzPackage.Open(Lpz("Program File: file_name.smw\r\nProgram Name: Lobby AV\r\n")).ProgramName, "compile header");
+        Assert.Equal("Board Room", OpenVP.Lpz.LpzPackage.Open(Lpz("Program File: file_name.smw", "[\r\nObjTp=Hd\r\nPgmNm=Board Room\r\n]\r\n")).ProgramName, "archived .smw");
+        Assert.Equal("file_name", OpenVP.Lpz.LpzPackage.Open(Lpz("Program File: file_name.smw")).ProgramName, "falls back to the file name");
+    }
+}

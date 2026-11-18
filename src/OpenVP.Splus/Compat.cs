@@ -340,7 +340,13 @@ namespace Crestron.Logos.SplusObjects
         public CrestronString GetSymbolInstanceName() => new CrestronString(InstanceName);
         public CrestronString GetSymbolReferenceName() => new CrestronString(ReferenceID);
         public CrestronString GetModelNumber() => new CrestronString("VC-4 (OpenVP)");
-        public CrestronString MakeProgramFilename(string name) => new CrestronString($"\\USER\\{name}");
+        /// <summary>
+        /// Puts the program's own folder into a path, as a processor does: "\NVRAM\config.txt" becomes
+        /// "\NVRAM\{program name}\config.txt", where the name is the Program Name from the program header.
+        /// A name with no top folder goes under \USER\{program name}\.
+        /// </summary>
+        public CrestronString MakeProgramFilename(string name) =>
+            new CrestronString(OpenVP.Core.SlotFiles.ProgramFilename(name, _host?.Slot.Runtime?.ProgramName));
         public CrestronString MakeProgramFilename(CrestronString name) => MakeProgramFilename(name?.Str);
 
         public int IsParameterDefined(UShortParameter p) => p == null ? 0 : 1;

@@ -42,6 +42,11 @@
   #files-table td.act button { padding:2px 7px; font-size:12px; }
   #files-drop { border:1px dashed transparent; border-radius:8px; }
   #files-drop.over { border-color:var(--accent); background:#141b25; }
+  dialog { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:16px; min-width:340px; }
+  dialog::backdrop { background:#0008; }
+  dialog form { display:flex; flex-direction:column; gap:10px; margin:0; }
+  dialog .row { display:flex; gap:8px; justify-content:flex-end; }
+  #files-hint { margin:0 0 10px; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:#141a21; }
   .num { text-align:right; font-variant-numeric:tabular-nums; }
 </style>
 </head>
@@ -90,6 +95,7 @@
         <input type="file" id="files-pick" multiple hidden>
         <input type="file" id="files-pickdir" webkitdirectory multiple hidden>
       </div>
+      <div id="files-hint" class="muted" hidden></div>
       <div class="bar mono"><span id="crumbs"></span><span style="flex:1"></span><span class="muted" id="files-ppath" title="The path the program uses for this folder"></span></div>
       <div id="files-drop">
         <table id="files-table"><thead><tr><th>Name</th><th class="num">Size</th><th>Modified</th><th></th></tr></thead><tbody></tbody></table>
@@ -109,6 +115,11 @@
     </div>
   </div>
 </main>
+<dialog id="ask"><form method="dialog">
+  <label id="ask-label" for="ask-in"></label>
+  <input id="ask-in" class="mono" autocomplete="off">
+  <div class="row"><button type="button" id="ask-cancel">Cancel</button><button value="ok" id="ask-ok">OK</button></div>
+</form></dialog>
 <script src="openvp-auth.js"></script>
 <script>
 openvpAuth.init();
@@ -214,6 +225,17 @@ $("#console-in").onkeydown = e => { if (e.key === "Enter") runConsole(); };
 // ------------------------------------------------------------------ slot files (\NVRAM, \USER)
 
 let fRoot = "nvram", fPath = "";
+
+// window.prompt() doesn't work in the desktop app (Electron), so ask in a dialog of our own.
+function askName(label, initial = "") {
+  const d = $("#ask"), input = $("#ask-in");
+  $("#ask-label").textContent = label; input.value = initial;
+  return new Promise(res => {
+    d.onclose = () => res(d.returnValue === "ok" ? input.value.trim() : null);
+    $("#ask-cancel").onclick = () => d.close("cancel");
+    d.returnValue = ""; d.showModal(); input.focus(); input.select();
+  });
+}
 const q = o => new URLSearchParams(o).toString();
 const join = (a, b) => a ? `${a}/${b}` : b;
 
@@ -230,6 +252,7 @@ async function refreshFiles() {
   catch (e) { if (fPath) { fPath = ""; return refreshFiles(); } $("#files-table tbody").innerHTML = ""; $("#files-empty").hidden = false; $("#files-empty").textContent = e.message; return; }
   document.querySelectorAll("[data-root]").forEach(b => b.classList.toggle("active", b.dataset.root === fRoot));
   $("#files-ppath").textContent = d.programPath;
+  renderHint(d);
   // Breadcrumbs: NVRAM / config / rooms
   const parts = d.path ? d.path.split("/") : [];
   const crumbs = $("#crumbs"); crumbs.innerHTML = "";
@@ -250,7 +273,7 @@ async function refreshFiles() {
     const btn = (label, title, fn) => { const b = document.createElement("button"); b.textContent = label; b.title = title; b.onclick = fn; act.appendChild(b); act.append(" "); };
     if (!e.folder) btn("⤓", "Download", () => { location.href = `/api/slots/${sel}/files/download?${q({ root: fRoot, path })}`; });
     btn("Rename", "Rename", async () => {
-      const name = prompt(`Rename '${e.name}' to:`, e.name); if (!name || name === e.name) return;
+      const name = await askName(`Rename '${e.name}' to:`, e.name); if (!name || name === e.name) return;
       try { await api(`/api/slots/${sel}/files/rename`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ root: fRoot, path, name }) }); }
       catch (err) { alert(err.message); }
       refreshFiles();
@@ -265,6 +288,24 @@ async function refreshFiles() {
   }
 }
 
+// SIMPL+ MakeProgramFilename("\\NVRAM\\x") reads \NVRAM\{program name}\x, so point at that folder.
+function renderHint(d) {
+  const h = $("#files-hint"), name = d.programFolder;
+  if (!name || d.path) { h.hidden = true; return; }
+  const label = fRoot === "nvram" ? "NVRAM" : "USER";
+  const exists = d.entries.some(e => e.folder && e.name === name);
+  h.hidden = false;
+  h.innerHTML = `Programs that use <span class="mono">MakeProgramFilename</span> read from <span class="mono">\\${label}\\${esc(name)}\\</span> (the Program Name in the program header). `;
+  const b = document.createElement("button");
+  b.textContent = exists ? `Open ${name}` : `Create ${name} folder`;
+  b.onclick = async () => {
+    try { if (!exists) await api(`/api/slots/${sel}/files/folder`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ root: fRoot, path: "", name }) }); }
+    catch (e) { return alert(e.message); }
+    fPath = name; refreshFiles();
+  };
+  h.appendChild(b);
+}
+
 async function uploadFiles(list) {
   // list: [{ file, name }] where name may include sub-folders ("config/rooms.json")
   if (!list.length) return;
@@ -277,7 +318,7 @@ async function uploadFiles(list) {
 
 document.querySelectorAll("[data-root]").forEach(b => b.onclick = () => { fRoot = b.dataset.root; fPath = ""; refreshFiles(); });
 $("#files-mkdir").onclick = async () => {
-  const name = prompt("New folder name:"); if (!name) return;
+  const name = await askName("New folder name:"); if (!name) return;
   try { await api(`/api/slots/${sel}/files/folder`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ root: fRoot, path: fPath, name }) }); }
   catch (e) { alert(e.message); }
   refreshFiles();

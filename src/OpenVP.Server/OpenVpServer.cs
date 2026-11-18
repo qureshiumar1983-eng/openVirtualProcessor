@@ -256,7 +256,10 @@ public static class OpenVpServer
                 .Select(d => new { name = d.Name, folder = true, size = (long?)null, modified = d.LastWriteTimeUtc })
                 .Concat(info.EnumerateFiles().OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
                     .Select(f => new { name = f.Name, folder = false, size = (long?)f.Length, modified = f.LastWriteTimeUtc }));
-            return Results.Ok(new { root = r, path = Rel(path), programPath = ProgramPathOf(r, Rel(path)), entries });
+            // The folder SIMPL+ MakeProgramFilename uses: \NVRAM\{Program Name}\.
+            var programName = processor.Slot(n).Runtime?.ProgramName;
+            var programFolder = programName is null ? null : SlotFiles.FolderName(programName);
+            return Results.Ok(new { root = r, path = Rel(path), programPath = ProgramPathOf(r, Rel(path)), programFolder, entries });
         }));
 
         slotApi.MapPost("/files/folder", (int n, JsonElement body) => Files(() =>
