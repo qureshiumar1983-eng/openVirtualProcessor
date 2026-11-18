@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Threading.Channels;
 
 namespace OpenVP.Core;
@@ -50,11 +51,19 @@ public sealed class SlotDispatcher : IDisposable
     private readonly Thread _thread;
     private readonly Action<Exception> _onError;
     private readonly Func<bool>? _isPaused;
+    private readonly long _spinTicks; // extra busy-wait before blocking, in Stopwatch ticks (0 = none)
     private volatile int _mode = Open;
 
     /// <param name="isPaused">True while the debugger holds the slot at a step; Invoke then waits without timing out.</param>
     public SlotDispatcher(string name, Action<Exception> onError, Func<bool>? isPaused = null)
+        : this(name, onError, isPaused, 0) { }
+
+    /// <param name="spinMicroseconds">After the queue runs dry, keep polling it this long before blocking, so the next
+    /// event of a request/response stream skips the ~60 µs kernel wake. Costs a core's worth of CPU while idle; 0 (the
+    /// default) blocks after the short spin only.</param>
+    public SlotDispatcher(string name, Action<Exception> onError, Func<bool>? isPaused, int spinMicroseconds)
     {
+        _spinTicks = Math.Max(0, spinMicroseconds) * Stopwatch.Frequency / 1_000_000;
         _onError = onError;
         _isPaused = isPaused;
         _thread = new Thread(Run) { IsBackground = true, Name = name };
@@ -128,6 +137,11 @@ public sealed class SlotDispatcher : IDisposable
             // A short spin catches the next event of a back-to-back exchange without a kernel wait.
             var spin = new SpinWait();
             while (!spin.NextSpinWillYield && !reader.TryPeek(out _)) spin.SpinOnce(-1);
+            if (_spinTicks > 0)
+            {
+                var until = Stopwatch.GetTimestamp() + _spinTicks;
+                while (Stopwatch.GetTimestamp() < until && !reader.TryPeek(out _)) Thread.SpinWait(10);
+            }
             if (reader.TryPeek(out _)) continue;
             // Blocks only when the queue is empty; completes false once the writer is completed and drained.
             if (!reader.WaitToReadAsync().AsTask().GetAwaiter().GetResult()) break;

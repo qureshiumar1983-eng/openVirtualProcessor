@@ -24,7 +24,7 @@ public static class OpenVpServer
         builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = 512L * 1024 * 1024);
         var cfg = builder.Configuration.GetSection("OpenVP");
 
-        var processor = new Processor(cfg["DataDirectory"] ?? "data", cfg.GetValue("Slots", 10));
+        var processor = new Processor(cfg["DataDirectory"] ?? "data", cfg.GetValue("Slots", 10), cfg.GetValue("SlotSpinMicroseconds", 0));
         processor.AddLoader(new SimplSharpLoader());
         processor.AddLoader(new SimplLoader(Path.Combine(processor.DataDirectory, "symbols.json")));
         processor.AddLoader(new LpzLoader());

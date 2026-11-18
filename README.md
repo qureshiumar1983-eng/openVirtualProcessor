@@ -136,6 +136,7 @@ Traffic is plain HTTP. To use OpenVP across an untrusted network, put it behind 
 |---|---|---|
 | `OpenVP:DataDirectory` | `data` | Uploads and per-slot program folders |
 | `OpenVP:Slots` | `10` | Number of program slots |
+| `OpenVP:SlotSpinMicroseconds` | `0` | After a slot's queue runs dry, its thread keeps polling for this many µs (max 10,000) before it sleeps, which skips the ~60 µs wake-up for the next event. Costs CPU while idle (see `docs/performance-plan.md`); leave at 0 unless a device streams tight request/response traffic |
 | `OpenVP:CipEnabled` / `CipPort` | `true` / `41794` | CIP listener |
 | `OpenVP:CipLogPackets` | `false` (code default); `true` in the shipped `appsettings.json` | Hex-log CIP traffic. The shipped file turns it on while CIP is being validated against real panels; set it to `false` to stop |
 | `OpenVP:ApiKey` | (generated) | Access key for the console and API; `off` disables it. See [Security](#security) |

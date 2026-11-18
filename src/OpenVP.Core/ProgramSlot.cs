@@ -216,7 +216,7 @@ public sealed class ProgramSlot : IDisposable
     }
 
     private SlotDispatcher NewDispatcher() =>
-        new($"slot{Number:00}", e => Log("Error", $"Unhandled exception in program: {e}"), () => Stepper.IsPaused);
+        new($"slot{Number:00}", e => Log("Error", $"Unhandled exception in program: {e}"), () => Stepper.IsPaused, Processor.SlotSpinMicroseconds);
 
     public void Dispose() => Unload();
 }

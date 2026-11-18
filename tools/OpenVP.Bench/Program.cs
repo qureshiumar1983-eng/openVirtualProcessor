@@ -13,6 +13,8 @@ using OpenVP.Simpl;
 // --quick shrinks every scenario about 10x so CI finishes in seconds.
 var quick = args.Contains("--quick");
 var positional = args.Where(a => !a.StartsWith("--")).ToArray();
+// --spin=N: OpenVP:SlotSpinMicroseconds for the processors the scenarios build.
+var spin = args.Select(a => a.StartsWith("--spin=") ? int.Parse(a[7..]) : -1).FirstOrDefault(v => v >= 0);
 // Temp data goes under the system temp dir, not next to the binaries.
 var data = Path.Combine(Path.GetTempPath(), "openvp-bench-" + Environment.ProcessId);
 if (Directory.Exists(data)) Directory.Delete(data, true);
@@ -196,12 +198,13 @@ if (Run("latency"))
     long t1 = 0;
     panel.FeedbackChanged += (_, k, _) => { if (k == key) { t1 = Stopwatch.GetTimestamp(); got.Set(); } };
     bool v = false;
-    double[] Sample(int n, bool idle)
+    double[] Sample(int n, bool idle, int gapUs = 0)
     {
         var r = new double[n];
         for (int i = 0; i < n; i++)
         {
             if (idle) Thread.Sleep(1);
+            else if (gapUs > 0) { var until = Stopwatch.GetTimestamp() + gapUs * Stopwatch.Frequency / 1_000_000; while (Stopwatch.GetTimestamp() < until) Thread.SpinWait(4); }
             got.Reset();
             v = !v;
             var t0 = Stopwatch.GetTimestamp();
@@ -213,7 +216,18 @@ if (Run("latency"))
     }
     Sample(Q(2000), false);
     Report("LPZ press→feedback, back-to-back (µs)", Sample(Q(20000), false));
-    Report("LPZ press→feedback, slot idle 1 ms between presses (µs)", Sample(Q(2000), true));
+    Report($"LPZ press→feedback, 30 µs between presses (µs), spin {spin} µs", Sample(Q(5000), false, 30));
+    var cpu0 = Process.GetCurrentProcess().TotalProcessorTime;
+    var wall0 = Stopwatch.GetTimestamp();
+    Report($"LPZ press→feedback, slot idle 1 ms between presses (µs), spin {spin} µs", Sample(Q(2000), true));
+    var busy = (Process.GetCurrentProcess().TotalProcessorTime - cpu0).TotalMilliseconds;
+    var wall = (Stopwatch.GetTimestamp() - wall0) * 1000.0 / Stopwatch.Frequency;
+    Console.WriteLine($"  process CPU during that run: {busy:N0} ms of {wall:N0} ms wall ({busy / wall:P0} of one core)");
+    // Nothing happens now: an idle slot should cost nothing, with or without a spin (the spin ends after the last event).
+    Thread.Sleep(500);
+    cpu0 = Process.GetCurrentProcess().TotalProcessorTime;
+    Thread.Sleep(2000);
+    Console.WriteLine($"  process CPU over 2 s with no events at all: {(Process.GetCurrentProcess().TotalProcessorTime - cpu0).TotalMilliseconds:N0} ms");
     Console.WriteLine();
 }
 
@@ -230,12 +244,13 @@ if (Run("splus"))
         long t1 = 0; ushort want = 0;
         panel.FeedbackChanged += (_, k, val) => { if (k == fb && val is ushort u && u == want) { t1 = Stopwatch.GetTimestamp(); got.Set(); } };
         Thread.Sleep(2500); // modules mark themselves started after up to 2 s
-        double[] Sample(int n, bool idle)
+        double[] Sample(int n, bool idle, int gapUs = 0)
         {
             var r = new double[n];
             for (int i = 0; i < n; i++)
             {
                 if (idle) Thread.Sleep(1);
+            else if (gapUs > 0) { var until = Stopwatch.GetTimestamp() + gapUs * Stopwatch.Frequency / 1_000_000; while (Stopwatch.GetTimestamp() < until) Thread.SpinWait(4); }
                 got.Reset();
                 var x = (ushort)(1 + i % 1000);
                 want = (ushort)(x * 2);
@@ -444,7 +459,7 @@ static void Report(string name, double[] us)
 
 Processor Start(string path, out JoinDevice panel, uint ipid = 3)
 {
-    var p = new Processor(Path.Combine(data, "p" + Guid.NewGuid().ToString("N")[..8]), 1);
+    var p = new Processor(Path.Combine(data, "p" + Guid.NewGuid().ToString("N")[..8]), 1, spin);
     p.AddLoader(new LpzLoader());
     p.AddLoader(new SimplLoader());
     p.LoadProgram(1, path);
