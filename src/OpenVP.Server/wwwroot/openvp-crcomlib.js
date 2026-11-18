@@ -25,6 +25,36 @@
   var ws = null;
   var queue = [];
   var listeners = [];
+  var pingSent = 0, lastRtt = null, pingTimer = null;
+
+  // Tells OpenVP's IP table what this client is. Nothing personal: screen, platform, language, page.
+  function clientInfo() {
+    var n = global.navigator || {}, s = global.screen || {};
+    var info = {
+      t: "info",
+      screen: s.width && s.height ? s.width + "x" + s.height : undefined,
+      viewport: global.innerWidth + "x" + global.innerHeight,
+      pixelRatio: String(global.devicePixelRatio || 1),
+      platform: (n.userAgentData && n.userAgentData.platform) || n.platform,
+      language: n.language,
+      touch: n.maxTouchPoints != null ? String(n.maxTouchPoints) : undefined,
+      cores: n.hardwareConcurrency != null ? String(n.hardwareConcurrency) : undefined,
+      memoryGb: n.deviceMemory != null ? String(n.deviceMemory) : undefined,
+      connection: n.connection && n.connection.effectiveType,
+      page: global.location.pathname,
+      title: global.document && global.document.title
+    };
+    try { info.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) { }
+    return info;
+  }
+
+  function ping() {
+    if (!ws || ws.readyState !== 1) return;
+    pingSent = Date.now();
+    var m = { t: "ping" };
+    if (lastRtt != null) m.rtt = lastRtt;
+    ws.send(JSON.stringify(m));
+  }
 
   function norm(type) {
     if (type === "d" || type === "boolean") return "b";
@@ -49,15 +79,23 @@
   function connect() {
     ws = new WebSocket(url);
     ws.onopen = function () {
+      ws.send(JSON.stringify(clientInfo()));
       while (queue.length) ws.send(queue.shift());
+      clearInterval(pingTimer);
+      pingTimer = setInterval(ping, 10000);
+      setTimeout(ping, 500);
       fire("open");
     };
     ws.onmessage = function (ev) {
       var m = JSON.parse(ev.data);
       if (m.t === "b" || m.t === "n" || m.t === "s") emit(m.t, String(m.j), m.v);
-      else fire(m.t, m);
+      else {
+        if (m.t === "pong" && pingSent) { lastRtt = Date.now() - pingSent; pingSent = 0; }
+        fire(m.t, m);
+      }
     };
     ws.onclose = function () {
+      clearInterval(pingTimer);
       fire("close");
       setTimeout(connect, 2000);
     };

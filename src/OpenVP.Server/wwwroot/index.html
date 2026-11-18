@@ -33,6 +33,25 @@
   @media (max-width: 1200px) { .grid2 { grid-template-columns: 1fr; } }
   .dev { font-size:12px; color:var(--muted); }
   .on { color:var(--ok); }
+  /* IP table */
+  #ipt td { font-size:13px; }
+  #ipt tr.client { cursor:pointer; }
+  #ipt tr.client:hover { background:#1b222b; }
+  #ipt tr.client.sel { background:#1f2630; }
+  #ipt .who b { display:block; }
+  #ipt .who small { color:var(--muted); }
+  #ipt tr.nobody td { color:var(--muted); }
+  .pill { font-size:11px; padding:1px 7px; border-radius:20px; background:#252c36; white-space:nowrap; }
+  .pill.ok { background:#173a2c; color:#7fe0b1; } .pill.off { background:#2a2f37; color:var(--muted); }
+  .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  #ipt-detail { margin-top:12px; display:none; }
+  .kv { display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:10px 16px; }
+  .kv h3 { grid-column:1/-1; margin:8px 0 0; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+  .kv div { border-bottom:1px solid var(--line); padding-bottom:4px; min-width:0; overflow-wrap:anywhere; }
+  .kv div span { display:block; color:var(--muted); font-size:11px; }
+  pre.out { background:#0b0e11; border:1px solid var(--line); border-radius:6px; padding:8px; margin:4px 0 0; white-space:pre-wrap; max-height:220px; overflow:auto; font-size:12px; }
+  #login-form { display:none; gap:8px; flex-wrap:wrap; align-items:center; margin-top:8px; }
+  .scroll-x { overflow-x:auto; }
 </style>
 </head>
 <body>
@@ -58,11 +77,39 @@
         <button id="compat">Compatibility</button>
       </div>
       <div id="sel-info" class="muted mono"></div>
-      <div id="devices" style="margin-top:8px"></div>
+      <div id="devices" class="muted" style="margin-top:8px"></div>
     </section>
   </div>
   <div>
     <section>
+      <h2>IP table · slot <span class="sel-num2">1</span></h2>
+      <div class="scroll-x">
+      <table id="ipt">
+        <thead><tr><th>Connected client</th><th>Address</th><th>IP ID</th><th>Type</th><th>Status</th><th class="num">Connected</th><th class="num">Joins in / out</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      </div>
+      <div id="ipt-empty" class="muted" style="padding:8px 0">No IP IDs registered in this slot.</div>
+      <div id="ipt-detail">
+        <div class="bar">
+          <b id="d-title"></b><span style="flex:1"></span>
+          <button id="d-identify" title="Run reverse DNS and Crestron autodiscovery again">Re-identify</button>
+          <button id="d-login-toggle" title="Log in over SSH and read hostname, firmware, uptime, network and IP table (read-only commands)">Log in &amp; read…</button>
+          <a id="d-panel" target="_blank">open test panel</a>
+          <button id="d-close" title="Close">✕</button>
+        </div>
+        <form id="login-form" autocomplete="off">
+          <input id="l-user" placeholder="username" size="12" autocomplete="off">
+          <input id="l-pass" type="password" placeholder="password" size="12" autocomplete="new-password">
+          <input id="l-port" placeholder="22" size="4" title="SSH port">
+          <button type="submit">Log in &amp; read</button>
+          <span class="muted">Used once for this login, never saved. Runs read-only commands: hostname, ver, uptime, ipconfig, ipt, time.</span>
+        </form>
+        <div id="d-status" class="muted" style="margin:6px 0"></div>
+        <div id="d-body" class="kv"></div>
+      </div>
+    </section>
+    <section style="margin-top:16px">
       <h2>Debugger · slot <span class="sel-num2">1</span></h2>
       <div class="bar">
         <button id="open-debugger">Open debugger ↗</button>
@@ -108,12 +155,151 @@ async function refreshSlots() {
     tb.appendChild(tr);
     if (s.number === sel) {
       $("#sel-info").textContent = s.file ? `${s.file}${s.error ? "\n" + s.error.split("\n")[0] : ""}` : "No program loaded.";
-      $("#devices").innerHTML = s.devices.map(d => `<div class="dev">IPID <b>${d.ipId}</b> · ${d.type} · <span class="${d.online ? "on" : ""}">${d.online ? "online" : "offline"}</span> · <a href="panel.html?ipid=${d.ipId}&slot=${d.slot}" target="_blank">open test panel</a></div>`).join("");
+      const online = s.devices.filter(d => d.online).length;
+      $("#devices").textContent = s.devices.length ? `${s.devices.length} IP ID${s.devices.length === 1 ? "" : "s"}, ${online} online. Who's connected is in the IP table.` : "";
     }
   }
 }
 
-function esc(t) { return t.replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
+function esc(t) { return String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+// ---------------- IP table ----------------
+let iptData = [], iptSel = null; // iptSel = { ipId, clientId|null }
+
+function ago(t) {
+  if (!t) return "—";
+  let s = Math.max(0, (Date.now() - new Date(t)) / 1000);
+  if (s < 60) return `${Math.floor(s)}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${Math.floor(s % 60)}s`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ${Math.floor(s % 3600 / 60)}m`;
+  return `${Math.floor(s / 86400)}d ${Math.floor(s % 86400 / 3600)}h`;
+}
+function bytes(n) { return n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`; }
+function when(t) { return t ? `${new Date(t).toLocaleString()} (${ago(t)} ago)` : "—"; }
+
+function whoCell(c) {
+  // An EISC is about the slot on the other end; anything else is about the machine.
+  const name = (c.transport === "EISC" ? c.peer : null) || c.hostname || c.model || c.peer || (c.transport === "Web panel" ? "Browser" : "Unknown client");
+  const sub = [c.kind, c.model && c.model !== name ? c.model : null, c.firmware ? "fw " + c.firmware : null].filter(Boolean).join(" · ");
+  const probing = /identifying|logging in/.test(c.probeStatus || "") ? " …" : "";
+  return `<div class="who"><b>${esc(name)}${probing}</b><small>${esc(sub || c.probeStatus || "")}</small></div>`;
+}
+
+async function refreshIpTable() {
+  const slotAtRequest = sel;
+  let data;
+  try { data = await api(`/api/slots/${sel}/iptable`); } catch { return; }
+  if (slotAtRequest !== sel) return; // slot changed while waiting
+  iptData = data;
+  const tb = $("#ipt tbody"); tb.innerHTML = "";
+  $("#ipt-empty").style.display = data.length ? "none" : "";
+  for (const d of data) {
+    const status = `<span class="pill ${d.online ? "ok" : "off"}">${d.online ? "online" : "offline"}</span>`;
+    const rows = d.clients.length ? d.clients : [null];
+    for (const c of rows) {
+      const tr = document.createElement("tr");
+      if (c) {
+        tr.className = "client" + (iptSel && iptSel.ipId === d.ipId && iptSel.clientId === c.id ? " sel" : "");
+        tr.innerHTML = `<td>${whoCell(c)}</td><td class="mono">${esc(c.endpoint || "—")}<br><small class="muted">${esc(c.transport)}</small></td>
+          <td class="mono"><b>${d.ipId}</b></td><td>${esc(d.type)}</td><td>${status}</td>
+          <td class="num">${ago(c.connectedAt)}</td><td class="num">${c.joinsIn} / ${c.joinsOut}</td>`;
+        tr.onclick = () => showDetail(d.ipId, c.id);
+      } else {
+        tr.className = "client nobody" + (iptSel && iptSel.ipId === d.ipId && !iptSel.clientId ? " sel" : "");
+        tr.innerHTML = `<td><i>Nobody connected</i>${d.lastOffline ? `<br><small>last seen ${ago(d.lastOffline)} ago</small>` : ""}</td><td>—</td>
+          <td class="mono"><b>${d.ipId}</b></td><td>${esc(d.type)}</td><td>${status}</td><td class="num">—</td><td class="num">—</td>`;
+        tr.onclick = () => showDetail(d.ipId, null);
+      }
+      tb.appendChild(tr);
+    }
+  }
+  renderDetail();
+}
+
+function showDetail(ipId, clientId) {
+  iptSel = { ipId, clientId };
+  $("#login-form").style.display = "none";
+  $("#d-status").textContent = "";
+  refreshIpTable();
+}
+
+function kv(label, value, raw) {
+  if (value === null || value === undefined || value === "") return "";
+  return `<div><span>${esc(label)}</span>${raw ? value : esc(value)}</div>`;
+}
+
+function renderDetail() {
+  const box = $("#ipt-detail");
+  if (!iptSel) { box.style.display = "none"; return; }
+  const d = iptData.find(x => x.ipId === iptSel.ipId);
+  if (!d) { box.style.display = "none"; iptSel = null; return; }
+  const c = iptSel.clientId ? d.clients.find(x => x.id === iptSel.clientId) : null;
+  if (iptSel.clientId && !c) { $("#d-status").textContent = "That client disconnected."; iptSel.clientId = null; }
+  box.style.display = "block";
+  $("#d-title").textContent = c ? `${(c.transport === "EISC" ? c.peer : null) || c.hostname || c.model || c.peer || c.endpoint || "Client"} → IP ID ${d.ipId}` : `IP ID ${d.ipId}`;
+  $("#d-panel").href = `panel.html?ipid=${d.ipId}&slot=${d.slot}`;
+  $("#d-login-toggle").style.display = c && c.transport !== "EISC" && c.address ? "" : "none";
+  $("#d-identify").style.display = d.clients.some(x => x.transport !== "EISC") ? "" : "none";
+
+  let h = "";
+  if (c) {
+    h += `<h3>Client</h3>`;
+    h += kv("Hostname", c.hostname) + kv("What it is", c.kind) + kv("Model", c.model) + kv("Firmware", c.firmware)
+       + kv("MAC address", c.mac) + kv("Linked to", c.peer) + kv("Address", c.endpoint) + kv("Transport", c.transport)
+       + kv("Identification", c.probeStatus) + kv("Last identified", c.lastProbe ? when(c.lastProbe) : null)
+       + kv("User agent", c.userAgent);
+    h += `<h3>Connection</h3>`;
+    h += kv("Connected", when(c.connectedAt)) + kv("Last message from client", when(c.lastActivity))
+       + kv("Round-trip time", c.latencyMs != null ? `${c.latencyMs} ms` : null) + kv("Heartbeats", c.heartbeats)
+       + kv("Waiting to send", c.queued != null ? `${c.queued} packets` : null) + kv("Errors", c.errors);
+    h += `<h3>Traffic</h3>`;
+    h += kv("Joins from client (presses, values)", c.joinsIn) + kv("Feedback joins sent", c.joinsOut)
+       + kv("Messages in / out", `${c.messagesIn} / ${c.messagesOut}`) + kv("Data in / out", `${bytes(c.bytesIn)} / ${bytes(c.bytesOut)}`);
+    const det = Object.entries(c.details || {});
+    const plain = det.filter(([k]) => !k.startsWith("Console: "));
+    const consoleOut = det.filter(([k]) => k.startsWith("Console: "));
+    if (plain.length) { h += `<h3>Reported by the device / browser</h3>`; for (const [k, v] of plain) h += kv(k, v); }
+    if (consoleOut.length) {
+      h += `<h3>Console (logged in)</h3>`;
+      for (const [k, v] of consoleOut) h += `<div style="grid-column:1/-1"><span>${esc(k.slice(9))}</span><pre class="out">${esc(v)}</pre></div>`;
+    }
+  }
+  h += `<h3>IP ID ${d.ipId}</h3>`;
+  h += kv("Type", d.type) + kv("Description", d.description) + kv("Status", d.online ? `online · ${d.connections} connection${d.connections === 1 ? "" : "s"}` : "offline")
+     + kv("Registered", when(d.registeredAt)) + kv("Last came online", d.lastOnline ? when(d.lastOnline) : "never")
+     + kv("Last went offline", d.lastOffline ? when(d.lastOffline) : null) + kv("Connections since registered", d.totalConnects)
+     + kv("Inputs received", d.inputsReceived) + kv("Feedback changes sent", d.feedbackSent)
+     + kv("Feedback joins set", d.feedbackJoins) + kv("Input joins seen", d.inputJoins);
+  $("#d-body").innerHTML = h;
+}
+
+$("#d-close").onclick = () => { iptSel = null; renderDetail(); refreshIpTable(); };
+$("#d-identify").onclick = async () => {
+  if (!iptSel) return;
+  $("#d-status").textContent = "Identifying… (reverse DNS and Crestron autodiscovery, a few seconds)";
+  try { await api(`/api/slots/${sel}/iptable/${iptSel.ipId}/identify`, { method: "POST" }); $("#d-status").textContent = "Identification refreshed."; }
+  catch (e) { $("#d-status").textContent = e.message; }
+  refreshIpTable();
+};
+$("#d-login-toggle").onclick = () => {
+  const f = $("#login-form");
+  f.style.display = f.style.display === "flex" ? "none" : "flex";
+  if (f.style.display === "flex") $("#l-user").focus();
+};
+$("#login-form").onsubmit = async e => {
+  e.preventDefault();
+  if (!iptSel?.clientId) return;
+  const body = { username: $("#l-user").value, password: $("#l-pass").value, port: parseInt($("#l-port").value || "22", 10) };
+  $("#l-pass").value = "";
+  $("#d-status").textContent = "Logging in and reading… (up to ~40 seconds)";
+  try {
+    const r = await api(`/api/slots/${sel}/iptable/${iptSel.ipId}/clients/${iptSel.clientId}/login`,
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    $("#d-status").textContent = r.message;
+    $("#login-form").style.display = "none";
+  } catch (err) { $("#d-status").textContent = err.message; }
+  refreshIpTable();
+};
 
 function line(el, text, cls) {
   const d = document.createElement("div"); if (cls) d.className = cls; d.textContent = text;
@@ -144,8 +330,9 @@ async function loadLog() {
 }
 
 function select(n) {
+  if (n !== sel) iptSel = null;
   sel = n; $("#sel-num").textContent = n; document.querySelectorAll(".sel-num2").forEach(e => e.textContent = n);
-  refreshSlots(); connectLog(); loadLog();
+  refreshSlots(); refreshIpTable(); connectLog(); loadLog();
 }
 
 $("#open-debugger").onclick = () => window.open(`debugger.html?slot=${sel}`, `openvp-debugger-${sel}`);
@@ -186,6 +373,7 @@ $("#console-in").onkeydown = e => { if (e.key === "Enter") runConsole(); };
 
 select(1);
 setInterval(refreshSlots, 3000);
+setInterval(() => { if (!document.hidden) refreshIpTable(); }, 2000);
 </script>
 </body>
 </html>

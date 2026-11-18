@@ -75,6 +75,19 @@ public sealed class ProgramSlot : IDisposable
             Processor.NotifyDeviceUnregistered(d);
     }
 
+    /// <summary>The "ipt" console command: each IP ID, then who is connected to it.</summary>
+    private string IpTableReport()
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var d in _ipTable.Values.OrderBy(d => d.IpId))
+        {
+            sb.Append($"IPID {d.IpId:X2}  {d.Type,-28} {(d.Online ? "ONLINE" : "OFFLINE")}  {d.Description}\n");
+            foreach (var c in d.Connections)
+                sb.Append($"         {c.Transport,-9} {c.Endpoint,-22} {c.Hostname ?? c.Peer ?? "-",-24} {c.ClientKind ?? ""}\n");
+        }
+        return sb.Length == 0 ? "IP table is empty." : sb.ToString().TrimEnd('\n');
+    }
+
     // ---------- logging, tracing, console ----------
 
     public void Log(string level, string message) => Processor.WriteLog(new LogEntry(DateTimeOffset.Now, Number, level, message));
@@ -128,8 +141,7 @@ public sealed class ProgramSlot : IDisposable
             case "progcomments" or "appstat":
                 return $"Slot {Number}: {State}\nProgram: {Runtime?.ProgramName ?? "(none)"}\nType: {Runtime?.Kind ?? "-"}\nFile: {ProgramPath ?? "-"}";
             case "ipt":
-                return string.Join('\n', _ipTable.Values.OrderBy(d => d.IpId)
-                    .Select(d => $"IPID {d.IpId:X2}  {d.Type,-28} {(d.Online ? "ONLINE" : "OFFLINE")}  {d.Description}"));
+                return IpTableReport();
             case "cpuload" or "ramfree" or "taskstat" or "metrics":
                 return MetricsReport.Console(Processor, this, name.ToLowerInvariant());
             case "signals":

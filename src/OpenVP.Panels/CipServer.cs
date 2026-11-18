@@ -204,6 +204,8 @@ internal sealed class CipSession
     private int _queueLimit = MaxQueuedPackets;
     private NetworkStream? _stream;
     private JoinDevice? _device;
+    private DeviceConnection _conn = null!;
+    private DateTimeOffset? _lastHeartbeat;
 
     public CipSession(TcpClient client, Processor processor, CipServer server)
     {
@@ -217,6 +219,11 @@ internal sealed class CipSession
         using var _ = _client;
         _stream = _client.GetStream();
         var remote = _client.Client.RemoteEndPoint?.ToString() ?? "?";
+        var ep = _client.Client.RemoteEndPoint as IPEndPoint;
+        var addr = ep?.Address is { IsIPv4MappedToIPv6: true } a4 ? a4.MapToIPv4() : ep?.Address;
+        _conn = new DeviceConnection("CIP", addr?.ToString(), ep?.Port ?? 0) { QueueDepth = () => Volatile.Read(ref _queued) };
+        _conn.SetDetail("Local port", ((IPEndPoint?)_client.Client.LocalEndPoint)?.Port.ToString());
+        ClientIdentifier.Begin(_conn); // hostname, model, firmware: in the background, ready by the time anyone looks
         _server.Event(1, $"connection from {remote}");
         _processor.DeviceUnregistered += OnUnregistered;
         var sender = SendLoop(_sendCts.Token);
@@ -231,6 +238,7 @@ internal sealed class CipSession
                 var payload = new byte[len];
                 if (len > 0 && !await ReadExactly(payload, ct)) break;
                 if (_server.LogPackets) _server.Log($"<- {header[0]:X2} {Convert.ToHexString(payload)}"); // hex only when logging
+                _conn.RecordIn(3 + len);
                 Handle(header[0], payload);
             }
         }
@@ -263,15 +271,23 @@ internal sealed class CipSession
             Detach();
             var known = _processor.FindDevice(ipId) != null;
             _device = DeviceDirectory.Resolve(_processor, ipId, null);
-            _server.Event(_device.Slot, $"panel registered as IP ID {ipId:X2}" + (known ? $" (slot {_device.Slot}, {_device.Type})" : " — no loaded program has this IP ID; check the panel's IP ID"));
+            var who = _conn.Hostname ?? _conn.Model;
+            _server.Event(_device.Slot, $"panel registered as IP ID {ipId:X2}" + (who != null ? $" from {who}" : "") + (known ? $" (slot {_device.Slot}, {_device.Type})" : " — no loaded program has this IP ID; check the panel's IP ID"));
+            // The connect request is the only thing a CIP client says about itself; keep it for identifying client types.
+            _conn.SetDetail("Connect request", $"{type:X2} {Convert.ToHexString(payload)}");
+            _conn.SetDetail("IP ID requested", ipId.ToString("X2"));
             _device.FeedbackChanged += OnFeedback;
-            _device.AttachConnection();
+            _device.AttachConnection(_conn);
             Send(Cip.ConnectOk(ipId));
             return;
         }
         switch (type)
         {
             case Cip.HeartbeatRequest:
+                var now = DateTimeOffset.Now;
+                if (_lastHeartbeat is { } prev) _conn.SetDetail("Heartbeat interval", $"{(now - prev).TotalSeconds:0.0} s");
+                _lastHeartbeat = now;
+                Interlocked.Increment(ref _conn.Heartbeats);
                 Send(Cip.Heartbeat());
                 return;
             case Cip.Disconnect:
@@ -292,7 +308,10 @@ internal sealed class CipSession
             return;
         }
         if (Cip.DecodeJoin(type, payload) is var (key, value) && _device != null)
+        {
+            Interlocked.Increment(ref _conn.JoinsIn);
             _device.ReceiveInput(key, value);
+        }
     }
 
     private void OnFeedback(JoinDevice dev, JoinKey key, object value)
@@ -306,6 +325,7 @@ internal sealed class CipSession
             SigKind.Analog => Cip.Analog(key.Join, (ushort)value),
             _ => Cip.Serial(key.Join, (string)value)
         };
+        Interlocked.Increment(ref _conn.JoinsOut);
         Send(packet);
     }
 
@@ -318,7 +338,7 @@ internal sealed class CipSession
     {
         if (_device == null) return;
         _device.FeedbackChanged -= OnFeedback;
-        _device.DetachConnection();
+        _device.DetachConnection(_conn);
         _device = null;
     }
 
@@ -351,6 +371,7 @@ internal sealed class CipSession
                 {
                     Interlocked.Decrement(ref _queued);
                     if (_server.LogPackets) _server.Log($"-> {Convert.ToHexString(packet)}");
+                    _conn.RecordOut(packet.Length);
                     buf.Write(packet);
                 }
                 await _stream!.WriteAsync(buf.WrittenMemory, ct);

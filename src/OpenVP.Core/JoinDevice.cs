@@ -20,7 +20,10 @@ public sealed class JoinDevice
 {
     private readonly ConcurrentDictionary<JoinKey, object> _toDevice = new();
     private readonly ConcurrentDictionary<JoinKey, object> _fromDevice = new();
+    private readonly ConcurrentDictionary<string, DeviceConnection> _clients = new();
+    private readonly object _connGate = new();
     private int _connections;
+    private long _totalConnects, _inputsReceived, _feedbackSent;
 
     public JoinDevice(int slot, uint ipId, string type, string description)
     {
@@ -39,6 +42,22 @@ public sealed class JoinDevice
     public bool Online => _connections > 0;
 
     public int ConnectionCount => _connections;
+
+    /// <summary>Who is attached right now: address, hostname, what kind of client, counters.</summary>
+    public IReadOnlyList<DeviceConnection> Connections => _clients.Values.OrderBy(c => c.ConnectedAt).ToList();
+
+    public DeviceConnection? FindConnection(string id) => _clients.TryGetValue(id, out var c) ? c : null;
+
+    /// <summary>When the device last came online or went offline (null = never).</summary>
+    public DateTimeOffset? LastOnline { get; private set; }
+    public DateTimeOffset? LastOffline { get; private set; }
+    public DateTimeOffset RegisteredAt { get; } = DateTimeOffset.Now;
+    /// <summary>Connections made to this IP ID since it was registered.</summary>
+    public long TotalConnects => Interlocked.Read(ref _totalConnects);
+    public long InputsReceived => Interlocked.Read(ref _inputsReceived);
+    public long FeedbackSent => Interlocked.Read(ref _feedbackSent);
+    public int FeedbackJoinCount => _toDevice.Count;
+    public int InputJoinCount => _fromDevice.Count;
 
     /// <summary>Raised when the program sets a feedback join. Transports subscribe.</summary>
     public event Action<JoinDevice, JoinKey, object>? FeedbackChanged;
@@ -71,7 +90,10 @@ public sealed class JoinDevice
         if (stored && !changed && key.Kind != SigKind.Serial) return;
         _toDevice[key] = value;
         if (changed || key.Kind == SigKind.Serial)
+        {
+            Interlocked.Increment(ref _feedbackSent);
             FeedbackChanged?.Invoke(this, key, value);
+        }
     }
 
     /// <summary>Transport side: the device pressed a button or sent a value.</summary>
@@ -81,19 +103,54 @@ public sealed class JoinDevice
         var old = GetInput(key);
         _fromDevice[key] = value;
         if (!SigValue.AreEqual(old, value) || key.Kind == SigKind.Serial)
+        {
+            Interlocked.Increment(ref _inputsReceived);
             InputReceived?.Invoke(this, key, value);
+        }
     }
 
-    public void AttachConnection()
-    {
-        if (Interlocked.Increment(ref _connections) == 1)
-            OnlineChanged?.Invoke(this, true);
-    }
+    /// <summary>Attach a client without details (kept for callers that only count connections).</summary>
+    public void AttachConnection() => AttachConnection(new DeviceConnection("Internal"));
 
+    /// <summary>Detach one client attached with <see cref="AttachConnection()"/>.</summary>
     public void DetachConnection()
     {
-        var n = Interlocked.Decrement(ref _connections);
-        if (n < 0) { Interlocked.Exchange(ref _connections, 0); return; }
+        DeviceConnection? anon;
+        lock (_connGate) anon = _clients.Values.Where(c => c.Transport == "Internal").OrderBy(c => c.ConnectedAt).FirstOrDefault();
+        if (anon != null) DetachConnection(anon);
+        else DetachCore();
+    }
+
+    /// <summary>A transport attached: the device is online while at least one client is attached.</summary>
+    public void AttachConnection(DeviceConnection client)
+    {
+        bool first;
+        lock (_connGate)
+        {
+            if (!_clients.TryAdd(client.Id, client)) return;
+            first = ++_connections == 1;
+            _totalConnects++;
+            if (first) LastOnline = DateTimeOffset.Now;
+        }
+        if (first) OnlineChanged?.Invoke(this, true);
+    }
+
+    public void DetachConnection(DeviceConnection client)
+    {
+        lock (_connGate)
+            if (!_clients.TryRemove(client.Id, out _)) return;
+        DetachCore();
+    }
+
+    private void DetachCore()
+    {
+        int n;
+        lock (_connGate)
+        {
+            n = --_connections;
+            if (n < 0) { _connections = 0; return; }
+            if (n == 0) LastOffline = DateTimeOffset.Now;
+        }
         if (n == 0)
         {
             // Release any held digitals so a dropped panel doesn't leave a press stuck high.

@@ -22,7 +22,10 @@ public sealed class Processor : IDisposable
         DataDirectory = Path.GetFullPath(dataDirectory);
         System.IO.Directory.CreateDirectory(DataDirectory);
         Slots = Enumerable.Range(1, slotCount).Select(n => new ProgramSlot(this, n)).ToArray();
-        Bus = new IntersystemBus();
+        Bus = new IntersystemBus
+        {
+            DescribeSlot = n => n >= 1 && n <= Slots.Count && Slots[n - 1].Runtime is { } rt ? $"slot {n} · {rt.ProgramName}" : $"slot {n}"
+        };
         Metrics = new MetricsSampler(this);
     }
 

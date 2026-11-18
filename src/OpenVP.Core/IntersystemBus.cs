@@ -14,6 +14,31 @@ public sealed class IntersystemBus
 {
     private readonly ConcurrentDictionary<uint, List<JoinDevice>> _links = new();
     private readonly object _gate = new();
+    // The connection each endpoint holds for each of its peers, so the IP table can say who an EISC is linked to.
+    private readonly Dictionary<(JoinDevice endpoint, JoinDevice peer), DeviceConnection> _peerLinks = new();
+
+    /// <summary>Optional: describes a slot for the IP table ("slot 2 · MyProgram"). Set by the processor.</summary>
+    public Func<int, string>? DescribeSlot { get; set; }
+
+    private void Link(JoinDevice endpoint, JoinDevice peer)
+    {
+        var c = new DeviceConnection("EISC", "127.0.0.2")
+        {
+            Peer = DescribeSlot?.Invoke(peer.Slot) ?? $"slot {peer.Slot}",
+            ClientKind = "EISC link to another slot",
+            ProbeStatus = "internal link"
+        };
+        c.SetDetail("Peer slot", peer.Slot.ToString());
+        c.SetDetail("Peer IP ID", peer.IpId.ToString("X2"));
+        c.SetDetail("Peer type", peer.Type);
+        _peerLinks[(endpoint, peer)] = c;
+        endpoint.AttachConnection(c);
+    }
+
+    private void Unlink(JoinDevice endpoint, JoinDevice peer)
+    {
+        if (_peerLinks.Remove((endpoint, peer), out var c)) endpoint.DetachConnection(c);
+    }
 
     public static bool IsLocalAddress(string address) =>
         address is "127.0.0.1" or "127.0.0.2" or "localhost" or "::1" or "";
@@ -31,8 +56,8 @@ public sealed class IntersystemBus
             // Each endpoint counts its peers as connections, so it reports online once linked.
             foreach (var peer in list.Where(p => p != endpoint))
             {
-                peer.AttachConnection();
-                endpoint.AttachConnection();
+                Link(peer, endpoint);
+                Link(endpoint, peer);
                 // Bring the newcomer up to date with what the peer already set.
                 foreach (var (k, v) in peer.FeedbackSnapshot()) endpoint.ReceiveInput(k, v);
                 foreach (var (k, v) in endpoint.FeedbackSnapshot()) peer.ReceiveInput(k, v);
@@ -49,8 +74,8 @@ public sealed class IntersystemBus
             endpoint.FeedbackChanged -= Forward;
             foreach (var peer in list)
             {
-                peer.DetachConnection();
-                endpoint.DetachConnection();
+                Unlink(peer, endpoint);
+                Unlink(endpoint, peer);
             }
         }
     }
@@ -62,6 +87,12 @@ public sealed class IntersystemBus
         {
             if (!_links.TryGetValue(source.IpId, out var list)) return;
             peers = list.Where(p => p != source).ToList();
+            foreach (var p in peers)
+            {
+                // source's connection to p carries the join out; p's connection to source brings it in.
+                if (_peerLinks.TryGetValue((source, p), out var outLink)) { Interlocked.Increment(ref outLink.JoinsOut); outLink.RecordOut(0); }
+                if (_peerLinks.TryGetValue((p, source), out var inLink)) { Interlocked.Increment(ref inLink.JoinsIn); inLink.RecordIn(0); }
+            }
         }
         foreach (var p in peers) p.ReceiveInput(key, value);
     }

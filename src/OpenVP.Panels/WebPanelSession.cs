@@ -34,19 +34,29 @@ public sealed class WebPanelSession
 
     private readonly Channel<Out> _outbox = Channel.CreateUnbounded<Out>(new UnboundedChannelOptions { SingleReader = true });
     private JoinDevice? _device;
+    private readonly DeviceConnection _conn;
 
     public WebPanelSession(WebSocket socket, Processor processor, uint ipId, int? slot)
+        : this(socket, processor, ipId, slot, new DeviceConnection("Web panel")) { }
+
+    /// <param name="connection">Who the client is (address, User-Agent); the server fills it from the HTTP request.</param>
+    public WebPanelSession(WebSocket socket, Processor processor, uint ipId, int? slot, DeviceConnection connection)
     {
         _socket = socket;
         _processor = processor;
         _ipId = ipId;
         _slot = slot;
+        _conn = connection;
+        _conn.SetDetail("IP ID requested", ipId.ToString("X2"));
     }
+
+    public DeviceConnection Connection => _conn;
 
     public async Task RunAsync(CancellationToken ct)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _processor.DeviceUnregistered += OnUnregistered;
+        ClientIdentifier.Begin(_conn);
         Attach();
         var sender = SendLoop(cts.Token);
         try { await ReceiveLoop(cts.Token); }
@@ -68,8 +78,8 @@ public sealed class WebPanelSession
     {
         _device = DeviceDirectory.Resolve(_processor, _ipId, _slot);
         _device.FeedbackChanged += OnFeedback;
-        _device.AttachConnection();
-        Queue(new JsonObject { ["t"] = "hello", ["ipid"] = _ipId, ["slot"] = _device.Slot, ["type"] = _device.Type });
+        _device.AttachConnection(_conn);
+        Queue(new JsonObject { ["t"] = "hello", ["ipid"] = _ipId, ["slot"] = _device.Slot, ["type"] = _device.Type, ["connection"] = _conn.Id });
         foreach (var (k, v) in _device.FeedbackSnapshot()) OnFeedback(_device, k, v);
     }
 
@@ -77,7 +87,7 @@ public sealed class WebPanelSession
     {
         if (_device == null) return;
         _device.FeedbackChanged -= OnFeedback;
-        _device.DetachConnection();
+        _device.DetachConnection(_conn);
         _device = null;
     }
 
@@ -93,6 +103,7 @@ public sealed class WebPanelSession
 
     private void OnFeedback(JoinDevice dev, JoinKey key, object value)
     {
+        Interlocked.Increment(ref _conn.JoinsOut);
         _outbox.Writer.TryWrite(new Out(key, value, null));
     }
 
@@ -124,13 +135,18 @@ public sealed class WebPanelSession
         {
             if (_socket.State != WebSocketState.Open) break;
             if (o.Raw != null)
-                await _socket.SendAsync(Encoding.UTF8.GetBytes(o.Raw), WebSocketMessageType.Text, true, ct);
+            {
+                var bytes = Encoding.UTF8.GetBytes(o.Raw);
+                _conn.RecordOut(bytes.Length);
+                await _socket.SendAsync(bytes, WebSocketMessageType.Text, true, ct);
+            }
             else
             {
                 buf.Clear();
                 w.Reset(buf);
                 WriteFeedback(w, o);
                 w.Flush();
+                _conn.RecordOut(buf.WrittenCount);
                 await _socket.SendAsync(buf.WrittenMemory, WebSocketMessageType.Text, true, ct);
             }
         }
@@ -146,8 +162,30 @@ public sealed class WebPanelSession
             if (r.MessageType == WebSocketMessageType.Close) break;
             sb.Append(Encoding.UTF8.GetString(buffer, 0, r.Count));
             if (!r.EndOfMessage) continue;
-            Handle(sb.ToString());
+            var text = sb.ToString();
+            _conn.RecordIn(Encoding.UTF8.GetByteCount(text));
+            Handle(text);
             sb.Clear();
+        }
+    }
+
+    /// <summary>
+    /// What the panel page says about itself: {"t":"info","screen":"1920x1080","platform":"Win32",...}.
+    /// Only short strings are kept; a page can't flood the IP table.
+    /// </summary>
+    private void ApplyClientInfo(JsonElement root)
+    {
+        var labels = new Dictionary<string, string>
+        {
+            ["screen"] = "Screen", ["viewport"] = "Viewport", ["pixelRatio"] = "Pixel ratio", ["platform"] = "Platform",
+            ["language"] = "Language", ["timezone"] = "Time zone", ["page"] = "Page", ["touch"] = "Touch points",
+            ["cores"] = "CPU cores", ["memoryGb"] = "Device memory (GB)", ["connection"] = "Network type", ["title"] = "Page title"
+        };
+        foreach (var p in root.EnumerateObject())
+        {
+            if (!labels.TryGetValue(p.Name, out var label)) continue;
+            var v = p.Value.ValueKind == JsonValueKind.String ? p.Value.GetString() : p.Value.ToString();
+            if (v is { Length: > 0 }) _conn.SetDetail(label, v.Length > 200 ? v[..200] : v);
         }
     }
 
@@ -158,7 +196,14 @@ public sealed class WebPanelSession
             using var doc = JsonDocument.Parse(text);
             var root = doc.RootElement;
             var t = root.GetProperty("t").GetString() ?? "";
-            if (t == "ping") { Queue(new JsonObject { ["t"] = "pong" }); return; }
+            if (t == "ping")
+            {
+                Interlocked.Increment(ref _conn.Heartbeats);
+                if (root.TryGetProperty("rtt", out var rtt) && rtt.ValueKind == JsonValueKind.Number) _conn.LatencyMs = rtt.GetDouble();
+                Queue(new JsonObject { ["t"] = "pong" });
+                return;
+            }
+            if (t == "info") { ApplyClientInfo(root); return; }
             var kind = JoinKey.ParseKind(t);
             var join = root.GetProperty("j").GetUInt32();
             var v = root.GetProperty("v");
@@ -169,10 +214,12 @@ public sealed class WebPanelSession
                 _ => v.ValueKind == JsonValueKind.String ? v.GetString()! : v.ToString()
             };
             var so = root.TryGetProperty("so", out var soEl) && soEl.ValueKind == JsonValueKind.Number ? soEl.GetUInt32() : 0u;
+            Interlocked.Increment(ref _conn.JoinsIn);
             _device?.ReceiveInput(new JoinKey(kind, join, so), value);
         }
         catch (Exception)
         {
+            Interlocked.Increment(ref _conn.Errors);
             Queue(new JsonObject { ["t"] = "error", ["message"] = "Bad message: " + (text.Length > 200 ? text[..200] : text) });
         }
     }

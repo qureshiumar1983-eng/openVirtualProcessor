@@ -81,7 +81,47 @@ public static class OpenVpServer
             type = d.Type,
             description = d.Description,
             online = d.Online,
-            connections = d.ConnectionCount
+            connections = d.ConnectionCount,
+            registeredAt = d.RegisteredAt,
+            lastOnline = d.LastOnline,
+            lastOffline = d.LastOffline,
+            totalConnects = d.TotalConnects,
+            inputsReceived = d.InputsReceived,
+            feedbackSent = d.FeedbackSent,
+            feedbackJoins = d.FeedbackJoinCount,
+            inputJoins = d.InputJoinCount,
+            clients = d.Connections.Select(ConnectionDto)
+        };
+
+        object ConnectionDto(DeviceConnection c) => new
+        {
+            id = c.Id,
+            transport = c.Transport,
+            address = c.RemoteAddress,
+            port = c.RemotePort,
+            endpoint = c.Endpoint,
+            hostname = c.Hostname,
+            kind = c.ClientKind,
+            model = c.Model,
+            firmware = c.Firmware,
+            mac = c.MacAddress,
+            peer = c.Peer,
+            userAgent = c.UserAgent,
+            probeStatus = c.ProbeStatus,
+            lastProbe = c.LastProbe,
+            connectedAt = c.ConnectedAt,
+            lastActivity = c.LastActivity,
+            messagesIn = Interlocked.Read(ref c.MessagesIn),
+            messagesOut = Interlocked.Read(ref c.MessagesOut),
+            bytesIn = Interlocked.Read(ref c.BytesIn),
+            bytesOut = Interlocked.Read(ref c.BytesOut),
+            joinsIn = Interlocked.Read(ref c.JoinsIn),
+            joinsOut = Interlocked.Read(ref c.JoinsOut),
+            heartbeats = Interlocked.Read(ref c.Heartbeats),
+            errors = Interlocked.Read(ref c.Errors),
+            latencyMs = c.LatencyMs < 0 ? (double?)null : c.LatencyMs,
+            queued = c.QueueDepth?.Invoke(),
+            details = c.Details
         };
 
         object StepDto(ProgramSlot s)
@@ -182,6 +222,38 @@ public static class OpenVpServer
         });
         slotApi.MapPost("/stop", (int n) => { processor.Slot(n).Stop(); return SlotDto(processor.Slot(n)); });
         slotApi.MapPost("/unload", (int n) => { processor.Slot(n).Unload(); return SlotDto(processor.Slot(n)); });
+
+        // IP table: every IP ID in the slot with who is connected to it and what is known about them.
+        slotApi.MapGet("/iptable", (int n) => processor.Slot(n).Devices.OrderBy(d => d.IpId).Select(DeviceDto));
+
+        JoinDevice? FindIpId(int n, string ipid) =>
+            uint.TryParse(ipid, System.Globalization.NumberStyles.HexNumber, null, out var id) ? processor.Slot(n).FindDevice(id) : null;
+
+        // Run the identification again (reverse DNS, Crestron autodiscovery) for everything on one IP ID.
+        slotApi.MapPost("/iptable/{ipid}/identify", async (int n, string ipid) =>
+        {
+            var dev = FindIpId(n, ipid);
+            if (dev == null) return Results.NotFound(new { error = $"Slot {n} has no IP ID {ipid}." });
+            await Task.WhenAll(dev.Connections.Where(c => c.Transport != "EISC").Select(c => ClientIdentifier.IdentifyAsync(c)));
+            return Results.Ok(DeviceDto(dev));
+        });
+
+        // Log in to a connected device over SSH with credentials typed in for this request (never stored),
+        // run read-only console commands, and add what they return to the IP table.
+        slotApi.MapPost("/iptable/{ipid}/clients/{cid}/login", async (int n, string ipid, string cid, JsonElement body, CancellationToken ct) =>
+        {
+            var conn = FindIpId(n, ipid)?.FindConnection(cid);
+            if (conn == null) return Results.NotFound(new { error = "That connection is gone; refresh the IP table." });
+            if (conn.Transport == "EISC") return Results.BadRequest(new { error = "An EISC link to another slot has nothing to log in to." });
+            string Str(string k) => body.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
+            var port = body.TryGetProperty("port", out var p) && p.TryGetInt32(out var pn) && pn is > 0 and < 65536 ? pn : 22;
+            if (Str("username").Length == 0) return Results.BadRequest(new { error = "Enter the device's username." });
+            var result = await DeviceConsole.ReadAsync(conn, Str("username"), Str("password"), port, ct);
+            processor.Slot(n).Log(result.Ok ? "Notice" : "Warning", $"[IP table] IPID {ipid.ToUpperInvariant()} {conn.Endpoint}: {result.Message}");
+            return result.Ok
+                ? Results.Ok(new { message = result.Message, client = ConnectionDto(conn) })
+                : Results.UnprocessableEntity(new { error = result.Message, client = ConnectionDto(conn) });
+        });
 
         slotApi.MapGet("/signals", (int n) =>
             (processor.Slot(n).Runtime?.GetSignals() ?? Array.Empty<SignalInfo>())
@@ -355,8 +427,15 @@ public static class OpenVpServer
                 return;
             }
             int? slot = int.TryParse(ctx.Request.Query["slot"], out var s) ? s : null;
+            var remote = ctx.Connection.RemoteIpAddress;
+            if (remote is { IsIPv4MappedToIPv6: true }) remote = remote.MapToIPv4();
+            var client = new DeviceConnection("Web panel", remote?.ToString(), ctx.Connection.RemotePort);
+            var ua = ctx.Request.Headers.UserAgent.ToString();
+            if (ua.Length > 0) ClientIdentifier.ApplyUserAgent(client, ua.Length > 500 ? ua[..500] : ua);
+            client.SetDetail("Forwarded for", ctx.Request.Headers["X-Forwarded-For"].ToString());
+            client.SetDetail("Origin", ctx.Request.Headers.Origin.ToString());
             using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
-            await new WebPanelSession(ws, processor, ipid, slot).RunAsync(ctx.RequestAborted);
+            await new WebPanelSession(ws, processor, ipid, slot, client).RunAsync(ctx.RequestAborted);
         });
 
         // ------------------------------------------------------------------ autoload

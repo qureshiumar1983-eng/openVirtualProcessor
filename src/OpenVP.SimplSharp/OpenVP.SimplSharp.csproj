@@ -15,4 +15,8 @@
   <ItemGroup>
     <ProjectReference Include="../OpenVP.Core/OpenVP.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The server reuses the SSH client for the IP table's "log in and read". -->
+    <InternalsVisibleTo Include="openvp" />
+  </ItemGroup>
 </Project>
