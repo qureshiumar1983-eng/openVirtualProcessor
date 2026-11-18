@@ -23,11 +23,11 @@ dotnet run --project src/OpenVP.Server
 
 Open **http://localhost:8080**. From another machine you'll be asked for the access key, which the server prints when it starts (see [Security](#security)). Pick a slot, choose a `.cpz`, `.dll` or `.smw` file, and click **Load & start**. Click **open test panel** next to a device to get a browser panel at that IP ID.
 
-### Windows desktop app
+### Windows app
 
-Double-click **`Start OpenVP.bat`**. The first time, it builds the app into `dist\OpenVP` (needs the .NET 8 SDK). After that you can just run `dist\OpenVP\OpenVP.exe`, or pin it to the taskbar.
+**`OpenVP.exe`** is the whole thing in one file: no .NET install, no console window. Run it and the web console opens in its own window. Test panels and the debugger open in their own windows too. Closing the main window stops OpenVP. Your data and the log (`openvp.log`) are kept in `%LOCALAPPDATA%\OpenVP`.
 
-`OpenVP.exe` starts the server with no console window and shows the web console in its own window (using WebView2, the Edge engine built into Windows 10 and 11). Test panels and the debugger open in their own windows. Closing the main window stops the server. The data folder and the server log (`openvp.log`) are in `%LOCALAPPDATA%\OpenVP`. Run `publish-desktop.bat` again after pulling changes.
+Get it from the **Windows app** workflow on GitHub Actions (each run has an `OpenVP-windows` download), or build it yourself with `publish-desktop.bat` (needs the .NET 8 SDK; it writes `dist\OpenVP.exe`). `Start OpenVP.bat` builds it if needed and starts it. It needs the WebView2 runtime, which comes with Windows 10 and 11. The first time it runs, Windows may ask whether to let it through the firewall; allow it if you want panels or other machines to connect.
 
 Or with Docker:
 

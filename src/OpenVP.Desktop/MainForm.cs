@@ -72,38 +72,18 @@ internal class BrowserForm : Form
     }
 }
 
-/// <summary>The main window: waits for the server, then shows the web console. Closing it quits the app.</summary>
+/// <summary>The main window. Closing it quits the app (and stops the server).</summary>
 internal sealed class MainForm : BrowserForm
 {
-    private readonly ServerProcess _server;
-    private readonly Label _status = new()
+    public MainForm()
     {
-        Dock = DockStyle.Fill,
-        TextAlign = ContentAlignment.MiddleCenter,
-        Font = new Font("Segoe UI", 12f),
-        ForeColor = Color.Gainsboro,
-        BackColor = Color.FromArgb(32, 32, 32),
-        Text = "Starting OpenVP…",
-    };
-
-    public MainForm(ServerProcess server)
-    {
-        _server = server;
         Size = new Size(1280, 860);
         StartPosition = FormStartPosition.CenterScreen;
-        Controls.Add(_status);
-        _status.BringToFront();
         Load += async (_, _) => await StartAsync();
     }
 
     private async Task StartAsync()
     {
-        if (!await _server.WaitUntilReadyAsync(TimeSpan.FromSeconds(60)))
-        {
-            Program.Fail($"The OpenVP server didn't start.\n\nSee the log for details:\n{Program.LogPath}");
-            Close();
-            return;
-        }
         try
         {
             await InitWebAsync();
@@ -118,17 +98,5 @@ internal sealed class MainForm : BrowserForm
             return;
         }
         Web.CoreWebView2.Navigate(Program.BaseUri.ToString());
-        _status.Visible = false;
-        WatchServer();
-    }
-
-    /// <summary>If the server we started stops on its own, say so instead of leaving a dead page.</summary>
-    private async void WatchServer()
-    {
-        if (!_server.Owned) return;
-        while (!IsDisposed && !_server.HasExited) await Task.Delay(1000);
-        if (IsDisposed) return;
-        Program.Fail($"The OpenVP server stopped.\n\nSee the log for details:\n{Program.LogPath}");
-        Close();
     }
 }

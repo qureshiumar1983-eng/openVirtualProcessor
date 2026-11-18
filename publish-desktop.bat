@@ -1,17 +1,11 @@
 @echo off
-rem Builds the OpenVP desktop app into dist\OpenVP (OpenVP.exe + server\openvp.exe).
-rem Needs the .NET 8 SDK. Run it again after pulling changes.
+rem Builds dist\OpenVP.exe: the whole app in one file (runs without installing .NET).
+rem Building needs the .NET 8 SDK; running the exe doesn't.
 setlocal
 cd /d "%~dp0"
-
-echo Building the OpenVP server...
-dotnet publish src\OpenVP.Server -c Release -r win-x64 --self-contained false -o dist\OpenVP\server || goto :failed
-
-echo Building the OpenVP desktop app...
-dotnet publish src\OpenVP.Desktop -c Release -r win-x64 --self-contained false -o dist\OpenVP || goto :failed
-
+dotnet publish src\OpenVP.Desktop -c Release -r win-x64 -o dist || goto :failed
 echo.
-echo Done: dist\OpenVP\OpenVP.exe
+echo Done: dist\OpenVP.exe
 exit /b 0
 
 :failed

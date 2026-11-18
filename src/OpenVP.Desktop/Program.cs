@@ -1,20 +1,21 @@
-using System.Diagnostics;
 using System.Net.Http;
 using System.Net.Sockets;
+using Microsoft.AspNetCore.Builder;
+using OpenVP.Server;
 
 namespace OpenVP.Desktop;
 
 /// <summary>
-/// Starts openvp.exe (the server) hidden, waits for it to answer, then opens the web console in a window.
-/// Closing the last window stops the server. If an OpenVP server is already running on the port, the window
-/// just connects to it and leaves it running.
+/// Starts the OpenVP server inside this process, then opens the web console in a window. Closing the main
+/// window stops the server. If an OpenVP server is already running on the port (say, one started from the
+/// command line), the window just connects to it.
 /// </summary>
 internal static class Program
 {
     public const int Port = 8080;
     public static readonly Uri BaseUri = new($"http://localhost:{Port}/");
 
-    /// <summary>%LOCALAPPDATA%\OpenVP: working folder for the server (its data folder and log live here).</summary>
+    /// <summary>%LOCALAPPDATA%\OpenVP: the data folder, the server log and the browser profile live here.</summary>
     public static readonly string AppDataDir =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenVP");
 
@@ -32,36 +33,50 @@ internal static class Program
         }
 
         Directory.CreateDirectory(AppDataDir);
-        using var server = new ServerProcess();
-        try
+        using var log = new StreamWriter(new FileStream(LogPath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite)) { AutoFlush = true };
+        Console.SetOut(TextWriter.Synchronized(log));
+        Console.SetError(Console.Out);
+
+        WebApplication? server = null;
+        if (!IsOpenVpRunning())
         {
-            if (!IsOpenVpRunning())
+            if (IsPortTaken())
             {
-                if (IsPortTaken())
-                {
-                    Fail($"Port {Port} is already used by another program, so OpenVP can't start.\n\nClose that program and try again.");
-                    return;
-                }
-                var exe = Path.Combine(AppContext.BaseDirectory, "server", "openvp.exe");
-                if (!File.Exists(exe))
-                {
-                    Fail($"Can't find the OpenVP server:\n{exe}\n\nBuild the app with publish-desktop.bat.");
-                    return;
-                }
-                server.Start(exe, AppDataDir, LogPath);
+                Fail($"Port {Port} is already used by another program, so OpenVP can't start.\n\nClose that program and try again.");
+                return;
+            }
+            try
+            {
+                server = OpenVpServer.Create([
+                    $"--urls=http://0.0.0.0:{Port}",
+                    $"--OpenVP:DataDirectory={Path.Combine(AppDataDir, "data")}",
+                ]);
+                server.StartAsync().GetAwaiter().GetResult();
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+                Fail($"The OpenVP server didn't start:\n{e.Message}\n\nLog: {LogPath}");
+                return;
             }
         }
-        catch (Exception e)
-        {
-            Fail("OpenVP server didn't start: " + e.Message);
-            return;
-        }
 
-        Application.Run(new MainForm(server));
+        try
+        {
+            Application.Run(new MainForm());
+        }
+        finally
+        {
+            if (server != null)
+            {
+                try { server.StopAsync(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token).GetAwaiter().GetResult(); } catch { }
+                try { server.DisposeAsync().AsTask().GetAwaiter().GetResult(); } catch { }
+            }
+        }
     }
 
     /// <summary>True if something on the port answers like an OpenVP server.</summary>
-    public static bool IsOpenVpRunning()
+    private static bool IsOpenVpRunning()
     {
         try
         {
