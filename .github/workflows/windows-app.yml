@@ -25,7 +25,12 @@ jobs:
             Start-Sleep 1
             try { $ok = (Invoke-RestMethod http://localhost:8080/api/info).name -eq 'OpenVP' } catch { }
           }
-          if ($ok) { $page = Invoke-WebRequest http://localhost:8080/ -UseBasicParsing; $ok = $page.Content -match 'OpenVP' }
+          if ($ok) {
+            try {
+              $ok = (Invoke-WebRequest http://localhost:8080/ -UseBasicParsing).Content -match 'OpenVP'
+              $null = Invoke-WebRequest http://localhost:8080/panel.html -UseBasicParsing
+            } catch { $ok = $false; $_ }
+          }
           Stop-Process $p -Force -ErrorAction SilentlyContinue
           if (-not $ok) { Get-Content "$env:LOCALAPPDATA\OpenVP\openvp.log" -ErrorAction SilentlyContinue; throw 'OpenVP.exe did not serve the console' }
           Get-Content "$env:LOCALAPPDATA\OpenVP\openvp.log"
