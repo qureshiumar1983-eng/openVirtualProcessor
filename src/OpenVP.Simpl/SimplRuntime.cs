@@ -302,6 +302,8 @@ public sealed class SimplRuntime : IProgramRuntime
     {
         private JoinDevice? _device;
 
+        private string _source = "IPID"; // trace source for presses, built once at Attach instead of per event
+
         public DeviceNode(SimplRuntime rt, SmwSymbol sym) : base(rt, sym) { }
 
         public override SigKind InputKind(int pin) => FromGroups(Symbol.InputGroups, pin);
@@ -338,6 +340,7 @@ public sealed class SimplRuntime : IProgramRuntime
         {
             var slot = Runtime._slot;
             _device = slot.RegisterDevice(IpId, IsEisc ? "EISC" : Symbol.Name, $"SIMPL symbol #{Symbol.Handle}");
+            _source = $"IPID{_device.IpId:X2}";
             _device.InputReceived += OnDeviceInput;
             if (IsEisc) slot.Processor.Bus.Attach(_device);
             // Push current feedback values so a panel that connects later sees them.
@@ -376,7 +379,7 @@ public sealed class SimplRuntime : IProgramRuntime
             if (key.Join < 1 || key.Join > size) return; // join not shown on the symbol
             var pin = offset + (int)key.Join;
             var handle = Symbol.Outputs.Count >= pin ? Symbol.Outputs[pin - 1] : 0;
-            if (handle > 0) Runtime._slot.Dispatcher.Post(() => Runtime.Drive(handle, value, $"IPID{dev.IpId:X2}"));
+            if (handle > 0) Runtime._slot.Dispatcher.Post(() => Runtime.Drive(handle, value, _source));
         }
     }
 }

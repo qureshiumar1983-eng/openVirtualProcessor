@@ -405,12 +405,14 @@ public sealed partial class LpzRuntime : IProgramRuntime
         private readonly int _inDigital, _inAnalogEnd, _outDigital, _outAnalogEnd;
         private JoinDevice? _device;
         private bool _eisc;
+        private readonly string _source; // trace source for presses, built once instead of per event
         public JoinDevice? Device => _device;
         public Dictionary<uint, SmartObjectNode> SmartObjects { get; } = new();
 
         public DeviceNode(LpzRuntime rt, BinSymbol sym, uint ipId) : base(rt, sym)
         {
             _ipId = ipId;
+            _source = $"IPID{ipId:X2}";
             _inDigital = Math.Min(sym.FieldInt(10) ?? sym.Inputs.Length, sym.Inputs.Length);
             _inAnalogEnd = Math.Clamp(sym.FieldInt(12) ?? _inDigital, _inDigital, sym.Inputs.Length);
             _outDigital = Math.Min(sym.FieldInt(11) ?? sym.Outputs.Length, sym.Outputs.Length);
@@ -471,7 +473,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
             var pin = OutPin(key);
             if (pin < 1) return;
             var sig = Symbol.Outputs[pin - 1];
-            if (sig > 1) Runtime._slot.Dispatcher.Post(() => Runtime.Drive(sig, value, $"IPID{dev.IpId:X2}"));
+            if (sig > 1) Runtime._slot.Dispatcher.Post(() => Runtime.Drive(sig, value, _source));
         }
     }
 }
