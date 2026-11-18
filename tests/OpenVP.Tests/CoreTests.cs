@@ -25,6 +25,34 @@ public static class CoreTests
     }
 
     [Test]
+    public static void Feedback_snapshot_lists_a_join_set_to_its_default_and_repeats_stay_quiet()
+    {
+        var dev = new JoinDevice(1, 3, "XPanel", "test");
+        var fired = new List<(JoinKey, object)>();
+        dev.FeedbackChanged += (_, k, v) => fired.Add((k, v));
+        var d1 = new JoinKey(SigKind.Digital, 1); var a1 = new JoinKey(SigKind.Analog, 1); var s1 = new JoinKey(SigKind.Serial, 1);
+
+        // A program that sets a join to its default is driving it: a panel connecting later must be told,
+        // so it can drop what an earlier program left on that join.
+        dev.SetFeedback(d1, false);
+        dev.SetFeedback(a1, (ushort)0);
+        dev.SetFeedback(s1, "");
+        var snap = dev.FeedbackSnapshot();
+        Assert.True(snap.TryGetValue(d1, out var dv) && dv is false, "digital default is in the snapshot");
+        Assert.True(snap.TryGetValue(a1, out var av) && av is (ushort)0, "analog default is in the snapshot");
+        Assert.True(snap.ContainsKey(s1), "serial default is in the snapshot");
+        Assert.Equal(1, fired.Count, "only the serial fired: digital and analog did not change");
+
+        // Repeats of a stored value stay quiet (serials still fire every time).
+        dev.SetFeedback(d1, false); dev.SetFeedback(a1, (ushort)0);
+        Assert.Equal(1, fired.Count, "unchanged digital and analog stay quiet");
+        dev.SetFeedback(s1, "");
+        Assert.Equal(2, fired.Count, "serials fire on every set");
+        dev.SetFeedback(d1, true);
+        Assert.Equal(3, fired.Count, "a change fires");
+    }
+
+    [Test]
     public static void Events_queued_before_unload_do_not_run_after_it()
     {
         using var p = new Processor(Paths.TempData());

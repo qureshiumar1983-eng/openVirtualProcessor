@@ -61,12 +61,17 @@ public sealed class JoinDevice
     public void SetFeedback(JoinKey key, object value)
     {
         value = SigValue.Coerce(key.Kind, value);
-        var old = GetFeedback(key);
-        // Serials fire on every set. Anything else that hasn't changed needs no write (interlocks and
-        // buffers re-set many outputs to the value they already hold).
-        if (key.Kind != SigKind.Serial && SigValue.AreEqual(old, value)) return;
+        var stored = _toDevice.TryGetValue(key, out var old);
+        if (!stored) old = SigValue.Default(key.Kind);
+        var changed = !SigValue.AreEqual(old!, value);
+        // Serials fire on every set. A value that is already stored needs no write (interlocks and buffers
+        // re-set many outputs to the value they already hold). The first set of a join is always stored,
+        // even at its default, so a snapshot lists every join the program drives: a panel that reconnects
+        // after a reload relies on it to clear what the previous program left lit.
+        if (stored && !changed && key.Kind != SigKind.Serial) return;
         _toDevice[key] = value;
-        FeedbackChanged?.Invoke(this, key, value);
+        if (changed || key.Kind == SigKind.Serial)
+            FeedbackChanged?.Invoke(this, key, value);
     }
 
     /// <summary>Transport side: the device pressed a button or sent a value.</summary>
