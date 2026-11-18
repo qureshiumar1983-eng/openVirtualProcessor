@@ -52,6 +52,27 @@ namespace Crestron.Logos.SplusObjects
         public SocketHandlerWrapper(SmartThreadSPLUSGLobalEventHandler handler, bool flag) : base(handler, flag) { }
     }
 
+    /// <summary>
+    /// Handler lists are public <c>List&lt;T&gt;</c> fields because compiled modules call <c>Add</c> on them,
+    /// so they can't change type. Firing an event needs a stable copy; this keeps one per list and only
+    /// copies again when the list no longer matches it (they are filled once, in the module's initializer).
+    /// </summary>
+    internal static class HandlerSnapshot
+    {
+        public static T[] Of<T>(List<T> list, ref T[] cache) where T : class
+        {
+            var c = cache;
+            if (c != null && c.Length == list.Count)
+            {
+                var same = true;
+                for (int i = 0; i < c.Length; i++)
+                    if (!ReferenceEquals(c[i], list[i])) { same = false; break; }
+                if (same) return c;
+            }
+            return cache = list.ToArray();
+        }
+    }
+
     /// <summary>DIGITAL_INPUT. Value is 1 or 0. PUSH, RELEASE and CHANGE handlers live in these lists.</summary>
     public partial class DigitalInput
     {
@@ -71,6 +92,7 @@ namespace Crestron.Logos.SplusObjects
         public List<InputChangeHandlerWrapper> OnDigitalPush = new List<InputChangeHandlerWrapper>();
         public List<InputChangeHandlerWrapper> OnDigitalRelease = new List<InputChangeHandlerWrapper>();
         public List<InputChangeHandlerWrapper> OnDigitalChange = new List<InputChangeHandlerWrapper>();
+        internal InputChangeHandlerWrapper[] PushSnap, ReleaseSnap, ChangeSnap;
 
         internal int RawValue;
         public int Value => RawValue;
@@ -93,6 +115,7 @@ namespace Crestron.Logos.SplusObjects
         public SplusObject Owner { get; }
 
         public List<InputChangeHandlerWrapper> OnAnalogChange = new List<InputChangeHandlerWrapper>();
+        internal InputChangeHandlerWrapper[] ChangeSnap;
 
         internal ushort RawValue;
         public ushort UshortValue => RawValue;

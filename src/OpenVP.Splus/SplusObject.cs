@@ -35,7 +35,10 @@ namespace Crestron.Logos.SplusObjects
 
         static SplusObject()
         {
-            // SIMPL+ runs every event on its own thread; make sure the pool doesn't throttle them.
+            // SIMPL+ runs every event on its own thread; make sure the pool doesn't throttle them. Still needed
+            // with start-up on timers: handlers block pool threads in Delay, the baton and the start-up wait,
+            // and with the default minimum 230 modules in Delay(50 ms) at once take 1.2-1.4 s instead of 90 ms
+            // (the pool adds a thread about every half second past its minimum).
             ThreadPool.GetMinThreads(out var w, out var io);
             if (w < 256) ThreadPool.SetMinThreads(256, Math.Max(io, 64));
         }
@@ -388,25 +391,26 @@ namespace Crestron.Logos.SplusObjects
                     d.RawValue = nv;
                     if (!fire) return;
                     var args = new SignalEventArgs(d, d.Id, d.ArrayStart);
-                    Fire(nv == 1 ? d.OnDigitalPush : d.OnDigitalRelease, args);
-                    Fire(d.OnDigitalChange, args);
+                    if (nv == 1) Fire(d.OnDigitalPush, ref d.PushSnap, args);
+                    else Fire(d.OnDigitalRelease, ref d.ReleaseSnap, args);
+                    Fire(d.OnDigitalChange, ref d.ChangeSnap, args);
                     break;
                 case SigKind.Analog when m_AnalogInputList.TryGetValue(id, out var a):
                     a.RawValue = value is ushort u ? u : (ushort)0;
-                    if (fire) Fire(a.OnAnalogChange, new SignalEventArgs(a, a.Id, a.ArrayStart));
+                    if (fire) Fire(a.OnAnalogChange, ref a.ChangeSnap, new SignalEventArgs(a, a.Id, a.ArrayStart));
                     break;
                 case SigKind.Serial when m_StringInputList.TryGetValue(id, out var s):
                     s.Receive(value as string ?? "");
-                    if (fire) Fire(s.OnSerialChange, new SignalEventArgs(s, s.Id, s.ArrayStart));
+                    if (fire) Fire(s.OnSerialChange, ref s.ChangeSnap, new SignalEventArgs(s, s.Id, s.ArrayStart));
                     break;
             }
         }
 
-        private void Fire(List<InputChangeHandlerWrapper> handlers, SignalEventArgs args)
+        private void Fire(List<InputChangeHandlerWrapper> handlers, ref InputChangeHandlerWrapper[] snapshot, SignalEventArgs args)
         {
             if (TraceOn) Log("Info", $"[S+ {InstanceName}] fire {handlers.Count} handler(s)");
             if (handlers.Count == 0 || _stopped) return;
-            foreach (var h in handlers.ToArray())
+            foreach (var h in HandlerSnapshot.Of(handlers, ref snapshot))
                 ThreadPool.QueueUserWorkItem(_ =>
                 {
                     if (!AllStarted.IsSet) AllStarted.Wait(TimeSpan.FromSeconds(10));
@@ -425,13 +429,41 @@ namespace Crestron.Logos.SplusObjects
                 finally { _initialized.Set(); MarkReady(); }
             }) { IsBackground = true, Name = "S+ " + InstanceName };
             t.Start();
-            // Initialization is complete once Main has had a moment to set up (Main may never return).
-            ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(50); _initialized.Set(); Thread.Sleep(1950); MarkReady(); });
+            // Initialization is complete once Main has had a moment to set up (Main may never return): after
+            // 50 ms the module counts as initialized, after 2 s as started, whatever Main is doing. Timers, so
+            // a program with hundreds of modules doesn't park a pool thread in Sleep per module for 2 s.
+            lock (_readyGate)
+            {
+                if (_stopped) return;
+                _readyTimer = new Timer(static s => ((SplusObject)s).ReadyStep(), this, 50, Timeout.Infinite);
+            }
+        }
+
+        private readonly object _readyGate = new object();
+        private Timer _readyTimer;
+        private int _readyStep;
+
+        private void ReadyStep()
+        {
+            lock (_readyGate)
+            {
+                if (_readyTimer == null) return; // stopped
+                if (_readyStep++ == 0)
+                {
+                    _initialized.Set();
+                    try { _readyTimer.Change(1950, Timeout.Infinite); } catch (ObjectDisposedException) { }
+                    return;
+                }
+                _readyTimer.Dispose();
+                _readyTimer = null;
+            }
+            MarkReady();
         }
 
         void ISplusModule.Stop()
         {
             _stopped = true;
+            lock (_readyGate) { _readyTimer?.Dispose(); _readyTimer = null; }
             lock (_waits) { foreach (var w in _waits) { w.Timer?.Dispose(); w.Done.Set(); } _waits.Clear(); }
             lock (_files) { foreach (var f in _files.Values) f.Dispose(); _files.Clear(); }
             lock (_bufferGate) Monitor.PulseAll(_bufferGate);
@@ -477,10 +509,18 @@ namespace Crestron.Logos.SplusObjects
             catch { return false; }
         }
 
+        private SocketHandlerWrapper[] _connectSnap, _disconnectSnap, _receiveSnap, _statusSnap;
+
         internal void Raise(List<SocketHandlerWrapper> handlers)
         {
             var info = new SocketEventInfo(this);
-            foreach (var h in handlers.ToArray())
+            // The four lists are the only ones raised; each keeps its own snapshot (see HandlerSnapshot).
+            var snap = ReferenceEquals(handlers, OnSocketReceive) ? HandlerSnapshot.Of(handlers, ref _receiveSnap)
+                     : ReferenceEquals(handlers, OnSocketStatus) ? HandlerSnapshot.Of(handlers, ref _statusSnap)
+                     : ReferenceEquals(handlers, OnSocketConnect) ? HandlerSnapshot.Of(handlers, ref _connectSnap)
+                     : ReferenceEquals(handlers, OnSocketDisconnect) ? HandlerSnapshot.Of(handlers, ref _disconnectSnap)
+                     : handlers.ToArray();
+            foreach (var h in snap)
                 ThreadPool.QueueUserWorkItem(_ =>
                 {
                     if (Owner?.Stopped == true) return;

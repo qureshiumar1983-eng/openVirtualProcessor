@@ -265,6 +265,44 @@ if (Run("splus"))
     }
 }
 
+// ------------------------------------------------------------ SIMPL+: many modules, input sent right after start
+if (Run("splusmany"))
+{
+    // N copies of the sample module, each with its own analog input, all driven the moment the program has
+    // loaded. Their handlers wait on the pool for every module to start, so this is where a starved thread
+    // pool shows up: how long until every module has answered, and how many pool threads that took.
+    int N = Q(230);
+    var path = SplusManyProgram(data, "splusmany", N);
+    if (path == null) Console.WriteLine("SIMPL+ sample not built; skipped");
+    else
+    {
+        var proc = Process.GetCurrentProcess();
+        var cpu0 = proc.TotalProcessorTime;
+        var sw = Stopwatch.StartNew();
+        using var p = Start(path, out var panel, ipid: 4);
+        var loaded = sw.Elapsed;
+        int peak = 0;
+        using var watch = new Timer(_ => peak = Math.Max(peak, ThreadPool.ThreadCount), null, 0, 10);
+        var left = N;
+        panel.FeedbackChanged += (_, k, val) => { if (k.Kind == SigKind.Analog && val is ushort u && u == (ushort)(k.Join * 2)) Interlocked.Decrement(ref left); };
+        for (uint i = 1; i <= N; i++) panel.ReceiveInput(new JoinKey(SigKind.Analog, i), (ushort)i);
+        while (Volatile.Read(ref left) > 0 && sw.Elapsed < TimeSpan.FromSeconds(30)) Thread.Sleep(5);
+        var done = sw.Elapsed;
+        Thread.Sleep(2500); // let the 2 s start-up timers finish too
+        var cpu = proc.TotalProcessorTime - cpu0;
+        Console.WriteLine($"{$"SIMPL+ {N} modules, all driven right after load",-74} loaded {loaded.TotalMilliseconds,6:N0} ms   all {N - left} answered after {done.TotalMilliseconds,7:N0} ms   peak pool threads {peak,4}   CPU to +2.5 s {cpu.TotalMilliseconds,6:N0} ms");
+        // Every module's PUSH handler sits in Delay(5) (50 ms) on a pool thread: with all pressed at once, how long until all are done?
+        int fell = 0;
+        panel.FeedbackChanged += (_, k, val) => { if (k.Kind == SigKind.Digital && val is false) Interlocked.Increment(ref fell); };
+        peak = 0;
+        var sw2 = Stopwatch.StartNew();
+        for (uint i = 1; i <= N; i++) panel.ReceiveInput(new JoinKey(SigKind.Digital, i), true);
+        while (Volatile.Read(ref fell) < N && sw2.Elapsed < TimeSpan.FromSeconds(60)) Thread.Sleep(5);
+        Console.WriteLine($"{$"  then PUSH on all {N}, each handler in Delay(50 ms)",-74} {fell} finished after {sw2.Elapsed.TotalMilliseconds,7:N0} ms   peak pool threads {peak,4}");
+        Console.WriteLine();
+    }
+}
+
 // ------------------------------------------------------------ timers: does the runtime keep every timer it ever made?
 if (Run("timers"))
 {
@@ -576,6 +614,28 @@ static string BigProgram(string dir, string name, int n)
         }
     }
     return Pack(dir, name, bin, 3);
+}
+static string? SplusManyProgram(string dir, string name, int n)
+{
+    var repo = new DirectoryInfo(AppContext.BaseDirectory);
+    while (repo != null && !File.Exists(Path.Combine(repo.FullName, "OpenVP.sln"))) repo = repo.Parent;
+    if (repo == null) return null;
+    var root = Path.Combine(repo.FullName, "samples", "SplusModule", "bin");
+    if (!Directory.Exists(root)) return null;
+    var dll = Directory.GetFiles(root, "Sample_Splus.dll", SearchOption.AllDirectories).OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
+    if (dll == null) return null;
+    // Panel: digital presses 1..n (module i's PRESS) and analog presses 1..n (its level); feedback digital 1..n
+    // (BUSY) and analog 1..n (its doubled output).
+    var press = Enumerable.Range(10, n).ToArray();
+    var level = Enumerable.Range(10 + n, n).ToArray();
+    var busy = Enumerable.Range(10 + 2 * n, n).ToArray();
+    var doubled = Enumerable.Range(10 + 3 * n, n).ToArray();
+    var bin = Header(name);
+    bin.AddRange(Record(-12, "IP-ID-04", [.. busy, .. doubled], [.. press, .. level], Int(6, 4), Int(10, n), Int(11, n), Int(12, 2 * n), Int(13, 2 * n)));
+    for (int i = 0; i < n; i++)
+        bin.AddRange(Record(-48, $"S-{i + 1}", [press[i], 0, level[i], 0], [busy[i], doubled[i], 0, 0],
+            Int(10, 2), Int(12, 4), Int(11, 1), Int(13, 4), Str(3, "Sample Module"), Str(3, "Sample_Splus.dll"), Int(2, 3)));
+    return Pack(dir, name, bin, 4, dll);
 }
 static string? SplusProgram(string dir, string name)
 {

@@ -111,12 +111,49 @@ internal sealed class SplusNode : LpzRuntime.Node, ISplusHost
 
     // ---------------- ISplusHost
 
+    // A module's outputs queue here and one drain on the slot thread runs them, so a burst costs one post, not
+    // one per output. The drain calls Drive once per output, in the order they were set, so each output
+    // settles before the next, as when each had its own post. It posts itself again between batches, so
+    // other events (a panel press, a timer) still get their turn.
+    private readonly object _outGate = new();
+    private List<(int sig, object value)> _outbox = new(), _spare = new();
+    private bool _drainPosted;
+
     public void Output(SigKind kind, uint id, object value)
     {
         var pin = OutputPin(kind, id);
         if (pin < 1 || pin > Symbol.Outputs.Length) return;
         var sig = Symbol.Outputs[pin - 1];
-        if (sig > 1) Runtime.Slot.Dispatcher.Post(static (n, v, s) => { var d = (SplusNode)n!; d.Runtime.Drive(s, v!, d.Symbol.Path); }, this, value, sig);
+        if (sig <= 1) return;
+        bool post;
+        lock (_outGate)
+        {
+            _outbox.Add((sig, value));
+            post = !_drainPosted;
+            _drainPosted = true;
+        }
+        if (post) Runtime.Slot.Dispatcher.Post(static (n, _, _) => ((SplusNode)n!).Drain(), this, null, 0);
+    }
+
+    private void Drain()
+    {
+        List<(int sig, object value)> batch;
+        lock (_outGate) { batch = _outbox; _outbox = _spare; _spare = batch; }
+        try
+        {
+            foreach (var (sig, value) in batch)
+            {
+                try { Runtime.Drive(sig, value, Symbol.Path); }
+                catch (Exception e) { Runtime.Slot.Log("Error", $"{Symbol.Path}: {e.Message}"); }
+            }
+        }
+        finally
+        {
+            batch.Clear();
+            bool again;
+            lock (_outGate) { again = _outbox.Count > 0; if (!again) _drainPosted = false; }
+            if (again) Runtime.Slot.Dispatcher.Post(static (n, _, _) => ((SplusNode)n!).Drain(), this, null, 0);
+        }
     }
 
     public bool IsConnected(bool isInput, SigKind kind, uint id)
