@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -22,7 +23,16 @@ public sealed class WebPanelSession
     private readonly Processor _processor;
     private readonly uint _ipId;
     private readonly int? _slot;
-    private readonly Channel<string> _outbox = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleReader = true });
+    // Feedback is queued as (key, value) and turned into JSON in SendLoop, so the slot thread only pays for an enqueue.
+    // Control messages (hello, offline, pong, error) travel as ready-made text in the same queue to keep their order.
+    private readonly struct Out(JoinKey key, object? value, string? raw)
+    {
+        public readonly JoinKey Key = key;
+        public readonly object? Value = value;
+        public readonly string? Raw = raw;
+    }
+
+    private readonly Channel<Out> _outbox = Channel.CreateUnbounded<Out>(new UnboundedChannelOptions { SingleReader = true });
     private JoinDevice? _device;
 
     public WebPanelSession(WebSocket socket, Processor processor, uint ipId, int? slot)
@@ -83,20 +93,46 @@ public sealed class WebPanelSession
 
     private void OnFeedback(JoinDevice dev, JoinKey key, object value)
     {
-        var t = key.Kind switch { SigKind.Digital => "b", SigKind.Analog => "n", _ => "s" };
-        var msg = new JsonObject { ["t"] = t, ["j"] = key.Join, ["v"] = JsonValue.Create(value) };
-        if (key.SmartObject != 0) msg["so"] = key.SmartObject;
-        Queue(msg);
+        _outbox.Writer.TryWrite(new Out(key, value, null));
     }
 
-    private void Queue(JsonObject msg) => _outbox.Writer.TryWrite(msg.ToJsonString());
+    private void Queue(JsonObject msg) => _outbox.Writer.TryWrite(new Out(default, null, msg.ToJsonString()));
+
+    private static void WriteFeedback(Utf8JsonWriter w, in Out o)
+    {
+        w.WriteStartObject();
+        w.WriteString("t", o.Key.Kind switch { SigKind.Digital => "b", SigKind.Analog => "n", _ => "s" });
+        w.WriteNumber("j", o.Key.Join);
+        w.WritePropertyName("v");
+        switch (o.Value)
+        {
+            case bool b: w.WriteBooleanValue(b); break;
+            case ushort u: w.WriteNumberValue(u); break;
+            case string str: w.WriteStringValue(str); break;
+            default: JsonSerializer.Serialize(w, o.Value); break;
+        }
+        if (o.Key.SmartObject != 0) w.WriteNumber("so", o.Key.SmartObject);
+        w.WriteEndObject();
+    }
 
     private async Task SendLoop(CancellationToken ct)
     {
-        await foreach (var msg in _outbox.Reader.ReadAllAsync(ct))
+        // One JSON object per frame (the documented format); the buffer is reused between frames.
+        var buf = new ArrayBufferWriter<byte>(256);
+        using var w = new Utf8JsonWriter(buf);
+        await foreach (var o in _outbox.Reader.ReadAllAsync(ct))
         {
             if (_socket.State != WebSocketState.Open) break;
-            await _socket.SendAsync(Encoding.UTF8.GetBytes(msg), WebSocketMessageType.Text, true, ct);
+            if (o.Raw != null)
+                await _socket.SendAsync(Encoding.UTF8.GetBytes(o.Raw), WebSocketMessageType.Text, true, ct);
+            else
+            {
+                buf.Clear();
+                w.Reset(buf);
+                WriteFeedback(w, o);
+                w.Flush();
+                await _socket.SendAsync(buf.WrittenMemory, WebSocketMessageType.Text, true, ct);
+            }
         }
     }
 
