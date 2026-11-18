@@ -40,14 +40,29 @@ public sealed class Processor : IDisposable
         var slot = Slot(slotNumber);
         var loader = _loaders.FirstOrDefault(l => l.CanLoad(path))
             ?? throw new NotSupportedException($"No runtime can load '{Path.GetFileName(path)}'. Supported: .cpz/.dll (SIMPL#), .lpz (compiled SIMPL Windows), .smw (SIMPL Windows source).");
-        slot.Unload();
-        System.IO.Directory.CreateDirectory(slot.Directory);
-        IProgramRuntime runtime;
-        try { runtime = loader.Load(path, slot); }
-        catch (Exception e) { slot.Fail(e); throw; }
-        slot.Load(path, runtime);
-        if (start) slot.Start();
+        lock (slot.Lifecycle)
+        {
+            slot.Unload();
+            System.IO.Directory.CreateDirectory(slot.Directory);
+            IProgramRuntime runtime;
+            try { runtime = loader.Load(path, slot); }
+            catch (Exception e) { slot.Fail(e); throw; }
+            slot.Load(path, runtime);
+            if (start) slot.Start();
+        }
     }
+
+    /// <summary>
+    /// Run <paramref name="action"/> while holding the slot's lifecycle lock, so nothing else can load,
+    /// start, stop or unload that slot meanwhile (for example, replacing its program files).
+    /// </summary>
+    public T WithSlotLocked<T>(int slotNumber, Func<ProgramSlot, T> action)
+    {
+        var slot = Slot(slotNumber);
+        lock (slot.Lifecycle) return action(slot);
+    }
+
+    public bool IsValidSlot(int number) => number >= 1 && number <= Slots.Count;
 
     /// <summary>Find a device by IP ID. Searches one slot, or all slots if slot is null.</summary>
     public JoinDevice? FindDevice(uint ipId, int? slot = null)

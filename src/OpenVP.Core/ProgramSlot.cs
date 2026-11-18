@@ -17,6 +17,9 @@ public sealed class ProgramSlot : IDisposable
     private readonly ConcurrentDictionary<string, ConsoleCommand> _commands = new(StringComparer.OrdinalIgnoreCase);
     private SlotDispatcher _dispatcher;
 
+    /// <summary>Held while the slot loads, starts, stops or unloads, so two requests can't interleave.</summary>
+    internal readonly object Lifecycle = new();
+
     internal ProgramSlot(Processor processor, int number)
     {
         Processor = processor;
@@ -105,50 +108,67 @@ public sealed class ProgramSlot : IDisposable
 
     public void Load(string path, IProgramRuntime runtime)
     {
-        Unload();
-        ProgramPath = path;
-        Runtime = runtime;
-        LastError = null;
-        SetState(SlotState.Loaded);
-        Log("Notice", $"Loaded {runtime.Kind} program '{runtime.ProgramName}'");
+        lock (Lifecycle)
+        {
+            Unload();
+            ProgramPath = path;
+            Runtime = runtime;
+            LastError = null;
+            SetState(SlotState.Loaded);
+            Log("Notice", $"Loaded {runtime.Kind} program '{runtime.ProgramName}'");
+        }
     }
 
     public void Start()
     {
-        if (Runtime == null) throw new InvalidOperationException($"Slot {Number} has no program loaded.");
-        try
+        lock (Lifecycle)
         {
-            Runtime.Start();
-            SetState(SlotState.Running);
-            Log("Notice", "Program started");
-        }
-        catch (Exception e)
-        {
-            Fail(e);
-            throw;
+            if (Runtime == null) throw new InvalidOperationException($"Slot {Number} has no program loaded.");
+            if (State == SlotState.Running) return;
+            try
+            {
+                Runtime.Start();
+                SetState(SlotState.Running);
+                Log("Notice", "Program started");
+            }
+            catch (Exception e)
+            {
+                Fail(e);
+                throw;
+            }
         }
     }
 
     public void Stop()
     {
-        if (Runtime == null || State != SlotState.Running) return;
-        try { Runtime.Stop(); }
-        catch (Exception e) { Log("Error", $"Error while stopping: {e.Message}"); }
-        SetState(SlotState.Stopped);
-        Log("Notice", "Program stopped");
+        lock (Lifecycle)
+        {
+            if (Runtime == null || State != SlotState.Running) return;
+            try { Runtime.Stop(); }
+            catch (Exception e) { Log("Error", $"Error while stopping: {e.Message}"); }
+            SetState(SlotState.Stopped);
+            Log("Notice", "Program stopped");
+        }
     }
 
     public void Unload()
     {
-        Stop();
-        Runtime?.Dispose();
-        Runtime = null;
-        ProgramPath = null;
-        _commands.Clear();
-        foreach (var id in _ipTable.Keys.ToList()) UnregisterDevice(id);
-        _dispatcher.Dispose();
-        _dispatcher = NewDispatcher();
-        SetState(SlotState.Empty);
+        lock (Lifecycle)
+        {
+            Stop();
+            // From here on, queued events (timers, presses, socket data) are dropped instead of running
+            // against a program that is being torn down. The runtime's own cleanup can still Invoke.
+            _dispatcher.Quiesce();
+            try { Runtime?.Dispose(); }
+            catch (Exception e) { Log("Error", $"Error while unloading: {e.Message}"); }
+            Runtime = null;
+            ProgramPath = null;
+            _commands.Clear();
+            foreach (var id in _ipTable.Keys.ToList()) UnregisterDevice(id);
+            _dispatcher.Dispose();
+            _dispatcher = NewDispatcher();
+            SetState(SlotState.Empty);
+        }
     }
 
     public void Fail(Exception e)
