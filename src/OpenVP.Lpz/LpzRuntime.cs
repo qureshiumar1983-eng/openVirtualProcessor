@@ -473,13 +473,33 @@ public sealed partial class LpzRuntime : IProgramRuntime
 
     public bool TrySetSignal(string name, object value)
     {
+        var sig = SignalNamed(name);
+        if (sig < 0) return false;
+        _slot.Dispatcher.Post(() => Drive(sig, value, "debugger"));
+        return true;
+    }
+
+    public bool TryPulseSignal(string name)
+    {
+        var sig = SignalNamed(name);
+        if (sig < 0 || _kinds[sig] != SigKind.Digital) return false;
+        // One post, so nothing (a timer, a panel press) can run between the two edges.
+        _slot.Dispatcher.Post(() =>
+        {
+            Drive(sig, true, "debugger");
+            Drive(sig, false, "debugger");
+        });
+        return true;
+    }
+
+    /// <summary>The signal a debugger name refers to ("name" or "#index"), or -1.</summary>
+    private int SignalNamed(string name)
+    {
         int sig = -1;
         if (name.StartsWith('#') && int.TryParse(name[1..], out var n)) sig = n;
         else if (_pkg.Signals != null)
             sig = _pkg.Signals.Entries.Values.FirstOrDefault(e => e.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Index ?? -1;
-        if (sig <= 1 || sig >= _kinds.Length) return false;
-        _slot.Dispatcher.Post(() => Drive(sig, value, "debugger"));
-        return true;
+        return sig <= 1 || sig >= _kinds.Length ? -1 : sig;
     }
 
     public void Dispose()

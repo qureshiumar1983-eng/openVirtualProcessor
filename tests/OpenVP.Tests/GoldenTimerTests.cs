@@ -291,6 +291,31 @@ public static partial class GoldenTests
         Check("timers_steppers", rec.Render());
     }
 
+    [Test]
+    public static void Debugger_pulse_is_two_edges_with_no_gap()
+    {
+        // A Stepper whose first step drives its own trigger (a panel press), and an OR of every step that
+        // shows on the panel. A debugger Pulse is high then low at once, so when the first step (100 ms in)
+        // drives the trigger high it is a new rising edge: the OR rises for the pulse, then once per step
+        // (the stepper restarts on its own edge, which doesn't add a rise). A press held past 100 ms hides
+        // that edge, which is what the old 200 ms pulse did.
+        var r = new Rig();
+        int trig = r.PressD(), s2 = r.Sig(), s3 = r.Sig();
+        int any = r.OutD(); // feedback d1
+        r.Add(Record(139, "S-1 Stepper", [trig], [0, trig, s2, s3], Int(15, 6),
+            Int(2, 10), Int(2, 10), Int(2, 10), Int(2, 10), Int(2, 10), Int(2, 10)));
+        r.Add(Record(2, "S-2 OR", [trig, s2, s3], [any]));
+        var (p, slots, panel, _) = Start(r.Build("debugger_pulse"));
+        using var _p = p;
+        var w = new FbWatch(panel);
+        Assert.True(slots[0].Runtime!.TryPulseSignal($"#{trig}"), "pulse accepted");
+        Assert.Eventually(() => w.Rises(1) >= 4, "OR rises for the pulse and for each of the three steps", 4000);
+        Thread.Sleep(Quiet);
+        Settle(slots);
+        Assert.Equal(4, w.Rises(1), "OR rises");
+        Assert.True(!slots[0].Runtime!.TryPulseSignal("no such signal"), "unknown signal is refused");
+    }
+
     // ------------------------------------------------------------ SIMPL Windows Delay and One Shot
 
     [Test]
