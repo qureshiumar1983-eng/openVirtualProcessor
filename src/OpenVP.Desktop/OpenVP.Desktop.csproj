@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Windows desktop app: starts the OpenVP server with no console window and shows the web console in a
+    native window (WebView2, the Edge engine that ships with Windows 10 and 11).
+    Build it with publish-desktop.bat; the server is published into a "server" folder next to OpenVP.exe.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AssemblyName>OpenVP</AssemblyName>
+    <RootNamespace>OpenVP.Desktop</RootNamespace>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationIcon>openvp.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="openvp.ico" />
+  </ItemGroup>
+</Project>
