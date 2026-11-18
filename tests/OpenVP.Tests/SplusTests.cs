@@ -68,4 +68,77 @@ public static class SplusTests
         Assert.Eventually(() => (string)panel.GetFeedback(S(2)) == "9", "WAIT loop ticks using the STEP parameter (3 per tick)");
         panel.ReceiveInput(D(2), false);
     }
+
+    [Test]
+    public static void Splus_module_keeps_working_while_stepping()
+    {
+        using var p = new Processor(Paths.TempData());
+        p.AddLoader(new LpzLoader());
+        p.LoadProgram(1, BuildProgram());
+        var panel = p.Slot(1).FindDevice(4)!;
+        Assert.Eventually(() => (string)panel.GetFeedback(S(1)) == "ready", "started");
+        var st = p.Slot(1).Stepper;
+        st.Configure(enabled: true, onlyBreakSignals: false);
+
+        var seen = new List<string>();
+        void StepUntil(Func<bool> done, string what)
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (!done())
+            {
+                if (DateTime.UtcNow > deadline) throw new Exception($"{what}; steps seen: {string.Join(", ", seen)}");
+                if (st.Paused is { } ps) { seen.Add($"{ps.Signal}={ps.Value}"); st.Next(); }
+                Thread.Sleep(20);
+            }
+        }
+
+        panel.ReceiveInput(A(1), 21);
+        StepUntil(() => panel.GetFeedback(A(1)) is ushort u && u == 42, "analog CHANGE reaches output while stepping");
+
+        panel.ReceiveInput(S(1), "World");
+        StepUntil(() => (string)panel.GetFeedback(S(1)) == "Hello, World!", "string output while stepping");
+
+        panel.ReceiveInput(D(1), true);
+        StepUntil(() => (bool)panel.GetFeedback(D(1)), "PUSH sets output while stepping");
+        StepUntil(() => !(bool)panel.GetFeedback(D(1)), "Delay then output clears while stepping");
+        panel.ReceiveInput(D(1), false);
+        panel.ReceiveInput(D(2), true);
+        StepUntil(() => (string)panel.GetFeedback(S(2)) == "9", "WAIT loop while stepping");
+        st.Run();
+    }
+
+    private static int _timerHits;
+    private static void TimerHit(object _) => Interlocked.Increment(ref _timerHits);
+
+    [Test]
+    public static void Simplsharp_callbacks_run_while_step_debugger_holds_the_logic()
+    {
+        // SIMPL+ modules lean on SIMPL# libraries (CTimer, sockets). Their callbacks must not queue behind
+        // the logic thread, which the step debugger holds at every pause.
+        using var p = new Processor(Paths.TempData());
+        p.AddLoader(new LpzLoader());
+        p.LoadProgram(1, BuildProgram());
+        var panel = p.Slot(1).FindDevice(4)!;
+        Assert.Eventually(() => (string)panel.GetFeedback(S(1)) == "ready", "started");
+
+        var st = p.Slot(1).Stepper;
+        st.Configure(enabled: true, onlyBreakSignals: false);
+        panel.ReceiveInput(A(1), 21);
+        Assert.Eventually(() => st.IsPaused, "logic paused by the step debugger");
+
+        // The program's own copy of the SIMPL# API, as a module's library would use it.
+        var alc = System.Runtime.Loader.AssemblyLoadContext.All.First(c => c.Name == "openvp-lpz-slot01");
+        var shim = alc.Assemblies.First(a => a.GetName().Name == "OpenVP.SimplSharp");
+        var timerType = shim.GetType("Crestron.SimplSharp.CTimer", throwOnError: true)!;
+        var cbType = shim.GetType("Crestron.SimplSharp.CTimerCallbackFunction", throwOnError: true)!;
+        var cb = Delegate.CreateDelegate(cbType, typeof(SplusTests).GetMethod(nameof(TimerHit),
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!);
+        _timerHits = 0;
+        using var timer = (IDisposable)Activator.CreateInstance(timerType, cb, 10L)!;
+
+        Assert.Eventually(() => Volatile.Read(ref _timerHits) == 1, "CTimer callback ran while the logic was paused");
+        Assert.True(st.IsPaused, "logic still paused");
+        st.Run();
+        Assert.Eventually(() => panel.GetFeedback(A(1)) is ushort u && u == 42, "logic carried on after Run");
+    }
 }
