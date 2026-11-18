@@ -55,6 +55,7 @@ public sealed class Processor : IDisposable
         {
             slot.Unload();
             System.IO.Directory.CreateDirectory(slot.Directory);
+            SlotFiles.EnsureRoots(slot.Directory);
             IProgramRuntime runtime;
             try { runtime = loader.Load(path, slot); }
             catch (Exception e) { slot.Fail(e); throw; }

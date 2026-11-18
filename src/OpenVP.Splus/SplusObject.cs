@@ -234,16 +234,7 @@ namespace Crestron.Logos.SplusObjects
         public ushort CheckForNVRAMDisk() => 1;
         public ushort CheckForDisk() => 1;
 
-        private string MapPath(string crestronPath)
-        {
-            var root = _host?.FileRoot ?? Path.GetTempPath();
-            var rel = (crestronPath ?? "").Replace('\\', '/').TrimStart('/');
-            foreach (var prefix in new[] { "nvram/", "user/", "html/", "romdisk/" })
-                if (rel.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) { rel = prefix.TrimEnd('/') + "/" + rel.Substring(prefix.Length); break; }
-            var full = Path.GetFullPath(Path.Combine(root, rel));
-            if (!full.StartsWith(Path.GetFullPath(root), StringComparison.Ordinal)) throw new UnauthorizedAccessException("Path outside program folder");
-            return full;
-        }
+        private string MapPath(string crestronPath) => OpenVP.Core.SlotFiles.Map(_host?.FileRoot ?? Path.GetTempPath(), crestronPath);
 
         public short FileOpen(CrestronString name, ushort flags)
         {

@@ -33,6 +33,16 @@
   @media (max-width: 1200px) { .grid2 { grid-template-columns: 1fr; } }
   .dev { font-size:12px; color:var(--muted); }
   .on { color:var(--ok); }
+  .tabs { display:flex; gap:0; }
+  .tabs button { border-radius:0; } .tabs button:first-child { border-radius:6px 0 0 6px; } .tabs button:last-child { border-radius:0 6px 6px 0; margin-left:-1px; }
+  .tabs button.active { background:#1f2a3a; border-color:var(--accent); }
+  #crumbs a { cursor:pointer; text-decoration:none; } #crumbs .sep { color:var(--muted); margin:0 4px; }
+  #files-table td.name a { cursor:pointer; text-decoration:none; }
+  #files-table td.act { text-align:right; white-space:nowrap; }
+  #files-table td.act button { padding:2px 7px; font-size:12px; }
+  #files-drop { border:1px dashed transparent; border-radius:8px; }
+  #files-drop.over { border-color:var(--accent); background:#141b25; }
+  .num { text-align:right; font-variant-numeric:tabular-nums; }
 </style>
 </head>
 <body>
@@ -67,6 +77,23 @@
       <div class="bar">
         <button id="open-debugger">Open debugger ↗</button>
         <span class="muted">Signal list and trace window for this slot, in its own window. Open one per slot to debug several programs at once.</span>
+      </div>
+    </section>
+    <section style="margin-top:16px">
+      <h2>Files · slot <span class="sel-num2">1</span></h2>
+      <div class="bar">
+        <div class="tabs"><button data-root="nvram" class="active">NVRAM</button><button data-root="user">User</button></div>
+        <span style="flex:1"></span>
+        <button id="files-mkdir">New folder</button>
+        <button id="files-up">Upload files</button>
+        <button id="files-updir" title="Upload a folder and everything in it">Upload folder</button>
+        <input type="file" id="files-pick" multiple hidden>
+        <input type="file" id="files-pickdir" webkitdirectory multiple hidden>
+      </div>
+      <div class="bar mono"><span id="crumbs"></span><span style="flex:1"></span><span class="muted" id="files-ppath" title="The path the program uses for this folder"></span></div>
+      <div id="files-drop">
+        <table id="files-table"><thead><tr><th>Name</th><th class="num">Size</th><th>Modified</th><th></th></tr></thead><tbody></tbody></table>
+        <div id="files-empty" class="muted" style="padding:10px 6px" hidden>Empty. Drop files here, or use Upload.</div>
       </div>
     </section>
     <div class="grid2" style="margin-top:16px">
@@ -145,7 +172,7 @@ async function loadLog() {
 
 function select(n) {
   sel = n; $("#sel-num").textContent = n; document.querySelectorAll(".sel-num2").forEach(e => e.textContent = n);
-  refreshSlots(); connectLog(); loadLog();
+  refreshSlots(); connectLog(); loadLog(); fPath = ""; refreshFiles();
 }
 
 $("#open-debugger").onclick = () => window.open(`debugger.html?slot=${sel}`, `openvp-debugger-${sel}`);
@@ -183,6 +210,106 @@ async function runConsole() {
 }
 $("#console-run").onclick = runConsole;
 $("#console-in").onkeydown = e => { if (e.key === "Enter") runConsole(); };
+
+// ------------------------------------------------------------------ slot files (\NVRAM, \USER)
+
+let fRoot = "nvram", fPath = "";
+const q = o => new URLSearchParams(o).toString();
+const join = (a, b) => a ? `${a}/${b}` : b;
+
+function fmtSize(n) {
+  if (n == null) return "";
+  if (n < 1024) return `${n} B`;
+  if (n < 1048576) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1048576).toFixed(1)} MB`;
+}
+
+async function refreshFiles() {
+  let d;
+  try { d = await api(`/api/slots/${sel}/files?${q({ root: fRoot, path: fPath })}`); }
+  catch (e) { if (fPath) { fPath = ""; return refreshFiles(); } $("#files-table tbody").innerHTML = ""; $("#files-empty").hidden = false; $("#files-empty").textContent = e.message; return; }
+  document.querySelectorAll("[data-root]").forEach(b => b.classList.toggle("active", b.dataset.root === fRoot));
+  $("#files-ppath").textContent = d.programPath;
+  // Breadcrumbs: NVRAM / config / rooms
+  const parts = d.path ? d.path.split("/") : [];
+  const crumbs = $("#crumbs"); crumbs.innerHTML = "";
+  const crumb = (label, path) => { const a = document.createElement("a"); a.textContent = label; a.onclick = () => { fPath = path; refreshFiles(); }; crumbs.appendChild(a); };
+  crumb(fRoot === "nvram" ? "NVRAM" : "User", "");
+  parts.forEach((p, i) => { const s = document.createElement("span"); s.className = "sep"; s.textContent = "/"; crumbs.appendChild(s); crumb(p, parts.slice(0, i + 1).join("/")); });
+
+  const tb = $("#files-table tbody"); tb.innerHTML = "";
+  $("#files-empty").hidden = d.entries.length > 0; $("#files-empty").textContent = "Empty. Drop files here, or use Upload.";
+  for (const e of d.entries) {
+    const path = join(d.path, e.name);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="name mono"></td><td class="num muted">${fmtSize(e.size)}</td><td class="muted">${new Date(e.modified).toLocaleString()}</td><td class="act"></td>`;
+    const nameCell = tr.querySelector(".name");
+    if (e.folder) { const a = document.createElement("a"); a.textContent = "📁 " + e.name; a.onclick = () => { fPath = path; refreshFiles(); }; nameCell.appendChild(a); }
+    else nameCell.textContent = e.name;
+    const act = tr.querySelector(".act");
+    const btn = (label, title, fn) => { const b = document.createElement("button"); b.textContent = label; b.title = title; b.onclick = fn; act.appendChild(b); act.append(" "); };
+    if (!e.folder) btn("⤓", "Download", () => { location.href = `/api/slots/${sel}/files/download?${q({ root: fRoot, path })}`; });
+    btn("Rename", "Rename", async () => {
+      const name = prompt(`Rename '${e.name}' to:`, e.name); if (!name || name === e.name) return;
+      try { await api(`/api/slots/${sel}/files/rename`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ root: fRoot, path, name }) }); }
+      catch (err) { alert(err.message); }
+      refreshFiles();
+    });
+    btn("✕", "Delete", async () => {
+      if (!confirm(e.folder ? `Delete folder '${e.name}' and everything in it?` : `Delete '${e.name}'?`)) return;
+      try { await api(`/api/slots/${sel}/files?${q({ root: fRoot, path })}`, { method: "DELETE" }); }
+      catch (err) { alert(err.message); }
+      refreshFiles();
+    });
+    tb.appendChild(tr);
+  }
+}
+
+async function uploadFiles(list) {
+  // list: [{ file, name }] where name may include sub-folders ("config/rooms.json")
+  if (!list.length) return;
+  const fd = new FormData();
+  for (const { file, name } of list) fd.append("file", file, name);
+  try { await api(`/api/slots/${sel}/files?${q({ root: fRoot, path: fPath })}`, { method: "POST", body: fd }); }
+  catch (e) { alert(e.message); }
+  refreshFiles();
+}
+
+document.querySelectorAll("[data-root]").forEach(b => b.onclick = () => { fRoot = b.dataset.root; fPath = ""; refreshFiles(); });
+$("#files-mkdir").onclick = async () => {
+  const name = prompt("New folder name:"); if (!name) return;
+  try { await api(`/api/slots/${sel}/files/folder`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ root: fRoot, path: fPath, name }) }); }
+  catch (e) { alert(e.message); }
+  refreshFiles();
+};
+$("#files-up").onclick = () => $("#files-pick").click();
+$("#files-updir").onclick = () => $("#files-pickdir").click();
+$("#files-pick").onchange = e => { uploadFiles([...e.target.files].map(f => ({ file: f, name: f.name }))); e.target.value = ""; };
+$("#files-pickdir").onchange = e => { uploadFiles([...e.target.files].map(f => ({ file: f, name: f.webkitRelativePath || f.name }))); e.target.value = ""; };
+
+// Drag and drop, folders included.
+const drop = $("#files-drop");
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = async e => {
+  e.preventDefault(); drop.classList.remove("over");
+  const out = [];
+  const walk = (entry, prefix) => new Promise(res => {
+    if (entry.isFile) entry.file(f => { out.push({ file: f, name: prefix + f.name }); res(); }, () => res());
+    else if (entry.isDirectory) {
+      const reader = entry.createReader(), all = [];
+      const more = () => reader.readEntries(async batch => {
+        if (batch.length) { all.push(...batch); more(); }
+        else { for (const c of all) await walk(c, prefix + entry.name + "/"); res(); }
+      }, () => res());
+      more();
+    } else res();
+  });
+  const entries = [...e.dataTransfer.items].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  if (entries.length) for (const en of entries) await walk(en, "");
+  else for (const f of e.dataTransfer.files) out.push({ file: f, name: f.name });
+  uploadFiles(out);
+};
 
 select(1);
 setInterval(refreshSlots, 3000);
