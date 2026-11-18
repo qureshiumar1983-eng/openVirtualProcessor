@@ -6,3 +6,4 @@ data/
 *.user
 .vs/
 .idea/
+dist/

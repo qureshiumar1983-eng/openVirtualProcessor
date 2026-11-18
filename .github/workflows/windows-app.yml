@@ -1,0 +1,50 @@
+name: Windows app
+# Builds OpenVP.exe: one self-contained file, no .NET install needed. Download it from the run's
+# "OpenVP-windows" artifact, or from the release when a v* tag is pushed.
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Publish OpenVP.exe
+        run: dotnet publish src/OpenVP.Desktop -c Release -r win-x64 -o dist
+      - name: Smoke test (start the app, check the console answers, close it)
+        shell: pwsh
+        run: |
+          $p = Start-Process dist\OpenVP.exe -PassThru
+          $ok = $false
+          for ($i = 0; $i -lt 60 -and -not $ok; $i++) {
+            Start-Sleep 1
+            try { $ok = (Invoke-RestMethod http://localhost:8080/api/info).name -eq 'OpenVP' } catch { }
+          }
+          if ($ok) {
+            try {
+              $ok = (Invoke-WebRequest http://localhost:8080/ -UseBasicParsing).Content -match 'OpenVP'
+              $null = Invoke-WebRequest http://localhost:8080/panel.html -UseBasicParsing
+            } catch { $ok = $false; $_ }
+          }
+          Stop-Process $p -Force -ErrorAction SilentlyContinue
+          if (-not $ok) { Get-Content "$env:LOCALAPPDATA\OpenVP\openvp.log" -ErrorAction SilentlyContinue; throw 'OpenVP.exe did not serve the console' }
+          Get-Content "$env:LOCALAPPDATA\OpenVP\openvp.log"
+          "OpenVP.exe size: {0:N0} MB" -f ((Get-Item dist\OpenVP.exe).Length / 1MB)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenVP-windows
+          path: dist/OpenVP.exe
+      - name: Attach to release (v* tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view $env:GITHUB_REF_NAME 2>$null
+          if ($LASTEXITCODE -ne 0) { gh release create $env:GITHUB_REF_NAME --title "OpenVP $env:GITHUB_REF_NAME" --notes "Download OpenVP.exe and run it." }
+          gh release upload $env:GITHUB_REF_NAME dist/OpenVP.exe --clobber
