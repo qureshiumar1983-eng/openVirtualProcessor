@@ -676,12 +676,15 @@ function connect() {
   sock.onopen = () => setConn(true);
   sock.onclose = () => { if (sock !== ws) return; setConn(false); setTimeout(() => { if (sock === ws) connect(); }, 2000); };
   sock.onmessage = ev => {
-    const m = JSON.parse(ev.data);
-    if (m.t === "trace") onTrace(m);
-    else if (m.t === "step") onStep(m);
-    else if (m.t === "log") {
-      if (/Loaded|started|stopped|Unload/i.test(m.message)) { loadSlots(); scheduleRefresh(); }
-      if (m.level === "Error") $("#st-msg").textContent = m.message;
+    // Each frame is a JSON array of events (a single object is accepted too).
+    const data = JSON.parse(ev.data);
+    for (const m of Array.isArray(data) ? data : [data]) {
+      if (m.t === "trace") onTrace(m);
+      else if (m.t === "step") onStep(m);
+      else if (m.t === "log") {
+        if (/Loaded|started|stopped|Unload/i.test(m.message)) { loadSlots(); scheduleRefresh(); }
+        if (m.level === "Error") $("#st-msg").textContent = m.message;
+      }
     }
   };
 }

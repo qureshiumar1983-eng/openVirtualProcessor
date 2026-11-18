@@ -39,7 +39,9 @@ if (Run("micro"))
     Micro("$\"IPID{id:X2}.in.{key}\" (SIMPL# trace name)", Q(1_000_000), () => { _ = $"IPID{3u:X2}.in.{new JoinKey(SigKind.Digital, 10)}"; });
     var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
     var e = new TraceEvent(DateTimeOffset.Now, 1, "Room_Power_On", SigKind.Digital, true, "S-1.2");
-    Micro("JSON-serialize one trace event (debugger)", Q(500_000), () => { _ = JsonSerializer.Serialize(new { t = "trace", time = e.Time, slot = e.Slot, signal = e.Signal, kind = e.Kind.ToString(), value = e.Value, source = e.Source }, json); });
+    var subQ = Channel.CreateBounded<object>(new BoundedChannelOptions(10_000) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
+    Micro("Debugger subscriber, new: enqueue the raw TraceEvent", Q(1_000_000), () => subQ.Writer.TryWrite(e));
+    Micro("JSON-serialize one trace event (old subscriber, on slot thread)", Q(500_000), () => { _ = JsonSerializer.Serialize(new { t = "trace", time = e.Time, slot = e.Slot, signal = e.Signal, kind = e.Kind.ToString(), value = e.Value, source = e.Source }, json); });
     var dev = new JoinDevice(1, 3, "panel", "x");
     var k = new JoinKey(SigKind.Digital, 10);
     bool flip = false;
@@ -56,7 +58,19 @@ if (Run("chain"))
     int N = Q(1000), K = Q(2000);
     var path = ChainProgram(data, "chain", N);
     Throughput($"LPZ NOT-chain, depth {N} ({K} presses)", path, K, (long)K * (N + 1), debugger: false);
-    Throughput("  same, debugger window open (server's JSON trace subscriber)", path, K, (long)K * (N + 1), debugger: true);
+    Throughput("  same, debugger window open (server's /ws/trace subscriber)", path, K, (long)K * (N + 1), debugger: true);
+    Console.WriteLine();
+}
+
+// ------------------------------------------------------------ debugger subscriber cost on the slot thread
+if (Run("debugger"))
+{
+    int N = Q(1000), K = Q(2000);
+    var path = ChainProgram(data, "chain-dbg", N);
+    long changes = (long)K * (N + 1);
+    Throughput($"LPZ NOT-chain, depth {N}, no debugger", path, K, changes, debugger: false);
+    Throughput("  debugger open, OLD server: JSON on the slot thread, frame per event", path, K, changes, debugger: true, oldServer: true);
+    Throughput("  debugger open, NEW server: raw event queued, JSON batches in the send loop", path, K, changes, debugger: true);
     Console.WriteLine();
 }
 
@@ -242,27 +256,55 @@ static void Warm(ProgramSlot slot, JoinDevice panel, int n, Func<int, (JoinKey, 
     slot.Dispatcher.Invoke(() => { });
 }
 
-void Throughput(string name, string path, int presses, long changes, bool debugger)
+void Throughput(string name, string path, int presses, long changes, bool debugger, bool oldServer = false)
 {
     using var p = Start(path, out var panel);
     var slot = p.Slot(1);
     var key = new JoinKey(SigKind.Digital, 1);
     Task? drain = null;
     var cts = new CancellationTokenSource();
-    if (debugger)
+    if (debugger && oldServer)
     {
-        // Same work the server's /ws/trace handler does on the slot thread for every change.
+        // The pre-2.2 server: serialize each change to a string on the slot thread.
         var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         var outbox = Channel.CreateBounded<string>(new BoundedChannelOptions(10_000) { FullMode = BoundedChannelFullMode.DropOldest });
-        int? want = 1;
-        slot.Traced += e =>
-        {
-            if (want == null || e.Slot == want)
-                outbox.Writer.TryWrite(JsonSerializer.Serialize(new { t = "trace", time = e.Time, slot = e.Slot, signal = e.Signal, kind = e.Kind.ToString(), value = e.Value, source = e.Source }, json));
-        };
+        slot.Traced += e => outbox.Writer.TryWrite(JsonSerializer.Serialize(new { t = "trace", time = e.Time, slot = e.Slot, signal = e.Signal, kind = e.Kind.ToString(), value = e.Value, source = e.Source }, json));
         drain = Task.Run(async () =>
         {
             try { while (await outbox.Reader.WaitToReadAsync(cts.Token)) while (outbox.Reader.TryRead(out var m)) _ = Encoding.UTF8.GetBytes(m); }
+            catch (OperationCanceledException) { }
+        });
+    }
+    else if (debugger)
+    {
+        // What /ws/trace does now: the slot thread only enqueues the raw event. The send loop writes up to
+        // 200 events per frame as one JSON array (same shape as OpenVpServer.WriteWsEvent).
+        var outbox = Channel.CreateBounded<object>(new BoundedChannelOptions(10_000) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
+        slot.Traced += e => outbox.Writer.TryWrite(e);
+        drain = Task.Run(async () =>
+        {
+            var frame = new System.Buffers.ArrayBufferWriter<byte>(16 * 1024);
+            using var w = new Utf8JsonWriter(frame);
+            try
+            {
+                while (await outbox.Reader.WaitToReadAsync(cts.Token))
+                    while (outbox.Reader.TryPeek(out _))
+                    {
+                        frame.Clear(); w.Reset(frame); w.WriteStartArray();
+                        for (var n = 0; n < 200 && outbox.Reader.TryRead(out var item); n++)
+                        {
+                            var e = (TraceEvent)item;
+                            w.WriteStartObject();
+                            w.WriteString("t", "trace"); w.WriteString("time", e.Time); w.WriteNumber("slot", e.Slot);
+                            w.WriteString("signal", e.Signal); w.WriteString("kind", e.Kind.ToString());
+                            w.WritePropertyName("value");
+                            if (e.Value is bool bv) w.WriteBooleanValue(bv); else JsonSerializer.Serialize(w, e.Value);
+                            w.WriteString("source", e.Source);
+                            w.WriteEndObject();
+                        }
+                        w.WriteEndArray(); w.Flush();
+                    }
+            }
             catch (OperationCanceledException) { }
         });
     }
