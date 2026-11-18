@@ -1,0 +1,178 @@
+slot1 #43 D=1 <- NOT
+slot1 #44 D=1 <- NOT
+slot1 sbuf_fb S="" <- Serial Buffer
+slot1 init_fb A=777 <- Analog Initialize
+slot1 #58 D=1 <- NOT
+slot1 #60 D=1 <- NOT
+slot1 1 D=1 <- start
+-- d1 on
+slot1 d1_press D=1 <- IPID03
+slot1 #41 D=1 <- OR
+slot1 #42 D=1 <- XOR
+slot1 #43 D=0 <- NOT
+-- d2 on
+slot1 d2_press D=1 <- IPID03
+slot1 and_fb D=1 <- AND
+slot1 #42 D=0 <- XOR
+slot1 #44 D=0 <- NOT
+-- d3 on
+slot1 d3_press D=1 <- IPID03
+slot1 #42 D=1 <- XOR
+slot1 #45 D=1 <- Interlock
+slot1 #50 D=1 <- Buffer
+slot1 #51 D=1 <- Buffer
+slot1 sbuf_fb S="" <- Serial Buffer
+-- d1 off
+slot1 d1_press D=0 <- IPID03
+slot1 and_fb D=0 <- AND
+slot1 #42 D=0 <- XOR
+slot1 #43 D=1 <- NOT
+slot1 #50 D=0 <- Buffer
+-- d2 off
+slot1 d2_press D=0 <- IPID03
+slot1 #41 D=0 <- OR
+slot1 #42 D=1 <- XOR
+slot1 #44 D=1 <- NOT
+slot1 #51 D=0 <- Buffer
+-- d3 off
+slot1 d3_press D=0 <- IPID03
+slot1 #42 D=0 <- XOR
+slot1 sbuf_fb S="" <- Serial Buffer
+-- d1 and d2 together
+slot1 d1_press D=1 <- IPID03
+slot1 #41 D=1 <- OR
+slot1 #42 D=1 <- XOR
+slot1 #43 D=0 <- NOT
+slot1 d2_press D=1 <- IPID03
+slot1 and_fb D=1 <- AND
+slot1 #42 D=0 <- XOR
+slot1 #44 D=0 <- NOT
+-- both off
+slot1 d1_press D=0 <- IPID03
+slot1 and_fb D=0 <- AND
+slot1 #42 D=1 <- XOR
+slot1 #43 D=1 <- NOT
+slot1 d2_press D=0 <- IPID03
+slot1 #41 D=0 <- OR
+slot1 #42 D=0 <- XOR
+slot1 #44 D=1 <- NOT
+-- a1 = 5 while buffers are off
+slot1 a1_press A=5 <- IPID03
+slot1 #55 D=1 <- Equate
+-- s1 = x while buffers are off
+slot1 s1_press S="x" <- IPID03
+-- buffers on (d3)
+slot1 d3_press D=1 <- IPID03
+slot1 #42 D=1 <- XOR
+slot1 abuf_fb A=5 <- Analog Buffer
+slot1 sbuf_fb S="x" <- Serial Buffer
+-- a1 = 10
+slot1 a1_press A=10 <- IPID03
+slot1 abuf_fb A=10 <- Analog Buffer
+slot1 #55 D=0 <- Equate
+slot1 #56 D=1 <- Equate
+-- a1 = 11
+slot1 a1_press A=11 <- IPID03
+slot1 abuf_fb A=11 <- Analog Buffer
+slot1 #56 D=0 <- Equate
+-- s1 = y
+slot1 s1_press S="y" <- IPID03
+slot1 sbuf_fb S="y" <- Serial Buffer
+-- s1 = y again
+slot1 s1_press S="y" <- IPID03
+slot1 sbuf_fb S="y" <- Serial Buffer
+-- d1 on while buffers are on
+slot1 d1_press D=1 <- IPID03
+slot1 #41 D=1 <- OR
+slot1 #42 D=0 <- XOR
+slot1 #43 D=0 <- NOT
+slot1 #50 D=1 <- Buffer
+-- d1 off
+slot1 d1_press D=0 <- IPID03
+slot1 #41 D=0 <- OR
+slot1 #42 D=1 <- XOR
+slot1 #43 D=1 <- NOT
+slot1 #50 D=0 <- Buffer
+-- buffers off (d3)
+slot1 d3_press D=0 <- IPID03
+slot1 #42 D=0 <- XOR
+slot1 abuf_fb A=0 <- Analog Buffer
+slot1 sbuf_fb S="" <- Serial Buffer
+-- a1 = 20 while off
+slot1 a1_press A=20 <- IPID03
+-- a1 = 5 (equate)
+slot1 a1_press A=5 <- IPID03
+slot1 #55 D=1 <- Equate
+-- a1 = 10 (equate)
+slot1 a1_press A=10 <- IPID03
+slot1 #55 D=0 <- Equate
+slot1 #56 D=1 <- Equate
+-- a2 = 3
+slot1 a2_press A=3 <- IPID03
+-- interlock d4
+slot1 d4_press D=1 <- IPID03
+slot1 #45 D=0 <- Interlock
+slot1 #46 D=1 <- Interlock
+-- interlock d4 off
+slot1 d4_press D=0 <- IPID03
+-- interlock d5
+slot1 d5_press D=1 <- IPID03
+slot1 #46 D=0 <- Interlock
+slot1 #47 D=1 <- Interlock
+slot1 #57 S="x" <- Serial Send
+-- interlock d3
+slot1 d3_press D=1 <- IPID03
+slot1 #42 D=1 <- XOR
+slot1 #45 D=1 <- Interlock
+slot1 #47 D=0 <- Interlock
+slot1 abuf_fb A=10 <- Analog Buffer
+slot1 sbuf_fb S="y" <- Serial Buffer
+-- interlock off
+slot1 d3_press D=0 <- IPID03
+slot1 #42 D=0 <- XOR
+slot1 abuf_fb A=0 <- Analog Buffer
+slot1 sbuf_fb S="" <- Serial Buffer
+slot1 d5_press D=0 <- IPID03
+-- d6 on (toggle, SR set, send y)
+slot1 d6_press D=1 <- IPID03
+slot1 #48 D=1 <- Toggle
+slot1 #49 D=1 <- SR Latch
+slot1 #57 S="y" <- Serial Send
+-- d6 off
+slot1 d6_press D=0 <- IPID03
+-- d6 on (toggle off)
+slot1 d6_press D=1 <- IPID03
+slot1 #48 D=0 <- Toggle
+slot1 #57 S="y" <- Serial Send
+-- d6 off
+slot1 d6_press D=0 <- IPID03
+-- d7 on (toggle set, SR reset)
+slot1 d7_press D=1 <- IPID03
+slot1 #48 D=1 <- Toggle
+slot1 #49 D=0 <- SR Latch
+-- d6 on while d7 held
+slot1 d6_press D=1 <- IPID03
+slot1 #48 D=0 <- Toggle
+slot1 #57 S="y" <- Serial Send
+-- d7 off, d6 off
+slot1 d7_press D=0 <- IPID03
+slot1 d6_press D=0 <- IPID03
+-- d8 on (toggle reset)
+slot1 d8_press D=1 <- IPID03
+-- d8 off
+slot1 d8_press D=0 <- IPID03
+-- d5 on (send x)
+slot1 d5_press D=1 <- IPID03
+slot1 #45 D=0 <- Interlock
+slot1 #47 D=1 <- Interlock
+slot1 #57 S="x" <- Serial Send
+-- d5 off
+slot1 d5_press D=0 <- IPID03
+-- d4 on (analog init)
+slot1 d4_press D=1 <- IPID03
+slot1 #46 D=1 <- Interlock
+slot1 #47 D=0 <- Interlock
+-- d4 off
+slot1 d4_press D=0 <- IPID03
+-- s2 = z (nobody reads it)
+slot1 s2_press S="z" <- IPID03
