@@ -43,6 +43,7 @@ public sealed class CipServer : IDisposable
             TcpClient client;
             try { client = await _listener.AcceptTcpClientAsync(_cts.Token); }
             catch { break; }
+            client.NoDelay = true; // small feedback packets should go out now, not wait for Nagle to coalesce them
             var session = new CipSession(client, _processor, this);
             lock (_sessions) _sessions.Add(session);
             _ = session.RunAsync(_cts.Token).ContinueWith(_ => { lock (_sessions) _sessions.Remove(session); });
@@ -215,7 +216,7 @@ internal sealed class CipSession
                 var len = (header[1] << 8) | header[2];
                 var payload = new byte[len];
                 if (len > 0 && !await ReadExactly(payload, ct)) break;
-                _server.Log($"<- {header[0]:X2} {Convert.ToHexString(payload)}");
+                if (_server.LogPackets) _server.Log($"<- {header[0]:X2} {Convert.ToHexString(payload)}"); // hex only when logging
                 await Handle(header[0], payload);
             }
         }
@@ -295,7 +296,7 @@ internal sealed class CipSession
         await _writeLock.WaitAsync();
         try
         {
-            _server.Log($"-> {Convert.ToHexString(packet)}");
+            if (_server.LogPackets) _server.Log($"-> {Convert.ToHexString(packet)}");
             await _stream.WriteAsync(packet);
         }
         catch (Exception) { }

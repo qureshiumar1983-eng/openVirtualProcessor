@@ -98,7 +98,7 @@ The fastest way to close these gaps is real `.smw` files. If you can share one (
 ### Panels
 
 - **Browser / CH5:** `ws://host:8080/ws/panel?ipid=03&slot=1`, JSON `{"t":"b","j":1,"v":true}` (`b` digital, `n` analog, `s` serial). `wwwroot/openvp-crcomlib.js` gives a page `CrComLib.publishEvent` / `subscribeState` for numeric join names, so simple CH5 projects can point at OpenVP. `panel.html` is a ready-made test panel.
-- **Real panels over CIP (experimental):** listener on TCP 41794. CIP isn't publicly documented; the framing follows community write-ups and is unit tested against itself, **not yet against real hardware**. Set `OpenVP:CipLogPackets=true` to log every packet, then compare with a Wireshark capture of a panel talking to a real processor. All encodings live in `Cip` in `CipServer.cs`.
+- **Real panels over CIP (experimental):** listener on TCP 41794. CIP isn't publicly documented; the framing follows community write-ups and is unit tested against itself, **not yet against real hardware**. The shipped `appsettings.json` sets `OpenVP:CipLogPackets=true`, which logs every packet; compare with a Wireshark capture of a panel talking to a real processor. All encodings live in `Cip` in `CipServer.cs`.
 
 A panel can connect before its program loads. It binds to the IP ID and comes online when the program registers it.
 
@@ -137,7 +137,7 @@ Traffic is plain HTTP. To use OpenVP across an untrusted network, put it behind 
 | `OpenVP:DataDirectory` | `data` | Uploads and per-slot program folders |
 | `OpenVP:Slots` | `10` | Number of program slots |
 | `OpenVP:CipEnabled` / `CipPort` | `true` / `41794` | CIP listener |
-| `OpenVP:CipLogPackets` | `false` | Hex-log CIP traffic |
+| `OpenVP:CipLogPackets` | `false` (code default); `true` in the shipped `appsettings.json` | Hex-log CIP traffic. The shipped file turns it on while CIP is being validated against real panels; set it to `false` to stop |
 | `OpenVP:ApiKey` | (generated) | Access key for the console and API; `off` disables it. See [Security](#security) |
 | `OpenVP:LocalRequiresKey` | `false` | Require the key from localhost too |
 | `OpenVP:PanelsRequireKey` | `false` | Require the key for browser panels (`/ws/panel`) |
