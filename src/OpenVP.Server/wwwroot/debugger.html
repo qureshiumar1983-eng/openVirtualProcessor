@@ -48,6 +48,7 @@
   .k-Analog { color:var(--ana); } .k-Serial { color:var(--ser); }
   .type { color:var(--muted); }
   #trace td.n { color:var(--muted); text-align:right; }
+  #trace td.dt { color:var(--muted); text-align:right; }
   #trace tr.flash { animation: flash .6s ease-out; }
   @keyframes flash { from { background:#2a3b22; } to { background:transparent; } }
   .empty { padding:24px; color:var(--muted); text-align:center; }
@@ -125,7 +126,7 @@
   </div>
   <div class="sep"></div>
   <div class="group">
-    <label>Time <select id="tfmt"><option value="abs">absolute</option><option value="rel">relative</option><option value="delta">delta</option></select></label>
+    <label>Time <select id="tfmt"><option value="abs">absolute</option><option value="rel">relative</option></select></label>
     <label>Analog <select id="afmt"><option value="dec">decimal</option><option value="hex">hex</option><option value="pct">percent</option></select></label>
     <label>Serial <select id="sfmt"><option value="ascii">ASCII</option><option value="hex">hex</option></select></label>
     <label><input type="checkbox" id="autoscroll" checked> auto-scroll</label>
@@ -170,8 +171,8 @@
     </div>
     <div class="scroll" id="tracescroll">
       <table id="trace">
-        <colgroup><col style="width:56px"><col style="width:110px"><col><col style="width:34%"><col style="width:80px"></colgroup>
-        <thead><tr><th>#</th><th>Time</th><th>Signal name</th><th>Value</th><th>Source</th></tr></thead>
+        <colgroup><col style="width:56px"><col style="width:110px"><col style="width:86px"><col><col style="width:34%"><col style="width:80px"></colgroup>
+        <thead><tr><th>#</th><th>Time</th><th title="Time since the row above it (among the rows the filter shows)">Δ</th><th>Signal name</th><th>Value</th><th>Source</th></tr></thead>
         <tbody></tbody>
       </table>
       <div class="empty" id="traceempty">Waiting for signal changes…</div>
@@ -222,7 +223,7 @@ let changes = [], cseq = 0;   // { cn, signal, prev, value }
 let stepLog = [];             // { step, signal, kind, value, source, cn }
 let view = null, viewVals = null; // index into stepLog while looking back; null = live
 let step = { enabled: false, onlyBreakSignals: false, breakSignals: new Set(), paused: null }, stepSynced = false;
-const opts = { tmode: store.get("tmode", "all"), tfmt: store.get("tfmt", "abs"), afmt: store.get("afmt", "dec"), sfmt: store.get("sfmt", "ascii") };
+const opts = { tmode: store.get("tmode", "all"), tfmt: store.get("tfmt", "abs") === "rel" ? "rel" : "abs", afmt: store.get("afmt", "dec"), sfmt: store.get("sfmt", "ascii") };
 for (const k of Object.keys(opts)) { $("#" + k).value = opts[k]; $("#" + k).onchange = e => { opts[k] = e.target.value; store.set(k, opts[k]); rerenderValues(); }; }
 
 async function api(path, init) {
@@ -254,9 +255,8 @@ function fmt(kind, v) {
 function valClass(kind, v) { return "mono k-" + kind + (kind === "Digital" && isHigh(v) ? " high" : ""); }
 
 function pad(n, w = 2) { return String(n).padStart(w, "0"); }
-function fmtTime(e, prev) {
+function fmtTime(e) {
   if (opts.tfmt === "rel") return "+" + ((e.time - firstTime) / 1000).toFixed(3) + "s";
-  if (opts.tfmt === "delta") return "+" + (prev ? (e.time - prev.time) / 1000 : 0).toFixed(3) + "s";
   const d = new Date(e.time);
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
 }
@@ -367,6 +367,20 @@ function selectSignal(name) {
 
 // ---------------------------------------------------------------- trace
 
+// Δ column: time since the previous row that is shown (so it follows the filter).
+function fmtDelta(e, prev) { return prev ? "+" + ((e.time - prev.time) / 1000).toFixed(3) + "s" : ""; }
+function traceMatches(e, q) { return !q || e.signal.toLowerCase().includes(q); }
+function lastShown() { for (let i = trace.length - 1; i >= 0; i--) if (!trace[i].tr.hidden) return trace[i]; return null; }
+function applyTraceFilter() {
+  const q = $("#tsearch").value.toLowerCase();
+  let prev = null;
+  for (const e of trace) {
+    const show = traceMatches(e, q);
+    e.tr.hidden = !show;
+    if (show) { e.tr.children[2].textContent = fmtDelta(e, prev); prev = e; }
+  }
+}
+
 function onTrace(m) {
   let s = signals.get(m.signal);
   const cn = ++cseq;
@@ -384,27 +398,29 @@ function onTrace(m) {
   if (!rafQueued) { rafQueued = true; requestAnimationFrame(flushTrace); }
 }
 
-function traceRow(e, prev) {
+function traceRow(e) {
   const tr = document.createElement("tr");
-  tr.innerHTML = `<td class="n mono"></td><td class="mono"></td><td class="mono"></td><td></td><td class="type"></td>`;
-  e.tr = tr; paintTraceRow(e, prev);
+  tr.innerHTML = `<td class="n mono"></td><td class="mono"></td><td class="dt mono"></td><td class="mono"></td><td></td><td class="type"></td>`;
+  e.tr = tr; paintTraceRow(e);
   tr.onclick = () => { if (signals.has(e.signal)) { selectSignal(e.signal); signals.get(e.signal).tr?.scrollIntoView({ block: "nearest" }); } };
   return tr;
 }
 
-function paintTraceRow(e, prev) {
+function paintTraceRow(e) {
   const c = e.tr.children;
-  c[0].textContent = e.n; c[1].textContent = fmtTime(e, prev); c[2].textContent = e.signal; c[2].title = e.signal;
-  c[3].className = valClass(e.kind, e.value); c[3].textContent = fmt(e.kind, e.value); c[4].textContent = e.source;
+  c[0].textContent = e.n; c[1].textContent = fmtTime(e); c[3].textContent = e.signal; c[3].title = e.signal;
+  c[4].className = valClass(e.kind, e.value); c[4].textContent = fmt(e.kind, e.value); c[5].textContent = e.source;
 }
 
 function flushTrace() {
   rafQueued = false;
   if (!pending.length) return;
   const tb = $("#trace tbody"), frag = document.createDocumentFragment(), q = $("#tsearch").value.toLowerCase();
+  let prev = lastShown();
   for (const e of pending) {
-    const tr = traceRow(e, trace[trace.length - 1]);
-    if (q && !e.signal.toLowerCase().includes(q)) tr.hidden = true;
+    const tr = traceRow(e);
+    if (traceMatches(e, q)) { tr.children[2].textContent = fmtDelta(e, prev); prev = e; }
+    else tr.hidden = true;
     if (pending.length < 20) tr.classList.add("flash");
     trace.push(e); frag.appendChild(tr);
   }
@@ -423,7 +439,7 @@ function updateTraceCount() {
 
 function rerenderValues() {
   for (const s of signals.values()) paintValue(s);
-  trace.forEach((e, i) => paintTraceRow(e, trace[i - 1]));
+  trace.forEach(e => paintTraceRow(e));
 }
 
 function clearTrace() {
@@ -432,8 +448,8 @@ function clearTrace() {
 }
 
 function saveTrace() {
-  const head = `OpenVP trace · slot ${slot} · ${$("#prog").textContent}\n#\tTime\tSignal\tType\tValue\tSource\n`;
-  const body = trace.map((e, i) => [e.n, fmtTime(e, trace[i - 1]), e.signal, e.kind, fmt(e.kind, e.value), e.source].join("\t")).join("\n");
+  const head = `OpenVP trace · slot ${slot} · ${$("#prog").textContent}\n#\tTime\tDelta\tSignal\tType\tValue\tSource\n`;
+  const body = trace.map((e, i) => [e.n, fmtTime(e), fmtDelta(e, trace[i - 1]), e.signal, e.kind, fmt(e.kind, e.value), e.source].join("\t")).join("\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([head + body + "\n"], { type: "text/plain" }));
   const d = new Date();
@@ -720,7 +736,7 @@ $("#stream").onclick = () => { streaming = !streaming; $("#stream").classList.to
 $("#clear").onclick = clearTrace;
 $("#save").onclick = saveTrace;
 $("#search").oninput = applyFilter; $("#kfilter").onchange = applyFilter; $("#onlychecked").onchange = applyFilter;
-$("#tsearch").oninput = () => { const q = $("#tsearch").value.toLowerCase(); for (const e of trace) e.tr.hidden = !!q && !e.signal.toLowerCase().includes(q); };
+$("#tsearch").oninput = applyTraceFilter;
 function checkVisible(v) { for (const s of signals.values()) if (s.tr && !s.tr.hidden) { s.watch = v; s.chk.checked = v; } saveWatch(); applyFilter(); }
 $("#checkall").onclick = () => checkVisible(true); $("#checknone").onclick = () => checkVisible(false);
 document.querySelectorAll("#sigs th.sortable").forEach(th => th.onclick = () => {
