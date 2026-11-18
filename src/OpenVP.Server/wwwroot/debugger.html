@@ -74,6 +74,9 @@
   .stepbar .hint { color:var(--muted); font-size:12px; }
   #sigs td.b, #sigs th.b { text-align:center; padding:2px 0; }
   #sigs input.brk { accent-color:var(--brk); }
+  tbody tr.hist, tbody tr.hist:hover { background:#182a40; box-shadow: inset 3px 0 0 var(--accent); }
+  .stepbar.history { background:#15243a; color:#cfe0ff; }
+  td.past { font-style:italic; text-decoration: underline dotted var(--accent); }
   tbody tr.paused, tbody tr.paused:hover { background:var(--pause); box-shadow: inset 3px 0 0 var(--brk); }
 
   /* context menu */
@@ -111,6 +114,7 @@
   <div class="sep"></div>
   <div class="group">
     <button id="stepmode" title="Step mode: pause the program on each signal change until you press Next (Ctrl+F5)">⏸ Step</button>
+    <button id="stepback" disabled title="Look at the step before this one: values as they were then (F7). The program stays where it is.">◀| Back</button>
     <button id="stepnext" disabled title="Let the paused change through and stop at the next one (F10)">Next ▶|</button>
     <button id="steprun" disabled title="Turn step mode off and let the program run (F8)">Run ▶▶</button>
     <label title="Which changes pause the program">Break on <select id="bmode"><option value="all">every change</option><option value="marked">marked signals ⏸</option></select></label>
@@ -130,9 +134,10 @@
 
 <div class="stepbar off" id="stepbar">
   <span class="what" id="stepwhat"></span>
+  <button id="stepback2" title="F7">◀| Back</button>
   <button id="stepnext2" title="F10">Next ▶|</button>
   <button id="steprun2" title="F8">Run ▶▶</button>
-  <span class="hint">F10 next · F8 run · F9 mark/unmark selected signal</span>
+  <span class="hint">F7 back · F10 next · F8 run · F9 mark/unmark selected signal</span>
 </div>
 
 <div class="panes" id="panes">
@@ -210,6 +215,12 @@ let trace = [];               // { n, time, signal, kind, value, source, tr }
 let seq = 0, firstTime = null, pending = [], rafQueued = false, refreshTimer = null;
 // Step-through state, mirrored from the server (which owns it: the pause happens in the logic engine).
 let currentState = "—", stepVersion = -1;
+// Step-back history (page-side). Every change is logged with the value it replaced, and every pause
+// remembers which change it stopped on, so values at any earlier step can be rebuilt by undoing later changes.
+const MAX_CHANGES = 50000;
+let changes = [], cseq = 0;   // { cn, signal, prev, value }
+let stepLog = [];             // { step, signal, kind, value, source, cn }
+let view = null, viewVals = null; // index into stepLog while looking back; null = live
 let step = { enabled: false, onlyBreakSignals: false, breakSignals: new Set(), paused: null }, stepSynced = false;
 const opts = { tmode: store.get("tmode", "all"), tfmt: store.get("tfmt", "abs"), afmt: store.get("afmt", "dec"), sfmt: store.get("sfmt", "ascii") };
 for (const k of Object.keys(opts)) { $("#" + k).value = opts[k]; $("#" + k).onchange = e => { opts[k] = e.target.value; store.set(k, opts[k]); rerenderValues(); }; }
@@ -324,9 +335,11 @@ function buildSignalTable() {
 
 function paintValue(s) {
   if (!s.valTd) return;
-  s.valTd.className = valClass(s.kind, s.value);
-  s.valTd.textContent = fmt(s.kind, s.value);
-  s.valTd.title = s.kind === "Serial" ? fmt(s.kind, s.value) : "";
+  const past = viewVals && viewVals.has(s.name) && viewVals.get(s.name) !== undefined;
+  const v = past ? viewVals.get(s.name) : s.value;
+  s.valTd.className = valClass(s.kind, v) + (past && fmt(s.kind, v) !== fmt(s.kind, s.value) ? " past" : "");
+  s.valTd.textContent = fmt(s.kind, v);
+  s.valTd.title = past ? `At this step: ${fmt(s.kind, v)} · now: ${fmt(s.kind, s.value)}` : s.kind === "Serial" ? fmt(s.kind, v) : "";
 }
 
 function applyFilter() {
@@ -356,11 +369,16 @@ function selectSignal(name) {
 
 function onTrace(m) {
   let s = signals.get(m.signal);
+  const cn = ++cseq;
+  changes.push({ cn, signal: m.signal, prev: s ? s.value : undefined, value: m.value });
+  if (changes.length > MAX_CHANGES) changes.splice(0, changes.length - MAX_CHANGES);
+  const h = stepLog[stepLog.length - 1];
+  if (h && h.cn == null && h.signal === m.signal) h.cn = cn; // pause notice beat its trace event here
   if (s) { s.value = m.value; paintValue(s); }
   else scheduleRefresh();
   if (!streaming) return;
   if (opts.tmode === "watch" && !(s && s.watch)) return;
-  const e = { n: ++seq, time: Date.parse(m.time), signal: m.signal, kind: m.kind, value: m.value, source: m.source || "" };
+  const e = { cn, n: ++seq, time: Date.parse(m.time), signal: m.signal, kind: m.kind, value: m.value, source: m.source || "" };
   if (firstTime == null) firstTime = e.time;
   pending.push(e);
   if (!rafQueued) { rafQueued = true; requestAnimationFrame(flushTrace); }
@@ -474,6 +492,16 @@ function onStep(st) {
     const b = step.breakSignals.has(s.name);
     if (b !== s.brk) { s.brk = b; if (s.bchk) s.bchk.checked = b; }
   }
+  const p = step.paused;
+  if (p && !stepLog.some(h => h.step === p.step)) {
+    let cn = null;
+    for (let i = changes.length - 1; i >= 0 && i >= changes.length - 500; i--)
+      if (changes[i].signal === p.signal) { cn = changes[i].cn; break; }
+    if (cn != null && stepLog.length && stepLog[stepLog.length - 1].cn >= cn) cn = null; // that change belongs to an earlier step
+    stepLog.push({ step: p.step, signal: p.signal, kind: p.kind, value: p.value, source: p.source, cn });
+    if (stepLog.length > 5000) { stepLog.shift(); if (view != null) view = Math.max(0, view - 1); }
+  }
+  if (!step.enabled && view != null) setView(null);
   applyFilter();
   $("#bmode").value = step.onlyBreakSignals ? "marked" : "all";
   renderStep(wasPausedOn !== (step.paused && step.paused.step));
@@ -484,14 +512,26 @@ function renderStep(newPause) {
   document.body.classList.toggle("stepping", step.enabled);
   $("#stepmode").classList.toggle("step-on", step.enabled);
   $("#stepmode").textContent = step.enabled ? "⏸ Step: on" : "⏸ Step";
-  for (const id of ["#stepnext", "#stepnext2"]) $(id).disabled = !p;
+  for (const id of ["#stepnext", "#stepnext2"]) $(id).disabled = !p && view == null;
+  for (const id of ["#stepback", "#stepback2"]) $(id).disabled = !step.enabled || backIndex() < 0;
   for (const id of ["#steprun", "#steprun2"]) $(id).disabled = !step.enabled;
   const bar = $("#stepbar");
   bar.classList.toggle("off", !step.enabled);
-  bar.classList.toggle("paused", !!p);
+  bar.classList.toggle("paused", !!p && view == null);
+  bar.classList.toggle("history", view != null);
 
   const what = $("#stepwhat");
-  if (p) {
+  if (view != null) {
+    const h = stepLog[view];
+    what.replaceChildren(
+      document.createTextNode(`⏪ Looking back at step ${h.step} (${view + 1} of ${stepLog.length}): `),
+      Object.assign(document.createElement("b"), { className: "mono", textContent: h.signal }),
+      document.createTextNode(" → "),
+      Object.assign(document.createElement("span"), { className: valClass(h.kind, h.value), textContent: fmt(h.kind, h.value) }),
+      document.createTextNode(`  (${h.source || "logic"}) — values shown as they were then (dotted = different now). ` +
+        (p ? `The program is still paused at step ${p.step}; Next ▶| walks forward to it.` : "Next ▶| walks forward to now.")));
+    what.title = what.textContent;
+  } else if (p) {
     what.replaceChildren(
       document.createTextNode(`⏸ Paused at step ${p.step}: `),
       Object.assign(document.createElement("b"), { className: "mono", textContent: p.signal }),
@@ -508,8 +548,15 @@ function renderStep(newPause) {
   }
 
   // Highlight the paused signal in both lists.
-  document.querySelectorAll("tr.paused").forEach(tr => tr.classList.remove("paused"));
-  if (p) {
+  document.querySelectorAll("tr.paused, tr.hist").forEach(tr => tr.classList.remove("paused", "hist"));
+  if (view != null) {
+    const h = stepLog[view];
+    const s = signals.get(h.signal);
+    if (s?.tr) { s.tr.classList.add("hist"); s.tr.scrollIntoView({ block: "nearest" }); }
+    flushTrace();
+    const e = trace.find(t => t.cn === h.cn);
+    if (e) { e.tr.classList.add("hist"); e.tr.scrollIntoView({ block: "nearest" }); }
+  } else if (p) {
     const s = signals.get(p.signal);
     if (s?.tr) { s.tr.classList.add("paused"); if (newPause) s.tr.scrollIntoView({ block: "nearest" }); }
     else scheduleRefresh();
@@ -517,11 +564,43 @@ function renderStep(newPause) {
     for (let i = trace.length - 1; i >= Math.max(0, trace.length - 200); i--)
       if (trace[i].signal === p.signal) { trace[i].tr.classList.add("paused"); break; }
   }
-  $("#st-state").textContent = p ? "Paused (step)" : step.enabled ? "Stepping" : currentState;
+  $("#st-state").textContent = view != null ? "Paused (looking back)" : p ? "Paused (step)" : step.enabled ? "Stepping" : currentState;
+}
+
+// The stepLog entry that counts as "now": the live pause if there is one, else just past the end.
+function liveIndex() {
+  const p = step.paused, last = stepLog[stepLog.length - 1];
+  return p && last && last.step === p.step ? stepLog.length - 1 : stepLog.length;
+}
+// Where Back would go, or -1 if there's nothing earlier we can still rebuild.
+function backIndex() {
+  const i = (view ?? liveIndex()) - 1;
+  if (i < 0) return -1;
+  const h = stepLog[i];
+  return h.cn != null && changes.length && h.cn >= changes[0].cn ? i : -1;
+}
+// Rebuild every signal's value at an earlier step by undoing the changes logged after it.
+function setView(i) {
+  view = i;
+  if (i == null) viewVals = null;
+  else {
+    const cn = stepLog[i].cn;
+    viewVals = new Map();
+    for (let k = changes.length - 1; k >= 0 && changes[k].cn > cn; k--) viewVals.set(changes[k].signal, changes[k].prev);
+  }
+  for (const s of signals.values()) paintValue(s);
+  renderStep(false);
+}
+function stepBack() { const i = backIndex(); if (i >= 0) setView(i); }
+function stepNext() {
+  if (view == null) { if (step.paused) stepPost("/next"); return; }
+  const i = view + 1;
+  setView(i >= liveIndex() ? null : i);
 }
 
 $("#stepmode").onclick = toggleStepMode;
-$("#stepnext").onclick = $("#stepnext2").onclick = () => stepPost("/next");
+$("#stepnext").onclick = $("#stepnext2").onclick = stepNext;
+$("#stepback").onclick = $("#stepback2").onclick = stepBack;
 $("#steprun").onclick = $("#steprun2").onclick = () => stepPost("/run");
 $("#bmode").onchange = e => stepPost("", { onlyBreakSignals: e.target.value === "marked" });
 $("#onlybreak").onchange = applyFilter;
@@ -581,7 +660,8 @@ addEventListener("keydown", e => {
   if (e.key === "Escape") hideMenu();
   if (e.key === "F5" && e.ctrlKey) { e.preventDefault(); toggleStepMode(); return; }
   if (e.key === "F5") { e.preventDefault(); $("#stream").click(); }
-  if (e.key === "F10") { e.preventDefault(); if (step.paused) stepPost("/next"); }
+  if (e.key === "F10") { e.preventDefault(); stepNext(); }
+  if (e.key === "F7") { e.preventDefault(); stepBack(); }
   if (e.key === "F8") { e.preventDefault(); if (step.enabled) stepPost("/run"); }
   if (e.key === "F9") { e.preventDefault(); const s = signals.get(selected); if (s) setBreak(s, !s.brk); }
 });
@@ -627,7 +707,8 @@ async function loadSlots() {
 function switchSlot(n) {
   slot = n; history.replaceState(null, "", `?slot=${n}`);
   selected = null; $("#fname").value = ""; $("#fval").value = "";
-  step = { enabled: false, onlyBreakSignals: false, breakSignals: new Set(), paused: null }; renderStep(false);
+  step = { enabled: false, onlyBreakSignals: false, breakSignals: new Set(), paused: null };
+  changes = []; stepLog = []; view = null; viewVals = null; renderStep(false);
   clearTrace(); loadSlots(); loadSignals(); connect();
 }
 
