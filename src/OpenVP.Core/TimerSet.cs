@@ -72,16 +72,35 @@ public sealed class TimerSet : IDisposable
     public IDisposable After(long ms, Action onFire)
     {
         var e = new Entry(this, onFire);
+        List<Entry>? now = null;
         lock (_gate)
         {
             if (_disposed) { e.State = Cancelled; return e; }
             var nowMs = NowMs();
-            e.Due = (long)Math.Ceiling((nowMs + Math.Max(0, ms)) / TickMs);
             e.Seq = ++_seq;
             e.Generation = _generation;
-            Push(e);
-            if (e.Due < _armedDue) ArmFor(e.Due, nowMs);
+            if (ms <= 0)
+            {
+                // Due now: the current tick, so it sorts after anything already due and before anything later.
+                e.Due = (long)(nowMs / TickMs);
+                if (_dispatcher != null)
+                {
+                    // Post at once (with everything already due, ahead of it) instead of waiting for the OS timer.
+                    now = DrainDue(nowMs);
+                    e.State = Queued;
+                    now.Add(e);
+                    _batches++;
+                    if (_count > 0) ArmFor(_heap[0].Due, nowMs); else Disarm();
+                }
+            }
+            else e.Due = (long)Math.Ceiling((nowMs + ms) / TickMs);
+            if (now == null)
+            {
+                Push(e);
+                if (e.Due < _armedDue) ArmFor(e.Due, nowMs);
+            }
         }
+        if (now != null) Post(now);
         return e;
     }
 
@@ -135,25 +154,38 @@ public sealed class TimerSet : IDisposable
 
     private void Wake()
     {
-        List<Entry>? batch = null;
+        List<Entry>? batch;
         lock (_gate)
         {
             if (_disposed) return;
             _wakeups++;
             var nowMs = NowMs();
             _armedDue = Disarmed;
-            while (_count > 0 && _heap[0].Due * (double)TickMs <= nowMs)
-            {
-                var e = PopRoot();
-                e.State = Queued;
-                (batch ??= _spareBatches.Count > 0 ? _spareBatches.Pop() : new List<Entry>()).Add(e);
-            }
+            batch = DrainDue(nowMs);
             // The earliest entry that is left (an entry cancelled since the OS timer was set can make this a wake
             // for nothing; that costs one wake, then the timer follows the entries again).
             if (_count > 0) ArmFor(_heap[0].Due, nowMs);
-            if (batch != null) _batches++;
+            if (batch.Count == 0) { _spareBatches.Push(batch); return; }
+            _batches++;
         }
-        if (batch == null) return;
+        Post(batch);
+    }
+
+    // Everything due by nowMs, in due order then arming order (under _gate).
+    private List<Entry> DrainDue(double nowMs)
+    {
+        var batch = _spareBatches.Count > 0 ? _spareBatches.Pop() : new List<Entry>();
+        while (_count > 0 && _heap[0].Due * (double)TickMs <= nowMs)
+        {
+            var e = PopRoot();
+            e.State = Queued;
+            batch.Add(e);
+        }
+        return batch;
+    }
+
+    private void Post(List<Entry> batch)
+    {
         if (_dispatcher != null) _dispatcher().Post(static (self, b, _) => ((TimerSet)self!).Run((List<Entry>)b!), this, batch, 0);
         else Run(batch);
     }

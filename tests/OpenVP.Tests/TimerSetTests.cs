@@ -41,6 +41,24 @@ public static class TimerSetTests
     }
 
     [Test]
+    public static void A_zero_delay_is_posted_at_once_not_at_the_next_tick()
+    {
+        using var d = NewSlot();
+        using var set = new TimerSet(() => d);
+        var ran = new List<string>();
+        var gate = Block(d); // the slot is busy, so a posted entry just waits in its queue
+        set.After(0, () => { lock (ran) ran.Add("a"); });
+        set.After(-5, () => { lock (ran) ran.Add("b"); });
+        Assert.Equal(0, set.Count, "both were handed to the slot thread by the After call itself");
+        Assert.Equal(0, set.Wakeups, "the OS timer was never needed");
+        set.After(50, () => { lock (ran) ran.Add("late"); });
+        set.After(0, () => { lock (ran) ran.Add("c"); });
+        gate.Set();
+        Assert.Eventually(() => { lock (ran) return ran.Count == 4; }, "all ran");
+        Assert.Equal("a b c late", string.Join(' ', ran), "zero delays run in arming order, ahead of the later timer");
+    }
+
+    [Test]
     public static void Timers_never_fire_early_and_round_up_to_a_tick()
     {
         using var d = NewSlot();
