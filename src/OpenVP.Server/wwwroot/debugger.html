@@ -613,9 +613,15 @@ async function force(name, value) {
     msg(step.paused ? `Queued: ${name} changes once the paused step is released (Next).` : "");
   } catch (e) { msg(e.message, true); }
 }
-// Release as soon as the press is in: a held pulse (it was 200 ms) outlasts short program timers (a Stepper's
-// 0.1 s first step), so logic that re-drives the same signal sees no new edge and runs differently from a quick tap.
-async function pulse(name) { await force(name, 1); await force(name, 0); }
+// Pulse is one request: the server drives high then low back to back on the slot thread, with nothing in
+// between, as a processor's debugger does. (Two requests, or a held pulse, leave a gap that short program
+// timers, such as a Stepper's 0.1 s first step, can fall into.)
+async function pulse(name) {
+  try {
+    await api(`/api/slots/${slot}/signals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, pulse: true }) });
+    msg(step.paused ? `Queued: ${name} pulses once the paused step is released (Next).` : "");
+  } catch (e) { msg(e.message, true); }
+}
 
 function forceTarget() {
   const name = $("#fname").value.trim();
