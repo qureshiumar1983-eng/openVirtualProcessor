@@ -168,7 +168,7 @@ public sealed class SimplRuntime : IProgramRuntime
                 var kind = KindOf(h);
                 if (SigValue.AreEqual(old, v) && kind != SigKind.Serial) continue;
                 _values[h] = v;
-                _slot.Trace(_file.SignalName(h), kind, v, src);
+                if (_slot.TraceWanted) _slot.Trace(_file.SignalName(h), kind, v, src);
                 if (!_fanout.TryGetValue(h, out var listeners)) continue;
                 foreach (var (node, pin) in listeners)
                 {
@@ -204,7 +204,7 @@ public sealed class SimplRuntime : IProgramRuntime
             foreach (var sg in _file.Signals.Values.Where(s => s.Name == "1"))
             {
                 _values[sg.Handle] = true;
-                _slot.Trace("1", SigKind.Digital, true, "start");
+                if (_slot.TraceWanted) _slot.Trace("1", SigKind.Digital, true, "start");
                 if (_fanout.TryGetValue(sg.Handle, out var listeners))
                     foreach (var (node, pin) in listeners) node.OnInput(pin, false, true);
             }

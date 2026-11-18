@@ -29,7 +29,7 @@ public static class GoldenTests
         private readonly List<(int slot, string line)> _lines = new();
 
         /// <summary>The one place that subscribes to signal traces (all slots).</summary>
-        public Recorder(Processor p) => p.Traced += OnTrace;
+        public Recorder(Processor p) { foreach (var s in p.Slots) s.Traced += OnTrace; }
 
         private void OnTrace(TraceEvent e)
         {

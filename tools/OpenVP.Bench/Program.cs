@@ -254,7 +254,7 @@ void Throughput(string name, string path, int presses, long changes, bool debugg
         var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         var outbox = Channel.CreateBounded<string>(new BoundedChannelOptions(10_000) { FullMode = BoundedChannelFullMode.DropOldest });
         int? want = 1;
-        p.Traced += e =>
+        slot.Traced += e =>
         {
             if (want == null || e.Slot == want)
                 outbox.Writer.TryWrite(JsonSerializer.Serialize(new { t = "trace", time = e.Time, slot = e.Slot, signal = e.Signal, kind = e.Kind.ToString(), value = e.Value, source = e.Source }, json));

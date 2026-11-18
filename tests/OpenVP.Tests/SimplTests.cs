@@ -97,7 +97,7 @@ public static class SimplTests
         p.LoadProgram(1, SampleSmw);
         var slot = p.Slot(1);
         var traced = new List<TraceEvent>();
-        p.Traced += e => { lock (traced) traced.Add(e); };
+        slot.Traced += e => { lock (traced) traced.Add(e); };
         Assert.True(slot.Runtime!.TrySetSignal("source1_press", true), "drive by name");
         Assert.Eventually(() => slot.Runtime.GetSignals().Any(s => s.Name == "source1_fb" && s.Value is true), "source1_fb high");
         lock (traced) Assert.True(traced.Any(t => t.Signal == "source1_fb" && t.Slot == 1), "trace event for slot 1");

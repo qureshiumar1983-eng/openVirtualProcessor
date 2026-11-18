@@ -16,14 +16,15 @@ public sealed class SignalStepper
 {
     private readonly object _gate = new();
     private readonly HashSet<string> _breakOn = new(StringComparer.OrdinalIgnoreCase);
-    private bool _enabled, _onlyBreakSignals;
+    private volatile bool _enabled; // written under _gate, read lock-free by ProgramSlot.TraceWanted
+    private bool _onlyBreakSignals;
     private StepPause? _paused;
     private long _step, _version;
 
     /// <summary>Raised (outside the lock) whenever the mode, break list or paused change changes.</summary>
     public event Action<SignalStepper>? Changed;
 
-    public bool Enabled { get { lock (_gate) return _enabled; } }
+    public bool Enabled => _enabled;
     /// <summary>True: pause only on <see cref="BreakSignals"/>. False: pause on every change.</summary>
     public bool OnlyBreakSignals { get { lock (_gate) return _onlyBreakSignals; } }
     public IReadOnlyList<string> BreakSignals { get { lock (_gate) return _breakOn.Order(StringComparer.OrdinalIgnoreCase).ToList(); } }

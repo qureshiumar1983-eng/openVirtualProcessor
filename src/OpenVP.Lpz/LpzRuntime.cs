@@ -232,7 +232,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
                 var old = _values[s];
                 if (SigValue.AreEqual(old, v) && _kinds[s] != SigKind.Serial) continue;
                 _values[s] = v;
-                _slot.Trace(NameOf(s), _kinds[s], v, src);
+                if (_slot.TraceWanted) _slot.Trace(NameOf(s), _kinds[s], v, src);
                 var listeners = _fanout[s];
                 if (listeners == null) continue;
                 foreach (var (node, pin) in listeners)

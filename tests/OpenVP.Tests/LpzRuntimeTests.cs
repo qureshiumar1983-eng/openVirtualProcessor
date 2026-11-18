@@ -130,6 +130,30 @@ public static class LpzRuntimeTests
     }
 
     [Test]
+    public static void Trace_subscriptions_are_per_slot()
+    {
+        var (p, panel) = Start();
+        using var _ = p;
+        var slot = p.Slot(1);
+        var seen1 = new List<TraceEvent>();
+        var seen2 = new List<TraceEvent>();
+        Assert.True(!slot.TraceWanted, "nobody listening yet");
+        Action<TraceEvent> h = e => { lock (seen1) seen1.Add(e); };
+        slot.Traced += h;
+        p.Slot(2).Traced += e => { lock (seen2) seen2.Add(e); };
+        Assert.True(slot.TraceWanted && p.Slot(2).TraceWanted, "subscribers turn tracing on for their own slot");
+        Assert.True(!p.Slot(3).TraceWanted, "other slots stay off");
+        panel.ReceiveInput(D(1), true);
+        Assert.Eventually(() => { lock (seen1) return seen1.Any(e => e.Signal == "#10"); }, "slot 1 subscriber saw the press");
+        lock (seen2) Assert.Equal(0, seen2.Count, "slot 2 subscriber saw nothing");
+        slot.Traced -= h;
+        Assert.True(!slot.TraceWanted, "unsubscribing turns tracing off");
+        slot.Stepper.Configure(enabled: true, onlyBreakSignals: true);
+        Assert.True(slot.TraceWanted, "stepping turns tracing on");
+        slot.Stepper.Run();
+    }
+
+    [Test]
     public static void Unsupported_types_are_reported_not_fatal()
     {
         var (p, _) = Start();

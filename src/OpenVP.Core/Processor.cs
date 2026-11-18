@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 namespace OpenVP.Core;
 
 /// <summary>
-/// The virtual processor: up to N program slots, a shared log, a signal trace for the debugger,
+/// The virtual processor: up to N program slots, a shared log, per-slot signal traces for the debugger,
 /// and the intersystem bus that links EISC endpoints between slots.
 /// </summary>
 public sealed class Processor : IDisposable
@@ -25,7 +25,6 @@ public sealed class Processor : IDisposable
     public IntersystemBus Bus { get; }
 
     public event Action<LogEntry>? LogWritten;
-    public event Action<TraceEvent>? Traced;
     /// <summary>A slot's step debugger changed mode, break list, or paused/resumed.</summary>
     public event Action<ProgramSlot>? StepChanged;
     public event Action<JoinDevice>? DeviceRegistered;
@@ -85,7 +84,6 @@ public sealed class Processor : IDisposable
         LogWritten?.Invoke(entry);
     }
 
-    internal void WriteTrace(TraceEvent e) => Traced?.Invoke(e);
     internal void NotifyStepChanged(ProgramSlot s) => StepChanged?.Invoke(s);
     internal void NotifyDeviceRegistered(JoinDevice d) => DeviceRegistered?.Invoke(d);
     internal void NotifyDeviceUnregistered(JoinDevice d) => DeviceUnregistered?.Invoke(d);

@@ -281,7 +281,9 @@ public static class OpenVpServer
             }
             if (wantTrace)
             {
-                processor.Traced += OnTrace;
+                // Subscribe on the chosen slot only, so a debugger on one slot costs the others nothing.
+                foreach (var sl in processor.Slots)
+                    if (slot == null || sl.Number == slot) sl.Traced += OnTrace;
                 processor.StepChanged += OnStep;
                 if (slot is int sn && sn >= 1 && sn <= processor.Slots.Count) OnStep(processor.Slot(sn)); // current state on connect
             }
@@ -301,7 +303,7 @@ public static class OpenVpServer
             catch (Exception e) when (e is WebSocketException or OperationCanceledException) { }
             finally
             {
-                processor.Traced -= OnTrace;
+                foreach (var sl in processor.Slots) sl.Traced -= OnTrace;
                 processor.StepChanged -= OnStep;
                 processor.LogWritten -= OnLog;
             }

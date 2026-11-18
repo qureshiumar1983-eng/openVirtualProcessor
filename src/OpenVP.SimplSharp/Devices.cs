@@ -306,12 +306,13 @@ namespace Crestron.SimplSharpPro.DeviceSupport
                 return;
             }
             _device.SetFeedback(key, value);
-            OpenVPBridge.Slot?.Trace($"IPID{ID:X2}.in.{key}", key.Kind, value, "program");
+            // Only build the trace name when someone is listening.
+            if (OpenVPBridge.Slot is { TraceWanted: true } slot) slot.Trace($"IPID{ID:X2}.in.{key}", key.Kind, value, "program");
         }
 
         private void OnInputFromDevice(JoinDevice dev, JoinKey key, object value)
         {
-            OpenVPBridge.Slot?.Trace($"IPID{ID:X2}.out.{key}", key.Kind, value, "device");
+            if (OpenVPBridge.Slot is { TraceWanted: true } slot) slot.Trace($"IPID{ID:X2}.out.{key}", key.Kind, value, "device");
             OpenVPBridge.Post(() =>
             {
                 Sig sig = key.Kind switch
