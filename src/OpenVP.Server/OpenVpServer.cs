@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -23,7 +24,7 @@ public static class OpenVpServer
         builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = 512L * 1024 * 1024);
         var cfg = builder.Configuration.GetSection("OpenVP");
 
-        var processor = new Processor(cfg["DataDirectory"] ?? "data", cfg.GetValue("Slots", 10));
+        var processor = new Processor(cfg["DataDirectory"] ?? "data", cfg.GetValue("Slots", 10), cfg.GetValue("SlotSpinMicroseconds", 0));
         processor.AddLoader(new SimplSharpLoader());
         processor.AddLoader(new SimplLoader(Path.Combine(processor.DataDirectory, "symbols.json")));
         processor.AddLoader(new LpzLoader());
@@ -266,45 +267,57 @@ public static class OpenVpServer
             int? slot = int.TryParse(ctx.Request.Query["slot"], out var s) ? s : null;
             var wantTrace = ctx.Request.Query["trace"] != "0";   // trace=0: log lines only (the console page)
             using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
-            var outbox = Channel.CreateBounded<string>(new BoundedChannelOptions(10_000) { FullMode = BoundedChannelFullMode.DropOldest });
+            // Raw events go in; the send loop below turns them into JSON, so the slot thread only pays for an enqueue.
+            var outbox = Channel.CreateBounded<object>(new BoundedChannelOptions(10_000) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
             void OnTrace(TraceEvent e)
             {
-                if (slot == null || e.Slot == slot)
-                    outbox.Writer.TryWrite(JsonSerializer.Serialize(new { t = "trace", time = e.Time, slot = e.Slot, signal = e.Signal, kind = e.Kind.ToString(), value = e.Value, source = e.Source }, json));
+                if (slot == null || e.Slot == slot) outbox.Writer.TryWrite(e);
             }
             void OnLog(LogEntry e)
             {
-                if (slot == null || e.Slot == slot)
-                    outbox.Writer.TryWrite(JsonSerializer.Serialize(new { t = "log", time = e.Time, slot = e.Slot, level = e.Level, message = e.Message }, json));
+                if (slot == null || e.Slot == slot) outbox.Writer.TryWrite(e);
             }
             void OnStep(ProgramSlot st)
             {
-                if (slot == null || st.Number == slot)
-                    outbox.Writer.TryWrite(JsonSerializer.Serialize(StepDto(st), json));
+                // Snapshot now: the stepper's state may have moved on by the time the send loop runs.
+                if (slot == null || st.Number == slot) outbox.Writer.TryWrite(StepDto(st));
             }
             if (wantTrace)
             {
-                processor.Traced += OnTrace;
+                // Subscribe on the chosen slot only, so a debugger on one slot costs the others nothing.
+                foreach (var sl in processor.Slots)
+                    if (slot == null || sl.Number == slot) sl.Traced += OnTrace;
                 processor.StepChanged += OnStep;
                 if (slot is int sn && sn >= 1 && sn <= processor.Slots.Count) OnStep(processor.Slot(sn)); // current state on connect
             }
             processor.LogWritten += OnLog;
             var buffer = new byte[1024];
             var receive = ws.ReceiveAsync(buffer, ctx.RequestAborted);
+            var frame = new ArrayBufferWriter<byte>(16 * 1024);
+            using var jw = new Utf8JsonWriter(frame);
             try
             {
                 while (ws.State == WebSocketState.Open)
                 {
                     var read = outbox.Reader.WaitToReadAsync(ctx.RequestAborted).AsTask();
                     if (await Task.WhenAny(read, receive) == receive) break;
-                    while (outbox.Reader.TryRead(out var msg))
-                        await ws.SendAsync(Encoding.UTF8.GetBytes(msg), WebSocketMessageType.Text, true, ctx.RequestAborted);
+                    // One JSON array per frame: whatever is queued now, up to MaxTraceBatch events.
+                    while (outbox.Reader.TryPeek(out _))
+                    {
+                        frame.Clear();
+                        jw.Reset(frame);
+                        jw.WriteStartArray();
+                        for (var n = 0; n < MaxTraceBatch && outbox.Reader.TryRead(out var item); n++) WriteWsEvent(jw, item, json);
+                        jw.WriteEndArray();
+                        jw.Flush();
+                        await ws.SendAsync(frame.WrittenMemory, WebSocketMessageType.Text, true, ctx.RequestAborted);
+                    }
                 }
             }
             catch (Exception e) when (e is WebSocketException or OperationCanceledException) { }
             finally
             {
-                processor.Traced -= OnTrace;
+                foreach (var sl in processor.Slots) sl.Traced -= OnTrace;
                 processor.StepChanged -= OnStep;
                 processor.LogWritten -= OnLog;
             }
@@ -357,5 +370,46 @@ public static class OpenVpServer
 
         app.Lifetime.ApplicationStopping.Register(() => { cip?.Dispose(); processor.Dispose(); });
         return app;
+    }
+
+    /// <summary>Most events in one /ws/trace frame, so one burst can't build an enormous message.</summary>
+    private const int MaxTraceBatch = 200;
+
+    /// <summary>Writes one /ws/trace event with the same fields the page has always seen.</summary>
+    private static void WriteWsEvent(Utf8JsonWriter w, object item, JsonSerializerOptions json)
+    {
+        switch (item)
+        {
+            case TraceEvent e:
+                w.WriteStartObject();
+                w.WriteString("t", "trace");
+                w.WriteString("time", e.Time);
+                w.WriteNumber("slot", e.Slot);
+                w.WriteString("signal", e.Signal);
+                w.WriteString("kind", e.Kind switch { SigKind.Digital => "Digital", SigKind.Analog => "Analog", _ => "Serial" });
+                w.WritePropertyName("value");
+                switch (e.Value)
+                {
+                    case bool b: w.WriteBooleanValue(b); break;
+                    case ushort u: w.WriteNumberValue(u); break;
+                    case string str: w.WriteStringValue(str); break;
+                    default: JsonSerializer.Serialize(w, e.Value, json); break;
+                }
+                w.WriteString("source", e.Source);
+                w.WriteEndObject();
+                break;
+            case LogEntry l:
+                w.WriteStartObject();
+                w.WriteString("t", "log");
+                w.WriteString("time", l.Time);
+                w.WriteNumber("slot", l.Slot);
+                w.WriteString("level", l.Level);
+                w.WriteString("message", l.Message);
+                w.WriteEndObject();
+                break;
+            default:
+                JsonSerializer.Serialize(w, item, json);
+                break;
+        }
     }
 }

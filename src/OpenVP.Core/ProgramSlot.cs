@@ -79,10 +79,31 @@ public sealed class ProgramSlot : IDisposable
 
     public void Log(string level, string message) => Processor.WriteLog(new LogEntry(DateTimeOffset.Now, Number, level, message));
 
+    private volatile Action<TraceEvent>? _traced;
+    private readonly object _traceGate = new();
+
+    /// <summary>
+    /// Every signal change in this slot's program. Subscribe per slot, so a debugger open on one slot
+    /// doesn't slow the others. Handlers run on the slot thread: keep them cheap.
+    /// </summary>
+    public event Action<TraceEvent>? Traced
+    {
+        add { lock (_traceGate) _traced += value; }
+        remove { lock (_traceGate) _traced -= value; }
+    }
+
+    /// <summary>
+    /// True while someone is listening to this slot (a trace subscriber, or the step debugger). Runtimes
+    /// check it before building a trace name or calling <see cref="Trace"/>. Read without a lock.
+    /// </summary>
+    public bool TraceWanted => _traced != null || Stepper.Enabled;
+
     public void Trace(string signal, SigKind kind, object value, string source)
     {
+        var handlers = _traced;
+        if (handlers == null && !Stepper.Enabled) return; // nobody listening: skip the record and the clock read
         var e = new TraceEvent(DateTimeOffset.Now, Number, signal, kind, value, source);
-        Processor.WriteTrace(e);
+        handlers?.Invoke(e);
         Stepper.OnChange(e); // blocks here while the debugger is stepping
     }
 
@@ -208,7 +229,7 @@ public sealed class ProgramSlot : IDisposable
     }
 
     private SlotDispatcher NewDispatcher() =>
-        new($"slot{Number:00}", e => Log("Error", $"Unhandled exception in program: {e}"), () => Stepper.IsPaused);
+        new($"slot{Number:00}", e => Log("Error", $"Unhandled exception in program: {e}"), () => Stepper.IsPaused, Processor.SlotSpinMicroseconds);
 
     public void Dispose() => Unload();
 }

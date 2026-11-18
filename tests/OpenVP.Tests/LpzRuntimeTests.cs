@@ -13,7 +13,8 @@ public static class LpzRuntimeTests
     const int Press1 = 10, Fb1 = 11, Press2 = 12, Press3 = 13, Fb2 = 14, Fb3 = 15, Level = 16, Text = 17, Hello = 18,
               BothA = 19, BothB = 20, BothFb = 21, Clear = 22, Busy = 23, DelayOut = 24, Echo = 25, Rx = 26;
 
-    private static string BuildProgram()
+    /// <param name="timers">False leaves out the Delay, so the golden trace never depends on a timer.</param>
+    internal static string BuildProgram(bool timers = true)
     {
         // Panel IPID 03: inputs (feedback) d1..d4, a1, s1..s2 ; outputs (presses) d1..d6, a1, s1
         int[] panelIns = [Fb1, Fb2, Fb3, BothFb, /*a1*/ Level, /*s1*/ Text, /*s2*/ Echo];
@@ -28,7 +29,7 @@ public static class LpzRuntimeTests
         bin.AddRange(Record(38, "S-4", [1], [Hello], Int(15, 1), Str(3, "ready"))); // init string at start
         bin.AddRange(Record(88, "S-5", [1, Rx], [Echo]));                          // Serial Buffer, always enabled
         bin.AddRange(Record(88, "S-6", [1, Hello], [Text]));
-        bin.AddRange(Record(27, "S-7", [BothFb], [DelayOut], Int(15, 1), Int(2, 5)));  // Delay 50 ms
+        if (timers) bin.AddRange(Record(27, "S-7", [BothFb], [DelayOut], Int(15, 1), Int(2, 5)));  // Delay 50 ms
         bin.AddRange(Record(-48, "S-8", [Press1], [Busy], Str(3, "Some_Module.dll")));  // SIMPL+ (unsupported)
 
         var path = Path.Combine(Paths.TempData(), "synth.lpz");
@@ -126,6 +127,48 @@ public static class LpzRuntimeTests
         var stop = Task.Run(() => p.Slot(1).Stop());
         Assert.True(stop.Wait(3000), "stop did not hang on a paused slot");
         Assert.True(!st.Enabled && !st.IsPaused, "stepping turned off by stop");
+    }
+
+    [Test]
+    public static void Trace_subscriptions_are_per_slot()
+    {
+        var (p, panel) = Start();
+        using var _ = p;
+        var slot = p.Slot(1);
+        var seen1 = new List<TraceEvent>();
+        var seen2 = new List<TraceEvent>();
+        Assert.True(!slot.TraceWanted, "nobody listening yet");
+        Action<TraceEvent> h = e => { lock (seen1) seen1.Add(e); };
+        slot.Traced += h;
+        p.Slot(2).Traced += e => { lock (seen2) seen2.Add(e); };
+        Assert.True(slot.TraceWanted && p.Slot(2).TraceWanted, "subscribers turn tracing on for their own slot");
+        Assert.True(!p.Slot(3).TraceWanted, "other slots stay off");
+        panel.ReceiveInput(D(1), true);
+        Assert.Eventually(() => { lock (seen1) return seen1.Any(e => e.Signal == "#10"); }, "slot 1 subscriber saw the press");
+        lock (seen2) Assert.Equal(0, seen2.Count, "slot 2 subscriber saw nothing");
+        slot.Traced -= h;
+        Assert.True(!slot.TraceWanted, "unsubscribing turns tracing off");
+        slot.Stepper.Configure(enabled: true, onlyBreakSignals: true);
+        Assert.True(slot.TraceWanted, "stepping turns tracing on");
+        slot.Stepper.Run();
+    }
+
+    [Test]
+    public static void Nvram_saves_atomically_and_reloads()
+    {
+        var path = Path.Combine(Paths.TempData(), "slot", "nvram.json");
+        var store = new NvramStore(path);
+        store.Set("a", "hello");
+        store.Set("b", (ushort)42);
+        store.Flush();
+        Assert.True(!File.Exists(path + ".tmp"), "temp file swapped in, not left behind");
+        store.Set("b", (ushort)43);
+        // Concurrent flushes (timer thread plus Stop) must not corrupt the file or leave a stale snapshot.
+        Parallel.For(0, 8, _ => store.Flush());
+        var again = new NvramStore(path);
+        Assert.Equal("hello", (string)again.Get("a")!, "string reloaded");
+        Assert.Equal((ushort)43, (ushort)again.Get("b")!, "latest value reloaded");
+        Assert.True(!File.Exists(path + ".tmp"), "no temp file after concurrent flushes");
     }
 
     [Test]

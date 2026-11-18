@@ -1,0 +1,43 @@
+slot1 1 D=1 <- start
+slot1 status_text S="SIMPL program running" <- Serial Send
+-- d1 press (toggle on)
+slot1 toggle_press D=1 <- IPID03
+slot1 toggle_fb D=1 <- Toggle
+-- d1 release
+slot1 toggle_press D=0 <- IPID03
+-- d1 press (toggle off)
+slot1 toggle_press D=1 <- IPID03
+slot1 toggle_fb D=0 <- Toggle
+-- d1 release
+slot1 toggle_press D=0 <- IPID03
+-- d3 press (interlock)
+slot1 source2_press D=1 <- IPID03
+slot1 source2_fb D=1 <- Interlock
+-- d4 press (interlock)
+slot1 source3_press D=1 <- IPID03
+slot1 source2_fb D=0 <- Interlock
+slot1 source3_fb D=1 <- Interlock
+-- d3 and d4 release
+slot1 source2_press D=0 <- IPID03
+slot1 source3_press D=0 <- IPID03
+-- d6 press (AND low)
+slot1 both_a D=1 <- IPID03
+-- d7 press (AND high)
+slot1 both_b D=1 <- IPID03
+slot1 both_pressed D=1 <- AND
+-- d6 release
+slot1 both_a D=0 <- IPID03
+slot1 both_pressed D=0 <- AND
+-- a1 = 40000
+slot1 volume_level A=40000 <- IPID03
+-- a1 = 0
+slot1 volume_level A=0 <- IPID03
+-- d5 press (serial send)
+slot1 hello_press D=1 <- IPID03
+slot1 hello_text S="Hello from SIMPL" <- Serial Send
+-- d5 release
+slot1 hello_press D=0 <- IPID03
+-- d10 press (EISC out)
+slot1 to_other_slot D=1 <- IPID03
+-- d10 release
+slot1 to_other_slot D=0 <- IPID03

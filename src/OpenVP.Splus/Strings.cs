@@ -157,6 +157,7 @@ namespace Crestron.Logos.SplusObjects
         public bool IsWaiting { get; internal set; }
 
         public System.Collections.Generic.List<InputChangeHandlerWrapper> OnSerialChange = new System.Collections.Generic.List<InputChangeHandlerWrapper>();
+        internal InputChangeHandlerWrapper[] ChangeSnap;
 
         /// <summary>New text from the program. BUFFER_INPUT appends instead of replacing.</summary>
         internal virtual void Receive(string text) { SetRaw(text); _generation++; Owner?.BufferChanged(null); }

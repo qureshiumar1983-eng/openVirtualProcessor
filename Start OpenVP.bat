@@ -1,6 +1,10 @@
 @echo off
-rem Starts OpenVP, building desktop\dist\OpenVP.exe first if it isn't there.
-rem You can also just run desktop\dist\OpenVP.exe (or copy it anywhere and pin it to the taskbar).
-cd /d "%~dp0"
-if not exist "desktop\dist\OpenVP.exe" call publish-desktop.bat || exit /b 1
-start "" "desktop\dist\OpenVP.exe"
+rem Runs OpenVP in dev mode: the Electron app on your source code. Changes to the web pages show up in the
+rem window right away; C# changes rebuild and restart the server automatically (about 10-15 seconds).
+rem Needs the .NET 8 SDK and Node.js. Close the OpenVP window to stop. To build a standalone OpenVP.exe,
+rem run publish-desktop.bat instead.
+cd /d "%~dp0desktop"
+if not exist node_modules (
+  call npm install --no-audit --no-fund || (pause & exit /b 1)
+)
+call npm start

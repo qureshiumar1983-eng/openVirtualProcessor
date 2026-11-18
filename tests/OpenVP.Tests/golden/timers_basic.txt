@@ -1,0 +1,150 @@
+slot1 #22 D=1 <- S-2 One shot
+slot1 #24 D=1 <- S-3 Retriggerable one shot
+-- delay in on
+slot1 #10 D=1 <- IPID03
+slot1 #20 D=1 <- S-1 Delay
+-- delay in off (low at once)
+slot1 #10 D=0 <- IPID03
+slot1 #20 D=0 <- S-1 Delay
+-- delay in on, then off after 20 ms (timer cancelled)
+slot1 #10 D=1 <- IPID03
+-- delay in off
+slot1 #10 D=0 <- IPID03
+-- delay in on again
+slot1 #10 D=1 <- IPID03
+slot1 #20 D=1 <- S-1 Delay
+-- delay in off
+slot1 #10 D=0 <- IPID03
+slot1 #20 D=0 <- S-1 Delay
+-- one shot trigger
+slot1 #11 D=1 <- IPID03
+slot1 #21 D=1 <- S-2 One shot
+slot1 #22 D=0 <- S-2 One shot
+slot1 #21 D=0 <- S-2 One shot
+slot1 #22 D=1 <- S-2 One shot
+-- one shot trigger release
+slot1 #11 D=0 <- IPID03
+-- one shot trigger, release and trigger again while running
+slot1 #11 D=1 <- IPID03
+slot1 #21 D=1 <- S-2 One shot
+slot1 #22 D=0 <- S-2 One shot
+slot1 #11 D=0 <- IPID03
+slot1 #11 D=1 <- IPID03
+slot1 #21 D=0 <- S-2 One shot
+slot1 #22 D=1 <- S-2 One shot
+-- one shot trigger release
+slot1 #11 D=0 <- IPID03
+-- one shot trigger, then cancel
+slot1 #11 D=1 <- IPID03
+slot1 #21 D=1 <- S-2 One shot
+slot1 #22 D=0 <- S-2 One shot
+slot1 #12 D=1 <- IPID03
+slot1 #21 D=0 <- S-2 One shot
+slot1 #22 D=1 <- S-2 One shot
+-- one shot release both
+slot1 #11 D=0 <- IPID03
+slot1 #12 D=0 <- IPID03
+-- one shot trigger after cancel
+slot1 #11 D=1 <- IPID03
+slot1 #21 D=1 <- S-2 One shot
+slot1 #22 D=0 <- S-2 One shot
+slot1 #21 D=0 <- S-2 One shot
+slot1 #22 D=1 <- S-2 One shot
+-- one shot release
+slot1 #11 D=0 <- IPID03
+-- retriggerable trigger
+slot1 #13 D=1 <- IPID03
+slot1 #23 D=1 <- S-3 Retriggerable one shot
+slot1 #24 D=0 <- S-3 Retriggerable one shot
+-- retriggerable release and trigger again
+slot1 #13 D=0 <- IPID03
+slot1 #13 D=1 <- IPID03
+slot1 #23 D=0 <- S-3 Retriggerable one shot
+slot1 #24 D=1 <- S-3 Retriggerable one shot
+-- retriggerable release
+slot1 #13 D=0 <- IPID03
+-- stretch in on
+slot1 #14 D=1 <- IPID03
+slot1 #25 D=1 <- S-4 Pulse stretcher
+-- stretch in off (held, then low)
+slot1 #14 D=0 <- IPID03
+slot1 #25 D=0 <- S-4 Pulse stretcher
+-- stretch in on
+slot1 #14 D=1 <- IPID03
+slot1 #25 D=1 <- S-4 Pulse stretcher
+-- stretch in off
+slot1 #14 D=0 <- IPID03
+-- stretch in on again while held
+slot1 #14 D=1 <- IPID03
+-- stretch in off
+slot1 #14 D=0 <- IPID03
+slot1 #25 D=0 <- S-4 Pulse stretcher
+-- debounce in on
+slot1 #15 D=1 <- IPID03
+slot1 #26 D=1 <- S-5 Debounce
+-- debounce in off
+slot1 #15 D=0 <- IPID03
+slot1 #26 D=0 <- S-5 Debounce
+-- debounce glitch: on and off at once
+slot1 #15 D=1 <- IPID03
+slot1 #15 D=0 <- IPID03
+-- debounce in on
+slot1 #15 D=1 <- IPID03
+slot1 #26 D=1 <- S-5 Debounce
+-- debounce glitch: off and on at once
+slot1 #15 D=0 <- IPID03
+slot1 #15 D=1 <- IPID03
+-- debounce in off
+slot1 #15 D=0 <- IPID03
+slot1 #26 D=0 <- S-5 Debounce
+-- multi one shot 1
+slot1 #16 D=1 <- IPID03
+slot1 #27 D=1 <- S-6 Multiple one shots
+slot1 #27 D=0 <- S-6 Multiple one shots
+-- multi one shot 1 release
+slot1 #16 D=0 <- IPID03
+-- multi one shot 2
+slot1 #17 D=1 <- IPID03
+slot1 #28 D=1 <- S-6 Multiple one shots
+slot1 #28 D=0 <- S-6 Multiple one shots
+-- multi one shot 2 release
+slot1 #17 D=0 <- IPID03
+-- multi one shot 1
+slot1 #16 D=1 <- IPID03
+slot1 #27 D=1 <- S-6 Multiple one shots
+-- multi one shot 2, 80 ms later
+slot1 #17 D=1 <- IPID03
+slot1 #28 D=1 <- S-6 Multiple one shots
+slot1 #27 D=0 <- S-6 Multiple one shots
+slot1 #28 D=0 <- S-6 Multiple one shots
+-- multi one shot releases
+slot1 #16 D=0 <- IPID03
+slot1 #17 D=0 <- IPID03
+-- multi one shot 1 on
+slot1 #16 D=1 <- IPID03
+slot1 #27 D=1 <- S-6 Multiple one shots
+-- multi one shot 1 off and on at once (restarts)
+slot1 #16 D=0 <- IPID03
+slot1 #16 D=1 <- IPID03
+slot1 #27 D=0 <- S-6 Multiple one shots
+-- multi one shot 1 release
+slot1 #16 D=0 <- IPID03
+-- analog a1 = 5
+slot1 #18 A=5 <- IPID03
+slot1 #29 D=1 <- S-7 Change pulse (analog)
+slot1 #29 D=0 <- S-7 Change pulse (analog)
+-- analog a1 = 5 again (no change)
+-- analog a1 = 6
+slot1 #18 A=6 <- IPID03
+slot1 #29 D=1 <- S-7 Change pulse (analog)
+-- analog a1 = 7, 50 ms later (restarts the pulse)
+slot1 #18 A=7 <- IPID03
+slot1 #29 D=0 <- S-7 Change pulse (analog)
+-- serial s1 = x
+slot1 #19 S="x" <- IPID03
+slot1 #30 D=1 <- S-8 Change pulse (serial)
+slot1 #30 D=0 <- S-8 Change pulse (serial)
+-- serial s1 = x again (serials always fire)
+slot1 #19 S="x" <- IPID03
+slot1 #30 D=1 <- S-8 Change pulse (serial)
+slot1 #30 D=0 <- S-8 Change pulse (serial)

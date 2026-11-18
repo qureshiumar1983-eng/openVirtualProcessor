@@ -34,16 +34,24 @@ public sealed partial class LpzRuntime : IProgramRuntime
 
     private readonly ProgramSlot _slot;
     private readonly LpzPackage _pkg;
-    private readonly object[] _values;
+    // Values live in one typed array per kind, indexed by signal number; _kinds[sig] says which one is
+    // in use (the other two stay at their defaults for that signal). Nothing here boxes.
+    private readonly bool[] _dig;
+    private readonly ushort[] _ana;
+    private readonly string[] _ser;
     private readonly SigKind[] _kinds;
     private readonly bool[] _kindKnown;
-    private readonly List<(Node node, int pin)>[] _fanout;
+    // Listeners per signal, in the order the nodes were registered. Built as lists while the program
+    // loads, then flattened: signal s's listeners are _edges[_edgeStart[s] .. _edgeStart[s + 1]).
+    private List<(Node node, int pin)>[]? _fanout;
+    private Edge[] _edges = Array.Empty<Edge>();
+    private int[] _edgeStart = Array.Empty<int>();
     private readonly bool[] _used;
     private readonly List<Node> _nodes = new();
     private readonly List<DeviceNode> _devices = new();
-    private readonly Queue<(int sig, object value, string source)> _pending = new();
+    private readonly Queue<Pending> _pending = new();
     private readonly Queue<Action> _nextWave = new();
-    private readonly List<IDisposable> _timers = new();
+    private readonly TimerSet _timers;
     private readonly NvramStore _store;
     private bool _solving;
     private volatile bool _running;
@@ -53,8 +61,12 @@ public sealed partial class LpzRuntime : IProgramRuntime
         _slot = slot;
         _pkg = pkg;
         _store = new NvramStore(Path.Combine(slot.Directory, "nvram.json"));
+        // One OS timer for the whole slot; due timers reach the slot thread in one post (see TimerSet).
+        _timers = new TimerSet(() => slot.Dispatcher, () => _running, e => slot.Log("Error", $"Unhandled exception in program: {e}"));
         var count = Math.Max(2, pkg.Logic.MaxSignal + 1);
-        _values = new object[count];
+        _dig = new bool[count];
+        _ana = new ushort[count];
+        _ser = new string[count];
         _kinds = new SigKind[count];
         _kindKnown = new bool[count];
         _fanout = new List<(Node, int)>[count];
@@ -63,15 +75,42 @@ public sealed partial class LpzRuntime : IProgramRuntime
         // Signal types: from the .sig when we have it, then from what the primitives imply.
         if (pkg.Signals != null)
             foreach (var e in pkg.Signals.Entries.Values)
-                if (e.Index < count && e.Kind is SigFileKind.Digital or SigFileKind.Analog or SigFileKind.Serial)
+                if (e.Index is > 1 && e.Index < count && e.Kind is SigFileKind.Digital or SigFileKind.Analog or SigFileKind.Serial) // 0 and 1 are the constants
                 {
                     _kinds[e.Index] = (SigKind)(int)e.Kind;
                     _kindKnown[e.Index] = true;
                 }
 
         Build();
-        for (int i = 0; i < count; i++) _values[i] = SigValue.Default(_kinds[i]);
-        _values[1] = true; // constant "1"
+        Array.Fill(_ser, string.Empty);
+        _dig[1] = true; // constant "1"
+        Flatten();
+    }
+
+    /// <summary>One listener of a signal: the node and which of its pins reads it (negative = its own output).</summary>
+    private readonly record struct Edge(Node Node, int Pin);
+
+    /// <summary>A queued change. Digital and analog keep their value in Num, serial in Str.</summary>
+    private readonly record struct Pending(int Sig, uint Num, string? Str, string Source);
+
+    private void Flatten()
+    {
+        var lists = _fanout!;
+        _edgeStart = new int[lists.Length + 1];
+        var total = 0;
+        for (int s = 0; s < lists.Length; s++)
+        {
+            _edgeStart[s] = total;
+            total += lists[s]?.Count ?? 0;
+        }
+        _edgeStart[lists.Length] = total;
+        _edges = new Edge[total];
+        for (int s = 0; s < lists.Length; s++)
+        {
+            if (lists[s] is not { } list) continue;
+            for (int i = 0; i < list.Count; i++) _edges[_edgeStart[s] + i] = new Edge(list[i].node, list[i].pin);
+        }
+        _fanout = null; // only needed while building
     }
 
     private LpzLoadContext? _alc;
@@ -116,13 +155,14 @@ public sealed partial class LpzRuntime : IProgramRuntime
             if (BuildSpecial(sym)) continue;
             var prim = PrimitiveLibrary.Create(sym.Type);
             if (prim == null) { Count(sym.Type); continue; }
-            Register(new LogicNode(this, sym, prim));
+            Register(LogicNode.Create(this, sym, prim));
         }
 
         void Count(int t) => Unsupported[t] = Unsupported.GetValueOrDefault(t) + 1;
     }
 
     private readonly HashSet<string> _moduleErrors = new();
+    private SlotDispatcher? _callbacks;
 
     /// <summary>Load and instantiate the SIMPL+ module a −48 record points at.</summary>
     private SplusNode? CreateModule(BinSymbol sym)
@@ -138,7 +178,14 @@ public sealed partial class LpzRuntime : IProgramRuntime
                 _alc = new LpzLoadContext(_slot.Number, dir, AppContext.BaseDirectory);
                 // Point the SIMPL# runtime used by modules and their libraries at this slot.
                 var shim = _alc.LoadFromAssemblyName(new System.Reflection.AssemblyName("OpenVP.SimplSharp"));
-                shim.GetType("OpenVP.SimplSharp.OpenVPBridge")?.GetProperty("Slot")?.SetValue(null, _slot);
+                var bridge = shim.GetType("OpenVP.SimplSharp.OpenVPBridge");
+                bridge?.GetProperty("Slot")?.SetValue(null, _slot);
+                // Library callbacks get a thread of their own, so the step debugger holding the logic
+                // thread doesn't freeze the SIMPL+ modules that depend on them.
+                _callbacks = new SlotDispatcher($"slot{_slot.Number:00}-simplsharp",
+                    e => _slot.Log("Error", $"Unhandled exception in SIMPL# library callback: {e}"));
+                bridge?.GetProperty("Callbacks")?.SetValue(null, _callbacks);
+                _slot.Metrics.Callbacks = _callbacks;
             }
             var asm = _alc.LoadFromAssemblyName(new System.Reflection.AssemblyName(Path.GetFileNameWithoutExtension(dll)));
             var splusObject = _alc.LoadFromAssemblyName(new System.Reflection.AssemblyName("SplusObjects"))
@@ -169,7 +216,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
             if (s <= 1) continue;
             _used[s] = true;
             Infer(s, node.InputKind(pin));
-            (_fanout[s] ??= new()).Add((node, pin));
+            (_fanout![s] ??= new()).Add((node, pin));
         }
         for (int pin = 1; pin <= node.Symbol.Outputs.Length; pin++)
         {
@@ -177,7 +224,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
             if (s <= 1) continue;
             _used[s] = true;
             Infer(s, node.OutputKind(pin));
-            if (node.WatchesOutputs) (_fanout[s] ??= new()).Add((node, -pin)); // negative pin = own output
+            if (node.WatchesOutputs) (_fanout![s] ??= new()).Add((node, -pin)); // negative pin = own output
         }
     }
 
@@ -190,21 +237,90 @@ public sealed partial class LpzRuntime : IProgramRuntime
 
     // ------------------------------------------------------------------ signals
 
-    internal object Value(int sig) => sig >= 0 && sig < _values.Length ? _values[sig] : false;
+    /// <summary>The value as an object, for devices, SIMPL+ and the debugger. Boxes analog values; the hot path
+    /// uses the typed readers instead.</summary>
+    internal object Value(int sig)
+    {
+        if ((uint)sig >= (uint)_kinds.Length) return SigValue.False;
+        return _kinds[sig] switch
+        {
+            SigKind.Digital => SigValue.Box(_dig[sig]),
+            SigKind.Analog => _ana[sig],
+            _ => _ser[sig]
+        };
+    }
+
+    // A signal only ever writes the array of its own kind, so reading another kind's array gives that
+    // kind's default (false, 0, ""): same answers as the old "is true / is ushort / as string" checks.
+    internal bool DigitalAt(int sig) => (uint)sig < (uint)_dig.Length && _dig[sig];
+    internal ushort AnalogAt(int sig) => (uint)sig < (uint)_ana.Length ? _ana[sig] : (ushort)0;
+    internal string SerialAt(int sig) => (uint)sig < (uint)_ser.Length ? _ser[sig] : string.Empty;
+
     internal SigKind KindOf(int sig) => sig >= 0 && sig < _kinds.Length ? _kinds[sig] : SigKind.Digital;
 
     internal string NameOf(int sig) =>
         _pkg.Signals?.NameOf(sig) is string n ? (n.StartsWith("::") ? n[2..] : n) : $"#{sig}";
 
-    /// <summary>Queue a change and solve until settled. Slot thread only.</summary>
+    // The Drive overloads queue a change and solve until settled (slot thread only). Each one converts
+    // the value to the signal's kind exactly as SigValue.Coerce does, without boxing.
+
+    internal void Drive(int sig, bool value, string source)
+    {
+        if (sig <= 1 || sig >= _kinds.Length) return; // constants and unconnected
+        // An unconnected input reads the constant signal 0/1; into a serial signal that means "empty".
+        if (_kinds[sig] == SigKind.Serial) Enqueue(sig, 0, string.Empty, source);
+        else Enqueue(sig, value ? 1u : 0u, null, source);
+        if (!_solving) Solve();
+    }
+
+    internal void Drive(int sig, ushort value, string source)
+    {
+        if (sig <= 1 || sig >= _kinds.Length) return;
+        switch (_kinds[sig])
+        {
+            case SigKind.Digital: Enqueue(sig, value != 0 ? 1u : 0u, null, source); break;
+            case SigKind.Analog: Enqueue(sig, value, null, source); break;
+            default: Enqueue(sig, 0, value.ToString(), source); break;
+        }
+        if (!_solving) Solve();
+    }
+
+    internal void Drive(int sig, string? value, string source)
+    {
+        if (sig <= 1 || sig >= _kinds.Length) return;
+        switch (_kinds[sig])
+        {
+            case SigKind.Digital:
+                Enqueue(sig, value != null && (value == "1" || value.Equals("true", StringComparison.OrdinalIgnoreCase)) ? 1u : 0u, null, source);
+                break;
+            case SigKind.Analog: Enqueue(sig, ushort.TryParse(value, out var u) ? u : (ushort)0, null, source); break;
+            default: Enqueue(sig, 0, value ?? string.Empty, source); break;
+        }
+        if (!_solving) Solve();
+    }
+
+    /// <summary>For values that arrive as objects (panels, SIMPL+, the debugger): the three known types take the typed path.</summary>
     internal void Drive(int sig, object value, string source)
     {
-        if (sig <= 1 || sig >= _values.Length) return; // constants and unconnected
-        // An unconnected input reads the constant signal 0/1; into a serial signal that means "empty".
-        if (value is bool && _kinds[sig] == SigKind.Serial) value = string.Empty;
-        _pending.Enqueue((sig, SigValue.Coerce(_kinds[sig], value), source));
-        Solve();
+        switch (value)
+        {
+            case bool b: Drive(sig, b, source); return;
+            case ushort u: Drive(sig, u, source); return;
+            case string s: Drive(sig, s, source); return;
+        }
+        if (sig <= 1 || sig >= _kinds.Length) return;
+        var kind = _kinds[sig];
+        var v = SigValue.Coerce(kind, value); // other numeric types, null
+        switch (kind)
+        {
+            case SigKind.Digital: Enqueue(sig, (bool)v ? 1u : 0u, null, source); break;
+            case SigKind.Analog: Enqueue(sig, (ushort)v, null, source); break;
+            default: Enqueue(sig, 0, (string)v, source); break;
+        }
+        if (!_solving) Solve();
     }
+
+    private void Enqueue(int sig, uint num, string? str, string source) => _pending.Enqueue(new Pending(sig, num, str, source));
 
     private void Solve()
     {
@@ -228,17 +344,56 @@ public sealed partial class LpzRuntime : IProgramRuntime
                     _slot.Log("Error", "Logic did not settle (oscillating loop?). Stopped after 500,000 steps.");
                     break;
                 }
-                var (s, v, src) = _pending.Dequeue();
-                var old = _values[s];
-                if (SigValue.AreEqual(old, v) && _kinds[s] != SigKind.Serial) continue;
-                _values[s] = v;
-                _slot.Trace(NameOf(s), _kinds[s], v, src);
-                var listeners = _fanout[s];
-                if (listeners == null) continue;
-                foreach (var (node, pin) in listeners)
+                var change = _pending.Dequeue();
+                var s = change.Sig;
+                int first = _edgeStart[s], end = _edgeStart[s + 1];
+                switch (_kinds[s])
                 {
-                    try { node.OnInput(pin, old, v); }
-                    catch (Exception e) { _slot.Log("Error", $"{node.Symbol}: {e.Message}"); }
+                    case SigKind.Digital:
+                    {
+                        var v = change.Num != 0;
+                        var old = _dig[s];
+                        if (old == v) continue;
+                        _dig[s] = v;
+                        if (_slot.TraceWanted) _slot.Trace(NameOf(s), SigKind.Digital, SigValue.Box(v), change.Source);
+                        for (int e = first; e < end; e++)
+                        {
+                            var edge = _edges[e];
+                            try { edge.Node.OnDigital(edge.Pin, old, v); }
+                            catch (Exception ex) { _slot.Log("Error", $"{edge.Node.Symbol}: {ex.Message}"); }
+                        }
+                        break;
+                    }
+                    case SigKind.Analog:
+                    {
+                        var v = (ushort)change.Num;
+                        var old = _ana[s];
+                        if (old == v) continue;
+                        _ana[s] = v;
+                        if (_slot.TraceWanted) _slot.Trace(NameOf(s), SigKind.Analog, v, change.Source);
+                        for (int e = first; e < end; e++)
+                        {
+                            var edge = _edges[e];
+                            try { edge.Node.OnAnalog(edge.Pin, old, v); }
+                            catch (Exception ex) { _slot.Log("Error", $"{edge.Node.Symbol}: {ex.Message}"); }
+                        }
+                        break;
+                    }
+                    default:
+                    {
+                        // Serials always propagate, even when equal.
+                        var v = change.Str ?? string.Empty;
+                        var old = _ser[s];
+                        _ser[s] = v;
+                        if (_slot.TraceWanted) _slot.Trace(NameOf(s), SigKind.Serial, v, change.Source);
+                        for (int e = first; e < end; e++)
+                        {
+                            var edge = _edges[e];
+                            try { edge.Node.OnSerial(edge.Pin, old, v); }
+                            catch (Exception ex) { _slot.Log("Error", $"{edge.Node.Symbol}: {ex.Message}"); }
+                        }
+                        break;
+                    }
                 }
             }
         }
@@ -248,14 +403,12 @@ public sealed partial class LpzRuntime : IProgramRuntime
     internal void Defer(Action a)
     {
         _nextWave.Enqueue(a);
-        if (!_solving) _slot.Dispatcher.Post(Solve);
+        if (!_solving) _slot.Dispatcher.Post(static (rt, _, _) => ((LpzRuntime)rt!).Solve(), this, null, 0);
     }
 
     internal IDisposable After(long ms, Action action)
     {
-        var t = new Timer(_ => _slot.Dispatcher.Post(() => { if (_running) action(); }), null, Math.Max(0, ms), Timeout.Infinite);
-        lock (_timers) _timers.Add(t);
-        return t;
+        return _timers.After(ms, action);
     }
 
     // ------------------------------------------------------------------ lifecycle
@@ -275,8 +428,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
                     catch (Exception e) { _slot.Log("Error", $"{n.Symbol}: {e.Message}"); }
                 }
                 // Constant "1" is high from the start: give its listeners their rising edge.
-                if (_fanout[1] is { } ones)
-                    foreach (var (node, pin) in ones) node.OnInput(pin, false, true);
+                for (int e = _edgeStart[1]; e < _edgeStart[2]; e++) _edges[e].Node.OnDigital(_edges[e].Pin, false, true);
             }
             finally { _solving = false; }
             Solve();
@@ -298,11 +450,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
             if (n is not SplusNode)
                 try { n.Stop(); } catch (Exception) { }
         _store.Flush();
-        lock (_timers)
-        {
-            foreach (var t in _timers) t.Dispose();
-            _timers.Clear();
-        }
+        _timers.CancelAll();
         foreach (var d in _devices) d.Detach();
     }
 
@@ -312,13 +460,13 @@ public sealed partial class LpzRuntime : IProgramRuntime
         if (_pkg.Signals != null)
         {
             foreach (var e in _pkg.Signals.Entries.Values.OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase))
-                if (e.Index > 1 && e.Index < _values.Length && !e.Name.StartsWith("::"))
-                    list.Add(new SignalInfo(e.Name, _kinds[e.Index], _values[e.Index]));
+                if (e.Index > 1 && e.Index < _kinds.Length && !e.Name.StartsWith("::"))
+                    list.Add(new SignalInfo(e.Name, _kinds[e.Index], Value(e.Index)));
         }
         else
         {
-            for (int i = 2; i < _values.Length; i++)
-                if (_used[i]) list.Add(new SignalInfo($"#{i}", _kinds[i], _values[i]));
+            for (int i = 2; i < _kinds.Length; i++)
+                if (_used[i]) list.Add(new SignalInfo($"#{i}", _kinds[i], Value(i)));
         }
         return list;
     }
@@ -329,7 +477,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
         if (name.StartsWith('#') && int.TryParse(name[1..], out var n)) sig = n;
         else if (_pkg.Signals != null)
             sig = _pkg.Signals.Entries.Values.FirstOrDefault(e => e.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Index ?? -1;
-        if (sig <= 1 || sig >= _values.Length) return false;
+        if (sig <= 1 || sig >= _kinds.Length) return false;
         _slot.Dispatcher.Post(() => Drive(sig, value, "debugger"));
         return true;
     }
@@ -337,6 +485,10 @@ public sealed partial class LpzRuntime : IProgramRuntime
     public void Dispose()
     {
         Stop();
+        _timers.Dispose();
+        if (_slot.Metrics.Callbacks == _callbacks) _slot.Metrics.Callbacks = null;
+        _callbacks?.Dispose();
+        _callbacks = null;
         _alc?.Unload();
         _alc = null;
     }
@@ -352,11 +504,19 @@ public sealed partial class LpzRuntime : IProgramRuntime
         public virtual bool WatchesOutputs => false;
         public virtual void Start() { }
         public virtual void Stop() { }
+        /// <summary>A change on one of this node's input pins, boxed. Nodes that don't need the typed
+        /// versions below (devices, SIMPL+, sockets) implement only this.</summary>
         public abstract void OnInput(int pin, object oldValue, object newValue);
+        // Typed notifications, so logic nodes read the values without boxing. By default they box and
+        // call OnInput (booleans use the shared boxes, so only analog values allocate).
+        public virtual void OnDigital(int pin, bool oldValue, bool newValue) => OnInput(pin, SigValue.Box(oldValue), SigValue.Box(newValue));
+        public virtual void OnAnalog(int pin, ushort oldValue, ushort newValue) => OnInput(pin, oldValue, newValue);
+        public virtual void OnSerial(int pin, string oldValue, string newValue) => OnInput(pin, oldValue, newValue);
     }
 
-    private sealed class LogicNode(LpzRuntime rt, BinSymbol sym, Primitive prim) : Node(rt, sym), IPrimitiveContext
+    private partial class LogicNode(LpzRuntime rt, BinSymbol sym, Primitive prim) : Node(rt, sym), IPrimitiveContext
     {
+        protected Primitive Prim => prim;
         public override SigKind? InputKind(int pin) => prim.InputKind(pin);
         public override SigKind? OutputKind(int pin) => prim.OutputKind(pin);
         public override bool WatchesOutputs => prim is IWatchesOutputs;
@@ -366,21 +526,62 @@ public sealed partial class LpzRuntime : IProgramRuntime
             if (pin < 0) ((IWatchesOutputs)prim).OnOutputChanged(this, -pin, n);
             else prim.OnInput(this, pin, o, n);
         }
+        public override void OnDigital(int pin, bool o, bool n)
+        {
+            if (pin < 0) ((IWatchesOutputs)prim).OnOutputChanged(this, -pin, SigValue.Box(n));
+            else prim.OnDigital(this, pin, o, n);
+        }
+        public override void OnAnalog(int pin, ushort o, ushort n)
+        {
+            if (pin < 0) ((IWatchesOutputs)prim).OnOutputChanged(this, -pin, n);
+            else prim.OnAnalog(this, pin, o, n);
+        }
+        public override void OnSerial(int pin, string o, string n)
+        {
+            if (pin < 0) ((IWatchesOutputs)prim).OnOutputChanged(this, -pin, n);
+            else prim.OnSerial(this, pin, o, n);
+        }
 
         BinSymbol IPrimitiveContext.Symbol => Symbol;
         public int InputCount => Symbol.Inputs.Length;
         public int OutputCount => Symbol.Outputs.Length;
         private int In(int pin) => pin >= 1 && pin <= Symbol.Inputs.Length ? Symbol.Inputs[pin - 1] : 0;
         public object Input(int pin) => Runtime.Value(In(pin));
-        public bool Digital(int pin) => Input(pin) is true;
-        public ushort Analog(int pin) => Input(pin) is ushort u ? u : (ushort)0;
-        public string Serial(int pin) => Input(pin) as string ?? string.Empty;
+        public bool Digital(int pin) => Runtime.DigitalAt(In(pin));
+        public ushort Analog(int pin) => Runtime.AnalogAt(In(pin));
+        public string Serial(int pin) => Runtime.SerialAt(In(pin));
         public bool IsConstant(int pin) => In(pin) <= 1;
 
         public void Set(int pin, object value)
         {
             if (pin < 1 || pin > Symbol.Outputs.Length) return;
             Runtime.Drive(Symbol.Outputs[pin - 1], value, Symbol.Path);
+        }
+        public void Set(int pin, bool value)
+        {
+            if (pin < 1 || pin > Symbol.Outputs.Length) return;
+            Runtime.Drive(Symbol.Outputs[pin - 1], value, Symbol.Path);
+        }
+        public void Set(int pin, ushort value)
+        {
+            if (pin < 1 || pin > Symbol.Outputs.Length) return;
+            Runtime.Drive(Symbol.Outputs[pin - 1], value, Symbol.Path);
+        }
+        public void Set(int pin, string? value)
+        {
+            if (pin < 1 || pin > Symbol.Outputs.Length) return;
+            Runtime.Drive(Symbol.Outputs[pin - 1], value, Symbol.Path);
+        }
+
+        public void SetFromInput(int pin, int inputPin)
+        {
+            var sig = In(inputPin);
+            switch (Runtime.KindOf(sig))
+            {
+                case SigKind.Digital: Set(pin, Runtime.DigitalAt(sig)); break;
+                case SigKind.Analog: Set(pin, Runtime.AnalogAt(sig)); break;
+                default: Set(pin, Runtime.SerialAt(sig)); break;
+            }
         }
 
         public object Output(int pin) => pin >= 1 && pin <= Symbol.Outputs.Length ? Runtime.Value(Symbol.Outputs[pin - 1]) : false;
@@ -411,12 +612,14 @@ public sealed partial class LpzRuntime : IProgramRuntime
         private readonly int _inDigital, _inAnalogEnd, _outDigital, _outAnalogEnd;
         private JoinDevice? _device;
         private bool _eisc;
+        private readonly string _source; // trace source for presses, built once instead of per event
         public JoinDevice? Device => _device;
         public Dictionary<uint, SmartObjectNode> SmartObjects { get; } = new();
 
         public DeviceNode(LpzRuntime rt, BinSymbol sym, uint ipId) : base(rt, sym)
         {
             _ipId = ipId;
+            _source = $"IPID{ipId:X2}";
             _inDigital = Math.Min(sym.FieldInt(10) ?? sym.Inputs.Length, sym.Inputs.Length);
             _inAnalogEnd = Math.Clamp(sym.FieldInt(12) ?? _inDigital, _inDigital, sym.Inputs.Length);
             _outDigital = Math.Min(sym.FieldInt(11) ?? sym.Outputs.Length, sym.Outputs.Length);
@@ -477,7 +680,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
             var pin = OutPin(key);
             if (pin < 1) return;
             var sig = Symbol.Outputs[pin - 1];
-            if (sig > 1) Runtime._slot.Dispatcher.Post(() => Runtime.Drive(sig, value, $"IPID{dev.IpId:X2}"));
+            if (sig > 1) Runtime._slot.Dispatcher.Post(static (n, v, s) => { var d = (DeviceNode)n!; d.Runtime.Drive(s, v!, d._source); }, this, value, sig);
         }
     }
 }

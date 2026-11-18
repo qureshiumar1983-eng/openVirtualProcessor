@@ -125,6 +125,11 @@ public sealed class MetricsSampler : IDisposable
         var stuck = !paused && d.CurrentLabel != null && d.CurrentRunningSeconds >= StuckHandler.TotalSeconds;
         if (stuck)
             warnings.Add($"slot thread has been inside {d.CurrentLabel} for {Fmt(d.CurrentRunningSeconds)}; its other events are waiting.");
+        if (slot.Metrics.Callbacks?.GetSnapshot() is { CurrentLabel: not null } cb && cb.CurrentRunningSeconds >= StuckHandler.TotalSeconds)
+        {
+            stuck = true;
+            warnings.Add($"SIMPL# callback thread has been inside {cb.CurrentLabel} for {Fmt(cb.CurrentRunningSeconds)}; library callbacks are waiting.");
+        }
         if (d.QueueLength >= QueueBacklog)
             warnings.Add($"{d.QueueLength} events are queued for the slot thread.");
         foreach (var t in threads.Where(t => t.Orphaned))

@@ -15,7 +15,6 @@ namespace Crestron.SimplSharp
         private long _repeat;
         private readonly object _gate = new object();
         private readonly OpenVP.Core.ProgramSlot _slot;
-        private readonly string _label;
 
         public CTimer(CTimerCallbackFunction callbackFunction, long dueTime)
             : this(callbackFunction, null, dueTime, Timeout.Infinite) { }
@@ -29,7 +28,6 @@ namespace Crestron.SimplSharp
             _userObject = callbackObject;
             _repeat = repeatPeriod;
             _slot = OpenVPBridge.Slot;
-            _label = "CTimer " + (callbackFunction.Method.DeclaringType?.Name ?? "?") + "." + callbackFunction.Method.Name;
             _slot?.Metrics.TimerCreated();
             _timer = new Timer(Fire, null, Normalize(dueTime), Normalize(repeatPeriod));
             OpenVPBridge.Track(this);
@@ -74,10 +72,11 @@ namespace Crestron.SimplSharp
         private void Fire(object _)
         {
             if (Disposed) return;
-            OpenVPBridge.Post(() =>
+            OpenVPBridge.Post(static (t, _, _) =>
             {
-                if (!Disposed) _callback(_userObject);
-            }, _label);
+                var timer = (CTimer)t!;
+                if (!timer.Disposed) timer._callback(timer._userObject);
+            }, this, null, 0, _callback);
         }
 
         private static long Normalize(long ms) => ms < 0 ? Timeout.Infinite : ms;

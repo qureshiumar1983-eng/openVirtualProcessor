@@ -105,6 +105,7 @@ public sealed partial class LpzRuntime
     {
         private readonly JoinSplit _split = new(sym);
         public uint Id { get; } = (uint)(sym.FieldInt(44) ?? 0);
+        private readonly string _source = $"{sym.Path} so{(uint)(sym.FieldInt(44) ?? 0)}"; // built once, not per press
 
         public override SigKind? InputKind(int pin) => _split.InJoin(pin).Kind;
         public override SigKind? OutputKind(int pin) => _split.OutJoin(pin).Kind;
@@ -121,7 +122,7 @@ public sealed partial class LpzRuntime
             var pin = _split.OutPin(key with { SmartObject = 0 });
             if (pin < 1) return;
             var sig = Symbol.Outputs[pin - 1];
-            if (sig > 1) Runtime._slot.Dispatcher.Post(() => Runtime.Drive(sig, value, $"{Symbol.Path} so{Id}"));
+            if (sig > 1) Runtime._slot.Dispatcher.Post(static (n, v, s) => { var d = (SmartObjectNode)n!; d.Runtime.Drive(s, v!, d._source); }, this, value, sig);
         }
     }
 

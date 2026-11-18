@@ -32,9 +32,14 @@ public readonly record struct JoinKey(SigKind Kind, uint Join)
 /// <summary>Helpers to keep join values in their canonical CLR types: bool, ushort, string.</summary>
 public static class SigValue
 {
+    // One shared box per value: digital changes are the hot path, and boxing a bool allocates each time.
+    public static readonly object True = true, False = false;
+
+    public static object Box(bool b) => b ? True : False;
+
     public static object Default(SigKind kind) => kind switch
     {
-        SigKind.Digital => false,
+        SigKind.Digital => False,
         SigKind.Analog => (ushort)0,
         _ => string.Empty
     };
@@ -46,10 +51,10 @@ public static class SigValue
             case SigKind.Digital:
                 return value switch
                 {
-                    bool b => b,
-                    string s => s == "1" || s.Equals("true", StringComparison.OrdinalIgnoreCase),
-                    null => false,
-                    _ => Convert.ToInt64(value) != 0
+                    bool b => Box(b),
+                    string s => Box(s == "1" || s.Equals("true", StringComparison.OrdinalIgnoreCase)),
+                    null => False,
+                    _ => Box(Convert.ToInt64(value) != 0)
                 };
             case SigKind.Analog:
                 return value switch
@@ -65,5 +70,5 @@ public static class SigValue
         }
     }
 
-    public static bool AreEqual(object a, object b) => Equals(a, b);
+    public static bool AreEqual(object a, object b) => ReferenceEquals(a, b) || Equals(a, b);
 }

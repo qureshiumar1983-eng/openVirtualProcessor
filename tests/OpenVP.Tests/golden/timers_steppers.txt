@@ -1,0 +1,82 @@
+-- stepper start
+slot1 #10 D=1 <- IPID03
+slot1 #15 D=1 <- S-1 Stepper
+slot1 #15 D=0 <- S-1 Stepper
+slot1 #16 D=1 <- S-1 Stepper
+slot1 #16 D=0 <- S-1 Stepper
+slot1 #17 D=1 <- S-1 Stepper
+slot1 #17 D=0 <- S-1 Stepper
+-- stepper start release
+slot1 #10 D=0 <- IPID03
+-- stepper start again
+slot1 #10 D=1 <- IPID03
+slot1 #15 D=1 <- S-1 Stepper
+slot1 #15 D=0 <- S-1 Stepper
+slot1 #16 D=1 <- S-1 Stepper
+-- stepper release and start again while output 3 is high (restarts the sequence)
+slot1 #10 D=0 <- IPID03
+slot1 #10 D=1 <- IPID03
+slot1 #15 D=1 <- S-1 Stepper
+slot1 #15 D=0 <- S-1 Stepper
+slot1 #16 D=0 <- S-1 Stepper
+slot1 #17 D=1 <- S-1 Stepper
+slot1 #17 D=0 <- S-1 Stepper
+-- stepper start release
+slot1 #10 D=0 <- IPID03
+-- progress(steps) start
+slot1 #11 D=1 <- IPID03
+slot1 #18 D=1 <- S-2 Stepper with progress (steps)
+slot1 #19 D=1 <- S-2 Stepper with progress (steps)
+slot1 #19 D=0 <- S-2 Stepper with progress (steps)
+slot1 #20 D=1 <- S-2 Stepper with progress (steps)
+slot1 #20 D=0 <- S-2 Stepper with progress (steps)
+slot1 #21 D=1 <- S-2 Stepper with progress (steps)
+slot1 #21 D=0 <- S-2 Stepper with progress (steps)
+slot1 #18 D=0 <- S-2 Stepper with progress (steps)
+-- progress(steps) start release
+slot1 #11 D=0 <- IPID03
+-- progress(steps) start again
+slot1 #11 D=1 <- IPID03
+slot1 #18 D=1 <- S-2 Stepper with progress (steps)
+slot1 #19 D=1 <- S-2 Stepper with progress (steps)
+slot1 #19 D=0 <- S-2 Stepper with progress (steps)
+slot1 #20 D=1 <- S-2 Stepper with progress (steps)
+-- progress(steps) reset while a step is high
+slot1 #12 D=1 <- IPID03
+slot1 #20 D=0 <- S-2 Stepper with progress (steps)
+slot1 #18 D=0 <- S-2 Stepper with progress (steps)
+-- progress(steps) reset release
+slot1 #12 D=0 <- IPID03
+slot1 #11 D=0 <- IPID03
+-- progress start
+slot1 #13 D=1 <- IPID03
+slot1 #22 D=1 <- S-3 Stepper with progress (progress)
+slot1 #24 S="0%" <- S-3 Stepper with progress (progress)
+slot1 #23 A=9174 <- S-3 Stepper with progress (progress)
+slot1 #24 S="14%" <- S-3 Stepper with progress (progress)
+slot1 #23 A=27524 <- S-3 Stepper with progress (progress)
+slot1 #24 S="42%" <- S-3 Stepper with progress (progress)
+slot1 #23 A=46529 <- S-3 Stepper with progress (progress)
+slot1 #24 S="71%" <- S-3 Stepper with progress (progress)
+slot1 #23 A=65535 <- S-3 Stepper with progress (progress)
+slot1 #24 S="100%" <- S-3 Stepper with progress (progress)
+slot1 #22 D=0 <- S-3 Stepper with progress (progress)
+-- progress start release
+slot1 #13 D=0 <- IPID03
+-- progress start again
+slot1 #13 D=1 <- IPID03
+slot1 #22 D=1 <- S-3 Stepper with progress (progress)
+slot1 #23 A=0 <- S-3 Stepper with progress (progress)
+slot1 #24 S="0%" <- S-3 Stepper with progress (progress)
+slot1 #23 A=9174 <- S-3 Stepper with progress (progress)
+slot1 #24 S="14%" <- S-3 Stepper with progress (progress)
+slot1 #23 A=27524 <- S-3 Stepper with progress (progress)
+slot1 #24 S="42%" <- S-3 Stepper with progress (progress)
+-- progress reset part way
+slot1 #14 D=1 <- IPID03
+slot1 #22 D=0 <- S-3 Stepper with progress (progress)
+slot1 #23 A=0 <- S-3 Stepper with progress (progress)
+slot1 #24 S="" <- S-3 Stepper with progress (progress)
+-- progress reset release
+slot1 #14 D=0 <- IPID03
+slot1 #13 D=0 <- IPID03

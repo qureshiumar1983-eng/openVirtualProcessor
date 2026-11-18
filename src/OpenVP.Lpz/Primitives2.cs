@@ -6,11 +6,9 @@ namespace OpenVP.Lpz;
 // Primitives identified from 93 real programs (see docs/lpz-format.md). Pins are 1-based.
 
 /// <summary>Type 4, XOR: output high when an odd number of inputs are high.</summary>
-public sealed class XorPrim : Primitive
+public sealed class XorPrim : EvalPrim
 {
-    public override void Start(IPrimitiveContext c) => Eval(c);
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n) => Eval(c);
-    private static void Eval(IPrimitiveContext c)
+    protected override void Eval(IPrimitiveContext c)
     {
         var odd = false;
         for (int i = 1; i <= c.InputCount; i++) odd ^= c.Digital(i);
@@ -20,11 +18,11 @@ public sealed class XorPrim : Primitive
 
 /// <summary>Types 6 (Transition Gate: rising edge of any input) and 7 (falling edge of any input):
 /// a one-wave pulse on output 1.</summary>
-public sealed class TransitionPrim(bool falling) : Primitive
+public sealed class TransitionPrim(bool falling) : EdgePrim(falling)
 {
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    protected override void OnEdge(IPrimitiveContext c, int p)
     {
-        if (c.IsConstant(p) || !(falling ? Falling(o, n) : Rising(o, n))) return;
+        if (c.IsConstant(p)) return;
         c.Set(1, true);
         c.NextWave(() => c.Set(1, false));
     }
@@ -35,16 +33,16 @@ public sealed class TransitionPrim(bool falling) : Primitive
 /// matching output patterns, one character per pin (1 = low, 2 = high, 4 = don't care / unchanged).
 /// The first row matching the inputs sets the outputs; with no match the outputs hold.
 /// </summary>
-public sealed class TruthTablePrim : Primitive
+public sealed class TruthTablePrim : EvalPrim
 {
     public override SigKind? InputKind(int pin) => SigKind.Digital;
     public override SigKind? OutputKind(int pin) => SigKind.Digital;
-    public override void Start(IPrimitiveContext c) => Eval(c);
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n) => Eval(c);
 
-    private static void Eval(IPrimitiveContext c)
+    private List<string?>? _texts; // the parameters never change, so list them once
+
+    protected override void Eval(IPrimitiveContext c)
     {
-        var texts = Enumerable.Range(0, c.ParamCount).Select(c.Text).Where(t => t != null).ToList();
+        var texts = _texts ??= Enumerable.Range(0, c.ParamCount).Select(c.Text).Where(t => t != null).ToList();
         var rows = texts.Count / 2;
         for (int r = 0; r < rows; r++)
         {
@@ -66,16 +64,15 @@ public sealed class TruthTablePrim : Primitive
 /// values into the selected bank, recall drives them to the outputs. Memory is non-volatile and addressed
 /// (field 5), so two symbols with the same address share it.
 /// </summary>
-public sealed class AnalogRamPrim : Primitive
+public sealed class AnalogRamPrim : EdgePrim
 {
     private int N(IPrimitiveContext c) => c.OutputCount;
     public override SigKind? InputKind(int pin) => null;
     public override SigKind? OutputKind(int pin) => SigKind.Analog;
 
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    protected override void OnEdge(IPrimitiveContext c, int p)
     {
         var n0 = N(c);
-        if (!Rising(o, n)) return;
         if (p == n0 + 1) Store(c);
         else if (p == n0 + 2) Recall(c);
     }
@@ -202,11 +199,11 @@ public sealed class AnalogIncrementPrim : HeldRepeatPrim
 }
 
 /// <summary>Type 30, Analog Scaler: output = input × P2 / P1 + P3.</summary>
-public sealed class AnalogScalerPrim : Primitive
+public sealed class AnalogScalerPrim : ReactPrim
 {
     public override SigKind? InputKind(int pin) => SigKind.Analog;
     public override SigKind? OutputKind(int pin) => SigKind.Analog;
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    protected override void React(IPrimitiveContext c, int p)
     {
         var range = c.Number(0, 65535);
         if (range == 0) range = 65535;
@@ -216,11 +213,11 @@ public sealed class AnalogScalerPrim : Primitive
 }
 
 /// <summary>Type 99, Analog Scaler w/o Zero Pass: output = input × P1 / 65535 + P2 (signed result).</summary>
-public sealed class AnalogScalerSignedPrim : Primitive
+public sealed class AnalogScalerSignedPrim : ReactPrim
 {
     public override SigKind? InputKind(int pin) => SigKind.Analog;
     public override SigKind? OutputKind(int pin) => SigKind.Analog;
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    protected override void React(IPrimitiveContext c, int p)
     {
         var v = (long)Math.Round(c.Analog(1) * (double)c.Number(0, 65535) / 65535.0) + c.Number(1);
         c.Set(1, (ushort)(short)Math.Clamp(v, short.MinValue, ushort.MaxValue));
@@ -228,11 +225,11 @@ public sealed class AnalogScalerSignedPrim : Primitive
 }
 
 /// <summary>Type 224, Analog Scaler with I/O Limits: P1..P2 input range maps to P3..P4 output range.</summary>
-public sealed class AnalogScalerLimitsPrim : Primitive
+public sealed class AnalogScalerLimitsPrim : ReactPrim
 {
     public override SigKind? InputKind(int pin) => SigKind.Analog;
     public override SigKind? OutputKind(int pin) => SigKind.Analog;
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    protected override void React(IPrimitiveContext c, int p)
     {
         long inLo = c.Number(0) & 0xFFFF, inHi = c.Number(1, 65535) & 0xFFFF, outLo = c.Number(2), outHi = c.Number(3, 65535);
         if (inHi == inLo) { c.Set(1, (ushort)(short)outLo); return; }
@@ -243,17 +240,17 @@ public sealed class AnalogScalerLimitsPrim : Primitive
 }
 
 /// <summary>Type 87, Analog Flip: output = 65535 − input.</summary>
-public sealed class AnalogFlipPrim : Primitive
+public sealed class AnalogFlipPrim : ReactPrim
 {
     public override SigKind? OutputKind(int pin) => SigKind.Analog;
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n) => c.Set(1, (ushort)(65535 - c.Analog(1)));
+    protected override void React(IPrimitiveContext c, int p) => c.Set(1, (ushort)(65535 - c.Analog(1)));
 }
 
 /// <summary>Type 136, Analog DivMod: output 1 = input / P1, output 2 = input mod P1.</summary>
-public sealed class DivModPrim : Primitive
+public sealed class DivModPrim : ReactPrim
 {
     public override SigKind? OutputKind(int pin) => SigKind.Analog;
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    protected override void React(IPrimitiveContext c, int p)
     {
         var d = Math.Max(1, c.Number(0, 1));
         c.Set(1, (ushort)(c.Analog(1) / d));
@@ -262,10 +259,10 @@ public sealed class DivModPrim : Primitive
 }
 
 /// <summary>Type 237: output = input 3 clamped to [input 1, input 2].</summary>
-public sealed class AnalogClampPrim : Primitive
+public sealed class AnalogClampPrim : ReactPrim
 {
     public override SigKind? OutputKind(int pin) => SigKind.Analog;
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    protected override void React(IPrimitiveContext c, int p)
     {
         int lo = c.Analog(1), hi = c.Analog(2);
         if (hi < lo) (lo, hi) = (hi, lo);
@@ -274,16 +271,16 @@ public sealed class AnalogClampPrim : Primitive
 }
 
 /// <summary>Type 80 (inside Q-SYS modules): analog follows its input.</summary>
-public sealed class AnalogFollowPrim : Primitive
+public sealed class AnalogFollowPrim : ReactPrim
 {
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n) => c.Set(1, c.Analog(1));
+    protected override void React(IPrimitiveContext c, int p) => c.Set(1, c.Analog(1));
 }
 
 /// <summary>Type 106, Analog to Digital: output k is bit (outputs − k) of the input.</summary>
-public sealed class AnalogToDigitalPrim : Primitive
+public sealed class AnalogToDigitalPrim : ReactPrim
 {
     public override SigKind? OutputKind(int pin) => SigKind.Digital;
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    protected override void React(IPrimitiveContext c, int p)
     {
         int v = c.Analog(1), count = c.OutputCount;
         for (int k = 1; k <= count; k++) c.Set(k, ((v >> (count - k)) & 1) == 1);
@@ -291,29 +288,31 @@ public sealed class AnalogToDigitalPrim : Primitive
 }
 
 /// <summary>Type 52, Decade: one-hot units (outputs 1-10), tens (11-20) and hundreds (21-30) digits.</summary>
-public sealed class DecadePrim : Primitive
+public sealed class DecadePrim : ReactPrim
 {
     public override SigKind? OutputKind(int pin) => SigKind.Digital;
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    protected override void React(IPrimitiveContext c, int p)
     {
         if (p != 1) return;
         int v = c.Analog(1);
-        int[] digits = [v % 10, v / 10 % 10, v / 100 % 10];
         for (int group = 0; group < 3; group++)
+        {
+            var digit = group == 0 ? v % 10 : group == 1 ? v / 10 % 10 : v / 100 % 10;
             for (int d = 0; d < 10; d++)
-                c.Set(group * 10 + d + 1, digits[group] == d);
+                c.Set(group * 10 + d + 1, digit == d);
+        }
     }
 }
 
 /// <summary>Type 37, Analog Step: each rising clock (input 1) outputs the next parameter value, cycling;
 /// input 2 resets to the first.</summary>
-public sealed class AnalogStepPrim : Primitive
+public sealed class AnalogStepPrim : EdgePrim
 {
     private int _index = -1;
     public override SigKind? OutputKind(int pin) => SigKind.Analog;
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    protected override void OnEdge(IPrimitiveContext c, int p)
     {
-        if (!Rising(o, n) || c.ParamCount == 0) return;
+        if (c.ParamCount == 0) return;
         _index = p == 2 ? 0 : (_index + 1) % c.ParamCount;
         c.Set(1, (ushort)(short)c.Number(_index));
     }
@@ -321,12 +320,12 @@ public sealed class AnalogStepPrim : Primitive
 
 /// <summary>Type 82, Analog to Serial: on a rising input 1, output = S1 + byte(A1) + S2 + byte(A2) … + Sn.
 /// P1 is the modulus (256 = one byte per value; larger = two bytes, high first).</summary>
-public sealed class AnalogToSerialPrim : Primitive
+public sealed class AnalogToSerialPrim : EdgePrim
 {
     public override SigKind? OutputKind(int pin) => SigKind.Serial;
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    protected override void OnEdge(IPrimitiveContext c, int p)
     {
-        if (p != 1 || !Rising(o, n)) return;
+        if (p != 1) return;
         var mod = Math.Max(2, c.Number(0, 256));
         var sb = new StringBuilder();
         var texts = Enumerable.Range(0, c.ParamCount).Select(c.Text).Where(t => t != null).ToList();
@@ -378,27 +377,23 @@ public sealed class SerialMergePrim : Primitive
 }
 
 /// <summary>Type 266, Multiple Discrete Serial Send: a rising input k sends parameter k on output k.</summary>
-public sealed class MultiSerialSendPrim : Primitive
+public sealed class MultiSerialSendPrim : EdgePrim
 {
     public override SigKind? OutputKind(int pin) => SigKind.Serial;
     public override void Start(IPrimitiveContext c)
     {
         for (int k = 1; k <= c.InputCount; k++) if (c.Digital(k)) c.Set(k, c.Text(k - 1) ?? "");
     }
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
-    {
-        if (Rising(o, n)) c.Set(p, c.Text(p - 1) ?? "");
-    }
+    protected override void OnEdge(IPrimitiveContext c, int p) => c.Set(p, c.Text(p - 1) ?? "");
 }
 
 /// <summary>Type 207, Interlock-Toggle: input k toggles output k and clears the others; the input after
 /// the toggles clears all.</summary>
-public sealed class InterlockTogglePrim : Primitive
+public sealed class InterlockTogglePrim : EdgePrim
 {
     public override SigKind? OutputKind(int pin) => SigKind.Digital;
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    protected override void OnEdge(IPrimitiveContext c, int p)
     {
-        if (!Rising(o, n)) return;
         var count = c.OutputCount;
         var turnOn = p <= count && c.Output(p) is not true;
         for (int k = 1; k <= count; k++) c.Set(k, turnOn && k == p);
@@ -431,7 +426,16 @@ public sealed class StepperProgressPrim : Primitive
 
     public override void OnInput(IPrimitiveContext c, int p, object o, object n)
     {
-        if (!Rising(o, n)) return;
+        if (Rising(o, n)) OnEdge(c, p);
+    }
+    public override void OnDigital(IPrimitiveContext c, int p, bool o, bool n)
+    {
+        if (!o && n) OnEdge(c, p);
+    }
+    public override void OnAnalog(IPrimitiveContext c, int p, ushort o, ushort n) { }
+
+    private void OnEdge(IPrimitiveContext c, int p)
+    {
         Cancel(c);
         if (p == 2) { c.Set(1, false); c.Set(2, (ushort)0); c.Set(5, ""); return; }
 
@@ -490,9 +494,9 @@ public sealed class ConsolePrim : Primitive
 
 /// <summary>Type 121, clock adjust (hour/minute up/down). The virtual processor follows the host clock,
 /// so this does nothing.</summary>
-public sealed class NoOpPrim : Primitive
+public sealed class NoOpPrim : ReactPrim
 {
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n) { }
+    protected override void React(IPrimitiveContext c, int p) { }
 }
 
 /// <summary>

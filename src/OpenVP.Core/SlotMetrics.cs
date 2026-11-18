@@ -26,17 +26,33 @@ public sealed class SlotMetrics
         public readonly long StartTicks = Stopwatch.GetTimestamp();
     }
 
-    private sealed class Work(string kind, string label)
+    private sealed class Work(string kind, string? owner, object? what)
     {
         public readonly string Kind = kind;
-        public readonly string Label = label;
+        public readonly string? Owner = owner;
+        public readonly object? What = what; // a label string, or a delegate named only when the metrics are read
         public readonly long StartTicks = Stopwatch.GetTimestamp();
+
+        public string Label
+        {
+            get
+            {
+                var what = SlotDispatcher.Describe(What) ?? "?";
+                return Owner == null ? what : $"{Owner} {(What is Delegate d ? d.Method.Name : what)}";
+            }
+        }
     }
 
     private readonly ConcurrentDictionary<Thread, TrackedThread> _threads = new();
     private readonly ConcurrentDictionary<Work, byte> _work = new();
     private readonly Func<int> _generation;
     private int _timers;
+
+    /// <summary>
+    /// A second event thread the program's runtime uses, if any (a compiled SIMPL Windows program runs SIMPL# library
+    /// callbacks on one, so the step debugger can hold the logic thread without freezing its SIMPL+ modules).
+    /// </summary>
+    public SlotDispatcher? Callbacks { get; set; }
     private long _workCompleted;
 
     internal SlotMetrics(Func<int> generation) => _generation = generation;
@@ -60,14 +76,29 @@ public sealed class SlotMetrics
     /// <summary>Record background work while it runs. Dispose when it finishes.</summary>
     public IDisposable BeginWork(string kind, string label)
     {
-        var w = new Work(kind, label);
+        var w = new Work(kind, null, label);
         _work[w] = 0;
-        return new Scope(() => { _work.TryRemove(w, out _); Interlocked.Increment(ref _workCompleted); });
+        return new Scope(() => EndWork(w));
     }
 
-    /// <summary>Run <paramref name="action"/> on the thread pool, recorded as background work.</summary>
-    public void QueueWork(string kind, string label, Action action) =>
-        ThreadPool.UnsafeQueueUserWorkItem(_ => { using (BeginWork(kind, label)) action(); }, null);
+    /// <summary>
+    /// Run <paramref name="run"/> on the thread pool, recorded as background work. <paramref name="what"/> (a label
+    /// or the handler delegate) names it on the metrics page; nothing is formatted unless someone looks.
+    /// </summary>
+    public void QueueWork(string kind, string? owner, object? what, Action run) =>
+        ThreadPool.UnsafeQueueUserWorkItem(static state =>
+        {
+            var (metrics, work, run) = state;
+            metrics._work[work] = 0;
+            try { run(); }
+            finally { metrics.EndWork(work); }
+        }, (this, new Work(kind, owner, what), run), preferLocal: false);
+
+    private void EndWork(Work w)
+    {
+        _work.TryRemove(w, out _);
+        Interlocked.Increment(ref _workCompleted);
+    }
 
     public IReadOnlyList<ThreadInfo> Threads
     {

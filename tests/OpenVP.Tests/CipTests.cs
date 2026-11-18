@@ -74,6 +74,96 @@ public static class CipTests
         Assert.True(sawHeartbeat, "heartbeat answered");
     }
 
+    [Test]
+    public static void Feedback_burst_arrives_complete_and_in_order()
+    {
+        using var p = new Processor(Paths.TempData());
+        p.AddLoader(new SimplSharpLoader());
+        p.LoadProgram(1, Paths.SampleDll);
+        using var server = new CipServer(p, 0, IPAddress.Loopback);
+        server.Start();
+        using var client = new TcpClient();
+        client.Connect(IPAddress.Loopback, server.Port);
+        var s = client.GetStream();
+        s.ReadTimeout = 3000;
+        Read(s); // who are you
+        s.Write(Cip.Frame(Cip.ConnectRequest, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x40, 0xFF, 0xFF, 0xF1, 0x01));
+        Assert.Equal(Cip.ConnectResponse, Read(s).type, "connect response");
+        var dev = p.Slot(1).FindDevice(0x03)!;
+        Assert.Eventually(() => dev.Online, "panel online");
+
+        const int n = 3000;
+        for (uint j = 1; j <= n; j++) dev.SetFeedback(new JoinKey(SigKind.Analog, 100 + j), (ushort)j); // one burst, many packets per write
+        uint next = 1;
+        while (next <= n)
+        {
+            var (type, payload) = Read(s);
+            if (Cip.DecodeJoin(type, payload) is var (k, v) && k.Kind == SigKind.Analog && k.Join > 100 && k.Join <= 100 + n)
+            {
+                Assert.Equal(100 + next, k.Join, "analog join order");
+                Assert.Equal((ushort)next, (ushort)v, "analog value");
+                next++;
+            }
+        }
+    }
+
+    // A panel that connects with a tiny receive window and then does not read: every write to it blocks.
+    private static (TcpClient client, NetworkStream stream, JoinDevice dev) StalledPanel(Processor p, CipServer server, int joins, int textLen)
+    {
+        var dev = DeviceDirectory.Resolve(p, 3, null);
+        var text = new string('x', textLen);
+        for (uint j = 1; j <= joins; j++) dev.SetFeedback(new JoinKey(SigKind.Serial, j), text);
+        var client = new TcpClient { ReceiveBufferSize = 1024 }; // before connecting, so the window stays small
+        client.Connect(IPAddress.Loopback, server.Port);
+        var s = client.GetStream();
+        s.ReadTimeout = 10_000;
+        Read(s); // who are you
+        s.Write(Cip.Frame(Cip.ConnectRequest, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x40, 0xFF, 0xFF, 0xF1, 0x01));
+        Assert.Equal(Cip.ConnectResponse, Read(s).type, "connect response");
+        s.Write(Cip.Frame(Cip.Data, 0x00, 0x00, 0x02, Cip.SubUpdateRequest, 0x00)); // ask for the snapshot, then stop reading
+        return (client, s, dev);
+    }
+
+    [Test]
+    public static void A_session_whose_write_is_stuck_still_cleans_up_when_it_ends()
+    {
+        using var p = new Processor(Paths.TempData());
+        p.AddLoader(new SimplSharpLoader());
+        p.LoadProgram(1, Paths.SampleDll);
+        var server = new CipServer(p, 0, IPAddress.Loopback);
+        server.Start();
+        var (client, _, dev) = StalledPanel(p, server, 15_000, 240); // ~3.6 MB: more than the socket buffers hold
+        using var _c = client;
+        Assert.Eventually(() => dev.ConnectionCount == 1 && server.SessionCount == 1, "panel attached");
+        Thread.Sleep(500); // let the sender fill the socket and block in its write
+        server.Dispose(); // the server shuts down: the read loop ends while the sender is still stuck
+        Assert.Eventually(() => server.SessionCount == 0, "the session was removed even though its write was stuck");
+        Assert.Equal(0, dev.ConnectionCount, "device connection released");
+    }
+
+    [Test]
+    public static void The_snapshot_of_a_device_with_more_joins_than_the_queue_limit_is_not_a_disconnect()
+    {
+        using var p = new Processor(Paths.TempData());
+        p.AddLoader(new SimplSharpLoader());
+        p.LoadProgram(1, Paths.SampleDll);
+        using var server = new CipServer(p, 0, IPAddress.Loopback);
+        server.Start();
+        const int joins = 45_000; // more than the 20,000-packet queue limit
+        var (client, s, dev) = StalledPanel(p, server, joins, 240);
+        using var _c = client;
+        Thread.Sleep(1000); // the whole snapshot is queued while the panel reads nothing
+        Assert.Equal(1, dev.ConnectionCount, "panel still attached after the snapshot was queued");
+        var serials = 0;
+        while (true)
+        {
+            var (type, payload) = Read(s);
+            if (Cip.DecodeJoin(type, payload) is var (k, _) && k.Kind == SigKind.Serial) serials++;
+            if (type == Cip.Data && payload.Length == 5 && payload[3] == 0x03 && payload[4] == 0x16) break; // update complete
+        }
+        Assert.Equal(joins, serials, "every join of the snapshot arrived");
+    }
+
     private static (byte type, byte[] payload) Read(NetworkStream s)
     {
         var h = new byte[3];

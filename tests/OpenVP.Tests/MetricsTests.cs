@@ -80,7 +80,7 @@ public static class MetricsTests
         slot.Start();
 
         using var gate = new ManualResetEventSlim();
-        slot.Metrics.QueueWork("CrestronInvoke", "Test.Work", () => gate.Wait(5000));
+        slot.Metrics.QueueWork("CrestronInvoke", null, "Test.Work", () => gate.Wait(5000));
         Assert.Eventually(() => p.Metrics.Snapshot(false).Slots[0].RunningWork.Any(w => w.Label == "Test.Work"), "work listed while running");
         gate.Set();
         Assert.Eventually(() => p.Metrics.Snapshot(false).Slots[0].BackgroundWorkCompleted == 1, "work counted when done");

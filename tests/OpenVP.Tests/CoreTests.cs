@@ -25,6 +25,34 @@ public static class CoreTests
     }
 
     [Test]
+    public static void Feedback_snapshot_lists_a_join_set_to_its_default_and_repeats_stay_quiet()
+    {
+        var dev = new JoinDevice(1, 3, "XPanel", "test");
+        var fired = new List<(JoinKey, object)>();
+        dev.FeedbackChanged += (_, k, v) => fired.Add((k, v));
+        var d1 = new JoinKey(SigKind.Digital, 1); var a1 = new JoinKey(SigKind.Analog, 1); var s1 = new JoinKey(SigKind.Serial, 1);
+
+        // A program that sets a join to its default is driving it: a panel connecting later must be told,
+        // so it can drop what an earlier program left on that join.
+        dev.SetFeedback(d1, false);
+        dev.SetFeedback(a1, (ushort)0);
+        dev.SetFeedback(s1, "");
+        var snap = dev.FeedbackSnapshot();
+        Assert.True(snap.TryGetValue(d1, out var dv) && dv is false, "digital default is in the snapshot");
+        Assert.True(snap.TryGetValue(a1, out var av) && av is (ushort)0, "analog default is in the snapshot");
+        Assert.True(snap.ContainsKey(s1), "serial default is in the snapshot");
+        Assert.Equal(1, fired.Count, "only the serial fired: digital and analog did not change");
+
+        // Repeats of a stored value stay quiet (serials still fire every time).
+        dev.SetFeedback(d1, false); dev.SetFeedback(a1, (ushort)0);
+        Assert.Equal(1, fired.Count, "unchanged digital and analog stay quiet");
+        dev.SetFeedback(s1, "");
+        Assert.Equal(2, fired.Count, "serials fire on every set");
+        dev.SetFeedback(d1, true);
+        Assert.Equal(3, fired.Count, "a change fires");
+    }
+
+    [Test]
     public static void Events_queued_before_unload_do_not_run_after_it()
     {
         using var p = new Processor(Paths.TempData());
@@ -58,6 +86,56 @@ public static class CoreTests
         try { d.Invoke(() => { }); throw new AssertException("expected ObjectDisposedException"); }
         catch (ObjectDisposedException) { }
         Assert.True(sw.ElapsedMilliseconds < 1000, $"failed fast ({sw.ElapsedMilliseconds} ms)");
+    }
+
+    [Test]
+    public static void Dispatcher_runs_events_in_order_on_one_thread_for_every_post_form()
+    {
+        using var d = new SlotDispatcher("t", _ => { });
+        var seen = new List<int>(); var threads = new HashSet<int>();
+        for (var i = 0; i < 300; i++)
+        {
+            var n = i;
+            void Rec(int v) { seen.Add(v); threads.Add(Environment.CurrentManagedThreadId); }
+            if (n % 3 == 0) d.Post(() => Rec(n));
+            else if (n % 3 == 1) d.Post(static s => { var (l, t, v) = ((List<int>, HashSet<int>, int))s!; l.Add(v); t.Add(Environment.CurrentManagedThreadId); }, (seen, threads, n));
+            else d.Post(static (a, b, v) => { ((List<int>)a!).Add(v); ((HashSet<int>)b!).Add(Environment.CurrentManagedThreadId); }, seen, threads, n);
+        }
+        d.Invoke(() => { });
+        Assert.Equal(300, seen.Count, "all ran");
+        for (var i = 0; i < 300; i++) Assert.Equal(i, seen[i], "FIFO");
+        Assert.Equal(1, threads.Count, "one thread");
+    }
+
+    [Test]
+    public static void Dispatcher_drops_posts_but_runs_invokes_after_quiesce()
+    {
+        using var d = new SlotDispatcher("t", _ => { });
+        var posted = 0; var invoked = 0;
+        d.Quiesce();
+        d.Post(() => Interlocked.Increment(ref posted));
+        d.Post(_ => Interlocked.Increment(ref posted), null);
+        d.Post((_, _, _) => Interlocked.Increment(ref posted), null, null, 0);
+        d.Invoke(() => Interlocked.Increment(ref invoked));
+        Assert.Equal(0, posted, "posts after quiesce dropped");
+        Assert.Equal(1, invoked, "invoke after quiesce ran");
+    }
+
+    [Test]
+    public static void Dispatcher_cancels_queued_invokes_on_dispose()
+    {
+        var d = new SlotDispatcher("t", _ => { });
+        var gate = new ManualResetEventSlim();
+        d.Post(() => gate.Wait(2000));                                   // hold the thread
+        var ran = 0;
+        var inv = Task.Run(() => { try { d.Invoke(() => Interlocked.Increment(ref ran)); return (Exception?)null; } catch (Exception e) { return e; } });
+        Thread.Sleep(100);                                               // let the invoke queue up behind the gate
+        var disposing = Task.Run(d.Dispose);
+        Thread.Sleep(50);
+        gate.Set();
+        Assert.True(inv.Wait(5000) && disposing.Wait(7000), "both finished");
+        Assert.True(inv.Result is AggregateException { InnerException: ObjectDisposedException }, "queued invoke cancelled with ObjectDisposedException");
+        Assert.Equal(0, ran, "cancelled invoke did not run");
     }
 
     [Test]
@@ -102,5 +180,31 @@ public static class CoreTests
 
         try { Cip.Frame(Cip.Data, new byte[70_000]); throw new AssertException("expected ArgumentException"); }
         catch (ArgumentException) { }
+    }
+
+    [Test]
+    public static void Timer_set_forgets_timers_that_fired_or_were_disposed()
+    {
+        var set = new TimerSet();
+        int fired = 0;
+        for (int i = 0; i < 50; i++) set.After(0, () => Interlocked.Increment(ref fired));
+        Assert.Eventually(() => Volatile.Read(ref fired) == 50 && set.Count == 0, "fired timers leave the set");
+
+        var cancelled = set.After(10_000, () => throw new AssertException("a disposed timer fired"));
+        Assert.Equal(1, set.Count, "armed timer is tracked");
+        cancelled.Dispose();
+        cancelled.Dispose(); // idempotent, like Timer.Dispose
+        Assert.Equal(0, set.Count, "disposed timer leaves the set");
+
+        set.After(10_000, () => throw new AssertException("cancelled timer fired"));
+        set.After(10_000, () => throw new AssertException("cancelled timer fired"));
+        set.CancelAll();
+        Assert.Equal(0, set.Count, "CancelAll empties the set");
+
+        // A retriggered timer (dispose the old one, arm a new one) never accumulates.
+        IDisposable? last = null;
+        for (int i = 0; i < 1000; i++) { last?.Dispose(); last = set.After(10_000, () => { }); }
+        Assert.Equal(1, set.Count, "one live timer after 1000 retriggers");
+        set.CancelAll();
     }
 }

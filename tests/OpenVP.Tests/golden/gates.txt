@@ -1,0 +1,189 @@
+slot1 #34 D=1 <- S-3 NOR 20
+slot1 #38 D=1 <- S-7 OR with 1
+slot1 #39 D=1 <- S-8 NOR with 0
+slot1 #43 D=1 <- S-12 NOR with repeated signals
+slot1 #47 D=1 <- S-16 NOR with no inputs
+slot1 #50 D=1 <- S-20 NOR with a serial input
+-- d1 on
+slot1 #10 D=1 <- IPID03
+slot1 #33 D=1 <- S-2 OR 20
+slot1 #34 D=0 <- S-3 NOR 20
+slot1 #37 D=1 <- S-6 OR with 0
+slot1 #39 D=0 <- S-8 NOR with 0
+slot1 #42 D=1 <- S-11 OR with a repeated signal
+slot1 #51 D=1 <- S-21 OR into AND
+-- d2 on
+slot1 #11 D=1 <- IPID03
+slot1 #35 D=1 <- S-4 AND with 1
+slot1 #41 D=1 <- S-10 AND with a repeated signal
+slot1 #43 D=0 <- S-12 NOR with repeated signals
+slot1 #49 D=1 <- S-19 OR with an analog and a serial input
+-- d3 on
+slot1 #12 D=1 <- IPID03
+slot1 #44 D=1 <- S-13 AND of one signal
+slot1 #50 D=0 <- S-20 NOR with a serial input
+slot1 #52 D=1 <- S-22 AND after OR
+-- d4..d10 on
+slot1 #13 D=1 <- IPID03
+slot1 #14 D=1 <- IPID03
+slot1 #15 D=1 <- IPID03
+slot1 #16 D=1 <- IPID03
+slot1 #17 D=1 <- IPID03
+slot1 #18 D=1 <- IPID03
+slot1 #19 D=1 <- IPID03
+-- d11..d19 on
+slot1 #20 D=1 <- IPID03
+slot1 #21 D=1 <- IPID03
+slot1 #22 D=1 <- IPID03
+slot1 #23 D=1 <- IPID03
+slot1 #24 D=1 <- IPID03
+slot1 #25 D=1 <- IPID03
+slot1 #26 D=1 <- IPID03
+slot1 #27 D=1 <- IPID03
+slot1 #28 D=1 <- IPID03
+-- d20 on (AND 20 goes high)
+slot1 #29 D=1 <- IPID03
+slot1 #32 D=1 <- S-1 AND 20
+-- d7 off
+slot1 #16 D=0 <- IPID03
+slot1 #32 D=0 <- S-1 AND 20
+-- d7 on
+slot1 #16 D=1 <- IPID03
+slot1 #32 D=1 <- S-1 AND 20
+-- d1 off
+slot1 #10 D=0 <- IPID03
+slot1 #32 D=0 <- S-1 AND 20
+slot1 #35 D=0 <- S-4 AND with 1
+slot1 #41 D=0 <- S-10 AND with a repeated signal
+slot1 #42 D=0 <- S-11 OR with a repeated signal
+-- d1 on
+slot1 #10 D=1 <- IPID03
+slot1 #32 D=1 <- S-1 AND 20
+slot1 #35 D=1 <- S-4 AND with 1
+slot1 #41 D=1 <- S-10 AND with a repeated signal
+slot1 #42 D=1 <- S-11 OR with a repeated signal
+-- analog a1 = 5 (gates with analog inputs re-run)
+slot1 #30 A=5 <- IPID03
+-- analog a1 = 0
+slot1 #30 A=0 <- IPID03
+-- serial s1 = x
+slot1 #31 S="x" <- IPID03
+-- serial s1 = x again
+slot1 #31 S="x" <- IPID03
+-- d20 off
+slot1 #29 D=0 <- IPID03
+slot1 #32 D=0 <- S-1 AND 20
+-- d19 off
+slot1 #28 D=0 <- IPID03
+-- d18 off
+slot1 #27 D=0 <- IPID03
+-- d17 off
+slot1 #26 D=0 <- IPID03
+-- d16 off
+slot1 #25 D=0 <- IPID03
+-- d15 off
+slot1 #24 D=0 <- IPID03
+-- d14 off
+slot1 #23 D=0 <- IPID03
+-- d13 off
+slot1 #22 D=0 <- IPID03
+-- d12 off
+slot1 #21 D=0 <- IPID03
+-- d11 off
+slot1 #20 D=0 <- IPID03
+-- d10 off
+slot1 #19 D=0 <- IPID03
+-- d9 off
+slot1 #18 D=0 <- IPID03
+-- d8 off
+slot1 #17 D=0 <- IPID03
+-- d7 off
+slot1 #16 D=0 <- IPID03
+-- d6 off
+slot1 #15 D=0 <- IPID03
+-- d5 off
+slot1 #14 D=0 <- IPID03
+-- d4 off
+slot1 #13 D=0 <- IPID03
+-- d1 and d2 off together
+slot1 #10 D=0 <- IPID03
+slot1 #35 D=0 <- S-4 AND with 1
+slot1 #41 D=0 <- S-10 AND with a repeated signal
+slot1 #42 D=0 <- S-11 OR with a repeated signal
+slot1 #11 D=0 <- IPID03
+slot1 #37 D=0 <- S-6 OR with 0
+slot1 #39 D=1 <- S-8 NOR with 0
+slot1 #49 D=0 <- S-19 OR with an analog and a serial input
+slot1 #51 D=0 <- S-21 OR into AND
+slot1 #52 D=0 <- S-22 AND after OR
+-- d3 off
+slot1 #12 D=0 <- IPID03
+slot1 #33 D=0 <- S-2 OR 20
+slot1 #34 D=1 <- S-3 NOR 20
+slot1 #43 D=1 <- S-12 NOR with repeated signals
+slot1 #44 D=0 <- S-13 AND of one signal
+slot1 #50 D=1 <- S-20 NOR with a serial input
+-- d2 on
+slot1 #11 D=1 <- IPID03
+slot1 #33 D=1 <- S-2 OR 20
+slot1 #34 D=0 <- S-3 NOR 20
+slot1 #37 D=1 <- S-6 OR with 0
+slot1 #39 D=0 <- S-8 NOR with 0
+slot1 #43 D=0 <- S-12 NOR with repeated signals
+slot1 #49 D=1 <- S-19 OR with an analog and a serial input
+slot1 #51 D=1 <- S-21 OR into AND
+-- d2 off
+slot1 #11 D=0 <- IPID03
+slot1 #33 D=0 <- S-2 OR 20
+slot1 #34 D=1 <- S-3 NOR 20
+slot1 #37 D=0 <- S-6 OR with 0
+slot1 #39 D=1 <- S-8 NOR with 0
+slot1 #43 D=1 <- S-12 NOR with repeated signals
+slot1 #49 D=0 <- S-19 OR with an analog and a serial input
+slot1 #51 D=0 <- S-21 OR into AND
+-- d3 on
+slot1 #12 D=1 <- IPID03
+slot1 #33 D=1 <- S-2 OR 20
+slot1 #34 D=0 <- S-3 NOR 20
+slot1 #43 D=0 <- S-12 NOR with repeated signals
+slot1 #44 D=1 <- S-13 AND of one signal
+slot1 #50 D=0 <- S-20 NOR with a serial input
+-- d1 and d3 flip together
+slot1 #10 D=1 <- IPID03
+slot1 #37 D=1 <- S-6 OR with 0
+slot1 #39 D=0 <- S-8 NOR with 0
+slot1 #42 D=1 <- S-11 OR with a repeated signal
+slot1 #51 D=1 <- S-21 OR into AND
+slot1 #52 D=1 <- S-22 AND after OR
+slot1 #12 D=0 <- IPID03
+slot1 #43 D=1 <- S-12 NOR with repeated signals
+slot1 #44 D=0 <- S-13 AND of one signal
+slot1 #50 D=1 <- S-20 NOR with a serial input
+slot1 #52 D=0 <- S-22 AND after OR
+-- all of d1..d3 on
+slot1 #11 D=1 <- IPID03
+slot1 #35 D=1 <- S-4 AND with 1
+slot1 #41 D=1 <- S-10 AND with a repeated signal
+slot1 #43 D=0 <- S-12 NOR with repeated signals
+slot1 #49 D=1 <- S-19 OR with an analog and a serial input
+slot1 #12 D=1 <- IPID03
+slot1 #44 D=1 <- S-13 AND of one signal
+slot1 #50 D=0 <- S-20 NOR with a serial input
+slot1 #52 D=1 <- S-22 AND after OR
+-- all of d1..d3 off
+slot1 #10 D=0 <- IPID03
+slot1 #35 D=0 <- S-4 AND with 1
+slot1 #41 D=0 <- S-10 AND with a repeated signal
+slot1 #42 D=0 <- S-11 OR with a repeated signal
+slot1 #11 D=0 <- IPID03
+slot1 #37 D=0 <- S-6 OR with 0
+slot1 #39 D=1 <- S-8 NOR with 0
+slot1 #49 D=0 <- S-19 OR with an analog and a serial input
+slot1 #51 D=0 <- S-21 OR into AND
+slot1 #52 D=0 <- S-22 AND after OR
+slot1 #12 D=0 <- IPID03
+slot1 #33 D=0 <- S-2 OR 20
+slot1 #34 D=1 <- S-3 NOR 20
+slot1 #43 D=1 <- S-12 NOR with repeated signals
+slot1 #44 D=0 <- S-13 AND of one signal
+slot1 #50 D=1 <- S-20 NOR with a serial input

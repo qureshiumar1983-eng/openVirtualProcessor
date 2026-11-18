@@ -1,0 +1,238 @@
+slot1 #30 D=1 <- S-9 Compare
+slot1 #33 D=1 <- S-9 Compare
+slot1 #35 D=1 <- S-9 Compare
+-- a1 = 1000
+slot1 #10 A=1000 <- IPID03
+slot1 #21 A=205 <- S-1 Scaler
+slot1 #22 A=558 <- S-2 Scaler signed
+slot1 #23 A=500 <- S-3 Scaler limits
+slot1 #24 A=64535 <- S-4 Flip
+slot1 #25 A=142 <- S-5 DivMod
+slot1 #26 A=6 <- S-5 DivMod
+slot1 #28 A=1000 <- S-7 Follow
+slot1 #29 A=1000 <- S-8 Sum
+slot1 #30 D=0 <- S-9 Compare
+slot1 #31 D=1 <- S-9 Compare
+slot1 #33 D=0 <- S-9 Compare
+slot1 #34 D=1 <- S-9 Compare
+slot1 #36 D=1 <- S-10 Analog to digital
+slot1 #40 D=1 <- S-11 Decade
+slot1 #50 D=1 <- S-11 Decade
+slot1 #60 D=1 <- S-11 Decade
+-- a2 = 500
+slot1 #11 A=500 <- IPID03
+slot1 #27 A=500 <- S-6 Clamp
+slot1 #29 A=1500 <- S-8 Sum
+-- a3 = 2000
+slot1 #12 A=2000 <- IPID03
+slot1 #27 A=1000 <- S-6 Clamp
+slot1 #29 A=3500 <- S-8 Sum
+-- a1 = 65535
+slot1 #10 A=65535 <- IPID03
+slot1 #21 A=13112 <- S-1 Scaler
+slot1 #22 A=30100 <- S-2 Scaler signed
+slot1 #24 A=0 <- S-4 Flip
+slot1 #25 A=9362 <- S-5 DivMod
+slot1 #26 A=1 <- S-5 DivMod
+slot1 #27 A=2000 <- S-6 Clamp
+slot1 #28 A=65535 <- S-7 Follow
+slot1 #29 A=65535 <- S-8 Sum
+slot1 #37 D=1 <- S-10 Analog to digital
+slot1 #38 D=1 <- S-10 Analog to digital
+slot1 #39 D=1 <- S-10 Analog to digital
+slot1 #40 D=0 <- S-11 Decade
+slot1 #45 D=1 <- S-11 Decade
+slot1 #50 D=0 <- S-11 Decade
+slot1 #53 D=1 <- S-11 Decade
+slot1 #60 D=0 <- S-11 Decade
+slot1 #65 D=1 <- S-11 Decade
+-- a1 = 0
+slot1 #10 A=0 <- IPID03
+slot1 #21 A=5 <- S-1 Scaler
+slot1 #22 A=100 <- S-2 Scaler signed
+slot1 #23 A=100 <- S-3 Scaler limits
+slot1 #24 A=65535 <- S-4 Flip
+slot1 #25 A=0 <- S-5 DivMod
+slot1 #26 A=0 <- S-5 DivMod
+slot1 #27 A=500 <- S-6 Clamp
+slot1 #28 A=0 <- S-7 Follow
+slot1 #29 A=2500 <- S-8 Sum
+slot1 #32 D=1 <- S-9 Compare
+slot1 #33 D=1 <- S-9 Compare
+slot1 #34 D=0 <- S-9 Compare
+slot1 #35 D=0 <- S-9 Compare
+slot1 #36 D=0 <- S-10 Analog to digital
+slot1 #37 D=0 <- S-10 Analog to digital
+slot1 #38 D=0 <- S-10 Analog to digital
+slot1 #39 D=0 <- S-10 Analog to digital
+slot1 #40 D=1 <- S-11 Decade
+slot1 #45 D=0 <- S-11 Decade
+slot1 #50 D=1 <- S-11 Decade
+slot1 #53 D=0 <- S-11 Decade
+slot1 #60 D=1 <- S-11 Decade
+slot1 #65 D=0 <- S-11 Decade
+-- a1 = 123
+slot1 #10 A=123 <- IPID03
+slot1 #21 A=29 <- S-1 Scaler
+slot1 #22 A=156 <- S-2 Scaler signed
+slot1 #23 A=149 <- S-3 Scaler limits
+slot1 #24 A=65412 <- S-4 Flip
+slot1 #25 A=17 <- S-5 DivMod
+slot1 #26 A=4 <- S-5 DivMod
+slot1 #28 A=123 <- S-7 Follow
+slot1 #29 A=2623 <- S-8 Sum
+slot1 #36 D=1 <- S-10 Analog to digital
+slot1 #38 D=1 <- S-10 Analog to digital
+slot1 #39 D=1 <- S-10 Analog to digital
+slot1 #40 D=0 <- S-11 Decade
+slot1 #43 D=1 <- S-11 Decade
+slot1 #50 D=0 <- S-11 Decade
+slot1 #52 D=1 <- S-11 Decade
+slot1 #60 D=0 <- S-11 Decade
+slot1 #61 D=1 <- S-11 Decade
+-- a1 = 123 again (no change)
+-- a3 = 100 (clamp window shrinks)
+slot1 #12 A=100 <- IPID03
+slot1 #27 A=123 <- S-6 Clamp
+slot1 #29 A=723 <- S-8 Sum
+-- a2 = 600 (window flips)
+slot1 #11 A=600 <- IPID03
+slot1 #29 A=823 <- S-8 Sum
+-- a1 = 7
+slot1 #10 A=7 <- IPID03
+slot1 #21 A=6 <- S-1 Scaler
+slot1 #22 A=103 <- S-2 Scaler signed
+slot1 #23 A=103 <- S-3 Scaler limits
+slot1 #24 A=65528 <- S-4 Flip
+slot1 #25 A=1 <- S-5 DivMod
+slot1 #26 A=0 <- S-5 DivMod
+slot1 #27 A=100 <- S-6 Clamp
+slot1 #28 A=7 <- S-7 Follow
+slot1 #29 A=707 <- S-8 Sum
+slot1 #36 D=0 <- S-10 Analog to digital
+slot1 #37 D=1 <- S-10 Analog to digital
+slot1 #43 D=0 <- S-11 Decade
+slot1 #47 D=1 <- S-11 Decade
+slot1 #50 D=1 <- S-11 Decade
+slot1 #52 D=0 <- S-11 Decade
+slot1 #60 D=1 <- S-11 Decade
+slot1 #61 D=0 <- S-11 Decade
+-- step clk up
+slot1 #13 D=1 <- IPID03
+slot1 #70 A=100 <- S-12 Analog step
+-- step clk down
+slot1 #13 D=0 <- IPID03
+-- step clk up
+slot1 #13 D=1 <- IPID03
+slot1 #70 A=200 <- S-12 Analog step
+-- step clk down
+slot1 #13 D=0 <- IPID03
+-- step reset
+slot1 #14 D=1 <- IPID03
+slot1 #70 A=100 <- S-12 Analog step
+-- step reset release
+slot1 #14 D=0 <- IPID03
+-- step clk up
+slot1 #13 D=1 <- IPID03
+slot1 #70 A=200 <- S-12 Analog step
+-- step clk down
+slot1 #13 D=0 <- IPID03
+-- ram recall (empty)
+slot1 #16 D=1 <- IPID03
+-- ram recall release
+slot1 #16 D=0 <- IPID03
+-- ram store (x=7, y=600)
+slot1 #15 D=1 <- IPID03
+-- ram store release
+slot1 #15 D=0 <- IPID03
+-- a1 = 9, a2 = 10
+slot1 #10 A=9 <- IPID03
+slot1 #22 A=104 <- S-2 Scaler signed
+slot1 #23 A=104 <- S-3 Scaler limits
+slot1 #24 A=65526 <- S-4 Flip
+slot1 #26 A=2 <- S-5 DivMod
+slot1 #28 A=9 <- S-7 Follow
+slot1 #29 A=709 <- S-8 Sum
+slot1 #36 D=1 <- S-10 Analog to digital
+slot1 #37 D=0 <- S-10 Analog to digital
+slot1 #38 D=0 <- S-10 Analog to digital
+slot1 #47 D=0 <- S-11 Decade
+slot1 #49 D=1 <- S-11 Decade
+slot1 #11 A=10 <- IPID03
+slot1 #27 A=10 <- S-6 Clamp
+slot1 #29 A=119 <- S-8 Sum
+-- ram recall
+slot1 #16 D=1 <- IPID03
+slot1 #76 A=7 <- S-18 Analog RAM
+slot1 #77 A=600 <- S-18 Analog RAM
+-- ram recall release
+slot1 #16 D=0 <- IPID03
+-- up press
+slot1 #17 D=1 <- IPID03
+slot1 #74 A=55 <- S-16 Increment
+slot1 #75 A=13 <- S-17 Increment with feedback
+-- up release
+slot1 #17 D=0 <- IPID03
+-- down press
+slot1 #18 D=1 <- IPID03
+slot1 #74 A=50 <- S-16 Increment
+slot1 #75 A=10 <- S-17 Increment with feedback
+-- down release
+slot1 #18 D=0 <- IPID03
+-- a2 = 20 (feedback into increment 2)
+slot1 #11 A=20 <- IPID03
+slot1 #27 A=20 <- S-6 Clamp
+slot1 #29 A=129 <- S-8 Sum
+-- up press
+slot1 #17 D=1 <- IPID03
+slot1 #74 A=55 <- S-16 Increment
+slot1 #75 A=23 <- S-17 Increment with feedback
+-- up release
+slot1 #17 D=0 <- IPID03
+-- a1 = 65, a2 = 66
+slot1 #10 A=65 <- IPID03
+slot1 #21 A=18 <- S-1 Scaler
+slot1 #22 A=130 <- S-2 Scaler signed
+slot1 #23 A=126 <- S-3 Scaler limits
+slot1 #24 A=65470 <- S-4 Flip
+slot1 #25 A=9 <- S-5 DivMod
+slot1 #27 A=65 <- S-6 Clamp
+slot1 #28 A=65 <- S-7 Follow
+slot1 #29 A=185 <- S-8 Sum
+slot1 #32 D=0 <- S-9 Compare
+slot1 #33 D=0 <- S-9 Compare
+slot1 #34 D=1 <- S-9 Compare
+slot1 #35 D=1 <- S-9 Compare
+slot1 #36 D=0 <- S-10 Analog to digital
+slot1 #45 D=1 <- S-11 Decade
+slot1 #49 D=0 <- S-11 Decade
+slot1 #50 D=0 <- S-11 Decade
+slot1 #56 D=1 <- S-11 Decade
+slot1 #11 A=66 <- IPID03
+slot1 #27 A=66 <- S-6 Clamp
+slot1 #29 A=231 <- S-8 Sum
+slot1 #32 D=1 <- S-9 Compare
+slot1 #33 D=1 <- S-9 Compare
+slot1 #34 D=0 <- S-9 Compare
+slot1 #35 D=0 <- S-9 Compare
+-- send
+slot1 #19 D=1 <- IPID03
+slot1 #73 S="AABBC" <- S-15 Analog to serial
+-- send release
+slot1 #19 D=0 <- IPID03
+-- s1 = 42
+slot1 #20 S="42" <- IPID03
+slot1 #71 A=2 <- S-13 String length
+slot1 #72 A=42 <- S-14 Serial to analog
+-- s1 = ' 7 '
+slot1 #20 S=" 7 " <- IPID03
+slot1 #71 A=3 <- S-13 String length
+slot1 #72 A=7 <- S-14 Serial to analog
+-- s1 = abc (not a number)
+slot1 #20 S="abc" <- IPID03
+-- s1 = 99999 (too big)
+slot1 #20 S="99999" <- IPID03
+slot1 #71 A=5 <- S-13 String length
+-- s1 empty
+slot1 #20 S="" <- IPID03
+slot1 #71 A=0 <- S-13 String length

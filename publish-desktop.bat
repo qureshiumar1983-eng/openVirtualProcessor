@@ -1,13 +1,12 @@
 @echo off
-rem Builds desktop\dist\OpenVP.exe: the OpenVP Electron app in one file (runs without installing anything).
-rem Building needs the .NET 8 SDK and Node.js; running the exe doesn't.
+rem Builds desktop\dist\OpenVP.exe on this PC: the OpenVP Electron app in one file.
+rem Needs the .NET 8 SDK and Node.js to build; the exe itself runs without either.
 setlocal
-cd /d "%~dp0"
-dotnet publish src\OpenVP.Server -c Release -r win-x64 --self-contained true -o desktop\server || goto :failed
-pushd desktop
-call npm ci --no-audit --no-fund || (popd & goto :failed)
-call npm run dist || (popd & goto :failed)
-popd
+cd /d "%~dp0desktop"
+if not exist node_modules (
+  call npm install --no-audit --no-fund || goto :failed
+)
+call npm run build || goto :failed
 echo.
 echo Done: desktop\dist\OpenVP.exe
 exit /b 0

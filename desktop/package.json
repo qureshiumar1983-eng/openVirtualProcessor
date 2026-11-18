@@ -9,7 +9,9 @@
   "author": "OpenVP contributors",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win portable --x64 --publish never"
+    "dist": "electron-builder --win portable --x64 --publish never",
+    "build:server": "dotnet publish ../src/OpenVP.Server -c Release -r win-x64 --self-contained true -o server",
+    "build": "npm run build:server && npm run dist"
   },
   "devDependencies": {
     "electron": "33.2.1",
@@ -18,10 +20,30 @@
   "build": {
     "appId": "org.openvp.desktop",
     "productName": "OpenVP",
-    "directories": { "output": "dist", "buildResources": "build" },
-    "files": ["main.js", "loading.html", "package.json"],
-    "extraResources": [{ "from": "server", "to": "server", "filter": ["**/*"] }],
-    "win": { "icon": "build/icon.ico", "target": "portable" },
-    "portable": { "artifactName": "OpenVP.exe" }
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "loading.html",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "server",
+        "to": "server",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": "portable"
+    },
+    "portable": {
+      "artifactName": "OpenVP.exe"
+    }
   }
 }

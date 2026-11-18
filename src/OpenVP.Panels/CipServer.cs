@@ -1,6 +1,8 @@
+using System.Buffers;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading.Channels;
 using OpenVP.Core;
 
 namespace OpenVP.Panels;
@@ -28,6 +30,8 @@ public sealed class CipServer : IDisposable
     }
 
     public bool LogPackets { get; set; }
+    /// <summary>Connections currently open (a diagnostic).</summary>
+    public int SessionCount { get { lock (_sessions) return _sessions.Count; } }
     public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
 
     public void Start()
@@ -43,6 +47,7 @@ public sealed class CipServer : IDisposable
             TcpClient client;
             try { client = await _listener.AcceptTcpClientAsync(_cts.Token); }
             catch { break; }
+            client.NoDelay = true; // small feedback packets should go out now, not wait for Nagle to coalesce them
             var session = new CipSession(client, _processor, this);
             lock (_sessions) _sessions.Add(session);
             _ = session.RunAsync(_cts.Token).ContinueWith(_ => { lock (_sessions) _sessions.Remove(session); });
@@ -187,7 +192,16 @@ internal sealed class CipSession
     private readonly TcpClient _client;
     private readonly Processor _processor;
     private readonly CipServer _server;
-    private readonly SemaphoreSlim _writeLock = new(1, 1);
+    // Packets wait here for the sender, which writes everything pending in one go. Bounded, so a client
+    // that stopped reading is cut off instead of growing memory without limit; it reconnects and gets a snapshot.
+    // The limit is MaxQueuedPackets on top of whatever a snapshot just queued, so a device with more feedback
+    // joins than the limit can still be sent its snapshot: only packets beyond that count as "not reading".
+    private const int MaxQueuedPackets = 20_000;
+    private const int MaxWriteBytes = 64 * 1024;
+    private readonly Channel<byte[]> _outbox = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions { SingleReader = true });
+    private readonly CancellationTokenSource _sendCts = new(); // cancelled when the session ends, to free a write stuck on a dead peer
+    private int _queued;                     // packets in _outbox
+    private int _queueLimit = MaxQueuedPackets;
     private NetworkStream? _stream;
     private JoinDevice? _device;
 
@@ -205,9 +219,10 @@ internal sealed class CipSession
         var remote = _client.Client.RemoteEndPoint?.ToString() ?? "?";
         _server.Event(1, $"connection from {remote}");
         _processor.DeviceUnregistered += OnUnregistered;
+        var sender = SendLoop(_sendCts.Token);
         try
         {
-            await Send(Cip.WhoAreYouPacket());
+            Send(Cip.WhoAreYouPacket());
             var header = new byte[3];
             while (!ct.IsCancellationRequested)
             {
@@ -215,20 +230,33 @@ internal sealed class CipSession
                 var len = (header[1] << 8) | header[2];
                 var payload = new byte[len];
                 if (len > 0 && !await ReadExactly(payload, ct)) break;
-                _server.Log($"<- {header[0]:X2} {Convert.ToHexString(payload)}");
-                await Handle(header[0], payload);
+                if (_server.LogPackets) _server.Log($"<- {header[0]:X2} {Convert.ToHexString(payload)}"); // hex only when logging
+                Handle(header[0], payload);
             }
         }
-        catch (Exception e) when (e is IOException or SocketException or OperationCanceledException) { }
+        catch (Exception e) when (e is IOException or SocketException or OperationCanceledException or ObjectDisposedException) { }
         finally
         {
-            _processor.DeviceUnregistered -= OnUnregistered;
-            _server.Event(_device?.Slot ?? 1, $"{remote} disconnected" + (_device != null ? $" (IP ID {_device.IpId:X2})" : ""));
-            Detach();
+            try
+            {
+                _processor.DeviceUnregistered -= OnUnregistered;
+                _server.Event(_device?.Slot ?? 1, $"{remote} disconnected" + (_device != null ? $" (IP ID {_device.IpId:X2})" : ""));
+            }
+            finally
+            {
+                Detach();
+                _outbox.Writer.TryComplete();
+                // Nothing more needs to reach a panel that is gone: abort a write stuck on a dead peer, and
+                // close the socket (which also fails it), instead of waiting for it forever.
+                _sendCts.Cancel();
+                try { _client.Close(); } catch { }
+                try { await sender.WaitAsync(TimeSpan.FromSeconds(5)); } catch { }
+                _sendCts.Dispose();
+            }
         }
     }
 
-    private async Task Handle(byte type, byte[] payload)
+    private void Handle(byte type, byte[] payload)
     {
         if (Cip.DecodeConnectIpId(type, payload) is uint ipId)
         {
@@ -238,13 +266,13 @@ internal sealed class CipSession
             _server.Event(_device.Slot, $"panel registered as IP ID {ipId:X2}" + (known ? $" (slot {_device.Slot}, {_device.Type})" : " — no loaded program has this IP ID; check the panel's IP ID"));
             _device.FeedbackChanged += OnFeedback;
             _device.AttachConnection();
-            await Send(Cip.ConnectOk(ipId));
+            Send(Cip.ConnectOk(ipId));
             return;
         }
         switch (type)
         {
             case Cip.HeartbeatRequest:
-                await Send(Cip.Heartbeat());
+                Send(Cip.Heartbeat());
                 return;
             case Cip.Disconnect:
                 _client.Close();
@@ -254,8 +282,13 @@ internal sealed class CipSession
         {
             // Panel asks for everything: send a full snapshot.
             if (_device != null)
-                foreach (var (k, v) in _device.FeedbackSnapshot()) OnFeedback(_device, k, v);
-            await Send(Cip.UpdateComplete());
+            {
+                var snapshot = _device.FeedbackSnapshot();
+                // Room for the whole snapshot (plus what is already queued), then the usual margin on top.
+                _queueLimit = Math.Max(_queueLimit, Volatile.Read(ref _queued) + snapshot.Count + MaxQueuedPackets);
+                foreach (var (k, v) in snapshot) OnFeedback(_device, k, v);
+            }
+            Send(Cip.UpdateComplete());
             return;
         }
         if (Cip.DecodeJoin(type, payload) is var (key, value) && _device != null)
@@ -273,7 +306,7 @@ internal sealed class CipSession
             SigKind.Analog => Cip.Analog(key.Join, (ushort)value),
             _ => Cip.Serial(key.Join, (string)value)
         };
-        _ = Send(packet);
+        Send(packet);
     }
 
     private void OnUnregistered(JoinDevice d)
@@ -289,17 +322,41 @@ internal sealed class CipSession
         _device = null;
     }
 
-    private async Task Send(byte[] packet)
+    /// <summary>Queue a packet; never blocks the caller (often the slot thread).</summary>
+    private void Send(byte[] packet)
     {
-        if (_stream == null) return;
-        await _writeLock.WaitAsync();
+        if (Interlocked.Increment(ref _queued) <= Volatile.Read(ref _queueLimit))
+        {
+            if (_outbox.Writer.TryWrite(packet)) return;
+            Interlocked.Decrement(ref _queued);
+            return; // already shutting down
+        }
+        Interlocked.Decrement(ref _queued);
+        if (_outbox.Reader.Completion.IsCompleted) return; // already shutting down
+        _server.Event(_device?.Slot ?? 1, $"{_client.Client?.RemoteEndPoint} is not reading fast enough ({_queueLimit} packets queued); disconnecting it");
+        _client.Close();
+    }
+
+    /// <summary>One writer per connection: whatever is queued goes out as a single write, in order.</summary>
+    private async Task SendLoop(CancellationToken ct)
+    {
+        var buf = new ArrayBufferWriter<byte>(1024);
         try
         {
-            _server.Log($"-> {Convert.ToHexString(packet)}");
-            await _stream.WriteAsync(packet);
+            var reader = _outbox.Reader;
+            while (await reader.WaitToReadAsync(ct))
+            {
+                buf.Clear();
+                while (buf.WrittenCount < MaxWriteBytes && reader.TryRead(out var packet))
+                {
+                    Interlocked.Decrement(ref _queued);
+                    if (_server.LogPackets) _server.Log($"-> {Convert.ToHexString(packet)}");
+                    buf.Write(packet);
+                }
+                await _stream!.WriteAsync(buf.WrittenMemory, ct);
+            }
         }
-        catch (Exception) { }
-        finally { _writeLock.Release(); }
+        catch (Exception) { _client.Close(); } // dead peer: the read loop notices and cleans up
     }
 
     private async Task<bool> ReadExactly(byte[] buffer, CancellationToken ct)
