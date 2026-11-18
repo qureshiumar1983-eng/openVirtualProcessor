@@ -154,6 +154,24 @@ public static class LpzRuntimeTests
     }
 
     [Test]
+    public static void Nvram_saves_atomically_and_reloads()
+    {
+        var path = Path.Combine(Paths.TempData(), "slot", "nvram.json");
+        var store = new NvramStore(path);
+        store.Set("a", "hello");
+        store.Set("b", (ushort)42);
+        store.Flush();
+        Assert.True(!File.Exists(path + ".tmp"), "temp file swapped in, not left behind");
+        store.Set("b", (ushort)43);
+        // Concurrent flushes (timer thread plus Stop) must not corrupt the file or leave a stale snapshot.
+        Parallel.For(0, 8, _ => store.Flush());
+        var again = new NvramStore(path);
+        Assert.Equal("hello", (string)again.Get("a")!, "string reloaded");
+        Assert.Equal((ushort)43, (ushort)again.Get("b")!, "latest value reloaded");
+        Assert.True(!File.Exists(path + ".tmp"), "no temp file after concurrent flushes");
+    }
+
+    [Test]
     public static void Unsupported_types_are_reported_not_fatal()
     {
         var (p, _) = Start();
