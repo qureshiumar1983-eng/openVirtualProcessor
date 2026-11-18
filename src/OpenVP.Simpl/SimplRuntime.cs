@@ -71,9 +71,9 @@ public sealed class SimplRuntime : IProgramRuntime
     private readonly List<Node> _nodes = new();
     private readonly List<DeviceNode> _devices = new();
     private readonly Queue<Pending> _pending = new();
-    private readonly TimerSet _timers = new();
+    private readonly TimerSet _timers;
     private bool _solving;
-    private bool _running;
+    private volatile bool _running;
 
     public SimplRuntime(ProgramSlot slot, SmwFile file, SymbolLibrary library, SimplOptions options)
     {
@@ -81,6 +81,8 @@ public sealed class SimplRuntime : IProgramRuntime
         _file = file;
         _library = library;
         _options = options;
+        // One OS timer for the whole slot; due timers reach the slot thread in one post (see TimerSet).
+        _timers = new TimerSet(() => slot.Dispatcher, () => _running, e => slot.Log("Error", $"Unhandled exception in program: {e}"));
 
         var max = 1;
         foreach (var h in file.Signals.Keys) max = Math.Max(max, h);
@@ -359,7 +361,7 @@ public sealed class SimplRuntime : IProgramRuntime
 
     internal IDisposable After(long ms, Action action)
     {
-        return _timers.After(ms, () => _slot.Dispatcher.Post(static (rt, a, _) => { if (((SimplRuntime)rt!)._running) ((Action)a!)(); }, this, action, 0));
+        return _timers.After(ms, action);
     }
 
     // ------------------------------------------------------------------ lifecycle
@@ -408,7 +410,11 @@ public sealed class SimplRuntime : IProgramRuntime
         return true;
     }
 
-    public void Dispose() => Stop();
+    public void Dispose()
+    {
+        Stop();
+        _timers.Dispose();
+    }
 
     // ------------------------------------------------------------------ nodes
 

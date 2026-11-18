@@ -51,7 +51,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
     private readonly List<DeviceNode> _devices = new();
     private readonly Queue<Pending> _pending = new();
     private readonly Queue<Action> _nextWave = new();
-    private readonly TimerSet _timers = new();
+    private readonly TimerSet _timers;
     private readonly NvramStore _store;
     private bool _solving;
     private volatile bool _running;
@@ -61,6 +61,8 @@ public sealed partial class LpzRuntime : IProgramRuntime
         _slot = slot;
         _pkg = pkg;
         _store = new NvramStore(Path.Combine(slot.Directory, "nvram.json"));
+        // One OS timer for the whole slot; due timers reach the slot thread in one post (see TimerSet).
+        _timers = new TimerSet(() => slot.Dispatcher, () => _running, e => slot.Log("Error", $"Unhandled exception in program: {e}"));
         var count = Math.Max(2, pkg.Logic.MaxSignal + 1);
         _dig = new bool[count];
         _ana = new ushort[count];
@@ -398,7 +400,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
 
     internal IDisposable After(long ms, Action action)
     {
-        return _timers.After(ms, () => _slot.Dispatcher.Post(static (rt, a, _) => { if (((LpzRuntime)rt!)._running) ((Action)a!)(); }, this, action, 0));
+        return _timers.After(ms, action);
     }
 
     // ------------------------------------------------------------------ lifecycle
@@ -475,6 +477,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
     public void Dispose()
     {
         Stop();
+        _timers.Dispose();
         _alc?.Unload();
         _alc = null;
     }
