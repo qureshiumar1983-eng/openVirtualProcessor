@@ -62,9 +62,11 @@ public sealed class JoinDevice
     {
         value = SigValue.Coerce(key.Kind, value);
         var old = GetFeedback(key);
+        // Serials fire on every set. Anything else that hasn't changed needs no write (interlocks and
+        // buffers re-set many outputs to the value they already hold).
+        if (key.Kind != SigKind.Serial && SigValue.AreEqual(old, value)) return;
         _toDevice[key] = value;
-        if (!SigValue.AreEqual(old, value) || key.Kind == SigKind.Serial)
-            FeedbackChanged?.Invoke(this, key, value);
+        FeedbackChanged?.Invoke(this, key, value);
     }
 
     /// <summary>Transport side: the device pressed a button or sent a value.</summary>
