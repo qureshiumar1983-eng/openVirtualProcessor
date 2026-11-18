@@ -1,9 +1,15 @@
 name: Windows app
 # Builds OpenVP.exe: one self-contained file, no .NET install needed. Download it from the run's
-# "OpenVP-windows" artifact, or from the release when a v* tag is pushed.
+# "OpenVP-windows" artifact, or from a release: push a v* tag, or run this workflow by hand
+# (Actions > Windows app > Run workflow) and enter a version such as v0.1.0.
 on:
   push:
   workflow_dispatch:
+    inputs:
+      release:
+        description: Make a release with this version (e.g. v0.1.0). Leave empty to just build.
+        required: false
+        default: ''
 permissions:
   contents: write
 jobs:
@@ -39,12 +45,16 @@ jobs:
         with:
           name: OpenVP-windows
           path: dist/OpenVP.exe
-      - name: Attach to release (v* tags only)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release != ''
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release != '' && inputs.release || github.ref_name }}
         run: |
-          gh release view $env:GITHUB_REF_NAME 2>$null
-          if ($LASTEXITCODE -ne 0) { gh release create $env:GITHUB_REF_NAME --title "OpenVP $env:GITHUB_REF_NAME" --notes "Download OpenVP.exe and run it." }
-          gh release upload $env:GITHUB_REF_NAME dist/OpenVP.exe --clobber
+          gh release view $env:TAG 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:TAG --target $env:GITHUB_SHA --title "OpenVP $env:TAG" --notes "Download **OpenVP.exe** below and run it. No install needed (Windows 10/11, 64-bit)."
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+          gh release upload $env:TAG dist/OpenVP.exe --clobber
