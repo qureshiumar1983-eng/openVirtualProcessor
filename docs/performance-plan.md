@@ -13,6 +13,35 @@ This plan covers how OpenVP's virtual processor runs programs, where the time an
 
 Recommended order: Phase 0 (benchmark in the repo), then Phase 1 (quick wins, low risk, all measured), then Phase 2 (hot-path restructuring), then Phase 3 (only if the benchmark says it's still needed).
 
+## Results
+
+Measured on the same 4-vCPU VM as section 2 (.NET 8.0.34, Release, workstation GC), median of 3 runs of `tools/OpenVP.Bench`. The VM varies about ±30% between runs.
+
+| Scenario | Baseline (section 2) | Now |
+|---|---|---|
+| NOT chain, depth 1,000 | 277 ns/change · 144 B/change · 2 GCs | **51 ns** · 0.1 B · 0 GCs (5.4×) |
+| Fan-out 1 → 1,000 ANDs → 1,000 feedback joins | 439 ns/change · 169 B · 2 GCs | **136 ns** · 0.1 B · 0 GCs (3.2×) |
+| Interlock, 200 outputs | 4.7 M sets/s · 52 B/set | **12.6 M sets/s** · 0.8 B/set (2.7×) |
+| 48 wide gates of 64 inputs | not in section 2 (100 ns/eval just before 3.2) | **91 ns/eval** |
+| NOT chain, debugger open | 1,708–2,064 ns/change · 735 B · 10 GCs | **610 ns** · 118 B · 1 GC (old JSON-on-slot-thread server: 1,877 ns) |
+| Latency, back-to-back presses | p50 2.1 µs · p99 4.4 µs | p50 1.6 µs · p99 6.3 µs |
+| Latency, slot idle 1 ms | p50 62 µs · p99 150 µs | p50 61 µs · p99 157 µs (unchanged; see 3.4) |
+| SIMPL+ round trip, back-to-back / idle | 5.1 µs / 190 µs p50 | 6.1 µs / 184 µs p50 |
+| 100,000 retriggers of a one-shot | 100,000 timers held, +36 MB | 1 timer, +1.7 MB |
+
+| Item | Status |
+|---|---|
+| 0.1 bench and golden traces | Done |
+| 1.1–1.7 quick wins | Done |
+| 2.1 slot queue, 2.2 debugger/panels/CIP off the slot thread | Done |
+| 2.3 typed storage, 2.4 flat fan-out | Done |
+| 2.5 leaner SIMPL+, 2.6 `.smw` interpreter | Done |
+| 3.1 one timer service per slot | Done (a delay of 0 is posted at once; positive delays round up to 10 ms ticks) |
+| 3.2 compile the logic graph | Done as sealed fast-path nodes for NOT, AND/OR/NOR, Buffer, Analog/Serial Buffer, Interlock, Toggle and SR Latch (NOT chain 89 → 51 ns, interlock +50%). IL emission skipped: what is left is the queue, the solve loop and feedback, not dispatch |
+| 3.3 running count for wide gates | Done |
+| 3.4 optional spin | Done, off by default (`OpenVP:SlotSpinMicroseconds`). With 30 µs between events, p50 22 → 2 µs for about 7 points more of a core (10% → 17%); no gain when events are further apart than the spin (1 ms idle: ~60 µs either way); no CPU cost with no events |
+| 3.5 once per logic wave | Deferred: changes event order, needs side-by-side traces from real hardware |
+
 ---
 
 ## 1. How the processor works
