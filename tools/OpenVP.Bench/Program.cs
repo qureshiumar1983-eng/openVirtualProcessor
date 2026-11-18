@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading.Channels;
 using OpenVP.Core;
 using OpenVP.Lpz;
+using OpenVP.Simpl;
 
 // --quick shrinks every scenario about 10x so CI finishes in seconds.
 var quick = args.Contains("--quick");
@@ -124,6 +125,64 @@ if (Run("wide"))
     });
     long evals = (long)K * G;
     Console.WriteLine($"{$"LPZ {G} gates (AND/OR/NOR) of {W} inputs each ({K} presses)",-74} {evals / sec,12:N0} gate evals/s   {sec * 1e9 / evals,6:N1} ns/eval   {bytes / (double)K,6:N1} B/press   gen0 GCs {gcs}");
+    Console.WriteLine();
+}
+
+// ------------------------------------------------------------ SMW interpreter: the same chain and fan-out, from .smw source
+if (Run("smw"))
+{
+    int N = Q(1000), K = Q(2000), F = Q(1000);
+    var chain = SmwChainProgram(data, "smwchain", N);
+    Throughput($"SMW NOT-chain, depth {N} ({K} presses)", chain, K, (long)K * (N + 1), debugger: false);
+    var fan = SmwFanoutProgram(data, "smwfan", F);
+    Throughput($"SMW fan-out 1→{F} ANDs → {F} panel feedback joins ({K} presses)", fan, K, (long)K * (F + 1), debugger: false);
+    Console.WriteLine();
+}
+
+// ------------------------------------------------------------ many timers armed at once
+if (Run("manytimers"))
+{
+    // One press arms N one-shots whose times spread over one second (1.0 to 2.0 s, 10 ms apart). Measures what
+    // arming, holding and firing them costs: wall time to arm, pool work items, allocation and CPU time.
+    int N = Q(10_000);
+    var path = ManyTimersProgram(data, "manytimers", N);
+    using var p = Start(path, out var panel);
+    var slot = p.Slot(1);
+    var key = new JoinKey(SigKind.Digital, 1);
+    var last = new JoinKey(SigKind.Digital, 100); // the latest one-shot's output
+    var lastDone = new ManualResetEventSlim();
+    int fired = 0;
+    panel.FeedbackChanged += (_, k, v) => { if (v is false && Interlocked.Increment(ref fired) == 100) lastDone.Set(); };
+    foreach (var _ in Enumerable.Range(0, 3)) { panel.ReceiveInput(key, true); panel.ReceiveInput(key, false); }
+    slot.Dispatcher.Invoke(() => { });
+    Thread.Sleep(2500); // let the warm-up pulses end
+    GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+    Interlocked.Exchange(ref fired, 0); lastDone.Reset();
+    var proc = Process.GetCurrentProcess();
+    var cpu0 = proc.TotalProcessorTime;
+    var items0 = ThreadPool.CompletedWorkItemCount;
+    var b0 = GC.GetTotalAllocatedBytes(true);
+    var g0 = GC.CollectionCount(0);
+    var sw = Stopwatch.StartNew();
+    panel.ReceiveInput(key, true);
+    slot.Dispatcher.Invoke(() => { });
+    var arm = sw.Elapsed;
+    var armBytes = GC.GetTotalAllocatedBytes(true) - b0;
+    var rt = slot.Runtime!;
+    var live = rt.GetType().GetField("_timers", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(rt)!;
+    var armed = (int)live.GetType().GetProperty("Count")!.GetValue(live)!;
+    Console.WriteLine($"  {armed:N0} timers armed");
+    if (!lastDone.Wait(10_000)) Console.WriteLine("  timeout waiting for the last one-shot");
+    Thread.Sleep(200);
+    slot.Dispatcher.Invoke(() => { });
+    sw.Stop();
+    var cpu = proc.TotalProcessorTime - cpu0;
+    Console.WriteLine($"{$"{N:N0} one-shots armed by one press (due 1.0-2.0 s later)",-74} arm {arm.TotalMilliseconds,7:N1} ms ({arm.TotalMilliseconds * 1e6 / N,6:N0} ns/timer, {armBytes / (double)N,6:N0} B/timer)");
+    Console.WriteLine($"{"  from press until all fired + 200 ms",-74} wall {sw.Elapsed.TotalMilliseconds,6:N0} ms   CPU {cpu.TotalMilliseconds,6:N0} ms   pool work items {ThreadPool.CompletedWorkItemCount - items0,7:N0}   gen0 GCs {GC.CollectionCount(0) - g0}   alloc {(GC.GetTotalAllocatedBytes(true) - b0) / (double)N,6:N0} B/timer");
+    // Idle: nothing armed, so a slot should cost no CPU at all.
+    var idle0 = proc.TotalProcessorTime;
+    Thread.Sleep(2000);
+    Console.WriteLine($"{"  2 s idle after all have fired: CPU",-74} {(proc.TotalProcessorTime - idle0).TotalMilliseconds,6:N0} ms");
     Console.WriteLine();
 }
 
@@ -349,6 +408,7 @@ Processor Start(string path, out JoinDevice panel, uint ipid = 3)
 {
     var p = new Processor(Path.Combine(data, "p" + Guid.NewGuid().ToString("N")[..8]), 1);
     p.AddLoader(new LpzLoader());
+    p.AddLoader(new SimplLoader());
     p.LoadProgram(1, path);
     if (p.Slot(1).State != SlotState.Running) throw new Exception(p.Slot(1).LastError);
     panel = p.Slot(1).FindDevice(ipid)!;
@@ -441,6 +501,62 @@ static string RetriggerProgram(string dir, string name)
     var bin = Header(name);
     bin.AddRange(Panel(3, [11], [10]));
     bin.AddRange(Record(17, "S-1", [10], [11], Int(15, 1), Int(2, 1000)));
+    return Pack(dir, name, bin);
+}
+// press d1 (signal 10) → NOT → NOT → … (depth n) → feedback d1, as .smw source (IP ID 03)
+static string SmwChainProgram(string dir, string name, int n)
+{
+    var sb = new StringBuilder();
+    int first = 10, last = 10 + n;
+    SmwPanel(sb, [last], [first]);
+    for (int i = 0; i < n; i++) SmwSymbol(sb, 100 + i, "NOT", [first + i], [first + i + 1]);
+    return SmwWrite(dir, name, sb);
+}
+// press d1 → f ANDs (press AND constant 1) → f panel feedback joins
+static string SmwFanoutProgram(string dir, string name, int f)
+{
+    var sb = new StringBuilder();
+    var outs = Enumerable.Range(11, f).ToArray();
+    SmwPanel(sb, outs, [10]);
+    sb.Append("[\nObjTp=Sg\nH=2\nNm=1\n]\n");
+    for (int i = 0; i < f; i++) SmwSymbol(sb, 100 + i, "AND", [10, 2], [outs[i]]);
+    return SmwWrite(dir, name, sb);
+}
+static void SmwPanel(StringBuilder sb, int[] ins, int[] outs)
+{
+    sb.Append("[\nObjTp=Hd\nPgmNm=bench\n]\n[\nObjTp=Sm\nH=1\nSmC=6840\nNm=XPanel\nDvH=589\n");
+    sb.Append($"n1I={ins.Length}\nn1O={outs.Length}\nmI={ins.Length}\nmO={outs.Length}\n");
+    for (int i = 0; i < ins.Length; i++) sb.Append($"I{i + 1}={ins[i]}\n");
+    for (int i = 0; i < outs.Length; i++) sb.Append($"O{i + 1}={outs[i]}\n");
+    sb.Append("]\n");
+}
+static void SmwSymbol(StringBuilder sb, int handle, string name, int[] ins, int[] outs)
+{
+    sb.Append($"[\nObjTp=Sm\nH={handle}\nSmC=0\nNm={name}\nmI={ins.Length}\nmO={outs.Length}\n");
+    for (int i = 0; i < ins.Length; i++) sb.Append($"I{i + 1}={ins[i]}\n");
+    for (int i = 0; i < outs.Length; i++) sb.Append($"O{i + 1}={outs[i]}\n");
+    sb.Append("]\n");
+}
+static string SmwWrite(string dir, string name, StringBuilder sb)
+{
+    var path = Path.Combine(dir, name + ".smw");
+    File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
+    return path;
+}
+// press d1 → n one-shots, each with its own time (100 to 199 ticks); the 100 slowest drive panel feedback d1..d100
+static string ManyTimersProgram(string dir, string name, int n)
+{
+    var bin = Header(name);
+    int fbN = Math.Min(100, n);
+    var fb = Enumerable.Range(20_000, fbN).ToArray();
+    bin.AddRange(Panel(3, fb, [10]));
+    // The slowest 100 are the ones with tick 199; spread the rest over 100..198 so every group has several timers.
+    for (int i = 0; i < n; i++)
+    {
+        int ticks = i < fbN ? 199 : 100 + i % 99;
+        int output = i < fbN ? fb[i] : 30_000 + i;
+        bin.AddRange(Record(15, $"S-{i + 1}", [10, 0, 0], [output, 0], Int(15, 1), Int(2, ticks)));
+    }
     return Pack(dir, name, bin);
 }
 // n symbols: a mix of chains of NOT/AND/Interlock, 10 panels
