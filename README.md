@@ -23,11 +23,11 @@ dotnet run --project src/OpenVP.Server
 
 Open **http://localhost:8080**. From another machine you'll be asked for the access key, which the server prints when it starts (see [Security](#security)). Pick a slot, choose a `.cpz`, `.dll` or `.smw` file, and click **Load & start**. Click **open test panel** next to a device to get a browser panel at that IP ID.
 
-### Windows app
+### Desktop app (Windows)
 
-**`OpenVP.exe`** is the whole thing in one file: no .NET install, no console window. Run it and the web console opens in its own window. Test panels and the debugger open in their own windows too. Closing the main window stops OpenVP. Your data and the log (`openvp.log`) are kept in `%LOCALAPPDATA%\OpenVP`.
+**`OpenVP.exe`** is OpenVP as a desktop app (Electron), in one file: nothing to install, no .NET needed, no console window. Run it and the web console opens in its own window. Test panels and the debugger open in their own windows too. Closing the main window stops OpenVP. Your data and the log (`openvp.log`) are kept in `%APPDATA%\OpenVP`.
 
-Get it from the **Windows app** workflow on GitHub Actions (each run has an `OpenVP-windows` download), or build it yourself with `publish-desktop.bat` (needs the .NET 8 SDK; it writes `dist\OpenVP.exe`). `Start OpenVP.bat` builds it if needed and starts it. It needs the WebView2 runtime, which comes with Windows 10 and 11. The first time it runs, Windows may ask whether to let it through the firewall; allow it if you want panels or other machines to connect.
+Download it from the [Releases](https://github.com/qureshiumar1983-eng/openVirtualProcessor/releases) page, or from the `OpenVP-windows` download on any run of the **Windows app** workflow. To build it yourself, run `publish-desktop.bat` (needs the .NET 8 SDK and Node.js; it writes `desktop\dist\OpenVP.exe`). `Start OpenVP.bat` builds it if needed and starts it. The app's source is in `desktop/`. The first time it runs, Windows may ask whether to let it through the firewall; allow it if you want panels or other machines to connect.
 
 Or with Docker:
 
