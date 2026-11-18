@@ -1,17 +1,22 @@
 name: Windows app
-# Builds OpenVP.exe, the Electron desktop app (portable: one file, no install, no .NET needed). Download it from the run's
-# "OpenVP-windows" artifact, or make a release: run this workflow by hand
-# (Actions > Windows app > Run workflow) and enter a version such as v0.1.0.
-# Turned off: it no longer runs on every push. To build again, run it by hand from
-# Actions > Windows app > Run workflow, or uncomment "push:" below.
+# Builds OpenVP.exe, the Electron desktop app (portable: one file, no install, no .NET needed), starts it to
+# check the console loads, and publishes it as a GitHub release.
+#   - Every push to main makes a new release, numbered from desktop/package.json's version plus the run
+#     number (e.g. v0.1.15), and marks it Latest.
+#   - Pushes to other branches just build and test it (download from the run's "OpenVP-windows" artifact).
+#   - Run it by hand (Actions > Windows app > Run workflow) to make a release with a version you choose.
 on:
-  # push:
+  push:
+    branches: ['**']
   workflow_dispatch:
     inputs:
       release:
-        description: Make a release with this version (e.g. v0.1.0). Leave empty to just build.
+        description: Make a release with this version (e.g. v0.2.0). Leave empty to use the automatic number.
         required: false
         default: ''
+concurrency:
+  group: windows-app-${{ github.ref }}
+  cancel-in-progress: false
 permissions:
   contents: write
 jobs:
@@ -25,12 +30,24 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Pick the version
+        id: ver
+        shell: pwsh
+        run: |
+          if ('${{ inputs.release }}' -ne '') { $tag = '${{ inputs.release }}' }
+          else {
+            $p = ((Get-Content desktop/package.json -Raw | ConvertFrom-Json).version -split '\.')
+            $tag = "v$($p[0]).$($p[1]).$env:GITHUB_RUN_NUMBER"
+          }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "Version: $tag"
       - name: Publish the server (self-contained, so no .NET install is needed)
         run: dotnet publish src/OpenVP.Server -c Release -r win-x64 --self-contained true -o desktop/server
       - name: Build OpenVP.exe (Electron, portable)
         working-directory: desktop
         run: |
           npm ci --no-audit --no-fund
+          npm pkg set version=$('${{ steps.ver.outputs.tag }}'.TrimStart('v'))
           npm run dist
       - name: Smoke test (start the app, check the console answers, close it)
         shell: pwsh
@@ -56,16 +73,18 @@ jobs:
         with:
           name: OpenVP-windows
           path: desktop/dist/OpenVP.exe
-      - name: Release
-        if: startsWith(github.ref, 'refs/tags/v') || inputs.release != ''
+      - name: Release (pushes to main, or run by hand)
+        if: github.ref == 'refs/heads/main' || inputs.release != ''
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.release != '' && inputs.release || github.ref_name }}
+          TAG: ${{ steps.ver.outputs.tag }}
         run: |
+          $subject = (git log -1 --format=%s $env:GITHUB_SHA)
+          $notes = "Download **OpenVP.exe** below and run it. No install needed (Windows 10/11, 64-bit).`n`nBuilt from $($env:GITHUB_SHA.Substring(0,7)): $subject"
           gh release view $env:TAG 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $env:TAG --target $env:GITHUB_SHA --title "OpenVP $env:TAG" --notes "Download **OpenVP.exe** below and run it. No install needed (Windows 10/11, 64-bit)."
+            gh release create $env:TAG --target $env:GITHUB_SHA --title "OpenVP $env:TAG" --notes $notes --latest
             if ($LASTEXITCODE -ne 0) { exit 1 }
           }
           gh release upload $env:TAG desktop/dist/OpenVP.exe --clobber
