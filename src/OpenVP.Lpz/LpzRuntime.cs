@@ -155,7 +155,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
             if (BuildSpecial(sym)) continue;
             var prim = PrimitiveLibrary.Create(sym.Type);
             if (prim == null) { Count(sym.Type); continue; }
-            Register(new LogicNode(this, sym, prim));
+            Register(LogicNode.Create(this, sym, prim));
         }
 
         void Count(int t) => Unsupported[t] = Unsupported.GetValueOrDefault(t) + 1;
@@ -262,7 +262,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
         // An unconnected input reads the constant signal 0/1; into a serial signal that means "empty".
         if (_kinds[sig] == SigKind.Serial) Enqueue(sig, 0, string.Empty, source);
         else Enqueue(sig, value ? 1u : 0u, null, source);
-        Solve();
+        if (!_solving) Solve();
     }
 
     internal void Drive(int sig, ushort value, string source)
@@ -274,7 +274,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
             case SigKind.Analog: Enqueue(sig, value, null, source); break;
             default: Enqueue(sig, 0, value.ToString(), source); break;
         }
-        Solve();
+        if (!_solving) Solve();
     }
 
     internal void Drive(int sig, string? value, string source)
@@ -288,7 +288,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
             case SigKind.Analog: Enqueue(sig, ushort.TryParse(value, out var u) ? u : (ushort)0, null, source); break;
             default: Enqueue(sig, 0, value ?? string.Empty, source); break;
         }
-        Solve();
+        if (!_solving) Solve();
     }
 
     /// <summary>For values that arrive as objects (panels, SIMPL+, the debugger): the three known types take the typed path.</summary>
@@ -309,7 +309,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
             case SigKind.Analog: Enqueue(sig, (ushort)v, null, source); break;
             default: Enqueue(sig, 0, (string)v, source); break;
         }
-        Solve();
+        if (!_solving) Solve();
     }
 
     private void Enqueue(int sig, uint num, string? str, string source) => _pending.Enqueue(new Pending(sig, num, str, source));
@@ -503,8 +503,9 @@ public sealed partial class LpzRuntime : IProgramRuntime
         public virtual void OnSerial(int pin, string oldValue, string newValue) => OnInput(pin, oldValue, newValue);
     }
 
-    private sealed class LogicNode(LpzRuntime rt, BinSymbol sym, Primitive prim) : Node(rt, sym), IPrimitiveContext
+    private partial class LogicNode(LpzRuntime rt, BinSymbol sym, Primitive prim) : Node(rt, sym), IPrimitiveContext
     {
+        protected Primitive Prim => prim;
         public override SigKind? InputKind(int pin) => prim.InputKind(pin);
         public override SigKind? OutputKind(int pin) => prim.OutputKind(pin);
         public override bool WatchesOutputs => prim is IWatchesOutputs;

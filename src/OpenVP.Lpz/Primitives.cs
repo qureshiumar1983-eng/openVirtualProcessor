@@ -111,13 +111,16 @@ public abstract class EdgePrim(bool falling = false) : Primitive
 /// </summary>
 public abstract class GatePrim : Primitive
 {
-    private int _high;
+    internal int _high;
     // A signal wired to two pins is notified once per pin, and the first notification would see the
     // second pin's value already changed. The count can't follow that, so such a gate scans as it used to.
-    private bool _scan;
+    internal bool _scan;
+
+    /// <summary>The output for this many high inputs out of inputCount.</summary>
+    internal abstract bool Compute(int high, int inputCount);
 
     /// <summary>Drive the output from the number of high inputs out of c.InputCount.</summary>
-    protected abstract void Result(IPrimitiveContext c, int high);
+    protected void Result(IPrimitiveContext c, int high) => c.Set(1, Compute(high, c.InputCount));
 
     public override void Start(IPrimitiveContext c)
     {
@@ -148,7 +151,7 @@ public abstract class GatePrim : Primitive
         Result(c, _high);
     }
 
-    private static int Scan(IPrimitiveContext c)
+    internal static int Scan(IPrimitiveContext c)
     {
         var high = 0;
         for (int i = 1; i <= c.InputCount; i++)
@@ -172,13 +175,13 @@ public abstract class GatePrim : Primitive
 /// <summary>Type 0, SIMPL AND.</summary>
 public sealed class AndPrim : GatePrim
 {
-    protected override void Result(IPrimitiveContext c, int high) => c.Set(1, c.InputCount > 0 && high == c.InputCount);
+    internal override bool Compute(int high, int inputCount) => inputCount > 0 && high == inputCount;
 }
 
 /// <summary>Type 2 OR and type 3 NOR.</summary>
 public sealed class OrPrim(bool invert) : GatePrim
 {
-    protected override void Result(IPrimitiveContext c, int high) => c.Set(1, (high > 0) ^ invert);
+    internal override bool Compute(int high, int inputCount) => (high > 0) ^ invert;
 }
 
 /// <summary>Type 1 NOT and type 206 Multiple NOT: output k = !input k.</summary>
@@ -270,7 +273,7 @@ public sealed class FollowPrim : Primitive
 /// <summary>Type 9, Set/Reset Latch: input 1 set, input 2 reset (reset wins); outputs out, out*.</summary>
 public sealed class SrLatchPrim : Primitive
 {
-    private bool _state;
+    internal bool _state;
     public override void Start(IPrimitiveContext c) => Out(c);
     public override void OnDigital(IPrimitiveContext c, int p, bool o, bool n) => Step(c, p == 1 && !o && n);
     public override void OnAnalog(IPrimitiveContext c, int p, ushort o, ushort n) => Step(c, false);
@@ -287,7 +290,7 @@ public sealed class SrLatchPrim : Primitive
 /// <summary>Type 10, Toggle: rising clock (1) flips; optional reset (2) and set (3); outputs out, out*.</summary>
 public sealed class TogglePrim : EdgePrim
 {
-    private bool _state;
+    internal bool _state;
     public override void Start(IPrimitiveContext c) => Out(c);
     protected override void OnEdge(IPrimitiveContext c, int p)
     {
