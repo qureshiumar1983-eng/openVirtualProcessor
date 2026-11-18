@@ -112,6 +112,20 @@ Click **Open debugger** in the console (or go to `/debugger.html?slot=N`). It's 
 
 Each window shows only its own slot, so you can open one per slot and two people can debug two programs on the same processor at once. For SIMPL# slots the signals are device joins, named like `IPID03.out.d1` (panel press) and `IPID03.in.s5` (feedback).
 
+### Metrics
+
+Click **Metrics ↗** in the console header (or go to `/metrics.html`) for a live view that refreshes every second:
+
+- **CPU, memory, threads and thread pool** for the OpenVP process, each with a five-minute graph.
+- **Per slot:** events per second, how busy the slot thread is, events waiting in its queue, what it's running right now, the longest single event so far, and how many timers, threads and background jobs the program has.
+- **Problems** are listed at the top:
+  - **Stuck:** the slot thread has been inside one event for 5 s or more. Nothing else in that slot can run until it returns. The event is named, for example `CTimer ControlSystem.OnPoll`.
+  - **Orphaned thread:** a thread a program started (`CrestronThread`, SIMPL+ Function Main) is still running after that program was unloaded or replaced.
+  - **Long-running background work:** a `CrestronInvoke` callback or SIMPL+ event handler has been running for 30 s or more.
+  - **Backlog:** 1000 or more events are queued for a slot, or background work is waiting for thread-pool threads.
+
+The same numbers are available from the slot console: `cpuload`, `ramfree`, `taskstat` (threads and what the slot thread is doing) and `metrics` (all of it). From scripts, use `GET /api/metrics` or the `/ws/metrics` WebSocket.
+
 ## Security
 
 A SIMPL# program is .NET code that runs inside the OpenVP process, so anyone who can upload a program can run code on the machine. The web console and API are protected by an **access key**:
@@ -157,6 +171,7 @@ Every endpoint except `/api/info` and `/api/login` needs the access key (see [Se
 | POST | `/api/slots/{n}/console` | `{"command":"ipt"}` |
 | GET | `/api/slots/{n}/compat` | Compatibility report |
 | GET | `/api/log?slot=n` · `/api/devices` | |
+| GET | `/api/metrics` | CPU, memory, threads and per-slot activity; `?history=false` leaves out the five-minute history. `/ws/metrics` sends the same once a second |
 | GET | `/api/info` | Version, slot count, and whether you're logged in |
 | POST | `/api/login` · `/api/logout` | `{"key":"..."}`; sets or clears the login cookie |
 

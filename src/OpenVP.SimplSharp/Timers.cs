@@ -14,6 +14,8 @@ namespace Crestron.SimplSharp
         private Timer _timer;
         private long _repeat;
         private readonly object _gate = new object();
+        private readonly OpenVP.Core.ProgramSlot _slot;
+        private readonly string _label;
 
         public CTimer(CTimerCallbackFunction callbackFunction, long dueTime)
             : this(callbackFunction, null, dueTime, Timeout.Infinite) { }
@@ -26,6 +28,9 @@ namespace Crestron.SimplSharp
             _callback = callbackFunction ?? throw new ArgumentNullException(nameof(callbackFunction));
             _userObject = callbackObject;
             _repeat = repeatPeriod;
+            _slot = OpenVPBridge.Slot;
+            _label = "CTimer " + (callbackFunction.Method.DeclaringType?.Name ?? "?") + "." + callbackFunction.Method.Name;
+            _slot?.Metrics.TimerCreated();
             _timer = new Timer(Fire, null, Normalize(dueTime), Normalize(repeatPeriod));
             OpenVPBridge.Track(this);
         }
@@ -62,6 +67,7 @@ namespace Crestron.SimplSharp
                 Disposed = true;
                 _timer.Dispose();
             }
+            _slot?.Metrics.TimerDisposed();
             OpenVPBridge.Untrack(this);
         }
 
@@ -71,7 +77,7 @@ namespace Crestron.SimplSharp
             OpenVPBridge.Post(() =>
             {
                 if (!Disposed) _callback(_userObject);
-            });
+            }, _label);
         }
 
         private static long Normalize(long ms) => ms < 0 ? Timeout.Infinite : ms;
@@ -145,6 +151,7 @@ namespace Crestron.SimplSharpPro.CrestronThread
             _thread = new System.Threading.Thread(() =>
             {
                 ThreadState = eThreadStates.ThreadRunning;
+                using var tracked = slot?.Metrics.TrackThread("CrestronThread");
                 try { _callback(_obj); }
                 catch (System.Threading.ThreadInterruptedException) { }
                 catch (Exception e) { slot?.Log("Error", "Exception in user thread " + Name + ": " + e); }

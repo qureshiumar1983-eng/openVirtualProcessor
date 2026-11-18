@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenVP metrics</title>
+<style>
+  :root { --bg:#0f1216; --card:#181d23; --line:#29303a; --text:#e6e9ee; --muted:#8b95a3; --ok:#2f9e6e; --warn:#d69e2e; --err:#e05252; --accent:#4c8dff; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  header h1 { margin:0; font-size:18px; }
+  .muted { color:var(--muted); }
+  a { color:var(--accent); }
+  main { padding:16px; display:grid; gap:16px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; min-width:0; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 10px; display:flex; gap:10px; align-items:center; }
+  button { font:inherit; color:var(--text); background:#111519; border:1px solid var(--line); border-radius:6px; padding:4px 10px; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  .live { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--muted); }
+  .live.on .dot { background:var(--ok); box-shadow:0 0 0 3px #2f9e6e33; }
+  .live.off .dot { background:var(--err); }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:12px; }
+  .tile { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; min-width:0; }
+  .tile .label { font-size:12px; color:var(--muted); }
+  .tile .value { font-size:26px; font-weight:600; font-variant-numeric:tabular-nums; margin:2px 0; }
+  .tile .value small { font-size:13px; font-weight:400; color:var(--muted); }
+  .tile .sub { font-size:12px; color:var(--muted); }
+  .tile svg { display:block; width:100%; height:36px; margin-top:6px; }
+  .alerts { border-radius:10px; padding:10px 14px; border:1px solid; }
+  .alerts.ok { background:#13261e; border-color:#1f4a37; color:#7fe0b1; }
+  .alerts.bad { background:#2a1515; border-color:#5a2525; color:#ffb4b4; }
+  .alerts ul { margin:6px 0 0; padding-left:20px; }
+  .scroll { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+  td, th { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th { color:var(--muted); font-weight:500; font-size:12px; }
+  td.num, th.num { text-align:right; }
+  .mono { font-family:ui-monospace, Menlo, monospace; font-size:12px; }
+  .pill { font-size:12px; padding:2px 8px; border-radius:20px; background:#252c36; }
+  .s-OK { background:#173a2c; color:#7fe0b1; }
+  .s-Busy, .s-Warning { background:#3a321a; color:#f2cf7a; }
+  .s-Stuck, .s-Error { background:#3d1b1b; color:#ff9b9b; }
+  .s-Paused { background:#1d2a44; color:#9ecbff; }
+  .bar { display:inline-block; width:70px; height:6px; background:#252c36; border-radius:3px; vertical-align:middle; margin-left:6px; overflow:hidden; }
+  .bar i { display:block; height:100%; background:var(--accent); }
+  .bar i.hot { background:var(--warn); }
+  .flag { color:var(--err); font-weight:600; }
+  .empty { color:var(--muted); padding:8px 0; }
+  .ellip { max-width:280px; overflow:hidden; text-overflow:ellipsis; }
+  label.chk { font-size:12px; color:var(--muted); display:inline-flex; gap:4px; align-items:center; text-transform:none; letter-spacing:0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>OpenVP metrics</h1>
+  <span id="live" class="live"><span class="dot"></span><span id="live-text">connecting…</span></span>
+  <span style="flex:1"></span>
+  <button id="pause">Pause</button>
+  <a href="/">Console</a>
+</header>
+<main>
+  <div id="alerts" class="alerts ok">Waiting for the first sample…</div>
+
+  <div class="tiles">
+    <div class="tile"><div class="label">CPU (OpenVP process)</div><div class="value" id="cpu">–</div><div class="sub" id="cpu-sub"></div><svg id="cpu-spark" viewBox="0 0 300 36" preserveAspectRatio="none"></svg></div>
+    <div class="tile"><div class="label">Memory in use</div><div class="value" id="mem">–</div><div class="sub" id="mem-sub"></div><svg id="mem-spark" viewBox="0 0 300 36" preserveAspectRatio="none"></svg></div>
+    <div class="tile"><div class="label">Threads</div><div class="value" id="thr">–</div><div class="sub" id="thr-sub"></div><svg id="thr-spark" viewBox="0 0 300 36" preserveAspectRatio="none"></svg></div>
+    <div class="tile"><div class="label">Thread pool</div><div class="value" id="pool">–</div><div class="sub" id="pool-sub"></div><svg id="pool-spark" viewBox="0 0 300 36" preserveAspectRatio="none"></svg></div>
+    <div class="tile"><div class="label">Uptime</div><div class="value" id="up">–</div><div class="sub" id="gc"></div></div>
+  </div>
+
+  <section>
+    <h2>Slots <span style="flex:1"></span><label class="chk"><input type="checkbox" id="show-empty"> show empty slots</label></h2>
+    <div class="scroll"><table id="slots">
+      <thead><tr>
+        <th>#</th><th>Program</th><th>Status</th>
+        <th class="num" title="Events the slot thread ran in the last second">Events/s</th>
+        <th class="num" title="Share of the last second the slot thread spent running program events">Busy</th>
+        <th class="num" title="Events waiting for the slot thread">Queued</th>
+        <th title="What the slot thread is running right now">Running now</th>
+        <th title="The longest single event since the program loaded">Longest event</th>
+        <th class="num">Timers</th><th class="num">Threads</th><th class="num" title="Background work running now / finished">Bg work</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Program threads and background work</h2>
+    <div class="scroll"><table id="threads">
+      <thead><tr><th>Slot</th><th>Name</th><th>Kind</th><th>State</th><th class="num">Running for</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+</main>
+<script src="openvp-auth.js"></script>
+<script>
+openvpAuth.init();
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const HISTORY = 300;
+let history = [], paused = false, last = null, ws = null, retry = 0;
+
+function dur(s) {
+  if (s < 1) return `${Math.round(s * 1000)} ms`;
+  if (s < 120) return `${s.toFixed(1)} s`;
+  if (s < 7200) return `${(s / 60).toFixed(1)} min`;
+  if (s < 172800) return `${(s / 3600).toFixed(1)} h`;
+  return `${(s / 86400).toFixed(1)} d`;
+}
+const mb = v => v >= 1024 ? `${(v / 1024).toFixed(2)} <small>GB</small>` : `${v.toFixed(0)} <small>MB</small>`;
+
+function spark(id, values, max) {
+  const el = document.getElementById(id);
+  if (values.length < 2) { el.innerHTML = ""; return; }
+  const top = Math.max(max ?? 0, ...values, 1e-9);
+  const step = 300 / (HISTORY - 1), x0 = 300 - (values.length - 1) * step;
+  const pts = values.map((v, i) => `${(x0 + i * step).toFixed(1)},${(34 - v / top * 32).toFixed(1)}`).join(" ");
+  el.innerHTML = `<polygon points="${x0},36 ${pts} 300,36" fill="#4c8dff22"/><polyline points="${pts}" fill="none" stroke="#4c8dff" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`;
+}
+
+function render(m) {
+  // Alerts
+  const al = $("#alerts");
+  if (m.warnings.length) {
+    al.className = "alerts bad";
+    al.innerHTML = `<strong>${m.warnings.length} problem${m.warnings.length > 1 ? "s" : ""}</strong><ul>${m.warnings.map(w => `<li>${esc(w)}</li>`).join("")}</ul>`;
+  } else {
+    al.className = "alerts ok";
+    al.textContent = "No stuck handlers, orphaned threads or backlogs.";
+  }
+
+  // Tiles
+  $("#cpu").innerHTML = `${m.cpuPercent.toFixed(1)}<small>%</small>`;
+  $("#cpu-sub").textContent = `of ${m.cpuCores} cores`;
+  $("#mem").innerHTML = mb(m.workingSetMb);
+  $("#mem-sub").textContent = `managed heap ${m.gcHeapMb.toFixed(0)} MB · ${m.privateMb.toFixed(0)} MB private · ${(m.machineMemoryMb / 1024).toFixed(1)} GB available`;
+  $("#thr").textContent = m.processThreads;
+  const progThreads = m.slots.reduce((n, s) => n + s.threads.length, 0);
+  $("#thr-sub").textContent = `${progThreads} started by programs`;
+  $("#pool").innerHTML = `${m.poolThreads} <small>threads</small>`;
+  $("#pool-sub").textContent = `${m.poolPending} waiting · ${m.poolCompleted.toLocaleString()} done`;
+  $("#up").textContent = dur(m.uptimeSeconds);
+  $("#gc").textContent = `GC: gen0 ${m.gen0Collections} · gen1 ${m.gen1Collections} · gen2 ${m.gen2Collections}`;
+
+  spark("cpu-spark", history.map(h => h.cpuPercent), 100);
+  spark("mem-spark", history.map(h => h.workingSetMb));
+  spark("thr-spark", history.map(h => h.threads));
+  spark("pool-spark", history.map(h => h.poolPending), 10);
+
+  // Slots
+  const showEmpty = $("#show-empty").checked;
+  const rows = m.slots.filter(s => showEmpty || s.state !== "Empty");
+  $("#slots tbody").innerHTML = rows.length ? rows.map(s => {
+    const running = s.currentHandler
+      ? `<span class="${s.status === "Stuck" ? "flag" : ""}">${esc(s.currentHandler)} · ${dur(s.currentHandlerSeconds)}</span>`
+      : `<span class="muted">idle</span>`;
+    const longest = s.longestHandler ? `${esc(s.longestHandler)} · ${dur(s.longestHandlerSeconds)}` : `<span class="muted">–</span>`;
+    const orphans = s.threads.filter(t => t.orphaned).length;
+    return `<tr>
+      <td>${s.number}</td>
+      <td class="ellip" title="${esc(s.program)}">${esc(s.program ?? "")}${s.program ? "" : '<span class="muted">empty</span>'}</td>
+      <td><span class="pill s-${esc(s.status)}">${esc(s.status)}</span></td>
+      <td class="num">${s.eventsPerSecond.toFixed(1)}</td>
+      <td class="num">${s.busyPercent.toFixed(0)}%<span class="bar"><i class="${s.busyPercent >= 80 ? "hot" : ""}" style="width:${s.busyPercent}%"></i></span></td>
+      <td class="num">${s.queueLength}</td>
+      <td class="mono ellip">${running}</td>
+      <td class="mono ellip">${longest}</td>
+      <td class="num">${s.timers}</td>
+      <td class="num">${s.threads.length}${orphans ? ` <span class="flag" title="still running from an unloaded program">(${orphans} orphaned)</span>` : ""}</td>
+      <td class="num">${s.runningWork.length} / ${s.backgroundWorkCompleted.toLocaleString()}</td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="11" class="empty">No programs loaded. Load one from the console.</td></tr>`;
+
+  // Threads and work
+  const items = [];
+  for (const s of m.slots) {
+    for (const t of s.threads)
+      items.push(`<tr><td>${s.number}</td><td class="mono">${esc(t.name)}</td><td>${esc(t.kind)}</td><td>${esc(t.state)}</td>
+        <td class="num">${dur(t.ageSeconds)}</td><td>${t.orphaned ? '<span class="flag">orphaned: its program was unloaded</span>' : ""}</td></tr>`);
+    for (const w of s.runningWork)
+      items.push(`<tr><td>${s.number}</td><td class="mono">${esc(w.label)}</td><td>${esc(w.kind)}</td><td>Running</td>
+        <td class="num">${dur(w.runningSeconds)}</td><td>${w.runningSeconds >= 30 ? '<span class="flag">long-running</span>' : ""}</td></tr>`);
+  }
+  $("#threads tbody").innerHTML = items.length ? items.join("")
+    : `<tr><td colspan="6" class="empty">No program threads or background work running.</td></tr>`;
+}
+
+function setLive(state, text) {
+  $("#live").className = "live " + state;
+  $("#live-text").textContent = text;
+}
+
+function connect() {
+  const proto = location.protocol === "https:" ? "wss://" : "ws://";
+  ws = new WebSocket(`${proto}${location.host}/ws/metrics`);
+  ws.onopen = () => { retry = 0; setLive("on", paused ? "paused" : "live"); };
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.history.length) history = m.history.slice(-HISTORY);
+    else history.push({ cpuPercent: m.cpuPercent, workingSetMb: m.workingSetMb, threads: m.processThreads, poolPending: m.poolPending });
+    if (history.length > HISTORY) history.shift();
+    last = m;
+    if (!paused) render(m);
+  };
+  ws.onclose = async () => {
+    setLive("off", "disconnected, retrying…");
+    // A closed socket may mean we need to log in.
+    try { openvpAuth.check(await fetch("/api/metrics?history=false")); } catch { }
+    setTimeout(connect, Math.min(10000, 1000 * 2 ** retry++));
+  };
+}
+
+$("#pause").onclick = () => {
+  paused = !paused;
+  $("#pause").textContent = paused ? "Resume" : "Pause";
+  setLive("on", paused ? "paused" : "live");
+  if (!paused && last) render(last);
+};
+$("#show-empty").onchange = () => last && render(last);
+connect();
+</script>
+</body>
+</html>

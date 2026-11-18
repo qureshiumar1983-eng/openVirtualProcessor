@@ -120,7 +120,7 @@ public sealed class ApiAuth
 
     private static bool IsProtected(PathString p, bool panelsRequireKey) =>
         (p.StartsWithSegments("/api") && !p.StartsWithSegments("/api/info") && !p.StartsWithSegments("/api/login") && !p.StartsWithSegments("/api/logout"))
-        || p.StartsWithSegments("/ws/trace")
+        || p.StartsWithSegments("/ws/trace") || p.StartsWithSegments("/ws/metrics")
         || (panelsRequireKey && p.StartsWithSegments("/ws/panel"));
 
     /// <summary>The middleware: <c>?key=</c> login on pages, cross-origin check on WebSockets, 401 on protected paths.</summary>

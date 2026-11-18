@@ -16,6 +16,7 @@ public sealed class ProgramSlot : IDisposable
     private readonly ConcurrentDictionary<uint, JoinDevice> _ipTable = new();
     private readonly ConcurrentDictionary<string, ConsoleCommand> _commands = new(StringComparer.OrdinalIgnoreCase);
     private SlotDispatcher _dispatcher;
+    private int _generation;
 
     /// <summary>Held while the slot loads, starts, stops or unloads, so two requests can't interleave.</summary>
     internal readonly object Lifecycle = new();
@@ -25,6 +26,7 @@ public sealed class ProgramSlot : IDisposable
         Processor = processor;
         Number = number;
         Stepper.Changed += _ => Processor.NotifyStepChanged(this);
+        Metrics = new SlotMetrics(() => Volatile.Read(ref _generation));
         _dispatcher = NewDispatcher();
     }
 
@@ -42,6 +44,12 @@ public sealed class ProgramSlot : IDisposable
 
     /// <summary>Step-through debugging: pause the slot's logic on each signal change.</summary>
     public SignalStepper Stepper { get; } = new();
+
+    /// <summary>Threads, background work and timers the program started, for the metrics page.</summary>
+    public SlotMetrics Metrics { get; }
+
+    /// <summary>Goes up each time a program is loaded or unloaded, so threads left over from an earlier program can be told apart.</summary>
+    public int Generation => Volatile.Read(ref _generation);
 
     public IReadOnlyCollection<JoinDevice> Devices => _ipTable.Values.ToList();
 
@@ -94,13 +102,15 @@ public sealed class ProgramSlot : IDisposable
         switch (name.ToLowerInvariant())
         {
             case "help" or "?":
-                var builtIn = "Built-in: help, progcomments, ipt, appstat, signals\n";
+                var builtIn = "Built-in: help, progcomments, ipt, appstat, signals, cpuload, ramfree, taskstat, metrics\n";
                 return builtIn + string.Join('\n', _commands.Values.Select(c => $"{c.Name,-20} {c.Help}"));
             case "progcomments" or "appstat":
                 return $"Slot {Number}: {State}\nProgram: {Runtime?.ProgramName ?? "(none)"}\nType: {Runtime?.Kind ?? "-"}\nFile: {ProgramPath ?? "-"}";
             case "ipt":
                 return string.Join('\n', _ipTable.Values.OrderBy(d => d.IpId)
                     .Select(d => $"IPID {d.IpId:X2}  {d.Type,-28} {(d.Online ? "ONLINE" : "OFFLINE")}  {d.Description}"));
+            case "cpuload" or "ramfree" or "taskstat" or "metrics":
+                return MetricsReport.Console(Processor, this, name.ToLowerInvariant());
             case "signals":
                 return string.Join('\n', (Runtime?.GetSignals() ?? Array.Empty<SignalInfo>())
                     .Select(s => $"{s.Kind,-8} {s.Name,-40} {s.Value}"));
@@ -121,6 +131,7 @@ public sealed class ProgramSlot : IDisposable
             Unload();
             ProgramPath = path;
             Runtime = runtime;
+            Interlocked.Increment(ref _generation);
             LastError = null;
             SetState(SlotState.Loaded);
             Log("Notice", $"Loaded {runtime.Kind} program '{runtime.ProgramName}'");
@@ -174,6 +185,8 @@ public sealed class ProgramSlot : IDisposable
             Runtime = null;
             ProgramPath = null;
             _commands.Clear();
+            Interlocked.Increment(ref _generation);
+            Metrics.ResetTimers();
             foreach (var id in _ipTable.Keys.ToList()) UnregisterDevice(id);
             _dispatcher.Dispose();
             _dispatcher = NewDispatcher();

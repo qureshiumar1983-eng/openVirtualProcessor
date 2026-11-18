@@ -249,6 +249,9 @@ public static class OpenVpServer
             finally { Directory.Delete(dir, true); }
         });
 
+        // Live metrics: CPU, memory, threads, and per-slot activity (stuck handlers, orphaned threads).
+        app.MapGet("/api/metrics", (bool? history) => processor.Metrics.Snapshot(history ?? true));
+
         app.MapGet("/api/log", (int? slot, int? max) => processor.RecentLog(slot, max ?? 500));
 
         app.MapGet("/api/devices", () => processor.AllDevices.OrderBy(d => d.Slot).ThenBy(d => d.IpId).Select(DeviceDto));
@@ -305,6 +308,27 @@ public static class OpenVpServer
                 processor.StepChanged -= OnStep;
                 processor.LogWritten -= OnLog;
             }
+        });
+
+        // Metrics once a second (the first message includes the five-minute history): /ws/metrics
+        app.Map("/ws/metrics", async (HttpContext ctx) =>
+        {
+            if (!ctx.WebSockets.IsWebSocketRequest) { ctx.Response.StatusCode = 400; return; }
+            using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
+            var buffer = new byte[256];
+            var receive = ws.ReceiveAsync(buffer, ctx.RequestAborted);
+            var first = true;
+            try
+            {
+                while (ws.State == WebSocketState.Open)
+                {
+                    var msg = JsonSerializer.SerializeToUtf8Bytes(processor.Metrics.Snapshot(includeHistory: first), json);
+                    first = false;
+                    await ws.SendAsync(msg, WebSocketMessageType.Text, true, ctx.RequestAborted);
+                    if (await Task.WhenAny(Task.Delay(1000, ctx.RequestAborted), receive) == receive) break;
+                }
+            }
+            catch (Exception e) when (e is WebSocketException or OperationCanceledException) { }
         });
 
         // Browser panels: /ws/panel?ipid=03[&slot=1]

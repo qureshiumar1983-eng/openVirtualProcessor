@@ -136,8 +136,10 @@ namespace Crestron.SimplSharp
         public static object BeginInvoke(CrestronSharpHelperDelegate callbackFunction, object userObject)
         {
             var slot = OpenVPBridge.Slot;
+            var label = (callbackFunction.Method.DeclaringType?.Name ?? "?") + "." + callbackFunction.Method.Name;
             System.Threading.ThreadPool.QueueUserWorkItem(_ =>
             {
+                using var work = slot?.Metrics.BeginWork("CrestronInvoke", label);
                 try { callbackFunction(userObject); }
                 catch (Exception e) { slot?.Log("Error", "Exception in CrestronInvoke: " + e); }
             });

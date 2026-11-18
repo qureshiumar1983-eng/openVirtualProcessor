@@ -24,11 +24,11 @@ namespace OpenVP.SimplSharp
         internal static ProgramSlot RequireSlot =>
             Slot ?? throw new InvalidOperationException("This SIMPL# API only works inside an OpenVP program slot.");
 
-        internal static void Post(Action action)
+        internal static void Post(Action action, string label = null)
         {
             var slot = Slot;
             if (slot == null) { action(); return; }
-            slot.Dispatcher.Post(action);
+            slot.Dispatcher.Post(action, label);
         }
 
         internal static void Log(string level, string message) => Slot?.Log(level, message);

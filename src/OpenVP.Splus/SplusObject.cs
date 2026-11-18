@@ -339,6 +339,14 @@ namespace Crestron.Logos.SplusObjects
 
         internal void Log(string level, string message) => _host?.Log(level, message);
 
+        /// <summary>Run an event handler on the thread pool (SIMPL+ gives every event its own thread), recorded for the metrics page.</summary>
+        internal void QueueHandler(string kind, Delegate handler, Action run)
+        {
+            var metrics = _host?.Slot.Metrics;
+            if (metrics == null) { ThreadPool.QueueUserWorkItem(_ => run()); return; }
+            metrics.QueueWork(kind, InstanceName + " " + (handler?.Method.Name ?? "?"), run);
+        }
+
         internal bool Stopped => _stopped;
 
         // ------------------------------------------------------------------ ISplusModule (host side)
@@ -407,7 +415,7 @@ namespace Crestron.Logos.SplusObjects
             if (TraceOn) Log("Info", $"[S+ {InstanceName}] fire {handlers.Count} handler(s)");
             if (handlers.Count == 0 || _stopped) return;
             foreach (var h in handlers.ToArray())
-                ThreadPool.QueueUserWorkItem(_ =>
+                QueueHandler("S+ event", h.Handler, () =>
                 {
                     if (!AllStarted.IsSet) AllStarted.Wait(TimeSpan.FromSeconds(10));
                     if (_stopped) return;
@@ -420,6 +428,7 @@ namespace Crestron.Logos.SplusObjects
         {
             var t = new Thread(() =>
             {
+                using var tracked = _host?.Slot.Metrics.TrackThread("S+ Function Main");
                 try { FunctionMain(null); }
                 catch (Exception e) { ObjectCatchHandler(e); }
                 finally { _initialized.Set(); MarkReady(); }
@@ -481,11 +490,15 @@ namespace Crestron.Logos.SplusObjects
         {
             var info = new SocketEventInfo(this);
             foreach (var h in handlers.ToArray())
-                ThreadPool.QueueUserWorkItem(_ =>
+            {
+                void Run()
                 {
                     if (Owner?.Stopped == true) return;
                     try { h.Handler(info); } catch (Exception e) { Owner?.ObjectCatchHandler(e); }
-                });
+                }
+                if (Owner == null) ThreadPool.QueueUserWorkItem(_ => Run());
+                else Owner.QueueHandler("S+ socket event", h.Handler, Run);
+            }
         }
     }
 

@@ -18,7 +18,11 @@ public sealed class Processor : IDisposable
         System.IO.Directory.CreateDirectory(DataDirectory);
         Slots = Enumerable.Range(1, slotCount).Select(n => new ProgramSlot(this, n)).ToArray();
         Bus = new IntersystemBus();
+        Metrics = new MetricsSampler(this);
     }
+
+    /// <summary>CPU, memory, threads and per-slot activity, sampled once a second.</summary>
+    public MetricsSampler Metrics { get; }
 
     public string DataDirectory { get; }
     public IReadOnlyList<ProgramSlot> Slots { get; }
@@ -92,6 +96,7 @@ public sealed class Processor : IDisposable
 
     public void Dispose()
     {
+        Metrics.Dispose();
         foreach (var s in Slots) s.Dispose();
     }
 }

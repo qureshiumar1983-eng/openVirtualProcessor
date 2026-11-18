@@ -237,11 +237,13 @@ namespace Crestron.Logos.SplusObjects
                 SetRaw(Str.Substring(piece.Length));
                 var handler = _gatherHandler;
                 var args = new GatherEventArgs(this, piece);
-                ThreadPool.QueueUserWorkItem(_ =>
+                void Run()
                 {
                     if (Owner?.Stopped == true) return;
                     try { handler(args); } catch (Exception e) { Owner?.ObjectCatchHandler(e); }
-                });
+                }
+                if (Owner == null) ThreadPool.QueueUserWorkItem(_ => Run());
+                else Owner.QueueHandler("S+ gather", handler, Run);
             }
         }
     }
