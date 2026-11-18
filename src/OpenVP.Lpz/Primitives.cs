@@ -14,7 +14,14 @@ public interface IPrimitiveContext
     string Serial(int pin);
     object Input(int pin);
     bool IsConstant(int inputPin);
+    /// <summary>Drive an output. The typed overloads never box; they convert to the output signal's kind
+    /// the way SigValue.Coerce does (a bool into a serial signal becomes an empty string).</summary>
+    void Set(int outputPin, bool value);
+    void Set(int outputPin, ushort value);
+    void Set(int outputPin, string? value);
     void Set(int outputPin, object value);
+    /// <summary>Drive an output with the current value of an input pin, whatever its kind.</summary>
+    void SetFromInput(int outputPin, int inputPin);
     object Output(int outputPin);
     SigKind OutputSignalKind(int outputPin);
     int ParamCount { get; }
@@ -36,22 +43,70 @@ public interface IPrimitiveContext
 public abstract class Primitive
 {
     public virtual void Start(IPrimitiveContext c) { }
-    public abstract void OnInput(IPrimitiveContext c, int pin, object oldValue, object newValue);
+    /// <summary>A change on an input pin, boxed. The typed handlers below call this unless a primitive
+    /// overrides them, so a primitive may implement only this one (serial changes always arrive here).</summary>
+    public virtual void OnInput(IPrimitiveContext c, int pin, object oldValue, object newValue) { }
+    // Typed handlers: the engine calls these, so digital and analog changes reach a primitive unboxed.
+    public virtual void OnDigital(IPrimitiveContext c, int pin, bool oldValue, bool newValue) => OnInput(c, pin, SigValue.Box(oldValue), SigValue.Box(newValue));
+    public virtual void OnAnalog(IPrimitiveContext c, int pin, ushort oldValue, ushort newValue) => OnInput(c, pin, oldValue, newValue);
+    public virtual void OnSerial(IPrimitiveContext c, int pin, string oldValue, string newValue) => OnInput(c, pin, oldValue, newValue);
     /// <summary>Signal types this primitive implies for its pins, used when no .sig is available.</summary>
     public virtual SigKind? InputKind(int pin) => null;
     public virtual SigKind? OutputKind(int pin) => null;
     protected static bool Rising(object o, object n) => o is false && n is true;
     protected static bool Falling(object o, object n) => o is true && n is false;
+
+    /// <summary>Drive an output to the default of its own kind (false, 0 or empty).</summary>
+    protected static void SetDefault(IPrimitiveContext c, int pin)
+    {
+        switch (c.OutputSignalKind(pin))
+        {
+            case SigKind.Digital: c.Set(pin, false); break;
+            case SigKind.Analog: c.Set(pin, (ushort)0); break;
+            default: c.Set(pin, string.Empty); break;
+        }
+    }
+}
+
+/// <summary>A primitive that reacts to a change on any pin, of any kind, without looking at the values.</summary>
+public abstract class ReactPrim : Primitive
+{
+    protected abstract void React(IPrimitiveContext c, int pin);
+    public override void OnDigital(IPrimitiveContext c, int p, bool o, bool n) => React(c, p);
+    public override void OnAnalog(IPrimitiveContext c, int p, ushort o, ushort n) => React(c, p);
+    public override void OnInput(IPrimitiveContext c, int p, object o, object n) => React(c, p);
+}
+
+/// <summary>A primitive that re-evaluates all its outputs from its inputs on start and on every change.</summary>
+public abstract class EvalPrim : ReactPrim
+{
+    protected abstract void Eval(IPrimitiveContext c);
+    public override void Start(IPrimitiveContext c) => Eval(c);
+    protected override void React(IPrimitiveContext c, int pin) => Eval(c);
+}
+
+/// <summary>A primitive that acts only on a rising (or, if falling, a falling) edge of a digital input.
+/// Analog and serial changes never are an edge, so they do nothing.</summary>
+public abstract class EdgePrim(bool falling = false) : Primitive
+{
+    protected abstract void OnEdge(IPrimitiveContext c, int pin);
+    public override void OnDigital(IPrimitiveContext c, int p, bool o, bool n)
+    {
+        if (falling ? o && !n : !o && n) OnEdge(c, p);
+    }
+    public override void OnAnalog(IPrimitiveContext c, int p, ushort o, ushort n) { }
+    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    {
+        if (o is bool ob && n is bool nb) OnDigital(c, p, ob, nb);
+    }
 }
 
 // ------------------------------------------------------------------ digital
 
 /// <summary>Type 0, SIMPL AND.</summary>
-public sealed class AndPrim : Primitive
+public sealed class AndPrim : EvalPrim
 {
-    public override void Start(IPrimitiveContext c) => Eval(c);
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n) => Eval(c);
-    private static void Eval(IPrimitiveContext c)
+    protected override void Eval(IPrimitiveContext c)
     {
         var all = c.InputCount > 0;
         for (int i = 1; i <= c.InputCount; i++) all &= c.Digital(i);
@@ -60,11 +115,9 @@ public sealed class AndPrim : Primitive
 }
 
 /// <summary>Type 2 OR and type 3 NOR.</summary>
-public sealed class OrPrim(bool invert) : Primitive
+public sealed class OrPrim(bool invert) : EvalPrim
 {
-    public override void Start(IPrimitiveContext c) => Eval(c);
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n) => Eval(c);
-    private void Eval(IPrimitiveContext c)
+    protected override void Eval(IPrimitiveContext c)
     {
         var any = false;
         for (int i = 1; i <= c.InputCount; i++) any |= c.Digital(i);
@@ -79,6 +132,9 @@ public sealed class NotPrim : Primitive
     {
         for (int k = 1; k <= c.OutputCount; k++) c.Set(k, !c.Digital(k));
     }
+    public override void OnDigital(IPrimitiveContext c, int p, bool o, bool n) => c.Set(p, !n);
+    // Anything that isn't a high digital reads as "not true".
+    public override void OnAnalog(IPrimitiveContext c, int p, ushort o, ushort n) => c.Set(p, true);
     public override void OnInput(IPrimitiveContext c, int p, object o, object n) => c.Set(p, n is not true);
 }
 
@@ -86,6 +142,16 @@ public sealed class NotPrim : Primitive
 public sealed class BufferPrim : Primitive
 {
     public override void Start(IPrimitiveContext c) => All(c);
+    public override void OnDigital(IPrimitiveContext c, int p, bool o, bool n)
+    {
+        if (p == 1) All(c);
+        else if (c.Digital(1)) c.Set(p - 1, n);
+    }
+    public override void OnAnalog(IPrimitiveContext c, int p, ushort o, ushort n)
+    {
+        if (p == 1) All(c);
+        else if (c.Digital(1)) c.Set(p - 1, n);
+    }
     public override void OnInput(IPrimitiveContext c, int p, object o, object n)
     {
         if (p == 1) All(c);
@@ -94,7 +160,11 @@ public sealed class BufferPrim : Primitive
     private static void All(IPrimitiveContext c)
     {
         var on = c.Digital(1);
-        for (int k = 1; k <= c.OutputCount; k++) c.Set(k, on ? c.Input(k + 1) : SigValue.Default(c.OutputSignalKind(k)));
+        for (int k = 1; k <= c.OutputCount; k++)
+        {
+            if (on) c.SetFromInput(k, k + 1);
+            else SetDefault(c, k);
+        }
     }
 }
 
@@ -104,6 +174,15 @@ public sealed class HoldBufferPrim(SigKind kind) : Primitive
     public override SigKind? InputKind(int pin) => pin == 1 ? SigKind.Digital : kind;
     public override SigKind? OutputKind(int pin) => kind;
     public override void Start(IPrimitiveContext c) { if (c.Digital(1)) All(c); }
+    public override void OnDigital(IPrimitiveContext c, int p, bool o, bool n)
+    {
+        if (p == 1) { if (!o && n) All(c); }
+        else if (c.Digital(1)) c.Set(p - 1, n);
+    }
+    public override void OnAnalog(IPrimitiveContext c, int p, ushort o, ushort n)
+    {
+        if (p != 1 && c.Digital(1)) c.Set(p - 1, n);
+    }
     public override void OnInput(IPrimitiveContext c, int p, object o, object n)
     {
         if (p == 1) { if (Rising(o, n)) All(c); }
@@ -111,13 +190,21 @@ public sealed class HoldBufferPrim(SigKind kind) : Primitive
     }
     private static void All(IPrimitiveContext c)
     {
-        for (int k = 1; k <= c.OutputCount; k++) c.Set(k, c.Input(k + 1));
+        for (int k = 1; k <= c.OutputCount; k++) c.SetFromInput(k, k + 1);
     }
 }
 
 /// <summary>Type 138, Button Presser: outputs follow the input (used to drive signals that have other drivers).</summary>
 public sealed class FollowPrim : Primitive
 {
+    public override void OnDigital(IPrimitiveContext c, int p, bool o, bool n)
+    {
+        for (int k = 1; k <= c.OutputCount; k++) c.Set(k, n);
+    }
+    public override void OnAnalog(IPrimitiveContext c, int p, ushort o, ushort n)
+    {
+        for (int k = 1; k <= c.OutputCount; k++) c.Set(k, n);
+    }
     public override void OnInput(IPrimitiveContext c, int p, object o, object n)
     {
         for (int k = 1; k <= c.OutputCount; k++) c.Set(k, n);
@@ -129,23 +216,25 @@ public sealed class SrLatchPrim : Primitive
 {
     private bool _state;
     public override void Start(IPrimitiveContext c) => Out(c);
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    public override void OnDigital(IPrimitiveContext c, int p, bool o, bool n) => Step(c, p == 1 && !o && n);
+    public override void OnAnalog(IPrimitiveContext c, int p, ushort o, ushort n) => Step(c, false);
+    public override void OnInput(IPrimitiveContext c, int p, object o, object n) => Step(c, p == 1 && Rising(o, n));
+    private void Step(IPrimitiveContext c, bool set)
     {
         if (c.InputCount >= 2 && c.Digital(2)) _state = false;
-        else if (p == 1 && Rising(o, n)) _state = true;
+        else if (set) _state = true;
         Out(c);
     }
     private void Out(IPrimitiveContext c) { c.Set(1, _state); c.Set(2, !_state); }
 }
 
 /// <summary>Type 10, Toggle: rising clock (1) flips; optional reset (2) and set (3); outputs out, out*.</summary>
-public sealed class TogglePrim : Primitive
+public sealed class TogglePrim : EdgePrim
 {
     private bool _state;
     public override void Start(IPrimitiveContext c) => Out(c);
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    protected override void OnEdge(IPrimitiveContext c, int p)
     {
-        if (!Rising(o, n)) return;
         _state = p switch { 1 => !_state, 2 => false, 3 => true, _ => _state };
         Out(c);
     }
@@ -153,11 +242,10 @@ public sealed class TogglePrim : Primitive
 }
 
 /// <summary>Type 11, Interlock: input 1 clears; rising input k+1 drives output k high and the rest low.</summary>
-public sealed class InterlockPrim : Primitive
+public sealed class InterlockPrim : EdgePrim
 {
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    protected override void OnEdge(IPrimitiveContext c, int p)
     {
-        if (!Rising(o, n)) return;
         var selected = p - 1; // 0 = clear
         for (int k = 1; k <= c.OutputCount; k++) c.Set(k, k == selected);
     }
@@ -167,20 +255,20 @@ public sealed class InterlockPrim : Primitive
 
 /// <summary>Type 15 One Shot / 17 Retriggerable One Shot: rising input 1 drives output 1 high for P1;
 /// input 3 (if driven) cancels. Output 2, if present, is the inverse.</summary>
-public sealed class OneShotPrim(bool retrigger) : Primitive
+public sealed class OneShotPrim(bool retrigger) : EdgePrim
 {
     private IDisposable? _timer;
     private bool _on;
     public override void Start(IPrimitiveContext c) => Out(c);
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    protected override void OnEdge(IPrimitiveContext c, int p)
     {
-        if (p == 1 && Rising(o, n) && (!_on || retrigger))
+        if (p == 1 && (!_on || retrigger))
         {
             _timer?.Dispose();
             _on = true; Out(c);
             _timer = c.AfterTicks(c.Number(0, 50), () => { _on = false; Out(c); });
         }
-        else if (p == 3 && Rising(o, n) && _on)
+        else if (p == 3 && _on)
         {
             _timer?.Dispose(); _on = false; Out(c);
         }
@@ -189,12 +277,12 @@ public sealed class OneShotPrim(bool retrigger) : Primitive
 }
 
 /// <summary>Type 29, Multiple One Shots: rising input k drives output k high for P1.</summary>
-public sealed class MultiOneShotPrim : Primitive
+public sealed class MultiOneShotPrim : EdgePrim
 {
     private readonly Dictionary<int, IDisposable> _timers = new();
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    protected override void OnEdge(IPrimitiveContext c, int p)
     {
-        if (!Rising(o, n) || p > c.OutputCount) return;
+        if (p > c.OutputCount) return;
         if (_timers.Remove(p, out var t)) t.Dispose();
         c.Set(p, true);
         _timers[p] = c.AfterTicks(c.Number(0, 50), () => c.Set(p, false));
@@ -252,12 +340,12 @@ public sealed class OscillatorPrim : Primitive
 
 /// <summary>Type 139, Stepper: on a rising input, after P1 output 2 pulses for P2, then after P3 output 3
 /// pulses for P4, and so on. Output 1 is reserved (busy).</summary>
-public sealed class StepperPrim : Primitive
+public sealed class StepperPrim : EdgePrim
 {
     private readonly List<IDisposable> _timers = new();
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    protected override void OnEdge(IPrimitiveContext c, int p)
     {
-        if (p != 1 || !Rising(o, n)) return;
+        if (p != 1) return;
         foreach (var t in _timers) t.Dispose();
         _timers.Clear();
         long at = c.Number(0);
@@ -274,11 +362,11 @@ public sealed class StepperPrim : Primitive
 }
 
 /// <summary>Type 204, Logic Wave Pulse: a rising edge on a driven input gives a one-wave pulse on output 1.</summary>
-public sealed class WavePulsePrim : Primitive
+public sealed class WavePulsePrim : EdgePrim
 {
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    protected override void OnEdge(IPrimitiveContext c, int p)
     {
-        if (c.IsConstant(p) || !Rising(o, n)) return;
+        if (c.IsConstant(p)) return;
         c.Set(1, true);
         c.NextWave(() => c.Set(1, false));
     }
@@ -288,11 +376,11 @@ public sealed class WavePulsePrim : Primitive
 
 /// <summary>Type 38, Analog Initialize (numeric params) / serial initialize (string params):
 /// on a rising input (or at start if the input is the constant 1), output k = parameter k.</summary>
-public sealed class InitPrim : Primitive
+public sealed class InitPrim : EdgePrim
 {
     public override SigKind? OutputKind(int pin) => null;
     public override void Start(IPrimitiveContext c) { if (c.Digital(1)) Fire(c); }
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n) { if (p == 1 && Rising(o, n)) Fire(c); }
+    protected override void OnEdge(IPrimitiveContext c, int p) { if (p == 1) Fire(c); }
     private static void Fire(IPrimitiveContext c)
     {
         for (int k = 1; k <= c.OutputCount; k++)
@@ -305,12 +393,10 @@ public sealed class InitPrim : Primitive
 }
 
 /// <summary>Type 51, Analog Equate: output k is high while the analog input equals parameter k.</summary>
-public sealed class EquatePrim : Primitive
+public sealed class EquatePrim : EvalPrim
 {
     public override SigKind? InputKind(int pin) => SigKind.Analog;
-    public override void Start(IPrimitiveContext c) => Eval(c);
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n) => Eval(c);
-    private static void Eval(IPrimitiveContext c)
+    protected override void Eval(IPrimitiveContext c)
     {
         var v = c.Analog(1);
         for (int k = 1; k <= c.OutputCount; k++) c.Set(k, c.Number(k - 1, -1) == v);
@@ -319,12 +405,11 @@ public sealed class EquatePrim : Primitive
 
 /// <summary>Type 58, Serial Send / Multiple Serial Send: rising input k sends string parameter k on output 1
 /// (or on output k when there is one output per input).</summary>
-public sealed class SerialSendPrim : Primitive
+public sealed class SerialSendPrim : EdgePrim
 {
     public override SigKind? OutputKind(int pin) => SigKind.Serial;
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    protected override void OnEdge(IPrimitiveContext c, int p)
     {
-        if (!Rising(o, n)) return;
         var outPin = c.OutputCount >= p ? p : 1;
         c.Set(outPin, c.Text(p - 1) ?? string.Empty);
     }
@@ -355,10 +440,10 @@ public sealed class SerialIoPrim : Primitive
 }
 
 /// <summary>Type 114, Serial/Analog One-Shot: any change on the input pulses output 1 for P1.</summary>
-public sealed class ChangePulsePrim : Primitive
+public sealed class ChangePulsePrim : ReactPrim
 {
     private IDisposable? _timer;
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    protected override void React(IPrimitiveContext c, int p)
     {
         _timer?.Dispose();
         c.Set(1, true);
@@ -367,22 +452,19 @@ public sealed class ChangePulsePrim : Primitive
 }
 
 /// <summary>Type 254, String Length.</summary>
-public sealed class StringLengthPrim : Primitive
+public sealed class StringLengthPrim : EvalPrim
 {
     public override SigKind? InputKind(int pin) => SigKind.Serial;
     public override SigKind? OutputKind(int pin) => SigKind.Analog;
-    public override void Start(IPrimitiveContext c) => c.Set(1, (ushort)Math.Min(c.Serial(1).Length, 65535));
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n) => Start(c);
+    protected override void Eval(IPrimitiveContext c) => c.Set(1, (ushort)Math.Min(c.Serial(1).Length, 65535));
 }
 
 /// <summary>Type 100, Analog Sum (clamped to 0–65535).</summary>
-public sealed class AnalogSumPrim : Primitive
+public sealed class AnalogSumPrim : EvalPrim
 {
     public override SigKind? InputKind(int pin) => SigKind.Analog;
     public override SigKind? OutputKind(int pin) => SigKind.Analog;
-    public override void Start(IPrimitiveContext c) => Eval(c);
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n) => Eval(c);
-    private static void Eval(IPrimitiveContext c)
+    protected override void Eval(IPrimitiveContext c)
     {
         long sum = 0;
         for (int i = 1; i <= c.InputCount; i++) sum += c.Analog(i);
@@ -395,6 +477,9 @@ public sealed class SerialToAnalogPrim : Primitive
 {
     public override SigKind? InputKind(int pin) => SigKind.Serial;
     public override SigKind? OutputKind(int pin) => SigKind.Analog;
+    // Only text can parse: any other kind reads as "" and sets nothing.
+    public override void OnDigital(IPrimitiveContext c, int p, bool o, bool n) { }
+    public override void OnAnalog(IPrimitiveContext c, int p, ushort o, ushort n) { }
     public override void OnInput(IPrimitiveContext c, int p, object o, object n)
     {
         if (ushort.TryParse((n as string ?? "").Trim(), out var v)) c.Set(1, v);
@@ -402,16 +487,14 @@ public sealed class SerialToAnalogPrim : Primitive
 }
 
 /// <summary>Type 220, Analog Comparison: outputs (as far as identified) a=b, a≠b, a&lt;b, a≤b, a&gt;b, a≥b.</summary>
-public sealed class ComparePrim : Primitive
+public sealed class ComparePrim : EvalPrim
 {
     public override SigKind? InputKind(int pin) => SigKind.Analog;
-    public override void Start(IPrimitiveContext c) => Eval(c);
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n) => Eval(c);
-    private static void Eval(IPrimitiveContext c)
+    protected override void Eval(IPrimitiveContext c)
     {
         int a = c.Analog(1), b = c.Analog(2);
-        bool[] r = [a == b, a != b, a < b, a <= b, a > b, a >= b];
-        for (int k = 1; k <= Math.Min(c.OutputCount, r.Length); k++) c.Set(k, r[k - 1]);
+        for (int k = 1; k <= Math.Min(c.OutputCount, 6); k++)
+            c.Set(k, k switch { 1 => a == b, 2 => a != b, 3 => a < b, 4 => a <= b, 5 => a > b, _ => a >= b });
     }
 }
 
@@ -462,13 +545,12 @@ public sealed class DebouncePrim : Primitive
 }
 
 /// <summary>Type 23, Ring Counter: each rising clock (input 1) moves the single high output to the next one.</summary>
-public sealed class RingCounterPrim : Primitive
+public sealed class RingCounterPrim : EdgePrim
 {
     private int _pos;
     public override void Start(IPrimitiveContext c) => Out(c);
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    protected override void OnEdge(IPrimitiveContext c, int p)
     {
-        if (!Rising(o, n)) return;
         if (p == 1) _pos = c.OutputCount == 0 ? 0 : (_pos + 1) % c.OutputCount;
         else if (p == 2) _pos = 0; // reset, when present
         Out(c);
