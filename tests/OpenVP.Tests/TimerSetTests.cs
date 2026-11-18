@@ -41,6 +41,31 @@ public static class TimerSetTests
     }
 
     [Test]
+    public static void A_zero_delay_armed_while_a_due_batch_is_on_its_way_runs_after_that_batch()
+    {
+        using var d = NewSlot();
+        var inWake = new ManualResetEventSlim();
+        var release = new ManualResetEventSlim();
+        var calls = 0;
+        // The first look at the dispatcher is the OS timer's wake handing over its batch of due timers: hold it
+        // right there, between taking the due timers out of the set and putting them on the slot's queue.
+        using var set = new TimerSet(() =>
+        {
+            if (Interlocked.Increment(ref calls) == 1) { inWake.Set(); release.Wait(5000); }
+            return d;
+        });
+        var order = new List<string>();
+        set.After(30, () => { lock (order) order.Add("due earlier"); });
+        Assert.True(inWake.Wait(3000), "the wake took the due timer and is about to post it");
+        var zero = Task.Run(() => set.After(0, () => { lock (order) order.Add("zero delay"); }));
+        Thread.Sleep(150); // the zero delay is armed now (or waits its turn)
+        release.Set();
+        Assert.True(zero.Wait(3000), "After returned");
+        Assert.Eventually(() => { lock (order) return order.Count == 2; }, "both ran");
+        Assert.Equal("due earlier|zero delay", string.Join('|', order), "timers due earlier run before a zero delay armed later");
+    }
+
+    [Test]
     public static void A_zero_delay_is_posted_at_once_not_at_the_next_tick()
     {
         using var d = NewSlot();

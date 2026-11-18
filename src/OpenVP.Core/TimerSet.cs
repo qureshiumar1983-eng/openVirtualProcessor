@@ -99,8 +99,8 @@ public sealed class TimerSet : IDisposable
                 Push(e);
                 if (e.Due < _armedDue) ArmFor(e.Due, nowMs);
             }
+            else Post(now); // under the lock: see Wake
         }
-        if (now != null) Post(now);
         return e;
     }
 
@@ -167,8 +167,13 @@ public sealed class TimerSet : IDisposable
             if (_count > 0) ArmFor(_heap[0].Due, nowMs);
             if (batch.Count == 0) { _spareBatches.Push(batch); return; }
             _batches++;
+            // Hand a batch to the slot's queue while still holding the lock that drained it. Posting after
+            // releasing it lets a later drain (a zero-delay After on the slot thread, or the next wake) reach
+            // the queue first, and then timers that were due earlier would run after ones that are due later.
+            // The post only enqueues, so holding the lock for it is cheap.
+            if (_dispatcher != null) { Post(batch); return; }
         }
-        Post(batch);
+        Post(batch); // no dispatcher: run the callbacks here, outside the lock
     }
 
     // Everything due by nowMs, in due order then arming order (under _gate).
