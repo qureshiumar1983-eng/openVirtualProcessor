@@ -1,0 +1,31 @@
+-- delay in on
+slot1 delay_press D=1 <- IPID03
+slot1 delay_fb D=1 <- Delay
+-- delay in off (low at once)
+slot1 delay_press D=0 <- IPID03
+slot1 delay_fb D=0 <- Delay
+-- delay in on, then off after 20 ms (timer cancelled)
+slot1 delay_press D=1 <- IPID03
+-- delay in off
+slot1 delay_press D=0 <- IPID03
+-- delay in on again
+slot1 delay_press D=1 <- IPID03
+slot1 delay_fb D=1 <- Delay
+-- delay in off
+slot1 delay_press D=0 <- IPID03
+slot1 delay_fb D=0 <- Delay
+-- one shot trigger
+slot1 oneshot_press D=1 <- IPID03
+slot1 oneshot_fb D=1 <- One Shot
+slot1 oneshot_fb D=0 <- One Shot
+-- one shot release
+slot1 oneshot_press D=0 <- IPID03
+-- one shot trigger
+slot1 oneshot_press D=1 <- IPID03
+slot1 oneshot_fb D=1 <- One Shot
+-- one shot release and trigger again, 60 ms in
+slot1 oneshot_press D=0 <- IPID03
+slot1 oneshot_press D=1 <- IPID03
+slot1 oneshot_fb D=0 <- One Shot
+-- one shot release
+slot1 oneshot_press D=0 <- IPID03
