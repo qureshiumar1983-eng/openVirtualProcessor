@@ -12,3 +12,6 @@ jobs:
           dotnet-version: 8.0.x
       - run: dotnet build OpenVP.sln -c Release
       - run: dotnet run --project tests/OpenVP.Tests -c Release --no-build
+      # Informational only: shows throughput regressions in the log, never fails the build.
+      - run: dotnet run --project tools/OpenVP.Bench -c Release --no-build -- --quick
+        continue-on-error: true
