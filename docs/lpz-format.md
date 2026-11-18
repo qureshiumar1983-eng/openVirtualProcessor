@@ -56,6 +56,8 @@ The compiler lowers SIMPL symbols into logic-engine primitives and flattens user
 
 Across the 101 programs there are **99 distinct types**. Types are identified by matching each record's output signals, by name via the `.sig`, against the source symbol that drives the same signals. 36 programs ship their source, which gives a clean one-to-one mapping (AND = 0, NOT = 1, OR = 2, Toggle = 10, Interlock = 11, One Shot = 15, Buffer = 18, Delay = 27, Analog Initialize = 38, Analog Equate = 51, Analog Buffer = 67, Serial Buffer = 88, Serial I/O = 97, …). The full table is in `src/OpenVP.Lpz/PrimitiveCatalog.cs`.
 
+`tools/LpzSurvey` automates this: it lists the types OpenVP can't run yet across a folder of programs, with example records and the matching source symbol where the source is archived.
+
 Pins appear in the same order as on the SIMPL symbol. Unconnected pins point at signal 0 or 1. Times are in 1/100 s.
 
 ### IP devices

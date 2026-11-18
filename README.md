@@ -153,6 +153,15 @@ Every endpoint except `/api/info` and `/api/login` needs the access key (see [Se
 
 ## Development
 
+### Finding compiled primitives OpenVP doesn't run yet
+
+```bash
+dotnet run --project tools/LpzSurvey -- path/to/programs --out survey.txt
+```
+
+This reads every `.lpz` under the folder and lists the record types OpenVP can't run yet, most widespread first. For each type it shows a few example records: the signal names on each pin (put each program's `.sig` next to its `.lpz`), the parameters, and the source symbol that drives the same signals when the program was compiled with its source archived. That's usually enough to identify a type and implement it. `--all` includes the types that already run, so you can check them against real programs, and `--type N` shows just one type. The output has signal names and parameter values from your programs but no logic or code, so read it before you share it. **Inspect .lpz** in the web console shows the same examples for one program.
+
+
 ```bash
 dotnet build
 dotnet run --project tests/OpenVP.Tests          # dependency-free test runner
@@ -172,7 +181,8 @@ If a program fails with "needs Crestron assemblies OpenVP has no facade for: X",
   - [x] **Inspect .lpz** in the web console: what's in a program and how much of it OpenVP can run
   - [x] Map compiled primitives to SIMPL symbols (matched across 36 programs that ship their source)
   - [x] Run compiled logic: 36 primitive types so far, plus IP devices (panels, EISC, DM/NVX joins) and permanent strings. **Load a `.lpz` like any other program**
-  - [ ] Remaining primitives (Truth Table, Analog RAM, Analog Scaler, Analog to Serial, crosspoint routing, …)
+  - [x] Every primitive type identified so far runs (about 80, including Truth Table, Analog RAM, the Analog Scalers, Analog to Serial, crosspoint routing and Smart Graphics objects)
+  - [ ] Primitive types not identified yet. The programs checked so far used 99 distinct types. To find and add the rest, run the survey over your programs (below) and share the output
   - [x] Run compiled SIMPL+ modules (.NET) through a clean-room `SplusObjects` / `SplusLibrary`: events, PUSH/RELEASE/CHANGE, WAIT, DELAY, MakeString, parameters, files, sockets. On a 230-module production program every module loads
   - [ ] Confirm behavior against a real processor (side-by-side signal traces)
 

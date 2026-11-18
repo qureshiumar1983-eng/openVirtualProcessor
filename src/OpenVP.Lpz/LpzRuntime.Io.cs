@@ -57,6 +57,9 @@ public sealed partial class LpzRuntime
     private object InValue(Node node, int pin) =>
         pin >= 1 && pin <= node.Symbol.Inputs.Length ? Value(node.Symbol.Inputs[pin - 1]) : false;
 
+    /// <summary>Record types <see cref="BuildSpecial"/> handles. Keep the two in step.</summary>
+    internal static readonly HashSet<int> SpecialTypes = [268, 213, 214, 215, -310, -242, -200];
+
     /// <summary>Creates nodes for the record types handled outside the primitive library. Returns false if the
     /// record isn't one of them.</summary>
     private bool BuildSpecial(BinSymbol sym)

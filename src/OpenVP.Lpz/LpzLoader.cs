@@ -14,6 +14,6 @@ public static class LpzInspect
         var pkg = LpzPackage.Open(path);
         sigPath ??= Path.ChangeExtension(path, ".sig");
         var sig = File.Exists(sigPath) ? SigTable.Parse(File.ReadAllBytes(sigPath)) : null;
-        return LpzReport.Build(pkg, sig);
+        return LpzReport.Build(pkg, sig, LpzSurvey.ReadSourceSmw(path));
     }
 }

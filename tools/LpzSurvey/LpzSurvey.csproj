@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Usage and options: see Program.cs. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>OpenVP.Tools.LpzSurvey</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/OpenVP.Lpz/OpenVP.Lpz.csproj" />
+  </ItemGroup>
+</Project>

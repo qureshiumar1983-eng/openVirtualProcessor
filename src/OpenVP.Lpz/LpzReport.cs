@@ -5,7 +5,7 @@ namespace OpenVP.Lpz;
 /// <summary>Human-readable summary of a compiled program and how much of it OpenVP can run.</summary>
 public static class LpzReport
 {
-    public static string Build(LpzPackage pkg, SigTable? sig = null)
+    public static string Build(LpzPackage pkg, SigTable? sig = null, OpenVP.Simpl.SmwFile? source = null)
     {
         var sb = new StringBuilder();
         var logic = pkg.Logic;
@@ -29,6 +29,19 @@ public static class LpzReport
             PrimitiveCatalog.Known.TryGetValue(g.Key, out var info);
             var status = info == null ? "unidentified" : info.Implemented ? "runs" : "identified";
             sb.AppendLine($"{g.Key,5}  {g.Count(),5}  {status,-14}  {info?.Name}");
+        }
+
+        // Examples of what doesn't run yet, so it can be identified and implemented.
+        if (sig != null && pkg.Signals == null) pkg.UseSignals(sig);
+        var survey = new LpzSurvey { MaxExamples = 3 };
+        survey.Add(pkg, source);
+        if (survey.Types.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("----------------------------------------------------------------------------");
+            sb.Append(survey.Report());
+            sb.AppendLine();
+            sb.AppendLine("To help add these: run tools/LpzSurvey over your programs and open an issue with the output.");
         }
         return sb.ToString();
     }

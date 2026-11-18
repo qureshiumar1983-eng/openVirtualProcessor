@@ -2,6 +2,8 @@
   <!-- Reads and runs compiled SIMPL Windows programs (.lpz). Format notes: docs/lpz-format.md -->
   <ItemGroup>
     <ProjectReference Include="../OpenVP.Core/OpenVP.Core.csproj" />
+    <!-- .smw parser, used to match compiled records to their source symbols when a program ships its source. -->
+    <ProjectReference Include="../OpenVP.Simpl/OpenVP.Simpl.csproj" />
     <!-- Runtime pieces loaded per slot for SIMPL+ modules and the SIMPL# libraries they use. -->
     <ProjectReference Include="../OpenVP.SimplSharpHost/OpenVP.SimplSharpHost.csproj" />
     <ProjectReference Include="../OpenVP.Splus/OpenVP.Splus.csproj" />
