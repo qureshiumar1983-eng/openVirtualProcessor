@@ -36,7 +36,7 @@ Measured on the same 4-vCPU VM as section 2 (.NET 8.0.34, Release, workstation G
 | 2.1 slot queue, 2.2 debugger/panels/CIP off the slot thread | Done |
 | 2.3 typed storage, 2.4 flat fan-out | Done |
 | 2.5 leaner SIMPL+, 2.6 `.smw` interpreter | Done |
-| 3.1 one timer service per slot | Done (a delay of 0 is posted at once; positive delays round up to 10 ms ticks) |
+| 3.1 one timer service per slot | Done (one OS timer per slot, due times kept to the millisecond so self-rearming timers don't drift; a delay of 0 is posted at once) |
 | 3.2 compile the logic graph | Done as sealed fast-path nodes for NOT, AND/OR/NOR, Buffer, Analog/Serial Buffer, Interlock, Toggle and SR Latch (NOT chain 89 → 51 ns, interlock +50%). IL emission skipped: what is left is the queue, the solve loop and feedback, not dispatch |
 | 3.3 running count for wide gates | Done |
 | 3.4 optional spin | Done, off by default (`OpenVP:SlotSpinMicroseconds`). With 30 µs between events, p50 22 → 2 µs for about 7 points more of a core (10% → 17%); no gain when events are further apart than the spin (1 ms idle: ~60 µs either way); no CPU cost with no events |
