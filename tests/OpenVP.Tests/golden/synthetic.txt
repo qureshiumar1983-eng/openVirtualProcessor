@@ -1,0 +1,48 @@
+slot1 #18 S="ready" <- S-4
+slot1 #25 S="" <- S-5
+slot1 #17 S="" <- S-6
+slot1 #17 S="ready" <- S-6
+-- d1 press (toggle on)
+slot1 #10 D=1 <- IPID03
+slot1 #11 D=1 <- S-1
+-- d1 release
+slot1 #10 D=0 <- IPID03
+-- d1 press (toggle off)
+slot1 #10 D=1 <- IPID03
+slot1 #11 D=0 <- S-1
+-- d1 release
+slot1 #10 D=0 <- IPID03
+-- d2 press (interlock 1)
+slot1 #12 D=1 <- IPID03
+slot1 #14 D=1 <- S-2
+-- d3 press (interlock 2)
+slot1 #13 D=1 <- IPID03
+slot1 #14 D=0 <- S-2
+slot1 #15 D=1 <- S-2
+-- d2 release, d3 release
+slot1 #12 D=0 <- IPID03
+slot1 #13 D=0 <- IPID03
+-- d6 clear
+slot1 #22 D=1 <- IPID03
+slot1 #15 D=0 <- S-2
+-- d4 press (AND low)
+slot1 #19 D=1 <- IPID03
+-- d5 press (AND high)
+slot1 #20 D=1 <- IPID03
+slot1 #21 D=1 <- S-3
+-- d4 release (AND low)
+slot1 #19 D=0 <- IPID03
+slot1 #21 D=0 <- S-3
+-- a1 = 777
+slot1 #16 A=777 <- IPID03
+-- a1 = 0
+slot1 #16 A=0 <- IPID03
+-- s1 = abc
+slot1 #26 S="abc" <- IPID03
+slot1 #25 S="abc" <- S-5
+-- s1 = abc again (serials always fire)
+slot1 #26 S="abc" <- IPID03
+slot1 #25 S="abc" <- S-5
+-- s1 empty
+slot1 #26 S="" <- IPID03
+slot1 #25 S="" <- S-5

@@ -1,0 +1,43 @@
+-- press d1
+slot1 #10 D=1 <- IPID03
+slot1 #15 D=1 <- S-1
+-- release d1
+slot1 #10 D=0 <- IPID03
+-- press d2
+slot1 #11 D=1 <- IPID03
+slot1 #15 D=0 <- S-1
+slot1 #16 D=1 <- S-1
+-- release d2
+slot1 #11 D=0 <- IPID03
+-- press d3
+slot1 #12 D=1 <- IPID03
+slot1 #16 D=0 <- S-1
+slot1 #17 D=1 <- S-1
+-- release d3
+slot1 #12 D=0 <- IPID03
+-- press d4
+slot1 #13 D=1 <- IPID03
+slot1 #17 D=0 <- S-1
+slot1 #18 D=1 <- S-1
+-- release d4
+slot1 #13 D=0 <- IPID03
+-- press d5
+slot1 #14 D=1 <- IPID03
+slot1 #18 D=0 <- S-1
+slot1 #19 D=1 <- S-1
+-- release d5
+slot1 #14 D=0 <- IPID03
+-- press d2 and d4 together
+slot1 #11 D=1 <- IPID03
+slot1 #16 D=1 <- S-1
+slot1 #19 D=0 <- S-1
+slot1 #13 D=1 <- IPID03
+slot1 #16 D=0 <- S-1
+slot1 #18 D=1 <- S-1
+-- release both
+slot1 #11 D=0 <- IPID03
+slot1 #13 D=0 <- IPID03
+-- press d2 again
+slot1 #11 D=1 <- IPID03
+slot1 #16 D=1 <- S-1
+slot1 #18 D=0 <- S-1

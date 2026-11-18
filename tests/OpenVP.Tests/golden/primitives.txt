@@ -1,0 +1,173 @@
+slot1 #40 D=1 <- S-1 NOT
+slot1 #42 D=1 <- S-3 NOR
+slot1 #45 D=1 <- S-5 Toggle
+slot1 #47 D=1 <- S-6 SR latch
+slot1 #59 A=7 <- S-14 Analog init at start
+slot1 #60 S="boot" <- S-15 Serial init at start
+-- A on
+slot1 #10 D=1 <- IPID03
+slot1 #40 D=0 <- S-1 NOT
+slot1 #41 D=1 <- S-2 OR
+slot1 #42 D=0 <- S-3 NOR
+slot1 #43 D=1 <- S-4 XOR
+-- B on
+slot1 #11 D=1 <- IPID03
+slot1 #43 D=0 <- S-4 XOR
+-- C on
+slot1 #12 D=1 <- IPID03
+slot1 #43 D=1 <- S-4 XOR
+-- A off
+slot1 #10 D=0 <- IPID03
+slot1 #40 D=1 <- S-1 NOT
+slot1 #43 D=0 <- S-4 XOR
+-- B off
+slot1 #11 D=0 <- IPID03
+slot1 #42 D=1 <- S-3 NOR
+slot1 #43 D=1 <- S-4 XOR
+-- C off
+slot1 #12 D=0 <- IPID03
+slot1 #41 D=0 <- S-2 OR
+slot1 #43 D=0 <- S-4 XOR
+-- A and B together
+slot1 #10 D=1 <- IPID03
+slot1 #40 D=0 <- S-1 NOT
+slot1 #41 D=1 <- S-2 OR
+slot1 #42 D=0 <- S-3 NOR
+slot1 #43 D=1 <- S-4 XOR
+slot1 #11 D=1 <- IPID03
+slot1 #43 D=0 <- S-4 XOR
+-- all off
+slot1 #10 D=0 <- IPID03
+slot1 #40 D=1 <- S-1 NOT
+slot1 #43 D=1 <- S-4 XOR
+slot1 #11 D=0 <- IPID03
+slot1 #41 D=0 <- S-2 OR
+slot1 #42 D=1 <- S-3 NOR
+slot1 #43 D=0 <- S-4 XOR
+-- toggle clk up
+slot1 #13 D=1 <- IPID03
+slot1 #44 D=1 <- S-5 Toggle
+slot1 #45 D=0 <- S-5 Toggle
+-- toggle clk down
+slot1 #13 D=0 <- IPID03
+-- toggle clk up
+slot1 #13 D=1 <- IPID03
+slot1 #44 D=0 <- S-5 Toggle
+slot1 #45 D=1 <- S-5 Toggle
+-- toggle clk down
+slot1 #13 D=0 <- IPID03
+-- toggle set
+slot1 #15 D=1 <- IPID03
+slot1 #44 D=1 <- S-5 Toggle
+slot1 #45 D=0 <- S-5 Toggle
+-- toggle set release
+slot1 #15 D=0 <- IPID03
+-- toggle reset
+slot1 #14 D=1 <- IPID03
+slot1 #44 D=0 <- S-5 Toggle
+slot1 #45 D=1 <- S-5 Toggle
+-- toggle reset release
+slot1 #14 D=0 <- IPID03
+-- SR set
+slot1 #16 D=1 <- IPID03
+slot1 #46 D=1 <- S-6 SR latch
+slot1 #47 D=0 <- S-6 SR latch
+-- SR set release
+slot1 #16 D=0 <- IPID03
+-- SR reset
+slot1 #17 D=1 <- IPID03
+slot1 #46 D=0 <- S-6 SR latch
+slot1 #47 D=1 <- S-6 SR latch
+-- SR set while reset held
+slot1 #16 D=1 <- IPID03
+-- SR release both
+slot1 #16 D=0 <- IPID03
+slot1 #17 D=0 <- IPID03
+-- buffer: A on while disabled
+slot1 #10 D=1 <- IPID03
+slot1 #40 D=0 <- S-1 NOT
+slot1 #41 D=1 <- S-2 OR
+slot1 #42 D=0 <- S-3 NOR
+slot1 #43 D=1 <- S-4 XOR
+-- buffer: a1 = 5 while disabled
+slot1 #23 A=5 <- IPID03
+slot1 #55 D=1 <- S-12 Equate
+-- buffer: s1 = x while disabled
+slot1 #25 S="x" <- IPID03
+-- buffer: enable on
+slot1 #18 D=1 <- IPID03
+slot1 #48 D=1 <- S-7 Buffer
+slot1 #50 A=5 <- S-8 Analog buffer
+slot1 #51 S="x" <- S-9 Serial buffer
+-- buffer: B on
+slot1 #11 D=1 <- IPID03
+slot1 #43 D=0 <- S-4 XOR
+slot1 #49 D=1 <- S-7 Buffer
+-- buffer: a1 = 10
+slot1 #23 A=10 <- IPID03
+slot1 #50 A=10 <- S-8 Analog buffer
+slot1 #55 D=0 <- S-12 Equate
+slot1 #56 D=1 <- S-12 Equate
+-- buffer: s1 = y
+slot1 #25 S="y" <- IPID03
+slot1 #51 S="y" <- S-9 Serial buffer
+-- buffer: enable off
+slot1 #18 D=0 <- IPID03
+slot1 #48 D=0 <- S-7 Buffer
+slot1 #49 D=0 <- S-7 Buffer
+-- buffer: a1 = 100 while disabled
+slot1 #23 A=100 <- IPID03
+slot1 #56 D=0 <- S-12 Equate
+-- buffer: s1 = z while disabled
+slot1 #25 S="z" <- IPID03
+-- buffer: A off while disabled
+slot1 #10 D=0 <- IPID03
+slot1 #40 D=1 <- S-1 NOT
+slot1 #43 D=1 <- S-4 XOR
+-- buffer: enable on again
+slot1 #18 D=1 <- IPID03
+slot1 #49 D=1 <- S-7 Buffer
+slot1 #50 A=100 <- S-8 Analog buffer
+slot1 #51 S="z" <- S-9 Serial buffer
+-- buffer: enable off
+slot1 #18 D=0 <- IPID03
+slot1 #49 D=0 <- S-7 Buffer
+-- equate: a1 = 5
+slot1 #23 A=5 <- IPID03
+slot1 #55 D=1 <- S-12 Equate
+-- equate: a1 = 10
+slot1 #23 A=10 <- IPID03
+slot1 #55 D=0 <- S-12 Equate
+slot1 #56 D=1 <- S-12 Equate
+-- equate: a1 = 11
+slot1 #23 A=11 <- IPID03
+slot1 #56 D=0 <- S-12 Equate
+-- init trigger
+slot1 #19 D=1 <- IPID03
+slot1 #52 A=111 <- S-10 Analog init
+slot1 #53 A=222 <- S-10 Analog init
+slot1 #54 S="init-text" <- S-11 Serial init
+-- init trigger release
+slot1 #19 D=0 <- IPID03
+-- init trigger again
+slot1 #19 D=1 <- IPID03
+slot1 #54 S="init-text" <- S-11 Serial init
+-- interlock 1
+slot1 #21 D=1 <- IPID03
+slot1 #57 D=1 <- S-13 Interlock
+-- interlock 1 release
+slot1 #21 D=0 <- IPID03
+-- interlock 2
+slot1 #22 D=1 <- IPID03
+slot1 #57 D=0 <- S-13 Interlock
+slot1 #58 D=1 <- S-13 Interlock
+-- interlock 2 release
+slot1 #22 D=0 <- IPID03
+-- interlock clear
+slot1 #20 D=1 <- IPID03
+slot1 #58 D=0 <- S-13 Interlock
+-- interlock clear release
+slot1 #20 D=0 <- IPID03
+-- interlock 1 again
+slot1 #21 D=1 <- IPID03
+slot1 #57 D=1 <- S-13 Interlock

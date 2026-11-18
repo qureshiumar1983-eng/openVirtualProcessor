@@ -1,0 +1,46 @@
+slot1 #23 S="" <- IPID1F
+slot1 #12 D=1 <- IPID1F
+slot1 #23 S="" <- IPID1F
+slot1 #23 S="" <- IPID1F
+-- slot1 d1 press
+slot1 #10 D=1 <- IPID03
+slot1 #12 D=0 <- IPID1F
+-- slot1 d1 release
+slot1 #10 D=0 <- IPID03
+slot1 #12 D=1 <- IPID1F
+-- slot1 a1 = 1234
+slot1 #20 A=1234 <- IPID03
+slot1 #22 A=1234 <- IPID1F
+-- slot1 s1 = hello
+slot1 #21 S="hello" <- IPID03
+slot1 #23 S="hello" <- IPID1F
+-- slot2 d1 press
+slot1 #24 D=1 <- IPID1F
+-- slot2 d1 release
+slot1 #24 D=0 <- IPID1F
+-- slot1 d1 press
+slot1 #10 D=1 <- IPID03
+slot1 #12 D=0 <- IPID1F
+slot2 #13 D=1 <- S-1
+slot2 #15 S="" <- S-3
+slot2 #12 S="" <- IPID1F
+slot2 #15 S="" <- S-3
+-- slot1 d1 press
+slot2 #10 D=1 <- IPID1F
+slot2 #13 D=0 <- S-1
+-- slot1 d1 release
+slot2 #10 D=0 <- IPID1F
+slot2 #13 D=1 <- S-1
+-- slot1 a1 = 1234
+slot2 #11 A=1234 <- IPID1F
+slot2 #14 A=1234 <- S-2
+-- slot1 s1 = hello
+slot2 #12 S="hello" <- IPID1F
+slot2 #15 S="hello" <- S-3
+-- slot2 d1 press
+slot2 #16 D=1 <- IPID04
+-- slot2 d1 release
+slot2 #16 D=0 <- IPID04
+-- slot1 d1 press
+slot2 #10 D=1 <- IPID1F
+slot2 #13 D=0 <- S-1

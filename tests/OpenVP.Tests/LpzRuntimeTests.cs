@@ -13,7 +13,8 @@ public static class LpzRuntimeTests
     const int Press1 = 10, Fb1 = 11, Press2 = 12, Press3 = 13, Fb2 = 14, Fb3 = 15, Level = 16, Text = 17, Hello = 18,
               BothA = 19, BothB = 20, BothFb = 21, Clear = 22, Busy = 23, DelayOut = 24, Echo = 25, Rx = 26;
 
-    private static string BuildProgram()
+    /// <param name="timers">False leaves out the Delay, so the golden trace never depends on a timer.</param>
+    internal static string BuildProgram(bool timers = true)
     {
         // Panel IPID 03: inputs (feedback) d1..d4, a1, s1..s2 ; outputs (presses) d1..d6, a1, s1
         int[] panelIns = [Fb1, Fb2, Fb3, BothFb, /*a1*/ Level, /*s1*/ Text, /*s2*/ Echo];
@@ -28,7 +29,7 @@ public static class LpzRuntimeTests
         bin.AddRange(Record(38, "S-4", [1], [Hello], Int(15, 1), Str(3, "ready"))); // init string at start
         bin.AddRange(Record(88, "S-5", [1, Rx], [Echo]));                          // Serial Buffer, always enabled
         bin.AddRange(Record(88, "S-6", [1, Hello], [Text]));
-        bin.AddRange(Record(27, "S-7", [BothFb], [DelayOut], Int(15, 1), Int(2, 5)));  // Delay 50 ms
+        if (timers) bin.AddRange(Record(27, "S-7", [BothFb], [DelayOut], Int(15, 1), Int(2, 5)));  // Delay 50 ms
         bin.AddRange(Record(-48, "S-8", [Press1], [Busy], Str(3, "Some_Module.dll")));  // SIMPL+ (unsupported)
 
         var path = Path.Combine(Paths.TempData(), "synth.lpz");
