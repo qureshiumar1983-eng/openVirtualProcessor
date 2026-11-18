@@ -1,9 +1,11 @@
 name: Windows app
 # Builds OpenVP.exe, the Electron desktop app (portable: one file, no install, no .NET needed). Download it from the run's
-# "OpenVP-windows" artifact, or from a release: push a v* tag, or run this workflow by hand
+# "OpenVP-windows" artifact, or make a release: run this workflow by hand
 # (Actions > Windows app > Run workflow) and enter a version such as v0.1.0.
+# Turned off: it no longer runs on every push. To build again, run it by hand from
+# Actions > Windows app > Run workflow, or uncomment "push:" below.
 on:
-  push:
+  # push:
   workflow_dispatch:
     inputs:
       release:
