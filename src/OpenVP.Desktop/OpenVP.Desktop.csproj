@@ -11,7 +11,9 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
-    <AssemblyName>OpenVP</AssemblyName>
+    <!-- Not "OpenVP": the server's assembly is "openvp", and Windows file names ignore case.
+         The published file is renamed to OpenVP.exe below. -->
+    <AssemblyName>OpenVP.Desktop</AssemblyName>
     <RootNamespace>OpenVP.Desktop</RootNamespace>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationIcon>openvp.ico</ApplicationIcon>
@@ -34,4 +36,7 @@
   <ItemGroup>
     <EmbeddedResource Include="openvp.ico" />
   </ItemGroup>
+  <Target Name="RenameToOpenVPExe" AfterTargets="Publish" Condition="'$(PublishSingleFile)' == 'true' And Exists('$(PublishDir)$(AssemblyName).exe')">
+    <Move SourceFiles="$(PublishDir)$(AssemblyName).exe" DestinationFiles="$(PublishDir)OpenVP.exe" />
+  </Target>
 </Project>
