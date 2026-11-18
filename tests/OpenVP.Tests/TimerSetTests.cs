@@ -20,6 +20,28 @@ public static class TimerSetTests
     }
 
     [Test]
+    public static void A_timer_that_rearms_itself_does_not_gain_a_tick_per_period()
+    {
+        using var d = NewSlot();
+        using var set = new TimerSet(() => d);
+        const int period = 50, rounds = 20;
+        var done = new ManualResetEventSlim();
+        var n = 0;
+        var sw = Stopwatch.StartNew();
+        void Rearm()
+        {
+            if (++n == rounds) { done.Set(); return; }
+            set.After(period, Rearm);
+        }
+        set.After(period, Rearm);
+        Assert.True(done.Wait(10_000), "all rounds ran");
+        var ms = sw.ElapsedMilliseconds;
+        // Ideal is 1000 ms. Rounding each period up to a 10 ms tick boundary cost a whole extra tick per round (~1200 ms).
+        Assert.True(ms >= rounds * period - 5, $"never early (took {ms} ms)");
+        Assert.True(ms < 1100, $"no systematic overshoot: {rounds} x {period} ms took {ms} ms");
+    }
+
+    [Test]
     public static void Timers_run_on_the_slot_thread_in_due_then_arming_order()
     {
         using var d = NewSlot();

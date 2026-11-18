@@ -7,10 +7,12 @@ namespace OpenVP.Core;
 /// them all: it is armed only for the earliest entry and only while something is pending, so an idle slot
 /// has no timer running and a slot with 10,000 pending one-shots still has one.
 ///
-/// Times are kept in 10 ms ticks, the unit SIMPL times are compiled in: a delay is rounded up to the next
-/// tick boundary, so a timer never fires early. Everything due by the time the OS timer wakes goes to the
-/// slot thread in one post and runs in due order, then arming order; each callback is its own step (its own
-/// solve, in a runtime), as when every timer had its own post.
+/// Due times are kept in whole milliseconds on a monotonic clock: due = now + delay, rounded up to the next
+/// millisecond, so a timer never fires early and a period that re-arms itself from its own callback (an
+/// oscillator, a chained One Shot) gains only the wake-up latency, not a whole extra tick. The OS timer is set
+/// for the earliest entry; everything due by the time it wakes goes to the slot thread in one post and runs in
+/// due order, then arming order; each callback is its own step (its own solve, in a runtime), as when every
+/// timer had its own post.
 ///
 /// A timer takes itself out of the set when it fires or is disposed, so a program that retriggers a Delay or
 /// One Shot millions of times doesn't pile up dead timers. A disposed timer never runs, even when it was
@@ -19,9 +21,6 @@ namespace OpenVP.Core;
 /// </summary>
 public sealed class TimerSet : IDisposable
 {
-    /// <summary>The resolution: one tick is 10 ms.</summary>
-    public const int TickMs = 10;
-
     private const int Pending = 0, Queued = 1, Done = 2, Cancelled = 3;
     private const long Disarmed = long.MaxValue;
     private const long MaxDueMs = 4_294_967_294; // Timer.Change's limit; a longer wait just wakes early and re-arms
@@ -40,7 +39,7 @@ public sealed class TimerSet : IDisposable
     private Entry[] _heap = new Entry[16];
     private int _count;
     private long _seq;
-    private long _armedDue = Disarmed; // the tick the OS timer is set for (never later than the earliest entry)
+    private long _armedDue = Disarmed; // the millisecond the OS timer is set for (never later than the earliest entry)
     private int _generation;
     private bool _disposed;
     private int _wakeups, _batches;
@@ -68,7 +67,7 @@ public sealed class TimerSet : IDisposable
     /// <summary>Batches of due callbacks delivered.</summary>
     public int Batches => Volatile.Read(ref _batches);
 
-    /// <summary>Run <paramref name="onFire"/> once after <paramref name="ms"/>, rounded up to the next 10 ms tick.</summary>
+    /// <summary>Run <paramref name="onFire"/> once after <paramref name="ms"/>, rounded up to the next millisecond.</summary>
     public IDisposable After(long ms, Action onFire)
     {
         var e = new Entry(this, onFire);
@@ -81,8 +80,8 @@ public sealed class TimerSet : IDisposable
             e.Generation = _generation;
             if (ms <= 0)
             {
-                // Due now: the current tick, so it sorts after anything already due and before anything later.
-                e.Due = (long)(nowMs / TickMs);
+                // Due now: the current millisecond, so it sorts after anything already due and before anything later.
+                e.Due = (long)nowMs;
                 if (_dispatcher != null)
                 {
                     // Post at once (with everything already due, ahead of it) instead of waiting for the OS timer.
@@ -93,7 +92,7 @@ public sealed class TimerSet : IDisposable
                     if (_count > 0) ArmFor(_heap[0].Due, nowMs); else Disarm();
                 }
             }
-            else e.Due = (long)Math.Ceiling((nowMs + ms) / TickMs);
+            else e.Due = (long)Math.Ceiling(nowMs + ms);
             if (now == null)
             {
                 Push(e);
@@ -137,10 +136,10 @@ public sealed class TimerSet : IDisposable
 
     // ------------------------------------------------------------------ the OS timer (all under _gate)
 
-    private void ArmFor(long dueTick, double nowMs)
+    private void ArmFor(long dueMs, double nowMs)
     {
-        _armedDue = dueTick;
-        var wait = Math.Clamp((long)Math.Ceiling(dueTick * (double)TickMs - nowMs), 0, MaxDueMs);
+        _armedDue = dueMs;
+        var wait = Math.Clamp((long)Math.Ceiling(dueMs - nowMs), 0, MaxDueMs);
         _timer ??= new Timer(static s => ((TimerSet)s!).Wake(), this, Timeout.Infinite, Timeout.Infinite);
         _timer.Change(wait, Timeout.Infinite);
     }
@@ -180,7 +179,7 @@ public sealed class TimerSet : IDisposable
     private List<Entry> DrainDue(double nowMs)
     {
         var batch = _spareBatches.Count > 0 ? _spareBatches.Pop() : new List<Entry>();
-        while (_count > 0 && _heap[0].Due * (double)TickMs <= nowMs)
+        while (_count > 0 && _heap[0].Due <= nowMs)
         {
             var e = PopRoot();
             e.State = Queued;
