@@ -24,19 +24,27 @@ namespace OpenVP.SimplSharp
         internal static ProgramSlot RequireSlot =>
             Slot ?? throw new InvalidOperationException("This SIMPL# API only works inside an OpenVP program slot.");
 
+        /// <summary>
+        /// Where library callbacks (CTimer, socket and device events) run. Unset: the slot's own thread, which
+        /// is right for a SIMPL# Pro program, whose code all runs there. A compiled SIMPL Windows program sets
+        /// its own: there the slot thread runs the logic engine, which the step debugger holds at every pause,
+        /// and the SIMPL+ modules calling these libraries must keep running while it does.
+        /// </summary>
+        public static SlotDispatcher Callbacks { get; set; }
+
         internal static void Post(Action action)
         {
-            var slot = Slot;
-            if (slot == null) { action(); return; }
-            slot.Dispatcher.Post(action);
+            var target = Callbacks ?? Slot?.Dispatcher;
+            if (target == null) { action(); return; }
+            target.Post(action);
         }
 
         /// <summary>Allocation-free variant: pass a static lambda and what it needs.</summary>
         internal static void Post(Action<object?, object?, int> action, object? a, object? b, int i)
         {
-            var slot = Slot;
-            if (slot == null) { action(a, b, i); return; }
-            slot.Dispatcher.Post(action, a, b, i);
+            var target = Callbacks ?? Slot?.Dispatcher;
+            if (target == null) { action(a, b, i); return; }
+            target.Post(action, a, b, i);
         }
 
         internal static void Log(string level, string message) => Slot?.Log(level, message);

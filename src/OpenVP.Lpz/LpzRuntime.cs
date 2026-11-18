@@ -162,6 +162,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
     }
 
     private readonly HashSet<string> _moduleErrors = new();
+    private SlotDispatcher? _callbacks;
 
     /// <summary>Load and instantiate the SIMPL+ module a −48 record points at.</summary>
     private SplusNode? CreateModule(BinSymbol sym)
@@ -177,7 +178,13 @@ public sealed partial class LpzRuntime : IProgramRuntime
                 _alc = new LpzLoadContext(_slot.Number, dir, AppContext.BaseDirectory);
                 // Point the SIMPL# runtime used by modules and their libraries at this slot.
                 var shim = _alc.LoadFromAssemblyName(new System.Reflection.AssemblyName("OpenVP.SimplSharp"));
-                shim.GetType("OpenVP.SimplSharp.OpenVPBridge")?.GetProperty("Slot")?.SetValue(null, _slot);
+                var bridge = shim.GetType("OpenVP.SimplSharp.OpenVPBridge");
+                bridge?.GetProperty("Slot")?.SetValue(null, _slot);
+                // Library callbacks get a thread of their own, so the step debugger holding the logic
+                // thread doesn't freeze the SIMPL+ modules that depend on them.
+                _callbacks = new SlotDispatcher($"slot{_slot.Number:00}-simplsharp",
+                    e => _slot.Log("Error", $"Unhandled exception in SIMPL# library callback: {e}"));
+                bridge?.GetProperty("Callbacks")?.SetValue(null, _callbacks);
             }
             var asm = _alc.LoadFromAssemblyName(new System.Reflection.AssemblyName(Path.GetFileNameWithoutExtension(dll)));
             var splusObject = _alc.LoadFromAssemblyName(new System.Reflection.AssemblyName("SplusObjects"))
@@ -478,6 +485,8 @@ public sealed partial class LpzRuntime : IProgramRuntime
     {
         Stop();
         _timers.Dispose();
+        _callbacks?.Dispose();
+        _callbacks = null;
         _alc?.Unload();
         _alc = null;
     }
