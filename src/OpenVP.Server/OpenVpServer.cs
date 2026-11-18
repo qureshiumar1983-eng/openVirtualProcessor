@@ -191,9 +191,14 @@ public static class OpenVpServer
         {
             var rt = processor.Slot(n).Runtime;
             if (rt == null) return Results.NotFound("No program in that slot.");
-            if (!body.TryGetProperty("name", out var nameEl) || !body.TryGetProperty("value", out var valueEl))
-                return Results.BadRequest("Send {\"name\": \"...\", \"value\": ...}.");
+            if (!body.TryGetProperty("name", out var nameEl))
+                return Results.BadRequest("Send {\"name\": \"...\", \"value\": ...} or {\"name\": \"...\", \"pulse\": true}.");
             var name = nameEl.GetString() ?? "";
+            // Pulse: high then low with nothing in between, like a processor's debugger.
+            if (body.TryGetProperty("pulse", out var pulseEl) && pulseEl.ValueKind == JsonValueKind.True)
+                return rt.TryPulseSignal(name) ? Results.Ok() : Results.NotFound($"Unknown or non-digital signal '{name}'.");
+            if (!body.TryGetProperty("value", out var valueEl))
+                return Results.BadRequest("Send {\"name\": \"...\", \"value\": ...} or {\"name\": \"...\", \"pulse\": true}.");
             return rt.TrySetSignal(name, ValueOf(valueEl)) ? Results.Ok() : Results.NotFound($"Unknown signal '{name}'.");
         });
 

@@ -403,11 +403,30 @@ public sealed class SimplRuntime : IProgramRuntime
 
     public bool TrySetSignal(string name, object value)
     {
-        var sg = _file.Signals.Values.FirstOrDefault(s => s.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-        if (sg == null && name.StartsWith('#') && int.TryParse(name[1..], out var h)) sg = _file.Signals.GetValueOrDefault(h);
+        var sg = SignalNamed(name);
         if (sg == null) return false;
         _slot.Dispatcher.Post(() => Drive(sg.Handle, value, "debugger"));
         return true;
+    }
+
+    public bool TryPulseSignal(string name)
+    {
+        var sg = SignalNamed(name);
+        if (sg == null || KindOf(sg.Handle) != SigKind.Digital) return false;
+        // One post, so nothing (a timer, a panel press) can run between the two edges.
+        _slot.Dispatcher.Post(() =>
+        {
+            Drive(sg.Handle, true, "debugger");
+            Drive(sg.Handle, false, "debugger");
+        });
+        return true;
+    }
+
+    private SmwSignal? SignalNamed(string name)
+    {
+        var sg = _file.Signals.Values.FirstOrDefault(s => s.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+        if (sg == null && name.StartsWith('#') && int.TryParse(name[1..], out var h)) sg = _file.Signals.GetValueOrDefault(h);
+        return sg;
     }
 
     public void Dispose()
