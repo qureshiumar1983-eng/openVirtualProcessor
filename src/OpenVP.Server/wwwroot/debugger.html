@@ -613,7 +613,9 @@ async function force(name, value) {
     msg(step.paused ? `Queued: ${name} changes once the paused step is released (Next).` : "");
   } catch (e) { msg(e.message, true); }
 }
-async function pulse(name) { await force(name, 1); setTimeout(() => force(name, 0), 200); }
+// Release as soon as the press is in: a held pulse (it was 200 ms) outlasts short program timers (a Stepper's
+// 0.1 s first step), so logic that re-drives the same signal sees no new edge and runs differently from a quick tap.
+async function pulse(name) { await force(name, 1); await force(name, 0); }
 
 function forceTarget() {
   const name = $("#fname").value.trim();
