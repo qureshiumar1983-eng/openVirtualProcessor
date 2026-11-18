@@ -263,9 +263,14 @@ public static class OpenVpServer
         {
             var rt = processor.Slot(n).Runtime;
             if (rt == null) return Results.NotFound("No program in that slot.");
-            if (!body.TryGetProperty("name", out var nameEl) || !body.TryGetProperty("value", out var valueEl))
-                return Results.BadRequest("Send {\"name\": \"...\", \"value\": ...}.");
+            if (!body.TryGetProperty("name", out var nameEl))
+                return Results.BadRequest("Send {\"name\": \"...\", \"value\": ...} or {\"name\": \"...\", \"pulse\": true}.");
             var name = nameEl.GetString() ?? "";
+            // Pulse: high then low with nothing in between, like a processor's debugger.
+            if (body.TryGetProperty("pulse", out var pulseEl) && pulseEl.ValueKind == JsonValueKind.True)
+                return rt.TryPulseSignal(name) ? Results.Ok() : Results.NotFound($"Unknown or non-digital signal '{name}'.");
+            if (!body.TryGetProperty("value", out var valueEl))
+                return Results.BadRequest("Send {\"name\": \"...\", \"value\": ...} or {\"name\": \"...\", \"pulse\": true}.");
             return rt.TrySetSignal(name, ValueOf(valueEl)) ? Results.Ok() : Results.NotFound($"Unknown signal '{name}'.");
         });
 
@@ -298,6 +303,110 @@ public static class OpenVpServer
                 : "Symbols without a behavior yet:\n" + string.Join('\n', r.Unsupported.Select(u => $"  {u} pins in={u.Inputs.Count} out={u.Outputs.Count}"))),
             _ => Results.Text("No program loaded.")
         });
+
+        // ------------------------------------------------------------------ slot files (\NVRAM and \USER)
+
+        // A slot's NVRAM and user folders, for config files the program reads. root = nvram | user;
+        // path = a folder or file inside it, with '/' between parts. The program sees /user/a/b.json as \USER\a\b.json.
+        IResult Files(Func<IResult> body)
+        {
+            try { return body(); }
+            catch (Exception e) when (e is ArgumentException or UnauthorizedAccessException)
+            { return Results.BadRequest(new { error = e.Message }); }
+            catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException)
+            { return Results.NotFound(new { error = "No such file or folder." }); }
+            catch (IOException e) { return Results.Conflict(new { error = e.Message }); }
+        }
+
+        string ProgramPathOf(string root, string rel) =>
+            "\\" + root.ToUpperInvariant() + (rel.Length == 0 ? "\\" : "\\" + rel.Replace('/', '\\'));
+
+        string Rel(string? path) => (path ?? "").Replace('\\', '/').Trim('/');
+
+        slotApi.MapGet("/files", (int n, string? root, string? path) => Files(() =>
+        {
+            var dir = SlotFiles.Resolve(processor.Slot(n).Directory, root, path);
+            if (!Directory.Exists(dir)) return Results.NotFound(new { error = "No such folder." });
+            var r = root!.Trim().ToLowerInvariant();
+            var info = new DirectoryInfo(dir);
+            var entries = info.EnumerateDirectories().OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(d => new { name = d.Name, folder = true, size = (long?)null, modified = d.LastWriteTimeUtc })
+                .Concat(info.EnumerateFiles().OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
+                    .Select(f => new { name = f.Name, folder = false, size = (long?)f.Length, modified = f.LastWriteTimeUtc }));
+            // The folder SIMPL+ MakeProgramFilename uses: \NVRAM\{Program Name}\.
+            var programName = processor.Slot(n).Runtime?.ProgramName;
+            var programFolder = programName is null ? null : SlotFiles.FolderName(programName);
+            return Results.Ok(new { root = r, path = Rel(path), programPath = ProgramPathOf(r, Rel(path)), programFolder, entries });
+        }));
+
+        slotApi.MapPost("/files/folder", (int n, JsonElement body) => Files(() =>
+        {
+            string? Str(string k) => body.TryGetProperty(k, out var v) ? v.GetString() : null;
+            var name = Str("name");
+            if (!SlotFiles.IsValidName(name)) return Results.BadRequest(new { error = "Give the folder a name without / \\ : * ? \" < > |." });
+            var dir = Path.Combine(SlotFiles.Resolve(processor.Slot(n).Directory, Str("root"), Str("path")), name!);
+            if (File.Exists(dir)) return Results.Conflict(new { error = $"A file called '{name}' is already there." });
+            Directory.CreateDirectory(dir);
+            return Results.Ok();
+        }));
+
+        // Upload into a folder: any number of multipart files. A file name may carry sub-folders
+        // (a whole folder dragged in from the browser), which are created as needed.
+        slotApi.MapPost("/files", async (int n, string? root, string? path, HttpRequest req) =>
+        {
+            if (!req.HasFormContentType) return Results.BadRequest(new { error = "Send the files as multipart/form-data." });
+            var form = await req.ReadFormAsync();
+            if (form.Files.Count == 0) return Results.BadRequest(new { error = "No files." });
+            return Files(() =>
+            {
+                var dir = SlotFiles.Resolve(processor.Slot(n).Directory, root, path);
+                var saved = new List<string>();
+                foreach (var f in form.Files)
+                {
+                    var parts = f.FileName.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length == 0 || !parts.All(SlotFiles.IsValidName))
+                        return Results.BadRequest(new { error = $"Bad file name '{f.FileName}'." });
+                    var target = SlotFiles.Resolve(processor.Slot(n).Directory, root, Rel(path) + "/" + string.Join('/', parts));
+                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                    if (Directory.Exists(target)) return Results.Conflict(new { error = $"A folder called '{parts[^1]}' is already there." });
+                    using (var fs = File.Create(target)) f.CopyTo(fs);
+                    saved.Add(Path.GetRelativePath(dir, target).Replace('\\', '/'));
+                }
+                return Results.Ok(new { saved });
+            });
+        });
+
+        slotApi.MapGet("/files/download", (int n, string? root, string? path) => Files(() =>
+        {
+            var file = SlotFiles.Resolve(processor.Slot(n).Directory, root, path);
+            if (!File.Exists(file)) return Results.NotFound(new { error = "No such file." });
+            return Results.File(File.OpenRead(file), "application/octet-stream", Path.GetFileName(file));
+        }));
+
+        slotApi.MapPost("/files/rename", (int n, JsonElement body) => Files(() =>
+        {
+            string? Str(string k) => body.TryGetProperty(k, out var v) ? v.GetString() : null;
+            var name = Str("name");
+            if (!SlotFiles.IsValidName(name)) return Results.BadRequest(new { error = "Give it a name without / \\ : * ? \" < > |." });
+            var from = SlotFiles.Resolve(processor.Slot(n).Directory, Str("root"), Str("path"));
+            if (from == SlotFiles.Resolve(processor.Slot(n).Directory, Str("root"), "")) return Results.BadRequest(new { error = "Can't rename the top folder." });
+            var to = Path.Combine(Path.GetDirectoryName(from)!, name!);
+            if (Directory.Exists(from)) Directory.Move(from, to);
+            else if (File.Exists(from)) File.Move(from, to);
+            else return Results.NotFound(new { error = "No such file or folder." });
+            return Results.Ok();
+        }));
+
+        // Deletes a file, or a folder and everything in it. The NVRAM and user folders themselves stay.
+        slotApi.MapDelete("/files", (int n, string? root, string? path) => Files(() =>
+        {
+            var target = SlotFiles.Resolve(processor.Slot(n).Directory, root, path);
+            if (target == SlotFiles.Resolve(processor.Slot(n).Directory, root, "")) return Results.BadRequest(new { error = "Can't delete the top folder." });
+            if (Directory.Exists(target)) Directory.Delete(target, true);
+            else if (File.Exists(target)) File.Delete(target);
+            else return Results.NotFound(new { error = "No such file or folder." });
+            return Results.Ok();
+        }));
 
         // Inspect a compiled program (.lpz, optional .sig) without loading it.
         app.MapPost("/api/inspect", async (HttpRequest req) =>

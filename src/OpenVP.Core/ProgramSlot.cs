@@ -37,8 +37,12 @@ public sealed class ProgramSlot : IDisposable
     public string? ProgramPath { get; private set; }
     public string? LastError { get; private set; }
 
-    /// <summary>Working directory for this slot's program files (like /user/programN).</summary>
+    /// <summary>Working directory for this slot's program files. Holds the slot's <c>nvram</c> and
+    /// <c>user</c> folders, which programs see as <c>\NVRAM</c> and <c>\USER</c> (see <see cref="SlotFiles"/>).</summary>
     public string Directory => Path.Combine(Processor.DataDirectory, $"program{Number:00}");
+
+    /// <summary>Maps a processor path (<c>\NVRAM\x</c>, <c>/user/x</c>) to a file inside this slot's folder.</summary>
+    public string MapPath(string? processorPath) => SlotFiles.Map(Directory, processorPath);
 
     public SlotDispatcher Dispatcher => _dispatcher;
 

@@ -28,6 +28,13 @@ public interface IProgramRuntime : IDisposable
 
     /// <summary>Drive a signal from the debugger. Returns false if the name is unknown.</summary>
     bool TrySetSignal(string name, object value);
+
+    /// <summary>
+    /// Pulse a digital signal from the debugger: high, then low, with no time in between, as a processor's
+    /// debugger does. Both edges are acted on (the rise settles first, then the fall). Returns false if the
+    /// name is unknown or not a digital signal.
+    /// </summary>
+    bool TryPulseSignal(string name) => TrySetSignal(name, true) && TrySetSignal(name, false);
 }
 
 /// <summary>Loads a file into a runtime. One factory per program type.</summary>

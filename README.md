@@ -115,6 +115,24 @@ How OpenVP works out who a client is:
 
 Metrics for each client: connected since, last message, messages and bytes in and out, joins in and out, heartbeats (and the interval between them for CIP), round-trip time (browser panels), packets waiting to be sent (CIP) and errors. For each IP ID: registered, last online and offline, connections since registered, inputs received and feedback sent.
 
+### Program files: NVRAM and User
+
+Each slot has its own file system, like a program on a processor: an **NVRAM** folder and the built-in **User** folder. Use them for config files your program reads at startup (room lists, IP tables, JSON settings).
+
+In the console, the **Files** section for the selected slot lets you switch between NVRAM and User, create folders, upload files (or a whole folder, or drag them in), download, rename and delete. The path shown on the right (for example `\USER\config`) is what the program uses.
+
+Programs see the folders under their usual processor paths:
+
+| The program opens | On disk |
+|---|---|
+| `\NVRAM\settings.json`, `/nvram/settings.json` | `data/program01/nvram/settings.json` |
+| `\USER\config\rooms.json`, `/user/config/rooms.json` | `data/program01/user/config/rooms.json` |
+| `Path.Combine(Directory.GetApplicationRootDirectory(), "user", "x.json")` | `data/program01/user/x.json` |
+
+**Program folders.** On a processor, SIMPL+ `MakeProgramFilename("\NVRAM\config.txt")` gives each program its own folder: `\NVRAM\{Program Name}\config.txt`, using the Program Name from the SIMPL Windows program header. OpenVP does the same. For a `.lpz` it reads the name from the compile header or the archived `.smw`, and falls back to the `.smw` file name. When a program is loaded, the Files section shows that folder's name with a button to create or open it, so your config file goes in the right place.
+
+The folder names match whatever case the program uses (`\USER`, `/user` and `\User` are the same folder, on Linux too). This works for SIMPL# (`Crestron.SimplSharp.CrestronIO`) and SIMPL+ file functions. A program can't reach outside its slot's folder. The files stay when you load a new program into the slot.
+
 ### Debugger
 
 Click **Open debugger** in the console (or go to `/debugger.html?slot=N`). It's laid out like the classic SIMPL Debugger:
@@ -189,6 +207,11 @@ Every endpoint except `/api/info` and `/api/login` needs the access key (see [Se
 | POST | `/api/slots/{n}/iptable/{ipid}/identify` | Run reverse DNS and Crestron autodiscovery again |
 | POST | `/api/slots/{n}/iptable/{ipid}/clients/{id}/login` | `{"username":"...","password":"...","port":22}`; SSH in and run read-only commands (credentials not stored) |
 | GET | `/api/slots/{n}/compat` | Compatibility report |
+| GET | `/api/slots/{n}/files?root=user&path=config` | List a folder in the slot's NVRAM (`root=nvram`) or User (`root=user`) folder |
+| POST | `/api/slots/{n}/files?root=user&path=config` | Multipart upload into that folder; a file name can include sub-folders (`rooms/r1.xml`) |
+| POST | `/api/slots/{n}/files/folder` · `files/rename` | `{"root":"user","path":"config","name":"rooms"}` creates `config/rooms` · renames `path` to `name` |
+| GET | `/api/slots/{n}/files/download?root=user&path=config/rooms.json` | Download a file |
+| DELETE | `/api/slots/{n}/files?root=user&path=config` | Delete a file, or a folder and everything in it |
 | GET | `/api/log?slot=n` · `/api/devices` | |
 | GET | `/api/metrics` | CPU, memory, threads and per-slot activity; `?history=false` leaves out the five-minute history. `/ws/metrics` sends the same once a second |
 | GET | `/api/info` | Version, slot count, and whether you're logged in |

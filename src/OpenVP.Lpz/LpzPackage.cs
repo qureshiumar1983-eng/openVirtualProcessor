@@ -42,7 +42,22 @@ public sealed class LpzPackage
     public BinProgram Logic { get; private set; } = new();
     public string? SourceArchive { get; private set; }
 
-    public string ProgramName => System.IO.Path.GetFileNameWithoutExtension(Boot.GetValueOrDefault("SMWFileName") ?? Path);
+    /// <summary>The Program Name from the SIMPL Windows program header, falling back to the .smw file name.
+    /// A processor uses it for the program's own folders (\NVRAM\name\ via MakeProgramFilename).</summary>
+    public string ProgramName => HeaderProgramName ?? FileProgramName;
+
+    /// <summary>The .smw file name the program was compiled from, without extension.</summary>
+    public string FileProgramName => System.IO.Path.GetFileNameWithoutExtension(Boot.GetValueOrDefault("SMWFileName") ?? Path);
+
+    /// <summary>Program Name from the header: the compile header's "Program Name:" line, or PgmNm in the archived .smw.</summary>
+    public string? HeaderProgramName { get; private set; }
+
+    internal static string? FindHeaderName(string text, string pattern)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(text, pattern, System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var v = m.Success ? m.Groups[1].Value.Trim() : null;
+        return string.IsNullOrEmpty(v) ? null : v;
+    }
     public string Target => Boot.GetValueOrDefault("RackType") ?? "?";
 
     public static LpzPackage Open(string path)
@@ -60,6 +75,7 @@ public sealed class LpzPackage
             ?? zip.Entries.FirstOrDefault(e => e.Name.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidDataException("No logic (.bin) file in the package.");
         pkg.Logic = BinProgram.Parse(ReadAll(bin));
+        pkg.HeaderProgramName = FindHeaderName(pkg.Logic.Header, @"^\s*Program Name\s*:\s*(.+?)\s*$");
 
         var dip = zip.Entries.FirstOrDefault(e => e.Name.EndsWith(".dip", StringComparison.OrdinalIgnoreCase));
         if (dip != null)
@@ -90,6 +106,9 @@ public sealed class LpzPackage
                     using var inner = new ZipArchive(new MemoryStream(ReadAll(e)));
                     var sig = inner.Entries.FirstOrDefault(x => x.Name.EndsWith(".sig", StringComparison.OrdinalIgnoreCase));
                     if (sig != null) pkg.Signals = SigTable.Parse(ReadAll(sig));
+                    var smw = inner.Entries.FirstOrDefault(x => x.Name.EndsWith(".smw", StringComparison.OrdinalIgnoreCase));
+                    if (smw != null && pkg.HeaderProgramName == null)
+                        pkg.HeaderProgramName = FindHeaderName(Encoding.Latin1.GetString(ReadAll(smw)), @"^PgmNm=(.+?)\r?$");
                 }
                 catch (InvalidDataException) { /* archive unreadable: names are optional */ }
             }
