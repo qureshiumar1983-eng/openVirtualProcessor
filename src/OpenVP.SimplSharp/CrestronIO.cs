@@ -14,18 +14,8 @@ namespace Crestron.SimplSharp.CrestronIO
     /// <summary>Maps processor paths (\NVRAM, /user, \USER) into the slot's folder.</summary>
     internal static class Paths
     {
-        public static string Map(string path)
-        {
-            var root = OpenVPBridge.Slot?.Directory ?? SIO.Path.GetTempPath();
-            if (string.IsNullOrEmpty(path)) return root;
-            var p = path.Replace('\\', '/');
-            if (p.StartsWith(root.Replace('\\', '/'), StringComparison.Ordinal)) return path; // already mapped
-            p = p.TrimStart('/');
-            var full = SIO.Path.GetFullPath(SIO.Path.Combine(root, p.ToLowerInvariant().StartsWith("nvram") || p.ToLowerInvariant().StartsWith("user") || p.ToLowerInvariant().StartsWith("html") ? p : p));
-            if (!full.StartsWith(SIO.Path.GetFullPath(root), StringComparison.Ordinal))
-                throw new UnauthorizedAccessException($"Path '{path}' is outside the program folder.");
-            return full;
-        }
+        public static string Map(string path) =>
+            OpenVP.Core.SlotFiles.Map(OpenVPBridge.Slot?.Directory ?? SIO.Path.GetTempPath(), path);
     }
 
     public delegate void AsyncCallback(IAsyncResult result);
@@ -236,7 +226,8 @@ namespace Crestron.SimplSharp.CrestronIO
         public static string[] GetFiles(string path, string pattern) => SIO.Directory.GetFiles(Paths.Map(path), pattern);
         public static string[] GetDirectories(string path) => SIO.Directory.GetDirectories(Paths.Map(path));
         public static string GetApplicationDirectory() => InitialParametersClass.ProgramDirectory.TrimEnd(SIO.Path.DirectorySeparatorChar);
-        public static string GetApplicationRootDirectory() => OpenVPBridge.Slot?.Processor.DataDirectory ?? SIO.Path.GetTempPath();
+        // On a processor this is the file system root, so Combine(root, "user", ...) means \USER. Here the slot folder plays that role.
+        public static string GetApplicationRootDirectory() => OpenVPBridge.Slot?.Directory ?? SIO.Path.GetTempPath();
     }
 
     public class FileInfo : FileSystemInfo
