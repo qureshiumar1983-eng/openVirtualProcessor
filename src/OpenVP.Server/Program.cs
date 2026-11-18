@@ -6,6 +6,7 @@ using System.Threading.Channels;
 using OpenVP.Core;
 using OpenVP.Lpz;
 using OpenVP.Panels;
+using OpenVP.Server;
 using OpenVP.Simpl;
 using OpenVP.SimplSharpHost;
 
@@ -34,7 +35,18 @@ if (cfg.GetValue("CipEnabled", true))
     catch (Exception e) { Console.WriteLine($"CIP listener not started: {e.Message}"); }
 }
 
+var auth = ApiAuth.FromConfig(cfg, processor.DataDirectory);
+if (!auth.Enabled)
+    Console.WriteLine("WARNING: access key is OFF (OpenVP:ApiKey=off). Anyone who can reach this port can upload and run code.");
+else
+{
+    Console.WriteLine($"Access key ({auth.Source}): {auth.Key}");
+    Console.WriteLine("  Log in by opening http://<this-host>:<port>/?key=<key> once, or send 'Authorization: Bearer <key>'.");
+    if (!auth.LocalRequiresKey) Console.WriteLine("  Requests from this machine (localhost) don't need the key.");
+}
+
 var app = builder.Build();
+app.Use(auth.Handle);
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20) });
 app.UseDefaultFiles();
 app.UseStaticFiles();
@@ -68,68 +80,106 @@ object ValueOf(JsonElement v) => v.ValueKind switch
 {
     JsonValueKind.True => true,
     JsonValueKind.False => false,
-    JsonValueKind.Number => v.GetInt32(),
+    JsonValueKind.Number => v.TryGetInt32(out var i) ? i : (int)Math.Clamp(Math.Round(v.GetDouble()), int.MinValue, int.MaxValue),
     _ => v.ToString()
 };
 
 // ------------------------------------------------------------------ REST
 
-app.MapGet("/api/info", () => new { name = "OpenVP", version = "0.1.0", slots = processor.Slots.Count, cipPort = cip?.Port });
+app.MapGet("/api/info", (HttpContext ctx) => new
+{
+    name = "OpenVP", version = "0.1.0", slots = processor.Slots.Count, cipPort = cip?.Port,
+    auth = auth.Enabled, authenticated = auth.IsAuthenticated(ctx)
+});
+
+app.MapPost("/api/login", (HttpContext ctx, JsonElement body) =>
+{
+    var key = body.TryGetProperty("key", out var k) ? k.GetString() : null;
+    if (!auth.Enabled) return Results.Ok();
+    if (!auth.Matches(key)) return Results.Json(new { error = "Wrong access key." }, statusCode: StatusCodes.Status401Unauthorized);
+    auth.SetCookie(ctx, key!);
+    return Results.Ok();
+});
+app.MapPost("/api/logout", (HttpContext ctx) => { auth.ClearCookie(ctx); return Results.Ok(); });
 
 app.MapGet("/api/slots", () => processor.Slots.Select(SlotDto));
 
-app.MapGet("/api/slots/{n:int}", (int n) => SlotDto(processor.Slot(n)));
+// Everything under /api/slots/{n}: an unknown slot is a 404, not a server error.
+var slotApi = app.MapGroup("/api/slots/{n:int}").AddEndpointFilter(async (ctx, next) =>
+{
+    var n = Convert.ToInt32(ctx.HttpContext.Request.RouteValues["n"]);
+    return processor.IsValidSlot(n) ? await next(ctx) : Results.NotFound(new { error = $"Slot must be 1–{processor.Slots.Count}." });
+});
 
-app.MapPost("/api/slots/{n:int}/program", async (int n, HttpRequest req) =>
+slotApi.MapGet("", (int n) => SlotDto(processor.Slot(n)));
+
+// One upload per slot at a time; a second one waits instead of racing on the same folder.
+var uploadLocks = processor.Slots.Select(_ => new SemaphoreSlim(1, 1)).ToArray();
+
+slotApi.MapPost("/program", async (int n, HttpRequest req) =>
 {
     if (!req.HasFormContentType) return Results.BadRequest("Send the program as multipart/form-data field 'file'.");
     var form = await req.ReadFormAsync();
     var file = form.Files["file"] ?? form.Files.FirstOrDefault();
     if (file == null) return Results.BadRequest("No file.");
-    var dir = Path.Combine(uploads, $"slot{n:00}");
-    if (Directory.Exists(dir)) Directory.Delete(dir, true);
-    Directory.CreateDirectory(dir);
-    var path = Path.Combine(dir, Path.GetFileName(file.FileName));
-    await using (var fs = File.Create(path)) await file.CopyToAsync(fs);
-    // Sidecar files (MyProgram.openvp.json, MyProgram.symbols.json) can ride along.
-    foreach (var extra in form.Files.Where(f => f != file))
-    {
-        await using var fs = File.Create(Path.Combine(dir, Path.GetFileName(extra.FileName)));
-        await extra.CopyToAsync(fs);
-    }
     var start = !string.Equals(form["start"], "false", StringComparison.OrdinalIgnoreCase);
-    try { processor.LoadProgram(n, path, start); }
-    catch (Exception e) { return Results.UnprocessableEntity(new { error = e.Message, slot = SlotDto(processor.Slot(n)) }); }
-    return Results.Ok(SlotDto(processor.Slot(n)));
+    var dir = Path.Combine(uploads, $"slot{n:00}");
+    var path = Path.Combine(dir, Path.GetFileName(file.FileName));
+
+    await uploadLocks[n - 1].WaitAsync();
+    try
+    {
+        // Unload first so the old program lets go of its files, then replace them and load the new one.
+        // The slot stays locked throughout, so a start/stop/unload request waits instead of interleaving.
+        return processor.WithSlotLocked(n, slot =>
+        {
+            slot.Unload();
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+            Directory.CreateDirectory(dir);
+            using (var fs = File.Create(path)) file.CopyTo(fs);
+            // Sidecar files (MyProgram.openvp.json, MyProgram.symbols.json) can ride along.
+            foreach (var extra in form.Files.Where(f => f != file))
+            {
+                using var fs = File.Create(Path.Combine(dir, Path.GetFileName(extra.FileName)));
+                extra.CopyTo(fs);
+            }
+            try { processor.LoadProgram(n, path, start); }
+            catch (Exception e) { return Results.UnprocessableEntity(new { error = e.Message, slot = SlotDto(slot) }); }
+            return Results.Ok(SlotDto(slot));
+        });
+    }
+    finally { uploadLocks[n - 1].Release(); }
 });
 
-app.MapPost("/api/slots/{n:int}/start", (int n) =>
+slotApi.MapPost("/start", (int n) =>
 {
     try { processor.Slot(n).Start(); return Results.Ok(SlotDto(processor.Slot(n))); }
     catch (Exception e) { return Results.UnprocessableEntity(new { error = e.Message }); }
 });
-app.MapPost("/api/slots/{n:int}/stop", (int n) => { processor.Slot(n).Stop(); return SlotDto(processor.Slot(n)); });
-app.MapPost("/api/slots/{n:int}/unload", (int n) => { processor.Slot(n).Unload(); return SlotDto(processor.Slot(n)); });
+slotApi.MapPost("/stop", (int n) => { processor.Slot(n).Stop(); return SlotDto(processor.Slot(n)); });
+slotApi.MapPost("/unload", (int n) => { processor.Slot(n).Unload(); return SlotDto(processor.Slot(n)); });
 
-app.MapGet("/api/slots/{n:int}/signals", (int n) =>
+slotApi.MapGet("/signals", (int n) =>
     (processor.Slot(n).Runtime?.GetSignals() ?? Array.Empty<SignalInfo>())
         .Select(s => new { name = s.Name, kind = s.Kind.ToString(), value = s.Value }));
 
-app.MapPost("/api/slots/{n:int}/signals", (int n, JsonElement body) =>
+slotApi.MapPost("/signals", (int n, JsonElement body) =>
 {
     var rt = processor.Slot(n).Runtime;
     if (rt == null) return Results.NotFound("No program in that slot.");
-    var name = body.GetProperty("name").GetString()!;
-    return rt.TrySetSignal(name, ValueOf(body.GetProperty("value"))) ? Results.Ok() : Results.NotFound($"Unknown signal '{name}'.");
+    if (!body.TryGetProperty("name", out var nameEl) || !body.TryGetProperty("value", out var valueEl))
+        return Results.BadRequest("Send {\"name\": \"...\", \"value\": ...}.");
+    var name = nameEl.GetString() ?? "";
+    return rt.TrySetSignal(name, ValueOf(valueEl)) ? Results.Ok() : Results.NotFound($"Unknown signal '{name}'.");
 });
 
-app.MapPost("/api/slots/{n:int}/console", (int n, JsonElement body) =>
+slotApi.MapPost("/console", (int n, JsonElement body) =>
 {
     try { return Results.Text(processor.Slot(n).RunConsoleCommand(body.GetProperty("command").GetString() ?? "")); }
     catch (Exception e) { return Results.Text("Error: " + e.Message); }
 });
 
-app.MapGet("/api/slots/{n:int}/compat", (int n) => processor.Slot(n).Runtime switch
+slotApi.MapGet("/compat", (int n) => processor.Slot(n).Runtime switch
 {
     SimplSharpRuntime s => Results.Text(s.Compat.ToString()),
     LpzRuntime l => Results.Text(LpzReport.Build(l.Package, l.Package.Signals)),

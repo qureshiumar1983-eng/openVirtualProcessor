@@ -21,7 +21,7 @@ cd openVirtualProcessor
 dotnet run --project src/OpenVP.Server
 ```
 
-Open **http://localhost:8080**. Pick a slot, choose a `.cpz`, `.dll` or `.smw` file, and click **Load & start**. Click **open test panel** next to a device to get a browser panel at that IP ID.
+Open **http://localhost:8080**. From another machine you'll be asked for the access key, which the server prints when it starts (see [Security](#security)). Pick a slot, choose a `.cpz`, `.dll` or `.smw` file, and click **Load & start**. Click **open test panel** next to a device to get a browser panel at that IP ID.
 
 Or with Docker:
 
@@ -29,6 +29,8 @@ Or with Docker:
 docker build -t openvp .
 docker run -p 8080:8080 -p 41794:41794 -v $PWD/data:/app/data openvp
 ```
+
+The container prints its access key at startup (`docker logs <container>`), and it's saved in `data/apikey.txt`. To choose your own, add `-e OpenVP__ApiKey=your-long-random-key`.
 
 ### Try the samples
 
@@ -103,6 +105,20 @@ Click **Open debugger** in the console (or go to `/debugger.html?slot=N`). It's 
 
 Each window shows only its own slot, so you can open one per slot and two people can debug two programs on the same processor at once. For SIMPL# slots the signals are device joins, named like `IPID03.out.d1` (panel press) and `IPID03.in.s5` (feedback).
 
+## Security
+
+A SIMPL# program is .NET code that runs inside the OpenVP process, so anyone who can upload a program can run code on the machine. The web console and API are protected by an **access key**:
+
+- If `OpenVP:ApiKey` isn't set, a random key is generated on first start, saved in `data/apikey.txt` (readable only by its owner) and printed to the console.
+- In a browser, open `http://host:8080/?key=KEY` once, or type the key into the login box. You'll get an HttpOnly, SameSite=Strict cookie.
+- From scripts, send `Authorization: Bearer KEY` or `X-OpenVP-Key: KEY`.
+- Requests from the same machine to `localhost` don't need the key, unless `OpenVP:LocalRequiresKey=true`. This exception never applies to requests that arrive through a reverse proxy (with `X-Forwarded-For`, `Forwarded` or `X-Real-IP` headers) or are addressed to a host name other than localhost, which also stops DNS-rebinding attacks.
+- Requests from a web page on another site are refused (403) even when the browser has the cookie, and even from localhost. So a malicious page open in your browser can't upload a program.
+- Panels (`/ws/panel` and CIP on 41794) don't need the key, because they can only press joins, like panels on a real processor. Set `OpenVP:PanelsRequireKey=true` to protect `/ws/panel` too. CIP has no way to send a key, so keep port 41794 on a trusted network.
+- `OpenVP:ApiKey=off` turns the key off. Only do that on a network you trust completely.
+
+Traffic is plain HTTP. To use OpenVP across an untrusted network, put it behind a reverse proxy that adds HTTPS.
+
 ## Configuration
 
 `src/OpenVP.Server/appsettings.json`, or command-line overrides like `--OpenVP:CipPort=41795`:
@@ -113,10 +129,15 @@ Each window shows only its own slot, so you can open one per slot and two people
 | `OpenVP:Slots` | `10` | Number of program slots |
 | `OpenVP:CipEnabled` / `CipPort` | `true` / `41794` | CIP listener |
 | `OpenVP:CipLogPackets` | `false` | Hex-log CIP traffic |
+| `OpenVP:ApiKey` | (generated) | Access key for the console and API; `off` disables it. See [Security](#security) |
+| `OpenVP:LocalRequiresKey` | `false` | Require the key from localhost too |
+| `OpenVP:PanelsRequireKey` | `false` | Require the key for browser panels (`/ws/panel`) |
 | `OpenVP:Autoload:slot1` | | Program file to load into slot 1 at startup |
 | `Urls` | `http://0.0.0.0:8080` | Web console address |
 
 ## REST API
+
+Every endpoint except `/api/info` and `/api/login` needs the access key (see [Security](#security)), for example `curl -H "Authorization: Bearer $(cat data/apikey.txt)" http://host:8080/api/slots`. An unknown slot number returns 404.
 
 | Method | Path | |
 |---|---|---|
@@ -127,6 +148,8 @@ Each window shows only its own slot, so you can open one per slot and two people
 | POST | `/api/slots/{n}/console` | `{"command":"ipt"}` |
 | GET | `/api/slots/{n}/compat` | Compatibility report |
 | GET | `/api/log?slot=n` · `/api/devices` | |
+| GET | `/api/info` | Version, slot count, and whether you're logged in |
+| POST | `/api/login` · `/api/logout` | `{"key":"..."}`; sets or clears the login cookie |
 
 ## Development
 
