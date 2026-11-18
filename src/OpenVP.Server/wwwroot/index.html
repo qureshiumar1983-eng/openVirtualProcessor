@@ -27,8 +27,7 @@
   button { cursor:pointer; } button:hover { border-color:var(--accent); }
   .bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
   .mono { font-family: ui-monospace, Menlo, monospace; font-size:12px; }
-  #trace, #log, #console-out { height:220px; overflow:auto; background:#0b0e11; border:1px solid var(--line); border-radius:6px; padding:8px; white-space:pre-wrap; }
-  #signals-wrap { max-height:340px; overflow:auto; }
+  #log, #console-out { height:220px; overflow:auto; background:#0b0e11; border:1px solid var(--line); border-radius:6px; padding:8px; white-space:pre-wrap; }
   .lv-Error { color:var(--err); } .lv-Warning { color:var(--warn); } .lv-Notice { color:#9ecbff; } .lv-Console { color:#cfd6df; }
   .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
   @media (max-width: 1200px) { .grid2 { grid-template-columns: 1fr; } }
@@ -64,17 +63,10 @@
   </div>
   <div>
     <section>
-      <h2>Debugger · slot <span class="sel-num2">1</span> <span class="muted" style="text-transform:none;letter-spacing:0">(only this slot's signals)</span></h2>
+      <h2>Debugger · slot <span class="sel-num2">1</span></h2>
       <div class="bar">
-        <input id="filter" placeholder="filter signals">
-        <input id="set-name" placeholder="signal name" class="mono">
-        <input id="set-value" placeholder="value (1, 0, 500, text)" class="mono">
-        <button id="set">Set</button>
-        <button id="pulse">Pulse</button>
-      </div>
-      <div class="grid2">
-        <div id="signals-wrap"><table id="signals"><thead><tr><th>Signal</th><th>Type</th><th>Value</th></tr></thead><tbody></tbody></table></div>
-        <div><div id="trace" class="mono"></div></div>
+        <button id="open-debugger">Open debugger ↗</button>
+        <span class="muted">Signal list and trace window for this slot, in its own window. Open one per slot to debug several programs at once.</span>
       </div>
     </section>
     <div class="grid2" style="margin-top:16px">
@@ -92,7 +84,7 @@
 </main>
 <script>
 const $ = s => document.querySelector(s);
-let sel = 1, ws = null, signals = {};
+let sel = 1, ws = null;
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
@@ -118,25 +110,6 @@ async function refreshSlots() {
   }
 }
 
-async function refreshSignals() {
-  const list = await api(`/api/slots/${sel}/signals`).catch(() => []);
-  signals = {};
-  for (const s of list) signals[s.name] = s;
-  renderSignals();
-}
-
-function renderSignals() {
-  const f = $("#filter").value.toLowerCase();
-  const tb = $("#signals tbody"); tb.innerHTML = "";
-  for (const s of Object.values(signals)) {
-    if (f && !s.name.toLowerCase().includes(f)) continue;
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td class="mono">${esc(s.name)}</td><td class="muted">${s.kind}</td><td class="mono">${esc(String(s.value))}</td>`;
-    tr.onclick = () => { $("#set-name").value = s.name; };
-    tb.appendChild(tr);
-  }
-}
-
 function esc(t) { return t.replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
 
 function line(el, text, cls) {
@@ -145,19 +118,16 @@ function line(el, text, cls) {
   el.scrollTop = el.scrollHeight;
 }
 
-function connectTrace() {
+function connectLog() {
   ws?.close();
   const proto = location.protocol === "https:" ? "wss://" : "ws://";
-  ws = new WebSocket(`${proto}${location.host}/ws/trace?slot=${sel}`);
+  ws = new WebSocket(`${proto}${location.host}/ws/trace?slot=${sel}&trace=0`);
   ws.onmessage = ev => {
     const m = JSON.parse(ev.data);
     const t = new Date(m.time).toLocaleTimeString();
-    if (m.t === "trace") {
-      line($("#trace"), `${t}  ${m.signal} = ${JSON.stringify(m.value)}  (${m.source})`);
-      const s = signals[m.signal]; if (s) { s.value = m.value; renderSignals(); } else refreshSignals();
-    } else if (m.t === "log") {
+    if (m.t === "log") {
       line($("#log"), `${t}  ${m.level}  ${m.message}`, "lv-" + m.level);
-      if (/Loaded|started|stopped/.test(m.message)) { refreshSlots(); refreshSignals(); }
+      if (/Loaded|started|stopped/.test(m.message)) refreshSlots();
     }
   };
 }
@@ -169,22 +139,10 @@ async function loadLog() {
 
 function select(n) {
   sel = n; $("#sel-num").textContent = n; document.querySelectorAll(".sel-num2").forEach(e => e.textContent = n);
-  $("#trace").innerHTML = ""; refreshSlots(); refreshSignals(); connectTrace(); loadLog();
+  refreshSlots(); connectLog(); loadLog();
 }
 
-function parseValue(v) {
-  if (v === "true") return true; if (v === "false") return false;
-  return /^\d+$/.test(v) ? Number(v) : v;
-}
-
-async function setSignal(name, value) {
-  try { await api(`/api/slots/${sel}/signals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, value }) }); }
-  catch (e) { alert(e.message); }
-}
-
-$("#set").onclick = () => setSignal($("#set-name").value, parseValue($("#set-value").value));
-$("#pulse").onclick = async () => { const n = $("#set-name").value; await setSignal(n, 1); setTimeout(() => setSignal(n, 0), 200); };
-$("#filter").oninput = renderSignals;
+$("#open-debugger").onclick = () => window.open(`debugger.html?slot=${sel}`, `openvp-debugger-${sel}`);
 
 $("#upload").onclick = async () => {
   const files = $("#file").files; if (!files.length) return alert("Choose a .cpz, .dll or .smw first.");
@@ -194,12 +152,12 @@ $("#upload").onclick = async () => {
   for (const f of files) if (f !== main) fd.append("extra", f);
   try { await api(`/api/slots/${sel}/program`, { method: "POST", body: fd }); }
   catch (e) { alert(e.message); }
-  refreshSlots(); refreshSignals();
+  refreshSlots();
 };
 
 document.querySelectorAll("[data-act]").forEach(b => b.onclick = async () => {
   try { await api(`/api/slots/${sel}/${b.dataset.act}`, { method: "POST" }); } catch (e) { alert(e.message); }
-  refreshSlots(); refreshSignals();
+  refreshSlots();
 });
 
 $("#inspect").onclick = async () => {

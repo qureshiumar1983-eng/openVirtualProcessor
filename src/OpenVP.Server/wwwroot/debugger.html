@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenVP Debugger</title>
+<style>
+  :root { --bg:#0f1216; --pane:#151a20; --head:#1b2129; --line:#29303a; --text:#e6e9ee; --muted:#8b95a3; --accent:#4c8dff;
+          --sel:#22344f; --hi:#7fe0b1; --lo:#6b7480; --ana:#f2cf7a; --ser:#9ecbff; --err:#e05252; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; font:13px/1.35 system-ui, sans-serif; background:var(--bg); color:var(--text);
+         display:grid; grid-template-rows:auto auto 1fr auto auto; overflow:hidden; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size:12px; }
+  button, input, select { font:inherit; color:var(--text); background:#111519; border:1px solid var(--line); border-radius:4px; padding:3px 8px; }
+  button { cursor:pointer; } button:hover { border-color:var(--accent); }
+  button.on { background:#173a2c; border-color:#2f9e6e; color:var(--hi); }
+  label { display:inline-flex; align-items:center; gap:4px; color:var(--muted); }
+
+  /* title + toolbar */
+  .title { display:flex; align-items:center; gap:10px; padding:6px 10px; border-bottom:1px solid var(--line); background:var(--head); }
+  .title b { font-size:14px; } .title .muted { color:var(--muted); }
+  .toolbar { display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center; padding:6px 10px; border-bottom:1px solid var(--line); background:var(--pane); }
+  .group { display:flex; gap:6px; align-items:center; }
+  .sep { width:1px; height:20px; background:var(--line); }
+
+  /* panes */
+  .panes { display:grid; grid-template-columns: var(--left, 42%) 5px 1fr; min-height:0; }
+  .pane { display:grid; grid-template-rows:auto auto 1fr; min-height:0; min-width:0; background:var(--pane); }
+  .pane h2 { margin:0; padding:5px 8px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted);
+             background:var(--head); border-bottom:1px solid var(--line); display:flex; gap:8px; align-items:center; }
+  .pane h2 .count { margin-left:auto; text-transform:none; letter-spacing:0; }
+  .pane .filters { display:flex; gap:6px; padding:5px 8px; border-bottom:1px solid var(--line); align-items:center; flex-wrap:wrap; }
+  .pane .filters input[type=search] { flex:1; min-width:120px; }
+  .splitter { background:var(--line); cursor:col-resize; }
+  .splitter:hover, .splitter.drag { background:var(--accent); }
+  .scroll { overflow:auto; min-height:0; }
+
+  table { width:100%; border-collapse:collapse; table-layout:fixed; }
+  thead th { position:sticky; top:0; z-index:1; background:var(--head); color:var(--muted); font-weight:500; font-size:11px;
+             text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); border-right:1px solid var(--line); user-select:none; }
+  th.sortable { cursor:pointer; } th.sortable:hover { color:var(--text); }
+  td { padding:2px 6px; border-bottom:1px solid #1e242c; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  tbody tr:hover { background:#1a2029; }
+  tbody tr.sel { background:var(--sel); }
+  #sigs td:first-child, #sigs th:first-child { text-align:center; padding:2px 0; }
+  .k-Digital { color:var(--lo); } .k-Digital.high { color:var(--hi); font-weight:600; }
+  .k-Analog { color:var(--ana); } .k-Serial { color:var(--ser); }
+  .type { color:var(--muted); }
+  #trace td.n { color:var(--muted); text-align:right; }
+  #trace tr.flash { animation: flash .6s ease-out; }
+  @keyframes flash { from { background:#2a3b22; } to { background:transparent; } }
+  .empty { padding:24px; color:var(--muted); text-align:center; }
+
+  /* force bar + status */
+  .force { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:6px 10px; border-top:1px solid var(--line); background:var(--pane); }
+  .force input.name { flex:1; min-width:180px; } .force input.val { width:180px; }
+  .status { display:flex; gap:0; border-top:1px solid var(--line); background:var(--head); color:var(--muted); font-size:12px; }
+  .status span { padding:3px 10px; border-right:1px solid var(--line); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .status .grow { flex:1; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--lo); margin-right:5px; vertical-align:middle; }
+  .dot.ok { background:#2f9e6e; } .dot.bad { background:var(--err); }
+
+  /* context menu */
+  #menu { position:fixed; z-index:10; min-width:170px; background:#1b2129; border:1px solid var(--line); border-radius:6px; padding:4px 0;
+          box-shadow:0 8px 24px rgba(0,0,0,.45); display:none; }
+  #menu div { padding:5px 14px; cursor:pointer; } #menu div:hover { background:var(--sel); }
+  #menu hr { border:0; border-top:1px solid var(--line); margin:4px 0; }
+  #menu .hd { color:var(--muted); font-size:11px; cursor:default; } #menu .hd:hover { background:none; }
+
+  @media (max-width: 760px) {
+    body { overflow:auto; grid-template-rows:auto auto auto auto auto; }
+    .panes { grid-template-columns: 1fr; grid-template-rows: 45vh 0 55vh; }
+    .splitter { display:none; }
+    .title, .group { flex-wrap:wrap; }
+    .title select, .toolbar select { max-width:100%; }
+    #prog { flex-basis:100%; order:5; }
+  }
+</style>
+</head>
+<body>
+<div class="title">
+  <b>Debugger</b>
+  <select id="slot" title="Program slot"></select>
+  <span id="prog" class="muted mono"></span>
+  <span style="flex:1"></span>
+  <a href="/" style="color:var(--accent)">Console</a>
+</div>
+
+<div class="toolbar">
+  <div class="group">
+    <button id="stream" class="on" title="Start/stop recording signal changes in the trace (F5)">● Stream</button>
+    <button id="clear" title="Clear the trace window">Clear</button>
+    <button id="save" title="Save the trace to a text file">Save…</button>
+  </div>
+  <div class="sep"></div>
+  <div class="group">
+    <label>Trace <select id="tmode"><option value="all">all signals</option><option value="watch">checked signals only</option></select></label>
+  </div>
+  <div class="sep"></div>
+  <div class="group">
+    <label>Time <select id="tfmt"><option value="abs">absolute</option><option value="rel">relative</option><option value="delta">delta</option></select></label>
+    <label>Analog <select id="afmt"><option value="dec">decimal</option><option value="hex">hex</option><option value="pct">percent</option></select></label>
+    <label>Serial <select id="sfmt"><option value="ascii">ASCII</option><option value="hex">hex</option></select></label>
+    <label><input type="checkbox" id="autoscroll" checked> auto-scroll</label>
+  </div>
+</div>
+
+<div class="panes" id="panes">
+  <section class="pane">
+    <h2>Signals <span class="count mono" id="sigcount"></span></h2>
+    <div class="filters">
+      <input type="search" id="search" placeholder="Find signal" class="mono">
+      <select id="kfilter" title="Signal type">
+        <option value="">all types</option><option>Digital</option><option>Analog</option><option>Serial</option>
+      </select>
+      <label title="Show only signals checked for tracing"><input type="checkbox" id="onlychecked"> checked</label>
+      <button id="checkall" title="Check every visible signal">✓ all</button>
+      <button id="checknone" title="Uncheck every visible signal">✗ all</button>
+    </div>
+    <div class="scroll" id="sigscroll">
+      <table id="sigs">
+        <colgroup><col style="width:28px"><col><col style="width:62px"><col style="width:34%"></colgroup>
+        <thead><tr><th title="Trace this signal">T</th><th class="sortable" data-sort="name">Signal name</th><th class="sortable" data-sort="kind">Type</th><th>Value</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="empty" id="sigempty" hidden>No program in this slot.</div>
+    </div>
+  </section>
+  <div class="splitter" id="splitter"></div>
+  <section class="pane">
+    <h2>Trace <span class="count mono" id="tracecount"></span></h2>
+    <div class="filters">
+      <input type="search" id="tsearch" placeholder="Filter trace" class="mono">
+    </div>
+    <div class="scroll" id="tracescroll">
+      <table id="trace">
+        <colgroup><col style="width:56px"><col style="width:110px"><col><col style="width:34%"><col style="width:80px"></colgroup>
+        <thead><tr><th>#</th><th>Time</th><th>Signal name</th><th>Value</th><th>Source</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="empty" id="traceempty">Waiting for signal changes…</div>
+    </div>
+  </section>
+</div>
+
+<div class="force">
+  <b style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em">Force</b>
+  <input id="fname" class="name mono" placeholder="signal name (pick one in the list)" list="siglist">
+  <datalist id="siglist"></datalist>
+  <input id="fval" class="val mono" placeholder="value: 1 · 500 · 1F4h · 50% · text\x0D">
+  <button id="fset">Set</button><button id="fclear">Clear</button><button id="fpulse">Pulse</button>
+  <span id="fmsg" class="muted"></span>
+</div>
+
+<div class="status">
+  <span id="st-conn"><i class="dot"></i>disconnected</span>
+  <span id="st-state">—</span>
+  <span id="st-sigs">0 signals</span>
+  <span id="st-trace">0 in trace</span>
+  <span class="grow" id="st-msg"></span>
+</div>
+
+<div id="menu"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const MAX_TRACE = 5000;
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("openvp.dbg." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("openvp.dbg." + k, JSON.stringify(v)); } catch { } }
+};
+
+let slot = Number(new URLSearchParams(location.search).get("slot")) || 1;
+let ws = null, streaming = true, sortBy = "name", sortDir = 1, selected = null;
+let signals = new Map();      // name -> { name, kind, value, watch, tr, valTd, chk }
+let trace = [];               // { n, time, signal, kind, value, source, tr }
+let seq = 0, firstTime = null, pending = [], rafQueued = false, refreshTimer = null;
+const opts = { tmode: store.get("tmode", "all"), tfmt: store.get("tfmt", "abs"), afmt: store.get("afmt", "dec"), sfmt: store.get("sfmt", "ascii") };
+for (const k of Object.keys(opts)) { $("#" + k).value = opts[k]; $("#" + k).onchange = e => { opts[k] = e.target.value; store.set(k, opts[k]); rerenderValues(); }; }
+
+async function api(path, init) {
+  const r = await fetch(path, init);
+  const ct = r.headers.get("content-type") || "";
+  const body = ct.includes("json") ? await r.json() : await r.text();
+  if (!r.ok) throw new Error(body.error || body || r.statusText);
+  return body;
+}
+
+// ---------------------------------------------------------------- formatting
+
+function isHigh(v) { return v === true || v === 1 || v === "1" || v === "True" || v === "true"; }
+
+function fmt(kind, v) {
+  if (kind === "Digital") return isHigh(v) ? "1" : "0";
+  if (kind === "Analog") {
+    const n = Number(v) || 0, u = n & 0xFFFF;
+    if (opts.afmt === "hex") return u.toString(16).toUpperCase().padStart(4, "0") + "h";
+    if (opts.afmt === "pct") return (u * 100 / 65535).toFixed(1) + "%";
+    return n + "d";
+  }
+  const s = v == null ? "" : String(v);
+  if (opts.sfmt === "hex") return [...s].map(c => (c.charCodeAt(0) & 0xFF).toString(16).toUpperCase().padStart(2, "0")).join(" ");
+  return s.replace(/[\x00-\x1F\x7F-\xFF\\]/g, c => c === "\\" ? "\\\\" : "\\x" + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0"));
+}
+
+function valClass(kind, v) { return "mono k-" + kind + (kind === "Digital" && isHigh(v) ? " high" : ""); }
+
+function pad(n, w = 2) { return String(n).padStart(w, "0"); }
+function fmtTime(e, prev) {
+  if (opts.tfmt === "rel") return "+" + ((e.time - firstTime) / 1000).toFixed(3) + "s";
+  if (opts.tfmt === "delta") return "+" + (prev ? (e.time - prev.time) / 1000 : 0).toFixed(3) + "s";
+  const d = new Date(e.time);
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
+}
+
+// Parse what the user typed in the force box into the value to send.
+function parseForce(kind, text) {
+  const t = text.trim();
+  if (kind === "Digital") return /^(1|true|on|high)$/i.test(t) ? 1 : 0;
+  if (kind === "Analog") {
+    let m;
+    if ((m = /^([0-9a-f]+)h$/i.exec(t)) || (m = /^0x([0-9a-f]+)$/i.exec(t))) return parseInt(m[1], 16) & 0xFFFF;
+    if ((m = /^([\d.]+)%$/.exec(t))) return Math.round(Math.min(100, Number(m[1])) * 655.35);
+    if ((m = /^(-?\d+)d?$/i.exec(t))) return Number(m[1]);
+    throw new Error("Analog value: 500, 500d, 1F4h or 50%");
+  }
+  return text.replace(/\\x([0-9a-f]{2})|\\r|\\n|\\t|\\\\/gi, (s, h) =>
+    h ? String.fromCharCode(parseInt(h, 16)) : ({ "\\r": "\r", "\\n": "\n", "\\t": "\t", "\\\\": "\\" })[s.toLowerCase()]);
+}
+
+// ---------------------------------------------------------------- signal list
+
+function watchKey() { return "watch." + slot; }
+function saveWatch() { store.set(watchKey(), [...signals.values()].filter(s => s.watch).map(s => s.name)); }
+
+async function loadSignals() {
+  const list = await api(`/api/slots/${slot}/signals`).catch(() => []);
+  const watched = new Set(store.get(watchKey(), []));
+  const old = signals;
+  signals = new Map();
+  for (const s of list) {
+    const prev = old.get(s.name);
+    signals.set(s.name, { name: s.name, kind: s.kind, value: s.value, watch: prev ? prev.watch : watched.has(s.name) });
+  }
+  buildSignalTable();
+}
+
+function sortedSignals() {
+  const arr = [...signals.values()];
+  const cmp = sortBy === "kind"
+    ? (a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name, undefined, { numeric: true })
+    : (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true });
+  return arr.sort((a, b) => cmp(a, b) * sortDir);
+}
+
+function buildSignalTable() {
+  const tb = $("#sigs tbody"), frag = document.createDocumentFragment(), dl = document.createDocumentFragment();
+  for (const s of sortedSignals()) {
+    const tr = document.createElement("tr");
+    const chk = document.createElement("input"); chk.type = "checkbox"; chk.checked = s.watch;
+    chk.onclick = e => { e.stopPropagation(); s.watch = chk.checked; saveWatch(); applyFilter(); };
+    const c0 = document.createElement("td"); c0.appendChild(chk);
+    const c1 = document.createElement("td"); c1.className = "mono"; c1.textContent = s.name; c1.title = s.name;
+    const c2 = document.createElement("td"); c2.className = "type"; c2.textContent = s.kind;
+    const c3 = document.createElement("td");
+    tr.append(c0, c1, c2, c3);
+    tr.onclick = () => selectSignal(s.name);
+    tr.ondblclick = () => { if (s.kind === "Digital") force(s.name, isHigh(s.value) ? 0 : 1); else { selectSignal(s.name); $("#fval").focus(); } };
+    tr.oncontextmenu = e => { e.preventDefault(); selectSignal(s.name); showMenu(e.clientX, e.clientY, s); };
+    Object.assign(s, { tr, valTd: c3, chk });
+    paintValue(s);
+    frag.appendChild(tr);
+    const o = document.createElement("option"); o.value = s.name; dl.appendChild(o);
+  }
+  tb.replaceChildren(frag);
+  $("#siglist").replaceChildren(dl);
+  if (selected && signals.has(selected)) signals.get(selected).tr.classList.add("sel");
+  document.querySelectorAll("#sigs th.sortable").forEach(th =>
+    th.textContent = th.textContent.replace(/ [▲▼]$/, "") + (th.dataset.sort === sortBy ? (sortDir > 0 ? " ▲" : " ▼") : ""));
+  $("#sigempty").hidden = signals.size > 0;
+  applyFilter();
+}
+
+function paintValue(s) {
+  if (!s.valTd) return;
+  s.valTd.className = valClass(s.kind, s.value);
+  s.valTd.textContent = fmt(s.kind, s.value);
+  s.valTd.title = s.kind === "Serial" ? fmt(s.kind, s.value) : "";
+}
+
+function applyFilter() {
+  const q = $("#search").value.toLowerCase(), k = $("#kfilter").value, only = $("#onlychecked").checked;
+  let shown = 0, watched = 0;
+  for (const s of signals.values()) {
+    if (s.watch) watched++;
+    const vis = (!q || s.name.toLowerCase().includes(q)) && (!k || s.kind === k) && (!only || s.watch);
+    if (s.tr) s.tr.hidden = !vis;
+    if (vis) shown++;
+  }
+  $("#sigcount").textContent = `${shown} shown · ${watched} checked`;
+  $("#st-sigs").textContent = `${signals.size} signals`;
+}
+
+function selectSignal(name) {
+  if (selected && signals.has(selected)) signals.get(selected).tr?.classList.remove("sel");
+  selected = name;
+  const s = signals.get(name);
+  s?.tr?.classList.add("sel");
+  $("#fname").value = name;
+  if (s && s.kind !== "Digital") $("#fval").value = fmt(s.kind, s.value);
+}
+
+// ---------------------------------------------------------------- trace
+
+function onTrace(m) {
+  let s = signals.get(m.signal);
+  if (s) { s.value = m.value; paintValue(s); }
+  else scheduleRefresh();
+  if (!streaming) return;
+  if (opts.tmode === "watch" && !(s && s.watch)) return;
+  const e = { n: ++seq, time: Date.parse(m.time), signal: m.signal, kind: m.kind, value: m.value, source: m.source || "" };
+  if (firstTime == null) firstTime = e.time;
+  pending.push(e);
+  if (!rafQueued) { rafQueued = true; requestAnimationFrame(flushTrace); }
+}
+
+function traceRow(e, prev) {
+  const tr = document.createElement("tr");
+  tr.innerHTML = `<td class="n mono"></td><td class="mono"></td><td class="mono"></td><td></td><td class="type"></td>`;
+  e.tr = tr; paintTraceRow(e, prev);
+  tr.onclick = () => { if (signals.has(e.signal)) { selectSignal(e.signal); signals.get(e.signal).tr?.scrollIntoView({ block: "nearest" }); } };
+  return tr;
+}
+
+function paintTraceRow(e, prev) {
+  const c = e.tr.children;
+  c[0].textContent = e.n; c[1].textContent = fmtTime(e, prev); c[2].textContent = e.signal; c[2].title = e.signal;
+  c[3].className = valClass(e.kind, e.value); c[3].textContent = fmt(e.kind, e.value); c[4].textContent = e.source;
+}
+
+function flushTrace() {
+  rafQueued = false;
+  if (!pending.length) return;
+  const tb = $("#trace tbody"), frag = document.createDocumentFragment(), q = $("#tsearch").value.toLowerCase();
+  for (const e of pending) {
+    const tr = traceRow(e, trace[trace.length - 1]);
+    if (q && !e.signal.toLowerCase().includes(q)) tr.hidden = true;
+    if (pending.length < 20) tr.classList.add("flash");
+    trace.push(e); frag.appendChild(tr);
+  }
+  pending = [];
+  tb.appendChild(frag);
+  while (trace.length > MAX_TRACE) trace.shift().tr.remove();
+  $("#traceempty").hidden = trace.length > 0;
+  updateTraceCount();
+  if ($("#autoscroll").checked) { const sc = $("#tracescroll"); sc.scrollTop = sc.scrollHeight; }
+}
+
+function updateTraceCount() {
+  $("#tracecount").textContent = `${trace.length}${trace.length >= MAX_TRACE ? " (oldest dropped)" : ""}`;
+  $("#st-trace").textContent = `${trace.length} in trace`;
+}
+
+function rerenderValues() {
+  for (const s of signals.values()) paintValue(s);
+  trace.forEach((e, i) => paintTraceRow(e, trace[i - 1]));
+}
+
+function clearTrace() {
+  trace = []; seq = 0; firstTime = null; pending = [];
+  $("#trace tbody").replaceChildren(); $("#traceempty").hidden = false; updateTraceCount();
+}
+
+function saveTrace() {
+  const head = `OpenVP trace · slot ${slot} · ${$("#prog").textContent}\n#\tTime\tSignal\tType\tValue\tSource\n`;
+  const body = trace.map((e, i) => [e.n, fmtTime(e, trace[i - 1]), e.signal, e.kind, fmt(e.kind, e.value), e.source].join("\t")).join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([head + body + "\n"], { type: "text/plain" }));
+  const d = new Date();
+  a.download = `slot${pad(slot)}-trace-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.txt`;
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// ---------------------------------------------------------------- forcing signals
+
+async function force(name, value) {
+  try {
+    await api(`/api/slots/${slot}/signals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, value }) });
+    msg("");
+  } catch (e) { msg(e.message, true); }
+}
+async function pulse(name) { await force(name, 1); setTimeout(() => force(name, 0), 200); }
+
+function forceTarget() {
+  const name = $("#fname").value.trim();
+  const s = signals.get(name);
+  if (!s) { msg(name ? `Unknown signal '${name}'` : "Pick a signal first", true); return null; }
+  return s;
+}
+function msg(t, bad) { $("#fmsg").textContent = t; $("#fmsg").style.color = bad ? "var(--err)" : ""; }
+
+$("#fset").onclick = () => {
+  const s = forceTarget(); if (!s) return;
+  try { force(s.name, s.kind === "Digital" && !$("#fval").value.trim() ? 1 : parseForce(s.kind, $("#fval").value)); }
+  catch (e) { msg(e.message, true); }
+};
+$("#fclear").onclick = () => { const s = forceTarget(); if (s) force(s.name, s.kind === "Digital" ? 0 : s.kind === "Analog" ? 0 : ""); };
+$("#fpulse").onclick = () => { const s = forceTarget(); if (!s) return; if (s.kind !== "Digital") return msg("Pulse is for digital signals", true); pulse(s.name); };
+$("#fval").onkeydown = e => { if (e.key === "Enter") $("#fset").click(); };
+$("#fname").onchange = () => { if (signals.has($("#fname").value)) selectSignal($("#fname").value); };
+
+// ---------------------------------------------------------------- context menu
+
+function showMenu(x, y, s) {
+  const items = [[s.name, null, "hd"]];
+  if (s.kind === "Digital") items.push(["Set (1)", () => force(s.name, 1)], ["Clear (0)", () => force(s.name, 0)], ["Pulse", () => pulse(s.name)], ["Toggle", () => force(s.name, isHigh(s.value) ? 0 : 1)]);
+  else if (s.kind === "Analog") items.push(["Set value…", () => { $("#fval").focus(); $("#fval").select(); }], ["Set to 0", () => force(s.name, 0)], ["Set to 65535", () => force(s.name, 65535)]);
+  else items.push(["Send string…", () => { $("#fval").value = ""; $("#fval").focus(); }], ["Clear string", () => force(s.name, "")]);
+  items.push(["-"], [s.watch ? "Uncheck for trace" : "Check for trace", () => { s.watch = !s.watch; s.chk.checked = s.watch; saveWatch(); applyFilter(); }],
+             ["Copy name", () => navigator.clipboard?.writeText(s.name)]);
+  const m = $("#menu");
+  m.replaceChildren(...items.map(([label, fn, cls]) => {
+    if (label === "-") return document.createElement("hr");
+    const d = document.createElement("div"); d.textContent = label; if (cls) d.className = cls;
+    if (fn) d.onclick = () => { hideMenu(); fn(); };
+    return d;
+  }));
+  m.style.display = "block";
+  m.style.left = Math.min(x, innerWidth - m.offsetWidth - 4) + "px";
+  m.style.top = Math.min(y, innerHeight - m.offsetHeight - 4) + "px";
+}
+function hideMenu() { $("#menu").style.display = "none"; }
+addEventListener("click", hideMenu); addEventListener("blur", hideMenu);
+addEventListener("keydown", e => {
+  if (e.key === "Escape") hideMenu();
+  if (e.key === "F5") { e.preventDefault(); $("#stream").click(); }
+});
+
+// ---------------------------------------------------------------- connection, slots, status
+
+function connect() {
+  ws?.close();
+  const proto = location.protocol === "https:" ? "wss://" : "ws://";
+  const sock = ws = new WebSocket(`${proto}${location.host}/ws/trace?slot=${slot}`);
+  sock.onopen = () => setConn(true);
+  sock.onclose = () => { if (sock !== ws) return; setConn(false); setTimeout(() => { if (sock === ws) connect(); }, 2000); };
+  sock.onmessage = ev => {
+    const m = JSON.parse(ev.data);
+    if (m.t === "trace") onTrace(m);
+    else if (m.t === "log") {
+      if (/Loaded|started|stopped|Unload/i.test(m.message)) { loadSlots(); scheduleRefresh(); }
+      if (m.level === "Error") $("#st-msg").textContent = m.message;
+    }
+  };
+}
+function setConn(ok) { $("#st-conn").innerHTML = `<i class="dot ${ok ? "ok" : "bad"}"></i>${ok ? "connected" : "reconnecting…"}`; }
+function scheduleRefresh() { clearTimeout(refreshTimer); refreshTimer = setTimeout(loadSignals, 300); }
+
+async function loadSlots() {
+  const slots = await api("/api/slots").catch(() => []);
+  const sel = $("#slot");
+  sel.replaceChildren(...slots.map(s => {
+    const o = document.createElement("option"); o.value = s.number;
+    o.textContent = `Slot ${pad(s.number)}${s.program ? " · " + s.program : ""}`;
+    return o;
+  }));
+  sel.value = slot;
+  const s = slots.find(x => x.number === slot);
+  $("#prog").textContent = s?.file ? `${s.file} · ${s.kind}` : "no program";
+  $("#st-state").textContent = s ? s.state : "—";
+  document.title = `Debugger · slot ${slot}`;
+}
+
+function switchSlot(n) {
+  slot = n; history.replaceState(null, "", `?slot=${n}`);
+  selected = null; $("#fname").value = ""; $("#fval").value = "";
+  clearTrace(); loadSlots(); loadSignals(); connect();
+}
+
+$("#slot").onchange = e => switchSlot(Number(e.target.value));
+$("#stream").onclick = () => { streaming = !streaming; $("#stream").classList.toggle("on", streaming); $("#stream").textContent = streaming ? "● Stream" : "○ Stream"; };
+$("#clear").onclick = clearTrace;
+$("#save").onclick = saveTrace;
+$("#search").oninput = applyFilter; $("#kfilter").onchange = applyFilter; $("#onlychecked").onchange = applyFilter;
+$("#tsearch").oninput = () => { const q = $("#tsearch").value.toLowerCase(); for (const e of trace) e.tr.hidden = !!q && !e.signal.toLowerCase().includes(q); };
+function checkVisible(v) { for (const s of signals.values()) if (s.tr && !s.tr.hidden) { s.watch = v; s.chk.checked = v; } saveWatch(); applyFilter(); }
+$("#checkall").onclick = () => checkVisible(true); $("#checknone").onclick = () => checkVisible(false);
+document.querySelectorAll("#sigs th.sortable").forEach(th => th.onclick = () => {
+  if (sortBy === th.dataset.sort) sortDir = -sortDir; else { sortBy = th.dataset.sort; sortDir = 1; }
+  buildSignalTable();
+});
+
+// splitter
+(() => {
+  const sp = $("#splitter"), panes = $("#panes");
+  const saved = store.get("split", null); if (saved) panes.style.setProperty("--left", saved);
+  sp.onpointerdown = e => {
+    sp.setPointerCapture(e.pointerId); sp.classList.add("drag");
+    sp.onpointermove = ev => {
+      const r = panes.getBoundingClientRect();
+      const pct = Math.max(20, Math.min(80, (ev.clientX - r.left) * 100 / r.width)).toFixed(1) + "%";
+      panes.style.setProperty("--left", pct); store.set("split", pct);
+    };
+    sp.onpointerup = () => { sp.classList.remove("drag"); sp.onpointermove = null; };
+  };
+})();
+
+switchSlot(slot);
+setInterval(loadSlots, 3000);
+</script>
+</body>
+</html>

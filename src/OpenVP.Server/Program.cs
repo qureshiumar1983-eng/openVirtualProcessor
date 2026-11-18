@@ -174,6 +174,7 @@ app.Map("/ws/trace", async (HttpContext ctx) =>
 {
     if (!ctx.WebSockets.IsWebSocketRequest) { ctx.Response.StatusCode = 400; return; }
     int? slot = int.TryParse(ctx.Request.Query["slot"], out var s) ? s : null;
+    var wantTrace = ctx.Request.Query["trace"] != "0";   // trace=0: log lines only (the console page)
     using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
     var outbox = Channel.CreateBounded<string>(new BoundedChannelOptions(10_000) { FullMode = BoundedChannelFullMode.DropOldest });
     void OnTrace(TraceEvent e)
@@ -186,7 +187,7 @@ app.Map("/ws/trace", async (HttpContext ctx) =>
         if (slot == null || e.Slot == slot)
             outbox.Writer.TryWrite(JsonSerializer.Serialize(new { t = "log", time = e.Time, slot = e.Slot, level = e.Level, message = e.Message }, json));
     }
-    processor.Traced += OnTrace;
+    if (wantTrace) processor.Traced += OnTrace;
     processor.LogWritten += OnLog;
     var buffer = new byte[1024];
     var receive = ws.ReceiveAsync(buffer, ctx.RequestAborted);
