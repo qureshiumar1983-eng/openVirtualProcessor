@@ -43,7 +43,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
     private readonly List<DeviceNode> _devices = new();
     private readonly Queue<(int sig, object value, string source)> _pending = new();
     private readonly Queue<Action> _nextWave = new();
-    private readonly List<IDisposable> _timers = new();
+    private readonly TimerSet _timers = new();
     private readonly NvramStore _store;
     private bool _solving;
     private volatile bool _running;
@@ -253,9 +253,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
 
     internal IDisposable After(long ms, Action action)
     {
-        var t = new Timer(_ => _slot.Dispatcher.Post(() => { if (_running) action(); }), null, Math.Max(0, ms), Timeout.Infinite);
-        lock (_timers) _timers.Add(t);
-        return t;
+        return _timers.After(ms, () => _slot.Dispatcher.Post(() => { if (_running) action(); }));
     }
 
     // ------------------------------------------------------------------ lifecycle
@@ -298,11 +296,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
             if (n is not SplusNode)
                 try { n.Stop(); } catch (Exception) { }
         _store.Flush();
-        lock (_timers)
-        {
-            foreach (var t in _timers) t.Dispose();
-            _timers.Clear();
-        }
+        _timers.CancelAll();
         foreach (var d in _devices) d.Detach();
     }
 

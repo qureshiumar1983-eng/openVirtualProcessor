@@ -180,14 +180,15 @@ if (Run("timers"))
     var slot = p.Slot(1);
     var rt = slot.Runtime!;
     var field = rt.GetType().GetField("_timers", BindingFlags.NonPublic | BindingFlags.Instance)!;
-    var list = (System.Collections.ICollection)field.GetValue(rt)!;
+    var timerSet = field.GetValue(rt)!;
+    int Live() => (int)timerSet.GetType().GetProperty("Count")!.GetValue(timerSet)!;
     GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
     var before = GC.GetTotalMemory(true);
     var key = new JoinKey(SigKind.Digital, 1);
     for (int i = 0; i < Q(100_000); i++) { panel.ReceiveInput(key, true); panel.ReceiveInput(key, false); }
     slot.Dispatcher.Invoke(() => { });
     var after = GC.GetTotalMemory(true);
-    Console.WriteLine($"Retriggerable one-shot pressed {Q(100_000):N0} times: runtime holds {list.Count:N0} timers, heap +{(after - before) / 1048576.0:N1} MB (stays until the program stops)");
+    Console.WriteLine($"Retriggerable one-shot pressed {Q(100_000):N0} times: runtime holds {Live():N0} timers, heap +{(after - before) / 1048576.0:N1} MB (a retriggered timer should release its predecessor)");
     Console.WriteLine();
 }
 

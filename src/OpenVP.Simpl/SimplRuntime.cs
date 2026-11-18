@@ -60,7 +60,7 @@ public sealed class SimplRuntime : IProgramRuntime
     private readonly List<Node> _nodes = new();
     private readonly List<DeviceNode> _devices = new();
     private readonly Queue<(int handle, object value, string source)> _pending = new();
-    private readonly List<IDisposable> _timers = new();
+    private readonly TimerSet _timers = new();
     private bool _solving;
     private bool _running;
 
@@ -185,9 +185,7 @@ public sealed class SimplRuntime : IProgramRuntime
 
     internal IDisposable After(long ms, Action action)
     {
-        var t = new Timer(_ => _slot.Dispatcher.Post(() => { if (_running) action(); }), null, Math.Max(ms, 0), Timeout.Infinite);
-        lock (_timers) _timers.Add(t);
-        return t;
+        return _timers.After(ms, () => _slot.Dispatcher.Post(() => { if (_running) action(); }));
     }
 
     // ------------------------------------------------------------------ lifecycle
@@ -217,11 +215,7 @@ public sealed class SimplRuntime : IProgramRuntime
     public void Stop()
     {
         _running = false;
-        lock (_timers)
-        {
-            foreach (var t in _timers) t.Dispose();
-            _timers.Clear();
-        }
+        _timers.CancelAll();
         foreach (var d in _devices) d.Detach();
     }
 

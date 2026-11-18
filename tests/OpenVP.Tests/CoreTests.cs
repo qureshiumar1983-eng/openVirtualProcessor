@@ -103,4 +103,30 @@ public static class CoreTests
         try { Cip.Frame(Cip.Data, new byte[70_000]); throw new AssertException("expected ArgumentException"); }
         catch (ArgumentException) { }
     }
+
+    [Test]
+    public static void Timer_set_forgets_timers_that_fired_or_were_disposed()
+    {
+        var set = new TimerSet();
+        int fired = 0;
+        for (int i = 0; i < 50; i++) set.After(0, () => Interlocked.Increment(ref fired));
+        Assert.Eventually(() => Volatile.Read(ref fired) == 50 && set.Count == 0, "fired timers leave the set");
+
+        var cancelled = set.After(10_000, () => throw new AssertException("a disposed timer fired"));
+        Assert.Equal(1, set.Count, "armed timer is tracked");
+        cancelled.Dispose();
+        cancelled.Dispose(); // idempotent, like Timer.Dispose
+        Assert.Equal(0, set.Count, "disposed timer leaves the set");
+
+        set.After(10_000, () => throw new AssertException("cancelled timer fired"));
+        set.After(10_000, () => throw new AssertException("cancelled timer fired"));
+        set.CancelAll();
+        Assert.Equal(0, set.Count, "CancelAll empties the set");
+
+        // A retriggered timer (dispose the old one, arm a new one) never accumulates.
+        IDisposable? last = null;
+        for (int i = 0; i < 1000; i++) { last?.Dispose(); last = set.After(10_000, () => { }); }
+        Assert.Equal(1, set.Count, "one live timer after 1000 retriggers");
+        set.CancelAll();
+    }
 }
