@@ -107,6 +107,40 @@ public static class CipTests
         }
     }
 
+    // A panel that connects with a tiny receive window and then does not read: every write to it blocks.
+    private static (TcpClient client, NetworkStream stream, JoinDevice dev) StalledPanel(Processor p, CipServer server, int joins, int textLen)
+    {
+        var dev = DeviceDirectory.Resolve(p, 3, null);
+        var text = new string('x', textLen);
+        for (uint j = 1; j <= joins; j++) dev.SetFeedback(new JoinKey(SigKind.Serial, j), text);
+        var client = new TcpClient { ReceiveBufferSize = 1024 }; // before connecting, so the window stays small
+        client.Connect(IPAddress.Loopback, server.Port);
+        var s = client.GetStream();
+        s.ReadTimeout = 10_000;
+        Read(s); // who are you
+        s.Write(Cip.Frame(Cip.ConnectRequest, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x40, 0xFF, 0xFF, 0xF1, 0x01));
+        Assert.Equal(Cip.ConnectResponse, Read(s).type, "connect response");
+        s.Write(Cip.Frame(Cip.Data, 0x00, 0x00, 0x02, Cip.SubUpdateRequest, 0x00)); // ask for the snapshot, then stop reading
+        return (client, s, dev);
+    }
+
+    [Test]
+    public static void A_session_whose_write_is_stuck_still_cleans_up_when_it_ends()
+    {
+        using var p = new Processor(Paths.TempData());
+        p.AddLoader(new SimplSharpLoader());
+        p.LoadProgram(1, Paths.SampleDll);
+        var server = new CipServer(p, 0, IPAddress.Loopback);
+        server.Start();
+        var (client, _, dev) = StalledPanel(p, server, 15_000, 240); // ~3.6 MB: more than the socket buffers hold
+        using var _c = client;
+        Assert.Eventually(() => dev.ConnectionCount == 1 && server.SessionCount == 1, "panel attached");
+        Thread.Sleep(500); // let the sender fill the socket and block in its write
+        server.Dispose(); // the server shuts down: the read loop ends while the sender is still stuck
+        Assert.Eventually(() => server.SessionCount == 0, "the session was removed even though its write was stuck");
+        Assert.Equal(0, dev.ConnectionCount, "device connection released");
+    }
+
     private static (byte type, byte[] payload) Read(NetworkStream s)
     {
         var h = new byte[3];

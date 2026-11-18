@@ -30,6 +30,8 @@ public sealed class CipServer : IDisposable
     }
 
     public bool LogPackets { get; set; }
+    /// <summary>Connections currently open (a diagnostic).</summary>
+    public int SessionCount { get { lock (_sessions) return _sessions.Count; } }
     public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
 
     public void Start()
@@ -194,6 +196,7 @@ internal sealed class CipSession
     // that stopped reading is cut off instead of growing memory without limit; it reconnects and gets a snapshot.
     private const int MaxQueuedPackets = 20_000;
     private const int MaxWriteBytes = 64 * 1024;
+    private readonly CancellationTokenSource _sendCts = new(); // cancelled when the session ends, to free a write stuck on a dead peer
     private readonly Channel<byte[]> _outbox = Channel.CreateBounded<byte[]>(
         new BoundedChannelOptions(MaxQueuedPackets) { FullMode = BoundedChannelFullMode.Wait, SingleReader = true });
     private NetworkStream? _stream;
@@ -213,7 +216,7 @@ internal sealed class CipSession
         var remote = _client.Client.RemoteEndPoint?.ToString() ?? "?";
         _server.Event(1, $"connection from {remote}");
         _processor.DeviceUnregistered += OnUnregistered;
-        var sender = SendLoop();
+        var sender = SendLoop(_sendCts.Token);
         try
         {
             Send(Cip.WhoAreYouPacket());
@@ -231,11 +234,22 @@ internal sealed class CipSession
         catch (Exception e) when (e is IOException or SocketException or OperationCanceledException or ObjectDisposedException) { }
         finally
         {
-            _processor.DeviceUnregistered -= OnUnregistered;
-            _server.Event(_device?.Slot ?? 1, $"{remote} disconnected" + (_device != null ? $" (IP ID {_device.IpId:X2})" : ""));
-            Detach();
-            _outbox.Writer.TryComplete();
-            try { await sender; } catch { }
+            try
+            {
+                _processor.DeviceUnregistered -= OnUnregistered;
+                _server.Event(_device?.Slot ?? 1, $"{remote} disconnected" + (_device != null ? $" (IP ID {_device.IpId:X2})" : ""));
+            }
+            finally
+            {
+                Detach();
+                _outbox.Writer.TryComplete();
+                // Nothing more needs to reach a panel that is gone: abort a write stuck on a dead peer, and
+                // close the socket (which also fails it), instead of waiting for it forever.
+                _sendCts.Cancel();
+                try { _client.Close(); } catch { }
+                try { await sender.WaitAsync(TimeSpan.FromSeconds(5)); } catch { }
+                _sendCts.Dispose();
+            }
         }
     }
 
@@ -310,13 +324,13 @@ internal sealed class CipSession
     }
 
     /// <summary>One writer per connection: whatever is queued goes out as a single write, in order.</summary>
-    private async Task SendLoop()
+    private async Task SendLoop(CancellationToken ct)
     {
         var buf = new ArrayBufferWriter<byte>(1024);
         try
         {
             var reader = _outbox.Reader;
-            while (await reader.WaitToReadAsync())
+            while (await reader.WaitToReadAsync(ct))
             {
                 buf.Clear();
                 while (buf.WrittenCount < MaxWriteBytes && reader.TryRead(out var packet))
@@ -324,7 +338,7 @@ internal sealed class CipSession
                     if (_server.LogPackets) _server.Log($"-> {Convert.ToHexString(packet)}");
                     buf.Write(packet);
                 }
-                await _stream!.WriteAsync(buf.WrittenMemory);
+                await _stream!.WriteAsync(buf.WrittenMemory, ct);
             }
         }
         catch (Exception) { _client.Close(); } // dead peer: the read loop notices and cleans up
