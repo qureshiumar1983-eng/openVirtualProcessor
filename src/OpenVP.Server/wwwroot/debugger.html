@@ -10,7 +10,7 @@
   * { box-sizing:border-box; }
   html, body { height:100%; }
   body { margin:0; font:13px/1.35 system-ui, sans-serif; background:var(--bg); color:var(--text);
-         display:grid; grid-template-rows:auto auto 1fr auto auto; overflow:hidden; }
+         display:grid; grid-template-rows:auto auto auto 1fr auto auto; overflow:hidden; }
   .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size:12px; }
   button, input, select { font:inherit; color:var(--text); background:#111519; border:1px solid var(--line); border-radius:4px; padding:3px 8px; }
   button { cursor:pointer; } button:hover { border-color:var(--accent); }
@@ -61,6 +61,21 @@
   .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--lo); margin-right:5px; vertical-align:middle; }
   .dot.ok { background:#2f9e6e; } .dot.bad { background:var(--err); }
 
+  /* step-through */
+  :root { --brk:#e0a052; --pause:#3a2a12; }
+  button.step-on { background:#3a2a12; border-color:var(--brk); color:#ffd9a8; }
+  button:disabled { opacity:.45; cursor:default; } button:disabled:hover { border-color:var(--line); }
+  .stepbar { display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; padding:6px 10px; border-bottom:1px solid var(--line);
+             background:#1d1a14; color:#e8d6bb; }
+  .stepbar.off { display:none; }
+  .stepbar.paused { background:var(--pause); }
+  .stepbar .what { flex:1; min-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .stepbar .what b { color:#fff; }
+  .stepbar .hint { color:var(--muted); font-size:12px; }
+  #sigs td.b, #sigs th.b { text-align:center; padding:2px 0; }
+  #sigs input.brk { accent-color:var(--brk); }
+  tbody tr.paused, tbody tr.paused:hover { background:var(--pause); box-shadow: inset 3px 0 0 var(--brk); }
+
   /* context menu */
   #menu { position:fixed; z-index:10; min-width:170px; background:#1b2129; border:1px solid var(--line); border-radius:6px; padding:4px 0;
           box-shadow:0 8px 24px rgba(0,0,0,.45); display:none; }
@@ -95,6 +110,13 @@
   </div>
   <div class="sep"></div>
   <div class="group">
+    <button id="stepmode" title="Step mode: pause the program on each signal change until you press Next (Ctrl+F5)">⏸ Step</button>
+    <button id="stepnext" disabled title="Let the paused change through and stop at the next one (F10)">Next ▶|</button>
+    <button id="steprun" disabled title="Turn step mode off and let the program run (F8)">Run ▶▶</button>
+    <label title="Which changes pause the program">Break on <select id="bmode"><option value="all">every change</option><option value="marked">marked signals ⏸</option></select></label>
+  </div>
+  <div class="sep"></div>
+  <div class="group">
     <label>Trace <select id="tmode"><option value="all">all signals</option><option value="watch">checked signals only</option></select></label>
   </div>
   <div class="sep"></div>
@@ -106,6 +128,13 @@
   </div>
 </div>
 
+<div class="stepbar off" id="stepbar">
+  <span class="what" id="stepwhat"></span>
+  <button id="stepnext2" title="F10">Next ▶|</button>
+  <button id="steprun2" title="F8">Run ▶▶</button>
+  <span class="hint">F10 next · F8 run · F9 mark/unmark selected signal</span>
+</div>
+
 <div class="panes" id="panes">
   <section class="pane">
     <h2>Signals <span class="count mono" id="sigcount"></span></h2>
@@ -115,13 +144,14 @@
         <option value="">all types</option><option>Digital</option><option>Analog</option><option>Serial</option>
       </select>
       <label title="Show only signals checked for tracing"><input type="checkbox" id="onlychecked"> checked</label>
+      <label title="Show only signals marked to break on"><input type="checkbox" id="onlybreak"> ⏸ marked</label>
       <button id="checkall" title="Check every visible signal">✓ all</button>
       <button id="checknone" title="Uncheck every visible signal">✗ all</button>
     </div>
     <div class="scroll" id="sigscroll">
       <table id="sigs">
-        <colgroup><col style="width:28px"><col><col style="width:62px"><col style="width:34%"></colgroup>
-        <thead><tr><th title="Trace this signal">T</th><th class="sortable" data-sort="name">Signal name</th><th class="sortable" data-sort="kind">Type</th><th>Value</th></tr></thead>
+        <colgroup><col style="width:28px"><col style="width:28px"><col><col style="width:62px"><col style="width:34%"></colgroup>
+        <thead><tr><th title="Trace this signal">T</th><th class="b" title="Break: pause on changes to this signal when Break on = marked signals (F9)">⏸</th><th class="sortable" data-sort="name">Signal name</th><th class="sortable" data-sort="kind">Type</th><th>Value</th></tr></thead>
         <tbody></tbody>
       </table>
       <div class="empty" id="sigempty" hidden>No program in this slot.</div>
@@ -176,6 +206,9 @@ let ws = null, streaming = true, sortBy = "name", sortDir = 1, selected = null;
 let signals = new Map();      // name -> { name, kind, value, watch, tr, valTd, chk }
 let trace = [];               // { n, time, signal, kind, value, source, tr }
 let seq = 0, firstTime = null, pending = [], rafQueued = false, refreshTimer = null;
+// Step-through state, mirrored from the server (which owns it: the pause happens in the logic engine).
+let currentState = "—", stepVersion = -1;
+let step = { enabled: false, onlyBreakSignals: false, breakSignals: new Set(), paused: null }, stepSynced = false;
 const opts = { tmode: store.get("tmode", "all"), tfmt: store.get("tfmt", "abs"), afmt: store.get("afmt", "dec"), sfmt: store.get("sfmt", "ascii") };
 for (const k of Object.keys(opts)) { $("#" + k).value = opts[k]; $("#" + k).onchange = e => { opts[k] = e.target.value; store.set(k, opts[k]); rerenderValues(); }; }
 
@@ -241,7 +274,7 @@ async function loadSignals() {
   signals = new Map();
   for (const s of list) {
     const prev = old.get(s.name);
-    signals.set(s.name, { name: s.name, kind: s.kind, value: s.value, watch: prev ? prev.watch : watched.has(s.name) });
+    signals.set(s.name, { name: s.name, kind: s.kind, value: s.value, watch: prev ? prev.watch : watched.has(s.name), brk: step.breakSignals.has(s.name) });
   }
   buildSignalTable();
 }
@@ -261,14 +294,17 @@ function buildSignalTable() {
     const chk = document.createElement("input"); chk.type = "checkbox"; chk.checked = s.watch;
     chk.onclick = e => { e.stopPropagation(); s.watch = chk.checked; saveWatch(); applyFilter(); };
     const c0 = document.createElement("td"); c0.appendChild(chk);
+    const bchk = document.createElement("input"); bchk.type = "checkbox"; bchk.className = "brk"; bchk.checked = s.brk; bchk.title = "Break on this signal";
+    bchk.onclick = e => { e.stopPropagation(); setBreak(s, bchk.checked); };
+    const cb = document.createElement("td"); cb.className = "b"; cb.appendChild(bchk);
     const c1 = document.createElement("td"); c1.className = "mono"; c1.textContent = s.name; c1.title = s.name;
     const c2 = document.createElement("td"); c2.className = "type"; c2.textContent = s.kind;
     const c3 = document.createElement("td");
-    tr.append(c0, c1, c2, c3);
+    tr.append(c0, cb, c1, c2, c3);
     tr.onclick = () => selectSignal(s.name);
     tr.ondblclick = () => { if (s.kind === "Digital") force(s.name, isHigh(s.value) ? 0 : 1); else { selectSignal(s.name); $("#fval").focus(); } };
     tr.oncontextmenu = e => { e.preventDefault(); selectSignal(s.name); showMenu(e.clientX, e.clientY, s); };
-    Object.assign(s, { tr, valTd: c3, chk });
+    Object.assign(s, { tr, valTd: c3, chk, bchk });
     paintValue(s);
     frag.appendChild(tr);
     const o = document.createElement("option"); o.value = s.name; dl.appendChild(o);
@@ -276,6 +312,7 @@ function buildSignalTable() {
   tb.replaceChildren(frag);
   $("#siglist").replaceChildren(dl);
   if (selected && signals.has(selected)) signals.get(selected).tr.classList.add("sel");
+  if (step.paused && signals.has(step.paused.signal)) signals.get(step.paused.signal).tr.classList.add("paused");
   document.querySelectorAll("#sigs th.sortable").forEach(th =>
     th.textContent = th.textContent.replace(/ [▲▼]$/, "") + (th.dataset.sort === sortBy ? (sortDir > 0 ? " ▲" : " ▼") : ""));
   $("#sigempty").hidden = signals.size > 0;
@@ -290,15 +327,16 @@ function paintValue(s) {
 }
 
 function applyFilter() {
-  const q = $("#search").value.toLowerCase(), k = $("#kfilter").value, only = $("#onlychecked").checked;
-  let shown = 0, watched = 0;
+  const q = $("#search").value.toLowerCase(), k = $("#kfilter").value, only = $("#onlychecked").checked, onlyB = $("#onlybreak").checked;
+  let shown = 0, watched = 0, marked = 0;
   for (const s of signals.values()) {
     if (s.watch) watched++;
-    const vis = (!q || s.name.toLowerCase().includes(q)) && (!k || s.kind === k) && (!only || s.watch);
+    if (s.brk) marked++;
+    const vis = (!q || s.name.toLowerCase().includes(q)) && (!k || s.kind === k) && (!only || s.watch) && (!onlyB || s.brk);
     if (s.tr) s.tr.hidden = !vis;
     if (vis) shown++;
   }
-  $("#sigcount").textContent = `${shown} shown · ${watched} checked`;
+  $("#sigcount").textContent = `${shown} shown · ${watched} checked · ${marked} ⏸`;
   $("#st-sigs").textContent = `${signals.size} signals`;
 }
 
@@ -382,12 +420,115 @@ function saveTrace() {
   a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
+// ---------------------------------------------------------------- step-through
+
+const stepKey = () => "breaks." + slot;
+
+async function stepPost(path, body) {
+  try {
+    const st = await api(`/api/slots/${slot}/step${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body || {}) });
+    onStep(st);
+  } catch (e) { msg(e.message, true); }
+}
+
+function pushBreaks() {
+  const names = [...signals.values()].filter(s => s.brk).map(s => s.name);
+  store.set(stepKey(), names);
+  stepPost("", { breakSignals: names });
+}
+
+function setBreak(s, on) {
+  s.brk = on; if (s.bchk) s.bchk.checked = on;
+  applyFilter(); pushBreaks();
+}
+
+function toggleStepMode() {
+  if (!step.enabled && step.onlyBreakSignals && ![...signals.values()].some(s => s.brk))
+    msg("Break on is set to marked signals but none are marked: tick ⏸ next to a signal, or press F9 on it.", true);
+  stepPost("", { enabled: !step.enabled });
+}
+
+// State from the server: on connect, after every change, and whenever the program pauses or resumes.
+function onStep(st) {
+  if (st.slot != null && st.slot !== slot) return;
+  // HTTP replies and WebSocket pushes can arrive out of order: keep only the newest state.
+  if (st.version != null && st.version < stepVersion) return;
+  stepVersion = st.version ?? stepVersion;
+  const wasPausedOn = step.paused && step.paused.step;
+  step = { enabled: st.enabled, onlyBreakSignals: st.onlyBreakSignals, breakSignals: new Set(st.breakSignals || []), paused: st.paused };
+
+  // First state after connecting: if the server has no break list (e.g. it restarted) restore ours.
+  if (!stepSynced) {
+    stepSynced = true;
+    const local = store.get(stepKey(), []);
+    if (!step.breakSignals.size && local.length) {
+      step.breakSignals = new Set(local);
+      stepPost("", { breakSignals: local });
+    }
+  }
+  store.set(stepKey(), [...step.breakSignals]);
+  for (const s of signals.values()) {
+    const b = step.breakSignals.has(s.name);
+    if (b !== s.brk) { s.brk = b; if (s.bchk) s.bchk.checked = b; }
+  }
+  applyFilter();
+  $("#bmode").value = step.onlyBreakSignals ? "marked" : "all";
+  renderStep(wasPausedOn !== (step.paused && step.paused.step));
+}
+
+function renderStep(newPause) {
+  const p = step.paused;
+  document.body.classList.toggle("stepping", step.enabled);
+  $("#stepmode").classList.toggle("step-on", step.enabled);
+  $("#stepmode").textContent = step.enabled ? "⏸ Step: on" : "⏸ Step";
+  for (const id of ["#stepnext", "#stepnext2"]) $(id).disabled = !p;
+  for (const id of ["#steprun", "#steprun2"]) $(id).disabled = !step.enabled;
+  const bar = $("#stepbar");
+  bar.classList.toggle("off", !step.enabled);
+  bar.classList.toggle("paused", !!p);
+
+  const what = $("#stepwhat");
+  if (p) {
+    what.replaceChildren(
+      document.createTextNode(`⏸ Paused at step ${p.step}: `),
+      Object.assign(document.createElement("b"), { className: "mono", textContent: p.signal }),
+      document.createTextNode(" → "),
+      Object.assign(document.createElement("span"), { className: valClass(p.kind, p.value), textContent: fmt(p.kind, p.value) }),
+      document.createTextNode(`  (${p.source || "logic"}) — the new value is set; logic driven by it runs when you press Next.`));
+    what.title = what.textContent;
+  } else if (step.enabled) {
+    const n = step.breakSignals.size;
+    what.textContent = step.onlyBreakSignals
+      ? `▶ Running — will pause on the next change to ${n ? `${n} marked signal${n === 1 ? "" : "s"}` : "a marked signal (none marked yet)"}.`
+      : "▶ Running — will pause on the next signal change. Drive an input (panel, force bar) to start stepping.";
+    what.title = "";
+  }
+
+  // Highlight the paused signal in both lists.
+  document.querySelectorAll("tr.paused").forEach(tr => tr.classList.remove("paused"));
+  if (p) {
+    const s = signals.get(p.signal);
+    if (s?.tr) { s.tr.classList.add("paused"); if (newPause) s.tr.scrollIntoView({ block: "nearest" }); }
+    else scheduleRefresh();
+    flushTrace(); // the trace row for this change arrived just before the pause
+    for (let i = trace.length - 1; i >= Math.max(0, trace.length - 200); i--)
+      if (trace[i].signal === p.signal) { trace[i].tr.classList.add("paused"); break; }
+  }
+  $("#st-state").textContent = p ? "Paused (step)" : step.enabled ? "Stepping" : currentState;
+}
+
+$("#stepmode").onclick = toggleStepMode;
+$("#stepnext").onclick = $("#stepnext2").onclick = () => stepPost("/next");
+$("#steprun").onclick = $("#steprun2").onclick = () => stepPost("/run");
+$("#bmode").onchange = e => stepPost("", { onlyBreakSignals: e.target.value === "marked" });
+$("#onlybreak").onchange = applyFilter;
+
 // ---------------------------------------------------------------- forcing signals
 
 async function force(name, value) {
   try {
     await api(`/api/slots/${slot}/signals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, value }) });
-    msg("");
+    msg(step.paused ? `Queued: ${name} changes once the paused step is released (Next).` : "");
   } catch (e) { msg(e.message, true); }
 }
 async function pulse(name) { await force(name, 1); setTimeout(() => force(name, 0), 200); }
@@ -417,7 +558,8 @@ function showMenu(x, y, s) {
   if (s.kind === "Digital") items.push(["Set (1)", () => force(s.name, 1)], ["Clear (0)", () => force(s.name, 0)], ["Pulse", () => pulse(s.name)], ["Toggle", () => force(s.name, isHigh(s.value) ? 0 : 1)]);
   else if (s.kind === "Analog") items.push(["Set value…", () => { $("#fval").focus(); $("#fval").select(); }], ["Set to 0", () => force(s.name, 0)], ["Set to 65535", () => force(s.name, 65535)]);
   else items.push(["Send string…", () => { $("#fval").value = ""; $("#fval").focus(); }], ["Clear string", () => force(s.name, "")]);
-  items.push(["-"], [s.watch ? "Uncheck for trace" : "Check for trace", () => { s.watch = !s.watch; s.chk.checked = s.watch; saveWatch(); applyFilter(); }],
+  items.push(["-"], [s.brk ? "Don't break on this signal" : "Break on this signal ⏸", () => setBreak(s, !s.brk)],
+             [s.watch ? "Uncheck for trace" : "Check for trace", () => { s.watch = !s.watch; s.chk.checked = s.watch; saveWatch(); applyFilter(); }],
              ["Copy name", () => navigator.clipboard?.writeText(s.name)]);
   const m = $("#menu");
   m.replaceChildren(...items.map(([label, fn, cls]) => {
@@ -434,7 +576,11 @@ function hideMenu() { $("#menu").style.display = "none"; }
 addEventListener("click", hideMenu); addEventListener("blur", hideMenu);
 addEventListener("keydown", e => {
   if (e.key === "Escape") hideMenu();
+  if (e.key === "F5" && e.ctrlKey) { e.preventDefault(); toggleStepMode(); return; }
   if (e.key === "F5") { e.preventDefault(); $("#stream").click(); }
+  if (e.key === "F10") { e.preventDefault(); if (step.paused) stepPost("/next"); }
+  if (e.key === "F8") { e.preventDefault(); if (step.enabled) stepPost("/run"); }
+  if (e.key === "F9") { e.preventDefault(); const s = signals.get(selected); if (s) setBreak(s, !s.brk); }
 });
 
 // ---------------------------------------------------------------- connection, slots, status
@@ -442,12 +588,14 @@ addEventListener("keydown", e => {
 function connect() {
   ws?.close();
   const proto = location.protocol === "https:" ? "wss://" : "ws://";
+  stepSynced = false; stepVersion = -1;
   const sock = ws = new WebSocket(`${proto}${location.host}/ws/trace?slot=${slot}`);
   sock.onopen = () => setConn(true);
   sock.onclose = () => { if (sock !== ws) return; setConn(false); setTimeout(() => { if (sock === ws) connect(); }, 2000); };
   sock.onmessage = ev => {
     const m = JSON.parse(ev.data);
     if (m.t === "trace") onTrace(m);
+    else if (m.t === "step") onStep(m);
     else if (m.t === "log") {
       if (/Loaded|started|stopped|Unload/i.test(m.message)) { loadSlots(); scheduleRefresh(); }
       if (m.level === "Error") $("#st-msg").textContent = m.message;
@@ -468,13 +616,15 @@ async function loadSlots() {
   sel.value = slot;
   const s = slots.find(x => x.number === slot);
   $("#prog").textContent = s?.file ? `${s.file} · ${s.kind}` : "no program";
-  $("#st-state").textContent = s ? s.state : "—";
+  currentState = s ? s.state : "—";
+  $("#st-state").textContent = step.paused ? "Paused (step)" : step.enabled ? "Stepping" : currentState;
   document.title = `Debugger · slot ${slot}`;
 }
 
 function switchSlot(n) {
   slot = n; history.replaceState(null, "", `?slot=${n}`);
   selected = null; $("#fname").value = ""; $("#fval").value = "";
+  step = { enabled: false, onlyBreakSignals: false, breakSignals: new Set(), paused: null }; renderStep(false);
   clearTrace(); loadSlots(); loadSignals(); connect();
 }
 

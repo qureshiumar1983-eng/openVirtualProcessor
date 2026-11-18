@@ -90,6 +90,46 @@ public static class LpzRuntimeTests
     }
 
     [Test]
+    public static void Step_debugger_pauses_each_change_until_next()
+    {
+        var (p, panel) = Start();
+        using var _ = p;
+        var st = p.Slot(1).Stepper;
+        Assert.Eventually(() => (string)panel.GetFeedback(S(1)) == "ready", "started");
+
+        // Break only on the press signal: the toggle must not react until Next.
+        st.Configure(enabled: true, onlyBreakSignals: true, breakSignals: ["#10"]);
+        panel.ReceiveInput(D(1), true);
+        Assert.Eventually(() => st.Paused?.Signal == "#10", "paused on the marked press signal");
+        Assert.Equal(true, st.Paused!.Value, "paused value");
+        Thread.Sleep(50);
+        Assert.True(!(bool)panel.GetFeedback(D(1)), "toggle has not run while paused");
+        Assert.True(st.Next(), "next");
+        Assert.Eventually(() => (bool)panel.GetFeedback(D(1)), "toggle ran after Next");
+        Assert.True(st.Paused == null, "unmarked feedback change did not pause");
+
+        // Every change: press pauses, then its feedback pauses, one step at a time.
+        panel.ReceiveInput(D(1), false);
+        Assert.Eventually(() => st.Paused?.Signal == "#10", "release paused");
+        st.Configure(onlyBreakSignals: false);
+        st.Next();
+        panel.ReceiveInput(D(1), true);
+        Assert.Eventually(() => st.Paused?.Signal == "#10" && Equals(st.Paused.Value, true), "press paused");
+        st.Next();
+        Assert.Eventually(() => st.Paused?.Signal == "#11", "toggle output paused as the next step");
+        Assert.True((bool)panel.GetFeedback(D(1)), "panel feedback not updated yet");
+        st.Next();
+        Assert.Eventually(() => !(bool)panel.GetFeedback(D(1)), "feedback reached panel");
+
+        // Stopping a paused slot releases it instead of hanging.
+        panel.ReceiveInput(D(1), false);
+        Assert.Eventually(() => st.IsPaused, "paused again");
+        var stop = Task.Run(() => p.Slot(1).Stop());
+        Assert.True(stop.Wait(3000), "stop did not hang on a paused slot");
+        Assert.True(!st.Enabled && !st.IsPaused, "stepping turned off by stop");
+    }
+
+    [Test]
     public static void Unsupported_types_are_reported_not_fatal()
     {
         var (p, _) = Start();

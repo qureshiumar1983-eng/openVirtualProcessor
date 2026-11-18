@@ -12,11 +12,14 @@ public sealed class SlotDispatcher : IDisposable
     private readonly BlockingCollection<Action> _queue = new();
     private readonly Thread _thread;
     private readonly Action<Exception> _onError;
+    private readonly Func<bool>? _isPaused;
     private volatile bool _disposed;
 
-    public SlotDispatcher(string name, Action<Exception> onError)
+    /// <param name="isPaused">True while the debugger holds the slot at a step; Invoke then waits without timing out.</param>
+    public SlotDispatcher(string name, Action<Exception> onError, Func<bool>? isPaused = null)
     {
         _onError = onError;
+        _isPaused = isPaused;
         _thread = new Thread(Run) { IsBackground = true, Name = name };
         _thread.Start();
     }
@@ -39,8 +42,10 @@ public sealed class SlotDispatcher : IDisposable
         {
             try { action(); } catch (Exception e) { error = e; } finally { done.Set(); }
         });
-        if (!done.Wait(TimeSpan.FromSeconds(30)))
-            throw new TimeoutException("Slot thread did not respond within 30 s.");
+        // A slot held by the step debugger is waiting on the user, not hung: keep waiting.
+        while (!done.Wait(TimeSpan.FromSeconds(30)))
+            if (_isPaused?.Invoke() != true)
+                throw new TimeoutException("Slot thread did not respond within 30 s.");
         if (error != null) throw new AggregateException(error);
     }
 

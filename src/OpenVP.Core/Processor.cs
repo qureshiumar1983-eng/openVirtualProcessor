@@ -26,6 +26,8 @@ public sealed class Processor : IDisposable
 
     public event Action<LogEntry>? LogWritten;
     public event Action<TraceEvent>? Traced;
+    /// <summary>A slot's step debugger changed mode, break list, or paused/resumed.</summary>
+    public event Action<ProgramSlot>? StepChanged;
     public event Action<JoinDevice>? DeviceRegistered;
     public event Action<JoinDevice>? DeviceUnregistered;
 
@@ -69,6 +71,7 @@ public sealed class Processor : IDisposable
     }
 
     internal void WriteTrace(TraceEvent e) => Traced?.Invoke(e);
+    internal void NotifyStepChanged(ProgramSlot s) => StepChanged?.Invoke(s);
     internal void NotifyDeviceRegistered(JoinDevice d) => DeviceRegistered?.Invoke(d);
     internal void NotifyDeviceUnregistered(JoinDevice d) => DeviceUnregistered?.Invoke(d);
 

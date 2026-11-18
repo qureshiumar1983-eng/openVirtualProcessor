@@ -21,6 +21,7 @@ public sealed class ProgramSlot : IDisposable
     {
         Processor = processor;
         Number = number;
+        Stepper.Changed += _ => Processor.NotifyStepChanged(this);
         _dispatcher = NewDispatcher();
     }
 
@@ -35,6 +36,9 @@ public sealed class ProgramSlot : IDisposable
     public string Directory => Path.Combine(Processor.DataDirectory, $"program{Number:00}");
 
     public SlotDispatcher Dispatcher => _dispatcher;
+
+    /// <summary>Step-through debugging: pause the slot's logic on each signal change.</summary>
+    public SignalStepper Stepper { get; } = new();
 
     public IReadOnlyCollection<JoinDevice> Devices => _ipTable.Values.ToList();
 
@@ -64,8 +68,12 @@ public sealed class ProgramSlot : IDisposable
 
     public void Log(string level, string message) => Processor.WriteLog(new LogEntry(DateTimeOffset.Now, Number, level, message));
 
-    public void Trace(string signal, SigKind kind, object value, string source) =>
-        Processor.WriteTrace(new TraceEvent(DateTimeOffset.Now, Number, signal, kind, value, source));
+    public void Trace(string signal, SigKind kind, object value, string source)
+    {
+        var e = new TraceEvent(DateTimeOffset.Now, Number, signal, kind, value, source);
+        Processor.WriteTrace(e);
+        Stepper.OnChange(e); // blocks here while the debugger is stepping
+    }
 
     public bool AddConsoleCommand(ConsoleCommand cmd) => _commands.TryAdd(cmd.Name, cmd);
 
@@ -132,6 +140,7 @@ public sealed class ProgramSlot : IDisposable
     public void Stop()
     {
         if (Runtime == null || State != SlotState.Running) return;
+        Stepper.Run(); // release a paused change so the slot thread can wind down
         try { Runtime.Stop(); }
         catch (Exception e) { Log("Error", $"Error while stopping: {e.Message}"); }
         SetState(SlotState.Stopped);
@@ -141,6 +150,7 @@ public sealed class ProgramSlot : IDisposable
     public void Unload()
     {
         Stop();
+        Stepper.Run();
         Runtime?.Dispose();
         Runtime = null;
         ProgramPath = null;
@@ -165,7 +175,7 @@ public sealed class ProgramSlot : IDisposable
     }
 
     private SlotDispatcher NewDispatcher() =>
-        new($"slot{Number:00}", e => Log("Error", $"Unhandled exception in program: {e}"));
+        new($"slot{Number:00}", e => Log("Error", $"Unhandled exception in program: {e}"), () => Stepper.IsPaused);
 
     public void Dispose() => Unload();
 }

@@ -64,6 +64,22 @@ object DeviceDto(JoinDevice d) => new
     connections = d.ConnectionCount
 };
 
+object StepDto(ProgramSlot s)
+{
+    var st = s.Stepper.Snapshot();
+    var p = st.Paused;
+    return new
+    {
+        t = "step",
+        slot = s.Number,
+        version = st.Version,
+        enabled = st.Enabled,
+        onlyBreakSignals = st.OnlyBreakSignals,
+        breakSignals = st.BreakSignals,
+        paused = p is null ? null : new { step = p.Step, time = p.Time, signal = p.Signal, kind = p.Kind.ToString(), value = p.Value, source = p.Source }
+    };
+}
+
 object ValueOf(JsonElement v) => v.ValueKind switch
 {
     JsonValueKind.True => true,
@@ -122,6 +138,20 @@ app.MapPost("/api/slots/{n:int}/signals", (int n, JsonElement body) =>
     var name = body.GetProperty("name").GetString()!;
     return rt.TrySetSignal(name, ValueOf(body.GetProperty("value"))) ? Results.Ok() : Results.NotFound($"Unknown signal '{name}'.");
 });
+
+// Step-through debugging. GET the state; POST { enabled?, onlyBreakSignals?, breakSignals? } to change it.
+app.MapGet("/api/slots/{n:int}/step", (int n) => StepDto(processor.Slot(n)));
+app.MapPost("/api/slots/{n:int}/step", (int n, JsonElement body) =>
+{
+    var slot = processor.Slot(n);
+    bool? Bool(string k) => body.TryGetProperty(k, out var v) && v.ValueKind is JsonValueKind.True or JsonValueKind.False ? v.GetBoolean() : null;
+    IEnumerable<string>? names = body.TryGetProperty("breakSignals", out var b) && b.ValueKind == JsonValueKind.Array
+        ? b.EnumerateArray().Select(x => x.GetString() ?? "").ToList() : null;
+    slot.Stepper.Configure(Bool("enabled"), Bool("onlyBreakSignals"), names);
+    return StepDto(slot);
+});
+app.MapPost("/api/slots/{n:int}/step/next", (int n) => { processor.Slot(n).Stepper.Next(); return StepDto(processor.Slot(n)); });
+app.MapPost("/api/slots/{n:int}/step/run", (int n) => { processor.Slot(n).Stepper.Run(); return StepDto(processor.Slot(n)); });
 
 app.MapPost("/api/slots/{n:int}/console", (int n, JsonElement body) =>
 {
@@ -187,7 +217,17 @@ app.Map("/ws/trace", async (HttpContext ctx) =>
         if (slot == null || e.Slot == slot)
             outbox.Writer.TryWrite(JsonSerializer.Serialize(new { t = "log", time = e.Time, slot = e.Slot, level = e.Level, message = e.Message }, json));
     }
-    if (wantTrace) processor.Traced += OnTrace;
+    void OnStep(ProgramSlot st)
+    {
+        if (slot == null || st.Number == slot)
+            outbox.Writer.TryWrite(JsonSerializer.Serialize(StepDto(st), json));
+    }
+    if (wantTrace)
+    {
+        processor.Traced += OnTrace;
+        processor.StepChanged += OnStep;
+        if (slot is int sn && sn >= 1 && sn <= processor.Slots.Count) OnStep(processor.Slot(sn)); // current state on connect
+    }
     processor.LogWritten += OnLog;
     var buffer = new byte[1024];
     var receive = ws.ReceiveAsync(buffer, ctx.RequestAborted);
@@ -205,6 +245,7 @@ app.Map("/ws/trace", async (HttpContext ctx) =>
     finally
     {
         processor.Traced -= OnTrace;
+        processor.StepChanged -= OnStep;
         processor.LogWritten -= OnLog;
     }
 });

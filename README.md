@@ -99,6 +99,7 @@ Click **Open debugger** in the console (or go to `/debugger.html?slot=N`). It's 
 - **Signal list** (left): every signal in the slot with its live value. Search, filter by type, and tick **T** to choose which signals go to the trace. Click a column header to sort.
 - **Trace** (right): one row per change with time, signal, value and what caused it. **Stream** (F5) pauses and resumes it, **Clear** empties it, **Save…** writes it to a text file. You can trace all signals or only the ticked ones.
 - **Display options**: time as absolute, relative or delta; analogs as decimal (`500d`), hex (`01F4h`) or percent; serials as ASCII with `\x0D`-style escapes, or hex.
+- **Step-through** (for logic wave problems): turn on **⏸ Step** and the slot's logic pauses on every signal change, right after the new value is set and before anything wired to that signal reacts. **Next** (F10) lets that one change through and stops at the next; **Run** (F8) turns stepping off. Set **Break on** to *marked signals* and tick the **⏸** column (or press F9 on the selected signal) to pause only on the signals you care about; everything else runs through. The bar under the toolbar shows where it's paused, and that signal is highlighted in both lists. Forcing a signal while paused queues it until you step on. Stopping or unloading the slot releases the pause.
 - **Forcing signals**: right-click a signal for Set / Clear / Pulse / Toggle (digital) or to enter a value, double-click a digital to toggle it, or use the **Force** bar at the bottom. Analog values can be typed as `500`, `1F4h` or `50%`, and serial values can include `\x0D`, `\r` or `\n`.
 
 Each window shows only its own slot, so you can open one per slot and two people can debug two programs on the same processor at once. For SIMPL# slots the signals are device joins, named like `IPID03.out.d1` (panel press) and `IPID03.in.s5` (feedback).
@@ -124,6 +125,8 @@ Each window shows only its own slot, so you can open one per slot and two people
 | POST | `/api/slots/{n}/program` | Multipart `file` (+ sidecar files); loads and starts |
 | POST | `/api/slots/{n}/start` · `stop` · `unload` | |
 | GET / POST | `/api/slots/{n}/signals` | List; set with `{"name":"...","value":1}` |
+| GET / POST | `/api/slots/{n}/step` | Step-through state; change with `{"enabled":true,"onlyBreakSignals":true,"breakSignals":["sig"]}` |
+| POST | `/api/slots/{n}/step/next` · `step/run` | Release the paused change · turn stepping off |
 | POST | `/api/slots/{n}/console` | `{"command":"ipt"}` |
 | GET | `/api/slots/{n}/compat` | Compatibility report |
 | GET | `/api/log?slot=n` · `/api/devices` | |
