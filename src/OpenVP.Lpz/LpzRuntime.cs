@@ -41,7 +41,11 @@ public sealed partial class LpzRuntime : IProgramRuntime
     private readonly string[] _ser;
     private readonly SigKind[] _kinds;
     private readonly bool[] _kindKnown;
-    private readonly List<(Node node, int pin)>[] _fanout;
+    // Listeners per signal, in the order the nodes were registered. Built as lists while the program
+    // loads, then flattened: signal s's listeners are _edges[_edgeStart[s] .. _edgeStart[s + 1]).
+    private List<(Node node, int pin)>[]? _fanout;
+    private Edge[] _edges = Array.Empty<Edge>();
+    private int[] _edgeStart = Array.Empty<int>();
     private readonly bool[] _used;
     private readonly List<Node> _nodes = new();
     private readonly List<DeviceNode> _devices = new();
@@ -78,10 +82,34 @@ public sealed partial class LpzRuntime : IProgramRuntime
         Build();
         Array.Fill(_ser, string.Empty);
         _dig[1] = true; // constant "1"
+        Flatten();
     }
+
+    /// <summary>One listener of a signal: the node and which of its pins reads it (negative = its own output).</summary>
+    private readonly record struct Edge(Node Node, int Pin);
 
     /// <summary>A queued change. Digital and analog keep their value in Num, serial in Str.</summary>
     private readonly record struct Pending(int Sig, uint Num, string? Str, string Source);
+
+    private void Flatten()
+    {
+        var lists = _fanout!;
+        _edgeStart = new int[lists.Length + 1];
+        var total = 0;
+        for (int s = 0; s < lists.Length; s++)
+        {
+            _edgeStart[s] = total;
+            total += lists[s]?.Count ?? 0;
+        }
+        _edgeStart[lists.Length] = total;
+        _edges = new Edge[total];
+        for (int s = 0; s < lists.Length; s++)
+        {
+            if (lists[s] is not { } list) continue;
+            for (int i = 0; i < list.Count; i++) _edges[_edgeStart[s] + i] = new Edge(list[i].node, list[i].pin);
+        }
+        _fanout = null; // only needed while building
+    }
 
     private LpzLoadContext? _alc;
     private readonly List<SplusNode> _modules = new();
@@ -178,7 +206,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
             if (s <= 1) continue;
             _used[s] = true;
             Infer(s, node.InputKind(pin));
-            (_fanout[s] ??= new()).Add((node, pin));
+            (_fanout![s] ??= new()).Add((node, pin));
         }
         for (int pin = 1; pin <= node.Symbol.Outputs.Length; pin++)
         {
@@ -186,7 +214,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
             if (s <= 1) continue;
             _used[s] = true;
             Infer(s, node.OutputKind(pin));
-            if (node.WatchesOutputs) (_fanout[s] ??= new()).Add((node, -pin)); // negative pin = own output
+            if (node.WatchesOutputs) (_fanout![s] ??= new()).Add((node, -pin)); // negative pin = own output
         }
     }
 
@@ -308,7 +336,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
                 }
                 var change = _pending.Dequeue();
                 var s = change.Sig;
-                var listeners = _fanout[s];
+                int first = _edgeStart[s], end = _edgeStart[s + 1];
                 switch (_kinds[s])
                 {
                     case SigKind.Digital:
@@ -318,12 +346,12 @@ public sealed partial class LpzRuntime : IProgramRuntime
                         if (old == v) continue;
                         _dig[s] = v;
                         if (_slot.TraceWanted) _slot.Trace(NameOf(s), SigKind.Digital, SigValue.Box(v), change.Source);
-                        if (listeners != null)
-                            foreach (var (node, pin) in listeners)
-                            {
-                                try { node.OnDigital(pin, old, v); }
-                                catch (Exception ex) { _slot.Log("Error", $"{node.Symbol}: {ex.Message}"); }
-                            }
+                        for (int e = first; e < end; e++)
+                        {
+                            var edge = _edges[e];
+                            try { edge.Node.OnDigital(edge.Pin, old, v); }
+                            catch (Exception ex) { _slot.Log("Error", $"{edge.Node.Symbol}: {ex.Message}"); }
+                        }
                         break;
                     }
                     case SigKind.Analog:
@@ -333,12 +361,12 @@ public sealed partial class LpzRuntime : IProgramRuntime
                         if (old == v) continue;
                         _ana[s] = v;
                         if (_slot.TraceWanted) _slot.Trace(NameOf(s), SigKind.Analog, v, change.Source);
-                        if (listeners != null)
-                            foreach (var (node, pin) in listeners)
-                            {
-                                try { node.OnAnalog(pin, old, v); }
-                                catch (Exception ex) { _slot.Log("Error", $"{node.Symbol}: {ex.Message}"); }
-                            }
+                        for (int e = first; e < end; e++)
+                        {
+                            var edge = _edges[e];
+                            try { edge.Node.OnAnalog(edge.Pin, old, v); }
+                            catch (Exception ex) { _slot.Log("Error", $"{edge.Node.Symbol}: {ex.Message}"); }
+                        }
                         break;
                     }
                     default:
@@ -348,12 +376,12 @@ public sealed partial class LpzRuntime : IProgramRuntime
                         var old = _ser[s];
                         _ser[s] = v;
                         if (_slot.TraceWanted) _slot.Trace(NameOf(s), SigKind.Serial, v, change.Source);
-                        if (listeners != null)
-                            foreach (var (node, pin) in listeners)
-                            {
-                                try { node.OnSerial(pin, old, v); }
-                                catch (Exception ex) { _slot.Log("Error", $"{node.Symbol}: {ex.Message}"); }
-                            }
+                        for (int e = first; e < end; e++)
+                        {
+                            var edge = _edges[e];
+                            try { edge.Node.OnSerial(edge.Pin, old, v); }
+                            catch (Exception ex) { _slot.Log("Error", $"{edge.Node.Symbol}: {ex.Message}"); }
+                        }
                         break;
                     }
                 }
@@ -390,8 +418,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
                     catch (Exception e) { _slot.Log("Error", $"{n.Symbol}: {e.Message}"); }
                 }
                 // Constant "1" is high from the start: give its listeners their rising edge.
-                if (_fanout[1] is { } ones)
-                    foreach (var (node, pin) in ones) node.OnDigital(pin, false, true);
+                for (int e = _edgeStart[1]; e < _edgeStart[2]; e++) _edges[e].Node.OnDigital(_edges[e].Pin, false, true);
             }
             finally { _solving = false; }
             Solve();
