@@ -1,0 +1,88 @@
+slot1 #21 D=1 <- S-1 NOT
+slot1 #28 D=1 <- S-3 NOT
+slot1 #30 S="" <- S-5 Serial buffer
+-- control press while not connected
+slot1 #10 D=1 <- IPID03
+-- control release
+slot1 #10 D=0 <- IPID03
+-- ids: control 1, equipment 2
+slot1 #17 A=1 <- IPID03
+slot1 #18 A=2 <- IPID03
+-- connect
+slot1 #11 D=1 <- IPID03
+slot1 #23 D=1 <- XC
+-- connect release
+slot1 #11 D=0 <- IPID03
+-- control press
+slot1 #10 D=1 <- IPID03
+slot1 #19 D=1 <- XE
+slot1 #21 D=0 <- S-1 NOT
+slot1 #23 D=0 <- XC
+-- control level 100
+slot1 #16 A=100 <- IPID03
+slot1 #20 A=100 <- XE
+slot1 #22 A=65435 <- S-2 Flip
+slot1 #24 A=65435 <- XC
+-- control level 0
+slot1 #16 A=0 <- IPID03
+slot1 #20 A=0 <- XE
+slot1 #22 A=65535 <- S-2 Flip
+slot1 #24 A=65535 <- XC
+-- disconnect (held press is released)
+slot1 #12 D=1 <- IPID03
+slot1 #19 D=0 <- XE
+slot1 #24 A=0 <- XC
+slot1 #21 D=1 <- S-1 NOT
+-- disconnect release
+slot1 #12 D=0 <- IPID03
+-- control release
+slot1 #10 D=0 <- IPID03
+-- connect again
+slot1 #11 D=1 <- IPID03
+slot1 #23 D=1 <- XC
+slot1 #24 A=65535 <- XC
+-- connect release
+slot1 #11 D=0 <- IPID03
+-- disconnect the control
+slot1 #13 D=1 <- IPID03
+slot1 #23 D=0 <- XC
+slot1 #24 A=0 <- XC
+-- disconnect the control release
+slot1 #13 D=0 <- IPID03
+-- connect a third time
+slot1 #11 D=1 <- IPID03
+slot1 #23 D=1 <- XC
+slot1 #24 A=65535 <- XC
+-- connect release
+slot1 #11 D=0 <- IPID03
+-- disconnect the equipment
+slot1 #14 D=1 <- IPID03
+slot1 #23 D=0 <- XC
+slot1 #24 A=0 <- XC
+-- disconnect the equipment release
+slot1 #14 D=0 <- IPID03
+-- connect a fourth time
+slot1 #11 D=1 <- IPID03
+slot1 #23 D=1 <- XC
+slot1 #24 A=65535 <- XC
+-- connect release
+slot1 #11 D=0 <- IPID03
+-- disconnect all
+slot1 #15 D=1 <- IPID03
+slot1 #23 D=0 <- XC
+slot1 #24 A=0 <- XC
+-- disconnect all release
+slot1 #15 D=0 <- IPID03
+-- smart object d1 press
+slot1 #25 D=1 <- IP-ID-03.SO so7
+slot1 #28 D=0 <- S-3 NOT
+-- smart object d1 release
+slot1 #25 D=0 <- IP-ID-03.SO so7
+slot1 #28 D=1 <- S-3 NOT
+-- smart object a1 = 1000
+slot1 #26 A=1000 <- IP-ID-03.SO so7
+slot1 #29 A=64535 <- S-4 Flip
+-- smart object s1 = hi
+slot1 #27 S="hi" <- IP-ID-03.SO so7
+slot1 #30 S="hi" <- S-5 Serial buffer
+-- smart object of another id is ignored

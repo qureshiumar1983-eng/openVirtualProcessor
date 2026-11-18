@@ -19,7 +19,7 @@ namespace OpenVP.Tests;
 /// Scripts avoid timers and cross-thread races: every step ends with a barrier on the slot thread(s),
 /// and EISC runs are recorded per slot (slots run on their own threads, so only per-slot order is fixed).
 /// </summary>
-public static class GoldenTests
+public static partial class GoldenTests
 {
     // ------------------------------------------------------------ harness
 
