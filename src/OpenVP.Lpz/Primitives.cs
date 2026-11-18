@@ -103,26 +103,82 @@ public abstract class EdgePrim(bool falling = false) : Primitive
 
 // ------------------------------------------------------------------ digital
 
-/// <summary>Type 0, SIMPL AND.</summary>
-public sealed class AndPrim : EvalPrim
+/// <summary>
+/// Base for AND, OR and NOR. They keep a running count of high inputs, updated from the old and new value
+/// of the pin that changed, instead of reading every input on every change. Each change still ends in one
+/// Set, exactly as before, so the same outputs are queued in the same order (including repeats of an
+/// unchanged value).
+/// </summary>
+public abstract class GatePrim : Primitive
 {
-    protected override void Eval(IPrimitiveContext c)
+    private int _high;
+    // A signal wired to two pins is notified once per pin, and the first notification would see the
+    // second pin's value already changed. The count can't follow that, so such a gate scans as it used to.
+    private bool _scan;
+
+    /// <summary>Drive the output from the number of high inputs out of c.InputCount.</summary>
+    protected abstract void Result(IPrimitiveContext c, int high);
+
+    public override void Start(IPrimitiveContext c)
     {
-        var all = c.InputCount > 0;
-        for (int i = 1; i <= c.InputCount; i++) all &= c.Digital(i);
-        c.Set(1, all);
+        // Count what is high now. Inputs wired to the constants 0 and 1 are included and never change.
+        _scan = HasRepeatedSignal(c.Symbol.Inputs);
+        _high = Scan(c);
+        Result(c, _high);
+    }
+
+    public override void OnDigital(IPrimitiveContext c, int p, bool o, bool n)
+    {
+        if (_scan) _high = Scan(c);
+        else _high += (n ? 1 : 0) - (o ? 1 : 0);
+        Result(c, _high);
+    }
+
+    // Analog and serial inputs are never high, so a change there leaves the count alone (but still re-runs the gate).
+    public override void OnAnalog(IPrimitiveContext c, int p, ushort o, ushort n) => Other(c);
+    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    {
+        if (o is bool ob && n is bool nb) OnDigital(c, p, ob, nb);
+        else Other(c);
+    }
+
+    private void Other(IPrimitiveContext c)
+    {
+        if (_scan) _high = Scan(c);
+        Result(c, _high);
+    }
+
+    private static int Scan(IPrimitiveContext c)
+    {
+        var high = 0;
+        for (int i = 1; i <= c.InputCount; i++)
+            if (c.Digital(i)) high++;
+        return high;
+    }
+
+    private static bool HasRepeatedSignal(int[] inputs)
+    {
+        HashSet<int>? seen = null;
+        foreach (var sig in inputs)
+        {
+            if (sig <= 1) continue; // the constants can repeat; they never change
+            seen ??= new HashSet<int>();
+            if (!seen.Add(sig)) return true;
+        }
+        return false;
     }
 }
 
-/// <summary>Type 2 OR and type 3 NOR.</summary>
-public sealed class OrPrim(bool invert) : EvalPrim
+/// <summary>Type 0, SIMPL AND.</summary>
+public sealed class AndPrim : GatePrim
 {
-    protected override void Eval(IPrimitiveContext c)
-    {
-        var any = false;
-        for (int i = 1; i <= c.InputCount; i++) any |= c.Digital(i);
-        c.Set(1, any ^ invert);
-    }
+    protected override void Result(IPrimitiveContext c, int high) => c.Set(1, c.InputCount > 0 && high == c.InputCount);
+}
+
+/// <summary>Type 2 OR and type 3 NOR.</summary>
+public sealed class OrPrim(bool invert) : GatePrim
+{
+    protected override void Result(IPrimitiveContext c, int high) => c.Set(1, (high > 0) ^ invert);
 }
 
 /// <summary>Type 1 NOT and type 206 Multiple NOT: output k = !input k.</summary>
