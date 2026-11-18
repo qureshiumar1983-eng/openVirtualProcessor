@@ -84,7 +84,7 @@ public sealed class SimplSharpRuntime : IProgramRuntime
         _bridge = shim.GetType("OpenVP.SimplSharp.OpenVPBridge", throwOnError: true)!;
         _bridge.GetProperty("Slot")!.SetValue(null, _slot);
 
-        var program = _alc.LoadFromAssemblyPath(_programDll);
+        var program = _alc.LoadFromStream(new MemoryStream(File.ReadAllBytes(_programDll))); // unlocked, so a reload can replace it
         var csType = program.GetType(Compat.ControlSystemType, throwOnError: true)!;
 
         _slot.Dispatcher.Invoke(() =>

@@ -111,7 +111,15 @@ public sealed class LpzPackage
             // extracted too but never loaded (the load context prefers the facade).
             if (!e.Name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ||
                 e.Name is "SplusLibrary.dll" or "SplusObjects.dll" or "SmartThreadPoolCE.dll") continue;
-            e.ExtractToFile(System.IO.Path.Combine(dir, e.Name), overwrite: true);
+            var target = System.IO.Path.Combine(dir, e.Name);
+            try { e.ExtractToFile(target, overwrite: true); }
+            catch (IOException)
+            {
+                // A file still held by an earlier load (Windows): write beside it and swap in.
+                var tmp = target + ".new";
+                e.ExtractToFile(tmp, overwrite: true);
+                File.Move(tmp, target, overwrite: true);
+            }
         }
     }
 

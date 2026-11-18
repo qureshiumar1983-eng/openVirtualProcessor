@@ -35,7 +35,8 @@ internal sealed class SlotLoadContext : AssemblyLoadContext
         if (IsShimAssembly(simple) && File.Exists(shimPath)) return LoadFromAssemblyPath(shimPath);
 
         var programPath = Path.Combine(_programDir, simple + ".dll");
-        if (File.Exists(programPath)) return LoadFromAssemblyPath(programPath);
+        // From memory, so the program's files stay unlocked and can be replaced by a reload (Windows).
+        if (File.Exists(programPath)) return LoadFromStream(new MemoryStream(File.ReadAllBytes(programPath)));
 
         if (LooksLikeCrestron(simple)) Unresolved.Add(simple);
         return null; // framework assemblies come from the default context

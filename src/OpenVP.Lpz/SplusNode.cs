@@ -39,7 +39,9 @@ internal sealed class LpzLoadContext : AssemblyLoadContext
         var shim = Path.Combine(_shimDir, simple + ".dll");
         if (crestronName && File.Exists(shim)) return LoadFromAssemblyPath(shim);
         var local = Path.Combine(_programDir, simple + ".dll");
-        if (File.Exists(local)) return LoadFromAssemblyPath(local);
+        // Load the program's own assemblies from memory so the files aren't locked (Windows), which would
+        // stop a recompiled program from replacing them on the next load.
+        if (File.Exists(local)) return LoadFromStream(new MemoryStream(File.ReadAllBytes(local)));
         if (crestronName) { Unresolved.Add(simple); return null; }
         if (!simple.StartsWith("System", StringComparison.Ordinal) && simple != "netstandard") Unresolved.Add(simple);
         return null; // framework assemblies come from the default context
