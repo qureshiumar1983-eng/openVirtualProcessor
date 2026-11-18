@@ -194,11 +194,14 @@ internal sealed class CipSession
     private readonly CipServer _server;
     // Packets wait here for the sender, which writes everything pending in one go. Bounded, so a client
     // that stopped reading is cut off instead of growing memory without limit; it reconnects and gets a snapshot.
+    // The limit is MaxQueuedPackets on top of whatever a snapshot just queued, so a device with more feedback
+    // joins than the limit can still be sent its snapshot: only packets beyond that count as "not reading".
     private const int MaxQueuedPackets = 20_000;
     private const int MaxWriteBytes = 64 * 1024;
+    private readonly Channel<byte[]> _outbox = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions { SingleReader = true });
     private readonly CancellationTokenSource _sendCts = new(); // cancelled when the session ends, to free a write stuck on a dead peer
-    private readonly Channel<byte[]> _outbox = Channel.CreateBounded<byte[]>(
-        new BoundedChannelOptions(MaxQueuedPackets) { FullMode = BoundedChannelFullMode.Wait, SingleReader = true });
+    private int _queued;                     // packets in _outbox
+    private int _queueLimit = MaxQueuedPackets;
     private NetworkStream? _stream;
     private JoinDevice? _device;
 
@@ -279,7 +282,12 @@ internal sealed class CipSession
         {
             // Panel asks for everything: send a full snapshot.
             if (_device != null)
-                foreach (var (k, v) in _device.FeedbackSnapshot()) OnFeedback(_device, k, v);
+            {
+                var snapshot = _device.FeedbackSnapshot();
+                // Room for the whole snapshot (plus what is already queued), then the usual margin on top.
+                _queueLimit = Math.Max(_queueLimit, Volatile.Read(ref _queued) + snapshot.Count + MaxQueuedPackets);
+                foreach (var (k, v) in snapshot) OnFeedback(_device, k, v);
+            }
             Send(Cip.UpdateComplete());
             return;
         }
@@ -317,9 +325,15 @@ internal sealed class CipSession
     /// <summary>Queue a packet; never blocks the caller (often the slot thread).</summary>
     private void Send(byte[] packet)
     {
-        if (_outbox.Writer.TryWrite(packet)) return;
+        if (Interlocked.Increment(ref _queued) <= Volatile.Read(ref _queueLimit))
+        {
+            if (_outbox.Writer.TryWrite(packet)) return;
+            Interlocked.Decrement(ref _queued);
+            return; // already shutting down
+        }
+        Interlocked.Decrement(ref _queued);
         if (_outbox.Reader.Completion.IsCompleted) return; // already shutting down
-        _server.Event(_device?.Slot ?? 1, $"{_client.Client?.RemoteEndPoint} is not reading fast enough ({MaxQueuedPackets} packets queued); disconnecting it");
+        _server.Event(_device?.Slot ?? 1, $"{_client.Client?.RemoteEndPoint} is not reading fast enough ({_queueLimit} packets queued); disconnecting it");
         _client.Close();
     }
 
@@ -335,6 +349,7 @@ internal sealed class CipSession
                 buf.Clear();
                 while (buf.WrittenCount < MaxWriteBytes && reader.TryRead(out var packet))
                 {
+                    Interlocked.Decrement(ref _queued);
                     if (_server.LogPackets) _server.Log($"-> {Convert.ToHexString(packet)}");
                     buf.Write(packet);
                 }

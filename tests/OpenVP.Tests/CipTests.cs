@@ -141,6 +141,29 @@ public static class CipTests
         Assert.Equal(0, dev.ConnectionCount, "device connection released");
     }
 
+    [Test]
+    public static void The_snapshot_of_a_device_with_more_joins_than_the_queue_limit_is_not_a_disconnect()
+    {
+        using var p = new Processor(Paths.TempData());
+        p.AddLoader(new SimplSharpLoader());
+        p.LoadProgram(1, Paths.SampleDll);
+        using var server = new CipServer(p, 0, IPAddress.Loopback);
+        server.Start();
+        const int joins = 45_000; // more than the 20,000-packet queue limit
+        var (client, s, dev) = StalledPanel(p, server, joins, 240);
+        using var _c = client;
+        Thread.Sleep(1000); // the whole snapshot is queued while the panel reads nothing
+        Assert.Equal(1, dev.ConnectionCount, "panel still attached after the snapshot was queued");
+        var serials = 0;
+        while (true)
+        {
+            var (type, payload) = Read(s);
+            if (Cip.DecodeJoin(type, payload) is var (k, _) && k.Kind == SigKind.Serial) serials++;
+            if (type == Cip.Data && payload.Length == 5 && payload[3] == 0x03 && payload[4] == 0x16) break; // update complete
+        }
+        Assert.Equal(joins, serials, "every join of the snapshot arrived");
+    }
+
     private static (byte type, byte[] payload) Read(NetworkStream s)
     {
         var h = new byte[3];
