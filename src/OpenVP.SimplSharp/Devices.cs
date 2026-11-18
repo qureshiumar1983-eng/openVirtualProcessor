@@ -313,23 +313,27 @@ namespace Crestron.SimplSharpPro.DeviceSupport
         private void OnInputFromDevice(JoinDevice dev, JoinKey key, object value)
         {
             if (OpenVPBridge.Slot is { TraceWanted: true } slot) slot.Trace($"IPID{ID:X2}.out.{key}", key.Kind, value, "device");
-            OpenVPBridge.Post(() =>
+            // Kind and join ride in the int so no closure is allocated per press.
+            OpenVPBridge.Post(static (d, v, packed) => ((BasicTriList)d!).DeliverInput((SigKind)(packed >>> 30), (uint)(packed & 0x3FFFFFFF), v!),
+                this, value, (int)(((uint)key.Kind << 30) | (key.Join & 0x3FFFFFFFu)));
+        }
+
+        private void DeliverInput(SigKind kind, uint join, object value)
+        {
+            Sig sig = kind switch
             {
-                Sig sig = key.Kind switch
-                {
-                    SigKind.Digital => BooleanOutput[key.Join],
-                    SigKind.Analog => UShortOutput[key.Join],
-                    _ => StringOutput[key.Join]
-                };
-                sig.Delivered = value;
-                var evt = key.Kind switch
-                {
-                    SigKind.Digital => eSigEvent.BoolChange,
-                    SigKind.Analog => eSigEvent.UShortChange,
-                    _ => eSigEvent.StringChange
-                };
-                SigChange?.Invoke(this, new SigEventArgs(sig, evt));
-            });
+                SigKind.Digital => BooleanOutput[join],
+                SigKind.Analog => UShortOutput[join],
+                _ => StringOutput[join]
+            };
+            sig.Delivered = value;
+            var evt = kind switch
+            {
+                SigKind.Digital => eSigEvent.BoolChange,
+                SigKind.Analog => eSigEvent.UShortChange,
+                _ => eSigEvent.StringChange
+            };
+            SigChange?.Invoke(this, new SigEventArgs(sig, evt));
         }
 
         private void OnDeviceOnline(JoinDevice dev, bool online) => OpenVPBridge.Post(() => RaiseOnline(online));

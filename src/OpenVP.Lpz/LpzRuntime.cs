@@ -248,12 +248,12 @@ public sealed partial class LpzRuntime : IProgramRuntime
     internal void Defer(Action a)
     {
         _nextWave.Enqueue(a);
-        if (!_solving) _slot.Dispatcher.Post(Solve);
+        if (!_solving) _slot.Dispatcher.Post(static (rt, _, _) => ((LpzRuntime)rt!).Solve(), this, null, 0);
     }
 
     internal IDisposable After(long ms, Action action)
     {
-        return _timers.After(ms, () => _slot.Dispatcher.Post(() => { if (_running) action(); }));
+        return _timers.After(ms, () => _slot.Dispatcher.Post(static (rt, a, _) => { if (((LpzRuntime)rt!)._running) ((Action)a!)(); }, this, action, 0));
     }
 
     // ------------------------------------------------------------------ lifecycle
@@ -473,7 +473,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
             var pin = OutPin(key);
             if (pin < 1) return;
             var sig = Symbol.Outputs[pin - 1];
-            if (sig > 1) Runtime._slot.Dispatcher.Post(() => Runtime.Drive(sig, value, _source));
+            if (sig > 1) Runtime._slot.Dispatcher.Post(static (n, v, s) => { var d = (DeviceNode)n!; d.Runtime.Drive(s, v!, d._source); }, this, value, sig);
         }
     }
 }

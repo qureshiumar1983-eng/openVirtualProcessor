@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+using System.Threading.Channels;
 
 namespace OpenVP.Core;
 
@@ -11,9 +11,42 @@ public sealed class SlotDispatcher : IDisposable
 {
     private const int Open = 0, InvokeOnly = 1, Closed = 2;
 
-    private sealed record Item(Action Run, bool IsInvoke, Action? Cancel);
+    /// <summary>
+    /// One queued event. A struct so posting through the state overloads allocates nothing: the
+    /// delegate is meant to be a static lambda and its arguments travel in the item.
+    /// </summary>
+    private readonly struct Item
+    {
+        public readonly Action? Plain;
+        public readonly Action<object?>? WithState;
+        public readonly Action<object?, object?, int>? WithArgs;
+        public readonly object? A, B;
+        public readonly int I;
+        public readonly bool IsInvoke;
+        public readonly Action? Cancel;
 
-    private readonly BlockingCollection<Item> _queue = new();
+        public Item(Action run, bool isInvoke = false, Action? cancel = null)
+        { Plain = run; IsInvoke = isInvoke; Cancel = cancel; WithState = null; WithArgs = null; A = B = null; I = 0; }
+
+        public Item(Action<object?> run, object? state)
+        { WithState = run; A = state; Plain = null; WithArgs = null; B = null; I = 0; IsInvoke = false; Cancel = null; }
+
+        public Item(Action<object?, object?, int> run, object? a, object? b, int i)
+        { WithArgs = run; A = a; B = b; I = i; Plain = null; WithState = null; IsInvoke = false; Cancel = null; }
+
+        public void Run()
+        {
+            if (Plain != null) Plain();
+            else if (WithState != null) WithState(A);
+            else WithArgs!(A, B, I);
+        }
+    }
+
+    // Unbounded, one reader (the slot thread): writers never block and never take a lock.
+    // Synchronous continuations: waking the reader just completes the Task it blocks on, with no
+    // thread-pool hop (the only continuation is our own wait, never user code).
+    private readonly Channel<Item> _queue = Channel.CreateUnbounded<Item>(
+        new UnboundedChannelOptions { SingleReader = true, SingleWriter = false, AllowSynchronousContinuations = true });
     private readonly Thread _thread;
     private readonly Action<Exception> _onError;
     private readonly Func<bool>? _isPaused;
@@ -34,7 +67,21 @@ public sealed class SlotDispatcher : IDisposable
     public void Post(Action action)
     {
         if (_mode != Open) return;
-        try { _queue.Add(new Item(action, false, null)); } catch (InvalidOperationException) { /* shutting down */ }
+        _queue.Writer.TryWrite(new Item(action)); // false once disposed: shutting down
+    }
+
+    /// <summary>Queue an event without allocating: pass a static lambda and its state.</summary>
+    public void Post(Action<object?> action, object? state)
+    {
+        if (_mode != Open) return;
+        _queue.Writer.TryWrite(new Item(action, state));
+    }
+
+    /// <summary>Allocation-free post for events that carry two objects and an int (runtime-style "which node, which value").</summary>
+    public void Post(Action<object?, object?, int> action, object? a, object? b, int i)
+    {
+        if (_mode != Open) return;
+        _queue.Writer.TryWrite(new Item(action, a, b, i));
     }
 
     /// <summary>Run synchronously on the slot thread (or inline if already on it).</summary>
@@ -48,8 +95,7 @@ public sealed class SlotDispatcher : IDisposable
             () => { try { action(); } catch (Exception e) { error = e; } finally { done.Set(); } },
             true,
             () => { error = new ObjectDisposedException(_thread.Name, "The slot thread shut down before running this."); done.Set(); });
-        try { _queue.Add(item); }
-        catch (InvalidOperationException) { throw new ObjectDisposedException(_thread.Name, "The slot thread has shut down."); }
+        if (!_queue.Writer.TryWrite(item)) throw new ObjectDisposedException(_thread.Name, "The slot thread has shut down.");
         // A slot held by the step debugger is waiting on the user, not hung: keep waiting.
         while (!done.Wait(TimeSpan.FromSeconds(30)))
             if (_isPaused?.Invoke() != true)
@@ -68,13 +114,23 @@ public sealed class SlotDispatcher : IDisposable
 
     private void Run()
     {
-        foreach (var item in _queue.GetConsumingEnumerable())
+        var reader = _queue.Reader;
+        while (true)
         {
-            var mode = _mode;
-            if (mode == Closed) { item.Cancel?.Invoke(); continue; }
-            if (mode == InvokeOnly && !item.IsInvoke) continue;
-            try { item.Run(); }
-            catch (Exception e) { _onError(e); }
+            while (reader.TryRead(out var item))
+            {
+                var mode = _mode;
+                if (mode == Closed) { item.Cancel?.Invoke(); continue; }
+                if (mode == InvokeOnly && !item.IsInvoke) continue;
+                try { item.Run(); }
+                catch (Exception e) { _onError(e); }
+            }
+            // A short spin catches the next event of a back-to-back exchange without a kernel wait.
+            var spin = new SpinWait();
+            while (!spin.NextSpinWillYield && !reader.TryPeek(out _)) spin.SpinOnce(-1);
+            if (reader.TryPeek(out _)) continue;
+            // Blocks only when the queue is empty; completes false once the writer is completed and drained.
+            if (!reader.WaitToReadAsync().AsTask().GetAwaiter().GetResult()) break;
         }
     }
 
@@ -82,7 +138,7 @@ public sealed class SlotDispatcher : IDisposable
     {
         if (_mode == Closed) return;
         _mode = Closed;
-        _queue.CompleteAdding();
+        _queue.Writer.TryComplete();
         if (!IsCurrentThread) _thread.Join(TimeSpan.FromSeconds(5));
     }
 }

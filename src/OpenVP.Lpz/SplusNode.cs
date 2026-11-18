@@ -116,7 +116,7 @@ internal sealed class SplusNode : LpzRuntime.Node, ISplusHost
         var pin = OutputPin(kind, id);
         if (pin < 1 || pin > Symbol.Outputs.Length) return;
         var sig = Symbol.Outputs[pin - 1];
-        if (sig > 1) Runtime.Slot.Dispatcher.Post(() => Runtime.Drive(sig, value, Symbol.Path));
+        if (sig > 1) Runtime.Slot.Dispatcher.Post(static (n, v, s) => { var d = (SplusNode)n!; d.Runtime.Drive(s, v!, d.Symbol.Path); }, this, value, sig);
     }
 
     public bool IsConnected(bool isInput, SigKind kind, uint id)

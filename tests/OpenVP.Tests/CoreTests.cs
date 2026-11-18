@@ -61,6 +61,56 @@ public static class CoreTests
     }
 
     [Test]
+    public static void Dispatcher_runs_events_in_order_on_one_thread_for_every_post_form()
+    {
+        using var d = new SlotDispatcher("t", _ => { });
+        var seen = new List<int>(); var threads = new HashSet<int>();
+        for (var i = 0; i < 300; i++)
+        {
+            var n = i;
+            void Rec(int v) { seen.Add(v); threads.Add(Environment.CurrentManagedThreadId); }
+            if (n % 3 == 0) d.Post(() => Rec(n));
+            else if (n % 3 == 1) d.Post(static s => { var (l, t, v) = ((List<int>, HashSet<int>, int))s!; l.Add(v); t.Add(Environment.CurrentManagedThreadId); }, (seen, threads, n));
+            else d.Post(static (a, b, v) => { ((List<int>)a!).Add(v); ((HashSet<int>)b!).Add(Environment.CurrentManagedThreadId); }, seen, threads, n);
+        }
+        d.Invoke(() => { });
+        Assert.Equal(300, seen.Count, "all ran");
+        for (var i = 0; i < 300; i++) Assert.Equal(i, seen[i], "FIFO");
+        Assert.Equal(1, threads.Count, "one thread");
+    }
+
+    [Test]
+    public static void Dispatcher_drops_posts_but_runs_invokes_after_quiesce()
+    {
+        using var d = new SlotDispatcher("t", _ => { });
+        var posted = 0; var invoked = 0;
+        d.Quiesce();
+        d.Post(() => Interlocked.Increment(ref posted));
+        d.Post(_ => Interlocked.Increment(ref posted), null);
+        d.Post((_, _, _) => Interlocked.Increment(ref posted), null, null, 0);
+        d.Invoke(() => Interlocked.Increment(ref invoked));
+        Assert.Equal(0, posted, "posts after quiesce dropped");
+        Assert.Equal(1, invoked, "invoke after quiesce ran");
+    }
+
+    [Test]
+    public static void Dispatcher_cancels_queued_invokes_on_dispose()
+    {
+        var d = new SlotDispatcher("t", _ => { });
+        var gate = new ManualResetEventSlim();
+        d.Post(() => gate.Wait(2000));                                   // hold the thread
+        var ran = 0;
+        var inv = Task.Run(() => { try { d.Invoke(() => Interlocked.Increment(ref ran)); return (Exception?)null; } catch (Exception e) { return e; } });
+        Thread.Sleep(100);                                               // let the invoke queue up behind the gate
+        var disposing = Task.Run(d.Dispose);
+        Thread.Sleep(50);
+        gate.Set();
+        Assert.True(inv.Wait(5000) && disposing.Wait(7000), "both finished");
+        Assert.True(inv.Result is AggregateException { InnerException: ObjectDisposedException }, "queued invoke cancelled with ObjectDisposedException");
+        Assert.Equal(0, ran, "cancelled invoke did not run");
+    }
+
+    [Test]
     public static void Concurrent_lifecycle_calls_do_not_interleave()
     {
         using var p = new Processor(Paths.TempData());

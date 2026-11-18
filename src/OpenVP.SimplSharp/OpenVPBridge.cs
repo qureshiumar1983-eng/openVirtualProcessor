@@ -31,6 +31,14 @@ namespace OpenVP.SimplSharp
             slot.Dispatcher.Post(action);
         }
 
+        /// <summary>Allocation-free variant: pass a static lambda and what it needs.</summary>
+        internal static void Post(Action<object?, object?, int> action, object? a, object? b, int i)
+        {
+            var slot = Slot;
+            if (slot == null) { action(a, b, i); return; }
+            slot.Dispatcher.Post(action, a, b, i);
+        }
+
         internal static void Log(string level, string message) => Slot?.Log(level, message);
 
         internal static void Track(IDisposable resource)

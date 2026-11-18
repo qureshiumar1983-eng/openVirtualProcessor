@@ -185,7 +185,7 @@ public sealed class SimplRuntime : IProgramRuntime
 
     internal IDisposable After(long ms, Action action)
     {
-        return _timers.After(ms, () => _slot.Dispatcher.Post(() => { if (_running) action(); }));
+        return _timers.After(ms, () => _slot.Dispatcher.Post(static (rt, a, _) => { if (((SimplRuntime)rt!)._running) ((Action)a!)(); }, this, action, 0));
     }
 
     // ------------------------------------------------------------------ lifecycle
@@ -379,7 +379,7 @@ public sealed class SimplRuntime : IProgramRuntime
             if (key.Join < 1 || key.Join > size) return; // join not shown on the symbol
             var pin = offset + (int)key.Join;
             var handle = Symbol.Outputs.Count >= pin ? Symbol.Outputs[pin - 1] : 0;
-            if (handle > 0) Runtime._slot.Dispatcher.Post(() => Runtime.Drive(handle, value, _source));
+            if (handle > 0) Runtime._slot.Dispatcher.Post(static (n, v, h) => { var d = (DeviceNode)n!; d.Runtime.Drive(h, v!, d._source); }, this, value, handle);
         }
     }
 }

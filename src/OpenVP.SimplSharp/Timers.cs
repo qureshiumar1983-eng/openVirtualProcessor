@@ -68,10 +68,11 @@ namespace Crestron.SimplSharp
         private void Fire(object _)
         {
             if (Disposed) return;
-            OpenVPBridge.Post(() =>
+            OpenVPBridge.Post(static (t, _, _) =>
             {
-                if (!Disposed) _callback(_userObject);
-            });
+                var timer = (CTimer)t!;
+                if (!timer.Disposed) timer._callback(timer._userObject);
+            }, this, null, 0);
         }
 
         private static long Normalize(long ms) => ms < 0 ? Timeout.Infinite : ms;

@@ -122,7 +122,7 @@ public sealed partial class LpzRuntime
             var pin = _split.OutPin(key with { SmartObject = 0 });
             if (pin < 1) return;
             var sig = Symbol.Outputs[pin - 1];
-            if (sig > 1) Runtime._slot.Dispatcher.Post(() => Runtime.Drive(sig, value, _source));
+            if (sig > 1) Runtime._slot.Dispatcher.Post(static (n, v, s) => { var d = (SmartObjectNode)n!; d.Runtime.Drive(s, v!, d._source); }, this, value, sig);
         }
     }
 
