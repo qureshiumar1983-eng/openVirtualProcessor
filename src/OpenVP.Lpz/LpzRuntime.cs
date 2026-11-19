@@ -208,6 +208,7 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
     {
         var dll = sym.Params.Count > 1 ? sym.Params[1].Text : null;
         if (string.IsNullOrEmpty(dll)) return null;
+        object? instance = null;
         try
         {
             if (_alc == null)
@@ -233,11 +234,14 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
                 ?? throw new InvalidDataException("no SIMPL+ module class");
             var ctor = type.GetConstructors().First(c => c.GetParameters().Length == 3);
             var encType = ctor.GetParameters()[2].ParameterType;
-            var instance = ctor.Invoke(new object[] { sym.Path, sym.Path, Enum.ToObject(encType, 1) });
+            instance = ctor.Invoke(new object[] { sym.Path, sym.Path, Enum.ToObject(encType, 1) });
             return new SplusNode(this, sym, (ISplusModule)instance);
         }
         catch (Exception e)
         {
+            // A module that was created but can't run must release the program-wide start-up barrier it joined
+            // in its constructor; otherwise every other module's WaitForInitializationComplete waits for it.
+            try { (instance as ISplusModule)?.Stop(); } catch (Exception) { }
             var inner = e is System.Reflection.TargetInvocationException t && t.InnerException != null ? t.InnerException : e;
             var unresolved = _alc?.Unresolved.Count > 0 ? $" (missing: {string.Join(", ", _alc.Unresolved.Distinct())})" : "";
             if (_moduleErrors.Add(dll!))

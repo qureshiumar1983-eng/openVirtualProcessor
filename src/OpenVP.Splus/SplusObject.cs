@@ -43,6 +43,41 @@ namespace Crestron.Logos.SplusObjects
             if (w < 256) ThreadPool.SetMinThreads(256, Math.Max(io, 64));
         }
 
+        // Start-up order. Past the barrier, Function Mains take turns in program order (the order modules are
+        // created, which is the order of their records): each runs until it first hands over (Delay, ProcessLogic,
+        // a WAIT, an event wait...), returns, fails or stops, and only then does the next one go on. Module
+        // libraries rely on it: Q-SYS and Biamp ask for their processor module to be placed above the control
+        // modules, whose Main uses callbacks the processor module's Main registers just after the barrier. A Main
+        // that holds its turn for two seconds without handing over loses it, so one stuck module can't stall the rest.
+        private static readonly object TurnGate = new object();
+        private static readonly SortedSet<long> TurnPending = new SortedSet<long>();
+        private static long _turnSeq, _turnHead = -1, _turnSince;
+        private const int TurnTimeoutMs = 2000;
+        private readonly long _turnOrder;
+        private int _turnPassed;
+
+        private void WaitForTurn()
+        {
+            lock (TurnGate)
+            {
+                while (!_stopped && TurnPending.Contains(_turnOrder) && TurnPending.Min != _turnOrder)
+                {
+                    var head = TurnPending.Min;
+                    var now = Environment.TickCount64;
+                    if (head != _turnHead) { _turnHead = head; _turnSince = now; }
+                    else if (now - _turnSince > TurnTimeoutMs) { TurnPending.Remove(head); Monitor.PulseAll(TurnGate); continue; }
+                    Monitor.Wait(TurnGate, 100);
+                }
+            }
+        }
+
+        /// <summary>This module's Main has handed over, returned or stopped: the next module in order may go on.</summary>
+        private void PassTurn()
+        {
+            if (Interlocked.Exchange(ref _turnPassed, 1) == 1) return;
+            lock (TurnGate) { TurnPending.Remove(_turnOrder); Monitor.PulseAll(TurnGate); }
+        }
+
         private void MarkReady()
         {
             if (Interlocked.Exchange(ref _readyFlag, 1) == 1) return;
@@ -63,6 +98,8 @@ namespace Crestron.Logos.SplusObjects
             InheritedStringEncoding = encoding == CrestronStringEncoding.eEncodingUnknown ? CrestronStringEncoding.eEncodingASCII : encoding;
             Interlocked.Increment(ref _modulesStarting);
             AllStarted.Reset();
+            _turnOrder = Interlocked.Increment(ref _turnSeq);
+            lock (TurnGate) TurnPending.Add(_turnOrder);
         }
 
         public string InstanceName { get; }
@@ -132,8 +169,9 @@ namespace Crestron.Logos.SplusObjects
         internal void Yield(Action wait, bool releaseEvents = true)
         {
             // Function Main handing the baton over (Delay, ProcessLogic, a WAIT in progress...) is the point at
-            // which the module's event handlers may start. WaitForInitializationComplete is not: see there.
-            if (releaseEvents && _isMainThread) ReleaseEvents();
+            // which the module's event handlers may start, and the next module's Main its turn.
+            // WaitForInitializationComplete is neither: see there.
+            if (releaseEvents && _isMainThread) { ReleaseEvents(); PassTurn(); }
             var held = _current == this ? _batonDepth : 0;
             if (held > 0) { _batonDepth = 0; _current = null; _baton.Release(); }
             try { wait(); }
@@ -151,6 +189,7 @@ namespace Crestron.Logos.SplusObjects
             // again, so that the code after this call (usually "copy the parameters into globals") runs before
             // any input event, not in a race with it for the baton.
             Yield(() => AllStarted.Wait(TimeSpan.FromSeconds(10)), releaseEvents: false);
+            if (_isMainThread) WaitForTurn();
             ReleaseEvents();
             return 0;
         }
@@ -379,8 +418,18 @@ namespace Crestron.Logos.SplusObjects
 
         void ISplusModule.Initialize()
         {
-            LogosSplusInitialize();
-            LogosSimplSharpInitialize();
+            try
+            {
+                LogosSplusInitialize();
+                LogosSimplSharpInitialize();
+            }
+            catch
+            {
+                // The constructor counted this module into the start-up barrier; a module that can't start
+                // must leave it, or every other module waits for it forever.
+                ((ISplusModule)this).Stop();
+                throw;
+            }
         }
 
         void ISplusModule.SetParameter(uint id, object value)
@@ -494,12 +543,17 @@ namespace Crestron.Logos.SplusObjects
                     if (d.RawValue == 1) Fire(d.OnDigitalPush, ref d.PushSnap, args);
                     else Fire(d.OnDigitalRelease, ref d.ReleaseSnap, args);
                     Fire(d.OnDigitalChange, ref d.ChangeSnap, args);
+                    Fire(OnEventStatement, ref _eventSnap, args);
                     break;
                 case SigKind.Analog when m_AnalogInputList.TryGetValue(id, out var a):
-                    Fire(a.OnAnalogChange, ref a.ChangeSnap, new SignalEventArgs(a, a.Id, a.ArrayStart));
+                    var aargs = new SignalEventArgs(a, a.Id, a.ArrayStart);
+                    Fire(a.OnAnalogChange, ref a.ChangeSnap, aargs);
+                    Fire(OnEventStatement, ref _eventSnap, aargs);
                     break;
                 case SigKind.Serial when m_StringInputList.TryGetValue(id, out var s):
-                    Fire(s.OnSerialChange, ref s.ChangeSnap, new SignalEventArgs(s, s.Id, s.ArrayStart));
+                    var sargs = new SignalEventArgs(s, s.Id, s.ArrayStart);
+                    Fire(s.OnSerialChange, ref s.ChangeSnap, sargs);
+                    Fire(OnEventStatement, ref _eventSnap, sargs);
                     break;
             }
         }
@@ -527,7 +581,7 @@ namespace Crestron.Logos.SplusObjects
                 using var tracked = _host?.Slot.Metrics.TrackThread("S+ Function Main");
                 try { FunctionMain(null); }
                 catch (Exception e) { ObjectCatchHandler(e); }
-                finally { ReleaseEvents(); _initialized.Set(); MarkReady(); }
+                finally { PassTurn(); ReleaseEvents(); _initialized.Set(); MarkReady(); }
             }) { IsBackground = true, Name = "S+ " + InstanceName };
             t.Start();
             // Initialization is complete once Main has had a moment to set up (Main may never return): after
@@ -563,9 +617,22 @@ namespace Crestron.Logos.SplusObjects
             MarkReady();
         }
 
+        /// <summary>The module's catch-all EVENT handlers: run after the input's own handlers whenever any input
+        /// changes (a digital push or release, an analog or serial change).</summary>
+        public List<InputChangeHandlerWrapper> OnEventStatement = new List<InputChangeHandlerWrapper>();
+        private InputChangeHandlerWrapper[] _eventSnap = Array.Empty<InputChangeHandlerWrapper>();
+
+        private readonly List<SocketInfo> _sockets = new();
+        internal void TrackSocket(SocketInfo s) { lock (_sockets) _sockets.Add(s); }
+
         void ISplusModule.Stop()
         {
             _stopped = true;
+            PassTurn();
+            SocketInfo[] sockets;
+            lock (_sockets) { sockets = _sockets.ToArray(); _sockets.Clear(); }
+            foreach (var s in sockets)
+                try { s.Close(); } catch (Exception) { }
             lock (_eventGate) { _gateEvents = false; _pendingInputs.Clear(); }
             lock (_readyGate) { _readyTimer?.Dispose(); _readyTimer = null; }
             lock (_waits) { foreach (var w in _waits) { w.Timer?.Dispose(); w.Done.Set(); } _waits.Clear(); }
@@ -590,7 +657,11 @@ namespace Crestron.Logos.SplusObjects
         {
             Owner = owner;
             SocketRxBuf = new CrestronString(CrestronStringEncoding.eEncodingASCII, Math.Max(bufferSize, 1), owner);
+            owner?.TrackSocket(this);
         }
+
+        /// <summary>Close whatever the socket holds open; called when its module stops.</summary>
+        internal virtual void Close() { }
 
         public SplusObject Owner { get; }
         public CrestronString SocketRxBuf;
@@ -641,6 +712,7 @@ namespace Crestron.Logos.SplusObjects
     {
         public SplusTcpClient(int bufferSize, SplusObject owner) : base(bufferSize, owner) { }
         internal System.Net.Sockets.TcpClient Client;
+        internal override void Close() { var c = Client; Client = null; c?.Dispose(); SocketStatus = 0; }
     }
 
     public partial class SplusTcpServer : SocketInfo
@@ -648,13 +720,21 @@ namespace Crestron.Logos.SplusObjects
         public SplusTcpServer(int bufferSize, SplusObject owner) : base(bufferSize, owner) { }
         internal System.Net.Sockets.TcpListener Listener;
         internal System.Net.Sockets.TcpClient Client;
+        internal override void Close()
+        {
+            var l = Listener; Listener = null; l?.Stop();
+            var c = Client; Client = null; c?.Dispose();
+            SocketStatus = 0;
+        }
     }
 
     public partial class SplusUdpSocket : SocketInfo
     {
         public SplusUdpSocket(int bufferSize, SplusObject owner) : base(bufferSize, owner) { }
+        /// <summary>The shared OS socket for this socket's local port (see <see cref="OpenVP.Splus.UdpPorts"/>).</summary>
         internal System.Net.Sockets.UdpClient Udp;
         internal System.Net.IPEndPoint Remote;
+        internal override void Close() { OpenVP.Splus.UdpPorts.Leave(this); SocketStatus = 0; }
     }
 
     public partial class SocketString : StringInput
