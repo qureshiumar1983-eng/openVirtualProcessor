@@ -22,6 +22,9 @@ public interface IPrimitiveContext
     void Set(int outputPin, object value);
     /// <summary>Drive an output with the current value of an input pin, whatever its kind.</summary>
     void SetFromInput(int outputPin, int inputPin);
+    /// <summary>Drive the signal wired to an input pin, for the rare primitive that owns what is wired to it
+    /// (Make String Permanent restoring its saved strings). Does nothing for the constant signals.</summary>
+    void SetInput(int inputPin, string value);
     object Output(int outputPin);
     SigKind OutputSignalKind(int outputPin);
     int ParamCount { get; }
@@ -433,21 +436,34 @@ public sealed class WavePulsePrim : EdgePrim
 
 // ------------------------------------------------------------------ analog / serial
 
-/// <summary>Type 38, Analog Initialize (numeric params) / serial initialize (string params):
-/// on a rising input (or at start if the input is the constant 1), output k = parameter k.</summary>
+/// <summary>Type 38, Analog Initialize (numeric params) / serial initialize (string params). Two forms:
+/// one trigger and N outputs (on a rising input, or at start if the input is the constant 1, output k =
+/// parameter k), or N triggers and one output (a rising input k, or input k high at start, sets the output
+/// to parameter k).</summary>
 public sealed class InitPrim : EdgePrim
 {
     public override SigKind? OutputKind(int pin) => null;
-    public override void Start(IPrimitiveContext c) { if (c.Digital(1)) Fire(c); }
-    protected override void OnEdge(IPrimitiveContext c, int p) { if (p == 1) Fire(c); }
+    private static bool Multi(IPrimitiveContext c) => c.InputCount > 1 && c.OutputCount == 1;
+    public override void Start(IPrimitiveContext c)
+    {
+        if (Multi(c)) { for (int k = 1; k <= c.InputCount; k++) if (c.Digital(k)) Load(c, k, 1); }
+        else if (c.Digital(1)) Fire(c);
+    }
+    protected override void OnEdge(IPrimitiveContext c, int p)
+    {
+        if (Multi(c)) Load(c, p, 1);
+        else if (p == 1) Fire(c);
+    }
     private static void Fire(IPrimitiveContext c)
     {
-        for (int k = 1; k <= c.OutputCount; k++)
-        {
-            var text = c.Text(k - 1);
-            if (text != null) c.Set(k, text);
-            else c.Set(k, (ushort)Math.Clamp(c.Number(k - 1), 0, 65535));
-        }
+        for (int k = 1; k <= c.OutputCount; k++) Load(c, k, k);
+    }
+    /// <summary>Drive an output with parameter k.</summary>
+    private static void Load(IPrimitiveContext c, int k, int outputPin)
+    {
+        var text = c.Text(k - 1);
+        if (text != null) c.Set(outputPin, text);
+        else c.Set(outputPin, (ushort)Math.Clamp(c.Number(k - 1), 0, 65535));
     }
 }
 
@@ -580,17 +596,29 @@ public sealed class ClockPrim : Primitive
     public override void OnInput(IPrimitiveContext c, int p, object o, object n) { }
 }
 
-/// <summary>Type 205, Make String Permanent: no inputs; its outputs are serial signals whose values are kept
-/// across restarts. Restores them at start and saves them whenever they change.</summary>
+/// <summary>Type 205, Make String Permanent: the serial signals wired to its inputs keep their last value
+/// across restarts (parameter 1 is the longest string kept). At start each one is restored by driving its
+/// signal, and whenever one changes the new value is saved. Programs the compiler wrote with no inputs and
+/// the signals on outputs instead are handled the same way, watching those outputs.</summary>
 public sealed class PermanentPrim : Primitive, IWatchesOutputs
 {
+    public override SigKind? InputKind(int pin) => SigKind.Serial;
     public override SigKind? OutputKind(int pin) => SigKind.Serial;
+    private static string InKey(IPrimitiveContext c, int pin) => $"{c.Symbol.Path}#in{pin}";
     public override void Start(IPrimitiveContext c)
     {
         for (int k = 1; k <= c.OutputCount; k++)
             if (c.Recall(k) is string v) c.Set(k, v);
+        for (int k = 1; k <= c.InputCount; k++)
+            if (!c.IsConstant(k) && c.RecallKey(InKey(c, k)) is string v) c.SetInput(k, v);
     }
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n) { }
+    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    {
+        var text = n as string ?? string.Empty;
+        var max = c.Number(0);
+        if (max > 0 && text.Length > max) text = text[..(int)max];
+        c.RememberKey(InKey(c, p), text);
+    }
     public void OnOutputChanged(IPrimitiveContext c, int pin, object value) => c.Remember(pin, value as string ?? "");
 }
 

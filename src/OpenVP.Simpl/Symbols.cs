@@ -256,15 +256,29 @@ public sealed class DelaySymbol : SymbolBehavior
 
 // ------------------------------------------------------------------ analog / serial
 
-/// <summary>Analog Initialize: sets output 1 to P1 at program start and on each rising edge of input 1.</summary>
+/// <summary>Analog Initialize, in its two forms. One trigger and N outputs: output k is set to parameter k at
+/// program start and on each rising edge of input 1. N triggers and one output: a rising edge on input k sets
+/// the output to parameter k (the constant 1 rises at program start, so a trigger wired to it loads then).</summary>
 public sealed class AnalogInitSymbol : SymbolBehavior
 {
     public override SigKind OutputKind(int pin) => SigKind.Analog;
-    public override void Start(ISymbolContext c) => c.SetOutput(1, (ushort)Math.Clamp(c.ParamNumber(1, 0), 0, 65535));
+    private static bool Multi(ISymbolContext c) => c.InputCount > 1 && c.OutputCount == 1;
+    public override void Start(ISymbolContext c)
+    {
+        if (!Multi(c)) Fire(c);
+    }
     public override void OnInput(ISymbolContext c, int pin, object o, object n)
     {
-        if (Rising(o, n)) Start(c);
+        if (!Rising(o, n)) return;
+        if (Multi(c)) Load(c, pin, 1);
+        else Fire(c);
     }
+    private static void Fire(ISymbolContext c)
+    {
+        for (int k = 1; k <= c.OutputCount; k++) Load(c, k, k);
+    }
+    private static void Load(ISymbolContext c, int param, int outputPin) =>
+        c.SetOutput(outputPin, (ushort)Math.Clamp(c.ParamNumber(param, 0), 0, 65535));
 }
 
 /// <summary>Equate: digital output k is high while the analog input (input 1) equals parameter k and the
