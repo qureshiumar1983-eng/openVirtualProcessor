@@ -180,13 +180,16 @@ public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
         var otherHardware = new List<SmwSymbol>();
         foreach (var sym in _file.Symbols.Values.OrderBy(s => s.Handle))
         {
+            if (BuildPort(sym)) continue;
             if (IsDevice(sym))
             {
                 var dev = new DeviceNode(this, sym);
                 dev.Classify();
                 _devices.Add(dev);
                 Register(dev);
-                if (!dev.Registered) (dev.Role == DeviceRole.SubDevice ? subDevices : otherHardware).Add(sym);
+                // Hardware with nothing wired does nothing in the program: only the rest is worth reporting.
+                if (!dev.Registered && (sym.Inputs.Any(h => h > 0) || sym.Outputs.Any(h => h > 0)))
+                    (dev.Role == DeviceRole.SubDevice ? subDevices : otherHardware).Add(sym);
                 continue;
             }
 

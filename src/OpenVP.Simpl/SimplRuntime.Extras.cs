@@ -1,4 +1,5 @@
 using OpenVP.Core;
+using OpenVP.Lpz;
 
 namespace OpenVP.Simpl;
 
@@ -199,6 +200,98 @@ public sealed partial class SimplRuntime
             if (pin < 1) return false;
             Press(pin, value);
             return true;
+        }
+    }
+
+    // ------------------------------------------------------------------ COM and IR ports
+
+    private IPortBridge? _portBridge;
+    private IPortBridge PortBridge => _portBridge ??= LpzRuntime.PortBridgeFactory?.Invoke(_slot) ?? NullPortBridge.Instance;
+    private readonly List<PortInfo> _ports = new();
+
+    /// <summary>The COM and IR ports the program uses, for the console.</summary>
+    public IReadOnlyList<PortInfo> Ports => _ports;
+
+    private static bool IsComPort(SmwSymbol s) =>
+        s.Name.Contains("serial driver", StringComparison.OrdinalIgnoreCase) ||
+        s.Name.Contains("serial-controlled device", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsIrPort(SmwSymbol s) => s.Code == 107 || s.Name.Contains("IR-controlled device", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A COM or IR port symbol (a processor port, or a port on a device): logged and handed to the port
+    /// bridge, as compiled programs' type −200 and −202 records are. False if the symbol isn't one.</summary>
+    private bool BuildPort(SmwSymbol sym)
+    {
+        if (sym.DeviceHandle <= 0) return false;
+        var kind = IsIrPort(sym) ? PortKind.Ir : IsComPort(sym) ? PortKind.Com : (PortKind?)null;
+        if (kind == null) return false;
+        if (!sym.Inputs.Any(h => h > 0) && !sym.Outputs.Any(h => h > 0)) return true; // placed but nothing wired: idle
+        var number = _file.Devices.TryGetValue(sym.DeviceHandle, out var dv) && int.TryParse(dv.Get("Ad"), System.Globalization.NumberStyles.HexNumber, null, out var ad) ? ad : 1;
+        var parent = _file.Symbols.GetValueOrDefault(sym.Parent);
+        var device = DeviceAncestor(sym);
+        var ipid = device != null && _file.RoleOf(device.DeviceHandle) == DeviceRole.IpId ? DeviceIpIdText(device) : null;
+        var path = string.Join("/", new[] { ipid != null ? $"IP-ID-{ipid}" : null, parent?.Name.Trim(), $"{(kind == PortKind.Ir ? "IR" : "COM")}-{number:00}" }.Where(x => !string.IsNullOrEmpty(x)));
+        var port = new PortInfo(kind.Value, path, ipid, 0, number);
+        _ports.Add(port);
+        Register(kind == PortKind.Ir ? new IrPortNode(this, sym, port) : new ComPortNode(this, sym, port));
+        return true;
+    }
+
+    private string? DeviceIpIdText(SmwSymbol device) =>
+        _file.Devices.TryGetValue(device.DeviceHandle, out var dv) && dv.Get("Ad") is { Length: > 0 } ad ? ad.ToUpperInvariant() : null;
+
+    /// <summary>COM port (processor or device): input 1 is the text to send, output 1 the text received. A virtual
+    /// processor has no serial ports, so sends are logged and given to the port bridge; text can be injected by
+    /// forcing the receive signal in the debugger (or by the bridge).</summary>
+    private sealed class ComPortNode : Node
+    {
+        private readonly PortInfo _port;
+        public ComPortNode(SimplRuntime rt, SmwSymbol sym, PortInfo port) : base(rt, sym) { _port = port; }
+
+        public override SigKind? InputKind(int pin) => pin == 1 ? SigKind.Serial : SigKind.Digital;
+        public override SigKind? OutputKind(int pin) => pin == 1 ? SigKind.Serial : SigKind.Digital;
+        public override bool WatchesOutputs => true;
+
+        public override void Start()
+        {
+            try { Runtime.PortBridge.Open(_port, text => Runtime._slot.Dispatcher.Post(() => { if (Runtime._running) Runtime.DriveOut(this, 1, text); })); }
+            catch (Exception e) { Runtime._slot.Log("Warning", $"{_port.Label}: port bridge: {e.Message}"); }
+        }
+
+        public override void OnInput(int pin, object o, object n)
+        {
+            if (n is not string s || s.Length == 0) return;
+            if (pin < 0) // our own receive signal changed: from the bridge or forced in the debugger
+            {
+                if (pin == -1) Runtime._slot.Log("Info", $"{_port.Label} RX ({s.Length}): \"{PortInfo.Printable(s)}\"");
+                return;
+            }
+            if (pin != 1) return;
+            Runtime._slot.Log("Info", $"{_port.Label} TX ({s.Length}): \"{PortInfo.Printable(s)}\"");
+            try { Runtime.PortBridge.SendCom(_port, s); }
+            catch (Exception e) { Runtime._slot.Log("Warning", $"{_port.Label}: port bridge: {e.Message}"); }
+        }
+    }
+
+    /// <summary>IR device from the Crestron database (SmC 107): a rising edge on input k (k ≥ 2) fires IR command
+    /// k − 2, whose name is parameter k − 1.</summary>
+    private sealed class IrPortNode : Node
+    {
+        private readonly PortInfo _port;
+        public IrPortNode(SimplRuntime rt, SmwSymbol sym, PortInfo port) : base(rt, sym) { _port = port; }
+
+        public override SigKind? InputKind(int pin) => SigKind.Digital;
+        public override SigKind? OutputKind(int pin) => null;
+        public override bool WantsStartEdge => false;
+
+        public override void OnInput(int pin, object o, object n)
+        {
+            if (pin < 2 || !(o is false && n is true)) return;
+            var cmd = pin - 2;
+            var name = cmd < Symbol.Parameters.Count && Symbol.Parameters[cmd].Length > 0 ? Symbol.Parameters[cmd] : $"command {cmd}";
+            Runtime._slot.Log("Info", $"{_port.Label}: {name} (cmd {cmd})");
+            try { Runtime.PortBridge.SendIr(_port, cmd, name); }
+            catch (Exception e) { Runtime._slot.Log("Warning", $"{_port.Label}: port bridge: {e.Message}"); }
         }
     }
 

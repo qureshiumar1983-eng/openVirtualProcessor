@@ -11,524 +11,121 @@ Merging: if two people's edits clash, keep both rows; for the same row, add the 
 | Compiled primitive | type 107 | unidentified | 2 | 2026-11-19 | 2026-11-19 |
 | Compiled primitive | type 113 | unidentified | 1 | 2026-11-19 | 2026-11-19 |
 | Compiled primitive | type 261 | unidentified | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-USB-HID (SmC 5564) | processor hardware (Cresnet, COM, IR, relays...) | 20 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | CP4N I/O Ports (SmC 7054) | processor hardware (Cresnet, COM, IR, relays...) | 12 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | CP4N Relay (SmC 7055) | processor hardware (Cresnet, COM, IR, relays...) | 12 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | CP4N System Control (SmC 7058) | processor hardware (Cresnet, COM, IR, relays...) | 12 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | CP4N System Information (SmC 7059) | processor hardware (Cresnet, COM, IR, relays...) | 12 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | CP4N System Monitor (SmC 7057) | processor hardware (Cresnet, COM, IR, relays...) | 12 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | CP4N User Program Init (SmC 7060) | processor hardware (Cresnet, COM, IR, relays...) | 12 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | CP3 two-way serial driver (SmC 3389) | processor hardware (Cresnet, COM, IR, relays...) | 11 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | Crestron DB serial-controlled device (SmC 108) | processor hardware (Cresnet, COM, IR, relays...) | 11 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | COM 2-Way Serial Driver (SmC 6301) | processor hardware (Cresnet, COM, IR, relays...) | 9 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | CP4 I/O Ports (SmC 6582) | processor hardware (Cresnet, COM, IR, relays...) | 9 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | CP4 Relay (SmC 6583) | processor hardware (Cresnet, COM, IR, relays...) | 9 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | CP4 System Control (SmC 6586) | processor hardware (Cresnet, COM, IR, relays...) | 9 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | CP4 System Information (SmC 6587) | processor hardware (Cresnet, COM, IR, relays...) | 9 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | CP4 System Monitor (SmC 6585) | processor hardware (Cresnet, COM, IR, relays...) | 9 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | CP4 User Program Init (SmC 6588) | processor hardware (Cresnet, COM, IR, relays...) | 9 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | Crestron DB IR-controlled device (SmC 107) | processor hardware (Cresnet, COM, IR, relays...) | 8 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | COM 2-Way Serial Driver (3-pin) (SmC 6361) | processor hardware (Cresnet, COM, IR, relays...) | 6 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | CP3 RS-232 only two-way serial driver (SmC 3398) | processor hardware (Cresnet, COM, IR, relays...) | 6 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-CP3-IO8 (SmC 3390) | processor hardware (Cresnet, COM, IR, relays...) | 5 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-CP3-RY8 (SmC 3391) | processor hardware (Cresnet, COM, IR, relays...) | 5 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-CP3-SYSTEMCONTROL (SmC 3395) | processor hardware (Cresnet, COM, IR, relays...) | 5 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-CP3-SYSTEMINFORMATION (SmC 3396) | processor hardware (Cresnet, COM, IR, relays...) | 5 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-CP3-SYSTEMMONITOR (SmC 3394) | processor hardware (Cresnet, COM, IR, relays...) | 5 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-CP3-USERPROGINIT (SmC 4320) | processor hardware (Cresnet, COM, IR, relays...) | 5 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 System Control (SmC 4415) | processor hardware (Cresnet, COM, IR, relays...) | 5 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 System Information (SmC 4416) | processor hardware (Cresnet, COM, IR, relays...) | 5 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 System Monitor (SmC 4414) | processor hardware (Cresnet, COM, IR, relays...) | 5 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 User Program Information (SmC 4627) | processor hardware (Cresnet, COM, IR, relays...) | 5 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | GLS-PART-CN (SmC 5206) | processor hardware (Cresnet, COM, IR, relays...) | 5 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C3COM-3 Two-way serial driver (SmC 3472) | processor hardware (Cresnet, COM, IR, relays...) | 4 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Digital Inputs (SmC 4381) | processor hardware (Cresnet, COM, IR, relays...) | 4 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Relays (SmC 4382) | processor hardware (Cresnet, COM, IR, relays...) | 4 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-C2N-IO-COM1-232 Two-way serial driver (SmC 734) | processor hardware (Cresnet, COM, IR, relays...) | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-C2N-IO-RY2 (SmC 940) | processor hardware (Cresnet, COM, IR, relays...) | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Two-way serial driver (SmC 4378) | processor hardware (Cresnet, COM, IR, relays...) | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | RMC4 Digital Input (SmC 6539) | processor hardware (Cresnet, COM, IR, relays...) | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | RMC4 Relay (SmC 6540) | processor hardware (Cresnet, COM, IR, relays...) | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | RMC4 System Control (SmC 6543) | processor hardware (Cresnet, COM, IR, relays...) | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | RMC4 System Information (SmC 6544) | processor hardware (Cresnet, COM, IR, relays...) | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | RMC4 System Monitor (SmC 6542) | processor hardware (Cresnet, COM, IR, relays...) | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | RMC4 User Program Init (SmC 6545) | processor hardware (Cresnet, COM, IR, relays...) | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-AV3-COM6 two-way serial driver (SmC 3680) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-AV3-CRESNETINFO (SmC 4123) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-AV3-IO8 (SmC 3682) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-AV3-RY8 (SmC 3683) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-AV3-SYSTEMCONTROL (SmC 3687) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-AV3-SYSTEMINFORMATION (SmC 3688) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-AV3-SYSTEMMONITOR (SmC 3686) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-AV3-USERPROGINIT (SmC 4318) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-DMTX201C-HDMI (SmC 2575) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | CP4N Relay (SmC 7055) | processor hardware (Cresnet, COM, IR, relays...) | 4 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | CP4N System Control (SmC 7058) | processor hardware (Cresnet, COM, IR, relays...) | 4 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | CP4 Relay (SmC 6583) | processor hardware (Cresnet, COM, IR, relays...) | 3 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | C2I-CP3-RY8 (SmC 3391) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | C2I-DMTX201C-VGA (SmC 2576) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-PRO3-COM6 RS-232 only two-way serial driver (SmC 3667) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-PRO3-COM6 two-way serial driver (SmC 3666) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-PRO3-CRESNETINFO (SmC 4124) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-PRO3-IO8 (SmC 3668) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-PRO3-RY8 (SmC 3669) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-PRO3-SYSTEMCONTROL (SmC 3673) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-PRO3-SYSTEMINFORMATION (SmC 3674) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-PRO3-SYSTEMMONITOR (SmC 3672) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-PRO3-USERPROGINIT (SmC 4319) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2N-CBD Advanced Button Events (SmC 2736) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2N-CBD-P (SmC 2735) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2N-CBD-P Brightness and Bargraph Functions (SmC 2737) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2N-CBD-P Brightness and Bargraph Settings (SmC 2738) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2N-CBD-P Versiport (SmC 2739) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DM-RMC-SCALER-C (SmC 3334) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DM-RMC-SCALER-C DM Input Slot (SmC 3339) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DM-RMC-SCALER-C Scaler (SmC 3338) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DM-RMC-SCALER-C Two-way serial driver (SmC 3336) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | CP4 System Control (SmC 6586) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | CP4N I/O Ports (SmC 7054) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | DM-TX-201-C (SmC 2574) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Aux 1 (SmC 5104) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Aux 1 EQ (SmC 5086) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Aux 1 Mix (SmC 5085) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Aux 2 (SmC 5105) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Aux 2 EQ (SmC 5088) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Aux 2 Mix (SmC 5087) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 DM 3 (SmC 5108) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 DM 3 Mix (SmC 5091) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 DM 4 (SmC 5109) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 DM 4 Mix (SmC 5092) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 HDMI 1 (SmC 5106) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 HDMI 1 Mix (SmC 5089) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 HDMI 2 (SmC 5107) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 HDMI 2 Mix (SmC 5090) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Input 1 HDMI (SmC 4834) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Input 2 HDMI (SmC 4835) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Input 3 HDMI/VGA (SmC 4836) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Input 4 HDMI/VGA (SmC 4837) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Input 5 HDMI/VGA/BNC (SmC 4838) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Input 6 DM (SmC 4613) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Input 7 DM (SmC 4614) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Mic 1 (SmC 4828) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Mic 2 (SmC 4829) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Mic 3 (SmC 4830) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Mic 4 (SmC 4831) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Mic 5 (SmC 4832) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Mic 6 (SmC 4833) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Program (SmC 5103) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Program EQ (SmC 5084) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Program Mix (SmC 5083) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | DMPS3 Relays (SmC 4382) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | DMPS3 System Control (SmC 4415) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | DMPS3-300-C AV Control (SmC 5102) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | DMPS3-300-C Device Control (SmC 4816) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C AirMedia (SmC 5877) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C AirMedia OSD Control (SmC 5880) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Analog Audio Inputs (SmC 6248) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Aux 1 (SmC 5886) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Aux 1 EQ (SmC 5888) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Aux 1 Mix (SmC 5887) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Aux 2 (SmC 5889) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Aux 2 EQ (SmC 5891) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Aux 2 Mix (SmC 5890) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | DMPS3-4K-350-C AV Control (SmC 5858) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Control (SmC 5856) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Device Control (SmC 5857) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Digital Mixer 1 (SmC 5893) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Digital Mixer 2 (SmC 5895) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C DM 3 (SmC 5896) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C DM 4 (SmC 5899) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C H.264 Stream In (SmC 5881) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C HDMI 1 (SmC 5892) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C HDMI 2 (SmC 5894) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Input 1 HDMI (SmC 5867) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Input 2 HDMI (SmC 5868) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Input 3 HDMI (SmC 5869) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Input 4 HDMI (SmC 5870) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Input 5 HDMI (SmC 5871) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Input 6 HDMI (SmC 5872) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Input 7 DM (SmC 5873) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Input 8 DM (SmC 5875) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Input 9 AirMedia (SmC 6249) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Mic 1 (SmC 5860) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Mic 2 (SmC 5861) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Mic 3 (SmC 5862) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Mic 4 (SmC 5863) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Mic 5 (SmC 5864) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Mic 6 (SmC 5865) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Program (SmC 5883) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Program EQ (SmC 5885) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Program Mix (SmC 5884) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-350-C Stream Receive (SmC 6250) | processor hardware (Cresnet, COM, IR, relays...) | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-AV3-COM6 RS-232 only two-way serial driver (SmC 3681) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-AV3-IR8 One-way serial driver (SmC 3685) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | C2I-DMTX200-C-2G-HDMI (SmC 3384) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | C2I-CP3-SYSTEMCONTROL (SmC 3395) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | C2I-DMTX200-C-2G-VGA (SmC 3385) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | C2I-DMTX201C-HDMI (SmC 2575) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | C2I-PRO3-SYSTEMCONTROL (SmC 3673) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | C2I-REMOTE-BACNET-DEVICE v1.0 (SmC 3560) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | C2I-REMOTE-BACNET-DEVICES v1.0 (SmC 3559) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | C2N-CBD-P (SmC 2735) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | C3RY-8 (SmC 3473) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | CM2-KPCN Advanced Button Events (SmC 19503) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | CM2-KPCN Ambient Light Sensor (SmC 19494) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | CM2-KPCN Backlight LED Settings (SmC 19493) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | CM2-KPCN Button/LED Functions (SmC 19492) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | CM2-KPCN Temperature Sensor Input (SmC 19496) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | CM2-KPCN Versiport (SmC 19495) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | COM 2-Way Serial Driver (SmC 6361) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | CP4 I/O Ports (SmC 6582) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | CP4N System Information (SmC 7059) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | DM-RMC-4K-100-C-1G HDMI (SmC 5223) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | DM-RMC-4KZ-SCALER-C (SmC 6431) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DM-RMC-4KZ-SCALER-C DM Input Slot (SmC 6436) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DM-RMC-4KZ-SCALER-C HDMI (SmC 6437) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DM-RMC-4KZ-SCALER-C Scaler (SmC 6435) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | DM-RMC-SCALER-C Scaler (SmC 3338) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | DM-TX-200-C-2G (SmC 3383) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 Analog Audio Output (SmC 4985) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 DM/HDMI Output (SmC 5158) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3 One-way serial driver (SmC 4380) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-150-C AV Control (SmC 5118) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-150-C Device Control (SmC 5152) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-150-C Digital Inputs (SmC 5116) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-150-C Relays (SmC 5197) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-150-C-AV DM Input 1 (SmC 5123) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-150-C-AV DM Input 2 (SmC 5124) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-150-C-AV HDMI Input 1 (SmC 5119) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-150-C-AV HDMI Input 2 (SmC 5120) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-150-C-AV HDMI Input 3 (SmC 5121) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-150-C-AV HDMI Input 4 (SmC 5122) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-150-C-AV Mic (SmC 4984) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-150-C-AV VGA Input 1 (SmC 4986) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-150-C-AV VGA Input 2 (SmC 4987) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-150-C-AV VGA Input 3 (SmC 4988) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | DMPS3-4K-150-C-AV VGA Input 4 (SmC 4989) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | DMPS3 Digital Inputs (SmC 4381) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | DMPS3 Input 6 DM (SmC 4613) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | DMPS3 Input 7 DM (SmC 4614) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | DMPS3-4K-350-C DM 3 (SmC 5896) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | DMPS3-4K-350-C DM 4 (SmC 5899) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | DMPS3-4K-350-C Input 1 HDMI (SmC 5867) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | DMPS3-4K-350-C Input 2 HDMI (SmC 5868) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | GLS-ODT-C-CN (SmC 3478) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | GLS-ODT-C-CN Sensor Configuration Settings (SmC 3790) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | GLS-ODT-C-CN Sensor IR Settings (SmC 3481) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | HDBT Compatible Two-way Serial Driver (SmC 4574) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | Hosted Analog Input Object (SmC 3563) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | Hosted Analog Value Object (SmC 20238) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | Hosted Analog Value Object (SmC 3576) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | MPC3-102 Cresnet Information (SmC 6611) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | MPC3-102 Front Panel (SmC 6606) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | MPC3-102 Front Panel Buttons (SmC 6607) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | MPC3-102 IO (SmC 6603) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | MPC3-102 Relay (SmC 6604) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | MPC3-102 System Control (SmC 6609) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | MPC3-102 System Information (SmC 6610) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | MPC3-102 System Monitor (SmC 6608) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | MPC3-102 User Program Initialize (SmC 6612) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | Remote Analog Value Object (SmC 20241) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | Remote Analog Value Object (SmC 3579) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | Remote Binary Output Object (SmC 20234) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | Remote Binary Output Object (SmC 3568) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | RMC4 System Control (SmC 6543) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL hardware | RMC4 System Monitor (SmC 6542) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | ST-IO (SmC 136) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL hardware | XiO Cloud Room (SmC 8905) | processor hardware (Cresnet, COM, IR, relays...) | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | COM 2-Way Serial Driver (SmC 6301) | slot, port or extender inside an IP-ID device: not mapped to joins | 10 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM NAX Routing (SmC 7048) | slot, port or extender inside an IP-ID device: not mapped to joins | 7 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM NAX RX (SmC 7049) | slot, port or extender inside an IP-ID device: not mapped to joins | 7 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM NAX TX (SmC 7050) | slot, port or extender inside an IP-ID device: not mapped to joins | 7 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM Preview Image (SmC 15765) | slot, port or extender inside an IP-ID device: not mapped to joins | 7 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM Preview Image Location (SmC 15766) | slot, port or extender inside an IP-ID device: not mapped to joins | 7 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM Preview Image Preview Images (SmC 15769) | slot, port or extender inside an IP-ID device: not mapped to joins | 7 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM XIO Routing (SmC 6094) | slot, port or extender inside an IP-ID device: not mapped to joins | 7 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | XIO Routing Subscribed Streams (SmC 6095) | slot, port or extender inside an IP-ID device: not mapped to joins | 7 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36x Automatic Power Settings (SmC 15503) | slot, port or extender inside an IP-ID device: not mapped to joins | 5 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36x Background Image From Local Drive (SmC 16471) | slot, port or extender inside an IP-ID device: not mapped to joins | 5 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36x Background Image From Remote Drive (SmC 16472) | slot, port or extender inside an IP-ID device: not mapped to joins | 5 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36x HDMI In (SmC 7065) | slot, port or extender inside an IP-ID device: not mapped to joins | 5 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36x Network (SmC 7074) | slot, port or extender inside an IP-ID device: not mapped to joins | 5 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36x Stream Receive (SmC 7064) | slot, port or extender inside an IP-ID device: not mapped to joins | 5 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36x Stream Transmit (SmC 7063) | slot, port or extender inside an IP-ID device: not mapped to joins | 5 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36x Test Pattern Generator (SmC 16473) | slot, port or extender inside an IP-ID device: not mapped to joins | 5 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36x Text Overlay (SmC 16789) | slot, port or extender inside an IP-ID device: not mapped to joins | 5 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36x USB (SmC 7075) | slot, port or extender inside an IP-ID device: not mapped to joins | 5 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36x USB Hotkey (SmC 16260) | slot, port or extender inside an IP-ID device: not mapped to joins | 5 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | TST-902 (EX) (SmC 5187) | slot, port or extender inside an IP-ID device: not mapped to joins | 5 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | COM 2-Way Serial Driver (3-pin) (SmC 6361) | slot, port or extender inside an IP-ID device: not mapped to joins | 4 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | Crestron Go Notification Widget Functions (SmC 7131) | slot, port or extender inside an IP-ID device: not mapped to joins | 4 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36x Background Image (SmC 16470) | slot, port or extender inside an IP-ID device: not mapped to joins | 4 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36x HDMI Out (SmC 7067) | slot, port or extender inside an IP-ID device: not mapped to joins | 4 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HDBT Compatible Two-way Serial Driver (SmC 4574) | slot, port or extender inside an IP-ID device: not mapped to joins | 4 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | TST-1080 Buttons (SmC 17308) | slot, port or extender inside an IP-ID device: not mapped to joins | 4 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | TSW-1060 Buttons (SmC 5933) | slot, port or extender inside an IP-ID device: not mapped to joins | 4 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | TSW-1070 Buttons (SmC 6841) | slot, port or extender inside an IP-ID device: not mapped to joins | 4 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | C2I-DMTX200-C-2G-HDMI (SmC 3384) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | C2I-DMTX200-C-2G-VGA (SmC 3385) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | Crestron App Notification Widget Functions (SmC 5618) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DGE-100 HDMI In (SmC 5326) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DGE-100 HDMI Out (SmC 5327) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DGE-100 Two-way serial driver (SmC 5265) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DGE-100 USB (SmC 5263) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36xC Automatic Power Settings (SmC 15514) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36xC Background Image (SmC 16474) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36xC Background Image From Local Drive (SmC 16475) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36xC Background Image From Remote Drive (SmC 16476) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36xC HDMI In (SmC 15512) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36xC HDMI Out (SmC 15513) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36xC Network (SmC 15516) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36xC Stream Receive (SmC 15511) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36xC Stream Transmit (SmC 15510) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36xC Test Pattern Generator (SmC 16477) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36xC Text Overlay (SmC 15515) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36xC USB (SmC 15517) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-36xC USB Hotkey (SmC 16261) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-D30 (v2) Automatic Power Settings (SmC 15425) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-D30 (v2) HDMI Out (SmC 15424) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-D30 (v2) Network (SmC 15428) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-D30 (v2) Stream Receive (SmC 15423) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-D30 Background Image (SmC 16703) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-D30 Background Image From Local Drive (SmC 16704) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-D30 Background Image From Remote Drive (SmC 16705) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-E30 (v2) HDMI In (SmC 15440) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-E30 (v2) Network (SmC 15443) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-E30 (v2) Stream Transmit (SmC 15439) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-E30 Test Pattern Generator (SmC 16684) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-E760 DM In (SmC 15306) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-E760 Network (SmC 15307) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-E760 Stream Transmit (SmC 15303) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-E760 Test Pattern Generator (SmC 16670) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-RMC-4K-SCALER-C DM Input Slot (SmC 5222) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-RMC-4K-SCALER-C Scaler (SmC 5221) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-RMC-4K-SCALER-C Two-way serial driver (SmC 5219) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-TX-4K-100-C-1G HDMI (SmC 5224) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMC-4KZ-HD Advanced (SmC 6235) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | From Remote Drive (SmC 16470) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-CTL-101 DIGI-IN Port (SmC 16983) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-CTL-101 HDMI In (SmC 16965) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-CTL-101 HDMI Out (SmC 16967) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-CTL-101 Network (SmC 16971) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-CTL-101 Relays (SmC 16970) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | IV-SAM-VX2 Advanced Settings (SmC 18375) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | IV-SAM-VX2 Camera Names (SmC 18371) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | IV-SAM-VX2 Config Names (SmC 18369) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | IV-SAM-VX2 General Settings (SmC 18370) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | IV-SAM-VX2 Layouts (SmC 18367) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | IV-SAM-VX2 Scenario Names (SmC 18373) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | IV-SAM-VX2 System (SmC 18366) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | TPMC-3SMD Buttons (SmC 3488) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM-NVX-36x HDMI In (SmC 7065) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM-NVX-36x HDMI Out (SmC 7067) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | TSW-1060 Buttons (SmC 5933) | slot, port or extender inside an IP-ID device: not mapped to joins | 3 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | C2I-DMTX200-C-2G-HDMI (SmC 3384) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | C2I-DMTX200-C-2G-VGA (SmC 3385) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | C2I-DMTX201C-HDMI (SmC 2575) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | C2I-DMTX201C-VGA (SmC 2576) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | C2I-DMTX401C-CVBS (SmC 3874) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | C2I-DMTX401C-DP (SmC 3872) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | C2I-DMTX401C-HDMI (SmC 3871) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | C2I-DMTX401C-VGA (SmC 3873) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | C2I-DMTX4K202C-HDMI (SmC 5474) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | C2I-DMTX4K202C-HDMI2 (SmC 5475) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | C3COM-3 Two-way serial driver (SmC 3472) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | CEN-ODT-C-POE Configuration Settings (SmC 6805) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | Crestron DB serial-controlled device (SmC 108) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NAX-AUD-IO-Commercial Inputs (SmC 17537) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NAX-AUD-IO-Commercial NAX (SmC 17543) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NAX-AUD-IO-Commercial Output 1 (SmC 17539) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NAX-AUD-IO-Commercial Output 2 (SmC 17540) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NAX-AUD-IO-Commercial Output 3 (SmC 17541) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NAX-AUD-IO-Commercial Output 4 (SmC 17542) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NAX-AUD-IO-Commercial Output Mixer 1 (SmC 17532) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NAX-AUD-IO-Commercial Output Mixer 2 (SmC 17533) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NAX-AUD-IO-Commercial Output Mixer 3 (SmC 17534) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NAX-AUD-IO-Commercial Output Mixer 4 (SmC 17535) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM NAX TX (SmC 7050) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | DM-NAX-AUD-IO-Commercial RX Zone (SmC 17547) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NAX-AUD-IO-Commercial TX Source (SmC 17545) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-D200 Automatic Power Settings (SmC 16768) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-D200 HDMI Out (SmC 16767) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-D200 Network (SmC 16771) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-D200 Stream Receive (SmC 16766) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-E20-2G HDMI In (SmC 16988) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-E20-2G Network (SmC 16991) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-E20-2G Stream Transmit (SmC 16987) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-RMC-200 Two-way serial driver (SmC 2946) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM-NVX-36x Network (SmC 7074) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM-NVX-36x USB (SmC 7075) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM-NVX-36xC USB (SmC 15517) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM-NVX-D30 (v2) HDMI Out (SmC 15424) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM-NVX-E30 (v2) HDMI In (SmC 15440) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM-NVX-E760 DM In (SmC 15306) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | DM-RMC-200-C (SmC 4061) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-RMC-200-C DM Input Slot (SmC 2995) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-RMC-200-C Scaler (SmC 2994) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-RMC-4K-SCALER-C (SmC 5313) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-RMC-4KZ-SCALER-C (SmC 6431) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-RMC-4KZ-SCALER-C DM Input Slot (SmC 6436) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-RMC-4KZ-SCALER-C HDMI (SmC 6437) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-RMC-4KZ-SCALER-C Scaler (SmC 6435) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-RMC-SCALER-C (SmC 3334) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-RMC-SCALER-C DM Input Slot (SmC 3339) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-RMC-SCALER-C Scaler (SmC 3338) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-RMC-SCALER-C Two-way serial driver (SmC 3336) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-TX-200-C-2G (SmC 4058) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-TX-201-C (SmC 4057) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-TX-401-C (SmC 4059) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-TX-401-C Two-way serial driver (SmC 3878) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-TX-4K-202-C DMNet (SmC 5473) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM64x64 System (SmC 4053) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM64x64 USB Routing (SmC 4052) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMB-4K-I-C (1-8) (SmC 6029) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMB-4K-I-C (17-24) (SmC 6029) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMB-4K-I-C (25-32) (SmC 6029) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMB-4K-I-C (33-40) (SmC 6029) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMB-4K-I-C (9-16) (SmC 6029) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMB-4K-I-HD (41-48) (SmC 4872) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMB-4K-I-HD (49-56) (SmC 4872) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMB-4K-I-HD (57-64) (SmC 4872) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMB-4K-O-C (1-8) (SmC 4894) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMB-4K-O-C (17-24) (SmC 4894) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMB-4K-O-C (9-16) (SmC 4894) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | DMB-4K-O-HD (25-32) (SmC 5446) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMB-4K-O-HD (33-40) (SmC 5446) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMB-4K-O-HD (41-48) (SmC 5446) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMC-4K-C Advanced (SmC 5212) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMC-4K-CO-HD Output 1 (SmC 4759) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMC-4K-CO-HD Output 2 (SmC 4760) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMC-4K-HD Advanced (SmC 4752) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMC-4K-HDO Output 1 (SmC 5324) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMC-4K-HDO Output 2 (SmC 5325) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMC-4KZ-C Advanced. (SmC 6345) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMC-4KZ-CO-HD Output 1. (SmC 6295) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMC-4KZ-CO-HD Output 2. (SmC 6296) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMC-HDO Output 1 (SmC 2445) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMC-HDO Output 2 (SmC 2446) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | IV-SAM-VX2 Advanced Settings (SmC 20134) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | IV-SAM-VX2 Camera Names (SmC 20131) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | IV-SAM-VX2 Config Names (SmC 20130) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | IV-SAM-VX2 Layouts (SmC 20128) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | IV-SAM-VX2 Scenario Names (SmC 20133) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | IV-SAM-VX2 System (SmC 20127) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | TS-1070 Buttons (SmC 6991) | slot, port or extender inside an IP-ID device: not mapped to joins | 2 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | AM-200 AirMedia (SmC 6464) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | AM-200 AirMedia Administration (SmC 6684) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | AM-200 AirMedia OSD Control (SmC 6465) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | AM-200 Display Control (SmC 6463) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | AM-200 HDMI In (SmC 6461) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | AM-200 HDMI Out (SmC 6462) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | C2N-CBD Advanced Button Events (SmC 2736) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | C2N-CBD-P (SmC 2735) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | C2N-CBD-P Brightness and Bargraph Functions (SmC 2737) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | C2N-CBD-P Brightness and Bargraph Settings (SmC 2738) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | C2N-CBD-P Versiport (SmC 2739) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | COM 2-Way Serial Driver (SmC 6361) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | Crestron DB IR-controlled device (SmC 107) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DGE-1000 HDMI In (SmC 17636) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DGE-1000 HDMI Out (SmC 17637) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DGE-1000 USB (SmC 17631) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DGE-1000 USB2 (SmC 17633) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-35x (v2) Automatic Power Settings (SmC 15406) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM NAX Routing (SmC 7048) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM NAX RX (SmC 7049) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM XIO Routing (SmC 6094) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM-NAX-AUD-IO-Commercial Output 1 (SmC 17539) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM-NAX-AUD-IO-Commercial Output 2 (SmC 17540) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM-NAX-AUD-IO-Commercial Output Mixer 1 (SmC 17532) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM-NAX-AUD-IO-Commercial Output Mixer 2 (SmC 17533) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | DM-NVX-35x (v2) HDMI In 1 (SmC 15403) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-35x (v2) HDMI In 2 (SmC 15404) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | DM-NVX-35x (v2) HDMI Out (SmC 15405) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | DM-NVX-35x (v2) Network (SmC 15410) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-35x (v2) Stream Receive (SmC 15402) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-35x (v2) Stream Transmit (SmC 15401) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-35x (v2) Text Overlay (SmC 15407) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | DM-NVX-35x (v2) USB (SmC 15411) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-35x Background Image (SmC 16772) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-35x Background Image From Local Drive (SmC 16773) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-35x Background Image From Remote Drive (SmC 16774) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-35x Test Pattern Generator (SmC 16778) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-35xC (v2) Automatic Power Settings (SmC 15419) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | DM-NVX-35xC (v2) HDMI In 1 (SmC 15416) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-35xC (v2) HDMI In 2 (SmC 15417) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | DM-NVX-35xC (v2) HDMI Out (SmC 15418) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | DM-NVX-35xC (v2) Network (SmC 15421) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-35xC (v2) Stream Receive (SmC 15415) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-35xC (v2) Stream Transmit (SmC 15414) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-35xC (v2) Text Overlay (SmC 15420) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | DM-NVX-35xC (v2) USB (SmC 15422) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-35xC Background Image (SmC 16779) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-35xC Background Image From Local Drive (SmC 16780) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-35xC Background Image From Remote Drive (SmC 16781) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-35xC Test Pattern Generator (SmC 16782) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 Automatic Power Settings (SmC 18566) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 Background Image (SmC 18567) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 Background Image From Local Drive (SmC 18568) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 Background Image From Remote Drive (SmC 18569) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 BTS RX (SmC 20010) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 BTS TX (SmC 20009) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 DM H.264 TX (SmC 20261) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 eARC RX (SmC 20007) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 eARC TX (SmC 20006) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 HDMI 1 In (SmC 18561) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 HDMI 2 In (SmC 18562) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 HDMI Out (SmC 18565) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 Multi-View Controls (SmC 19891) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 Multi-View Text Overlay (SmC 18973) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 Multi-View Window Controls (SmC 18974) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 Network (SmC 18574) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 Stream Receive (SmC 18559) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 Stream Transmit (SmC 18558) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 Test Pattern Generator (SmC 18573) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 Text Overlay (SmC 18570) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 USB (SmC 18575) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 USB Hotkey (SmC 18576) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 USB-C 1 In (SmC 18563) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-384 USB-C 2 In (SmC 18564) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-D30C (v2) Automatic Power Settings (SmC 15431) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-D30C (v2) HDMI Out (SmC 15430) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-D30C (v2) Network (SmC 15432) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-D30C (v2) Stream Receive (SmC 15429) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-D30C Background Image (SmC 16709) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-D30C Background Image From Local Drive (SmC 16710) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-D30C Background Image From Remote Drive (SmC 16711) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM-NVX-36x Stream Transmit (SmC 7063) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM-NVX-36xC HDMI In (SmC 15512) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM-NVX-36xC HDMI Out (SmC 15513) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM-NVX-36xC Network (SmC 15516) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM-NVX-D200 Network (SmC 16771) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM-NVX-D30 (v2) Network (SmC 15428) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | DM-NVX-E10-E20 HDMI In (SmC 16384) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | DM-NVX-E10-E20 Network (SmC 16387) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-E10-E20 Stream Transmit (SmC 16383) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM-NVX-E20-2G HDMI In (SmC 16988) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM-NVX-E20-2G Network (SmC 16991) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | DM-NVX-E30C (v2) HDMI In (SmC 15447) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-E30C (v2) Network (SmC 15448) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-E30C (v2) Stream Transmit (SmC 15446) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-E30C Test Pattern Generator (SmC 16687) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM-NVX-E760 Network (SmC 15307) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | DM-NVX-E760C DM In (SmC 15311) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-E760C Network (SmC 15312) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-E760C Stream Transmit (SmC 15308) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-NVX-E760C Test Pattern Generator (SmC 16671) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-RMC-4K-SCALER-C (SmC 5217) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-TX-200-C-2G (SmC 3383) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-TX-4K-202-C Two-way serial driver (SmC 5477) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-TX-4KZ-100-C-1G (SmC 6747) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DM-TX-4KZ-100-C-1G HDMI (SmC 6750) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMB-4K-I-C (1-8) (SmC 5441) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMB-4K-I-C (17-24) (SmC 5441) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMB-4K-I-C (25-32) (SmC 5441) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMB-4K-I-C (33-40) (SmC 5441) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMB-4K-I-C (9-16) (SmC 5441) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMC-4KZ-C Advanced (SmC 6345) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMC-4KZ-HDO Output 1 (SmC 6428) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMC-4KZ-HDO Output 2 (SmC 6429) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMC-C-DSP Advanced (SmC 2660) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMC-CO-HD Output 1 (SmC 2662) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMC-CO-HD Output 2 (SmC 2663) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | DMC-HD-DSP Advanced (SmC 1952) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | From Remote Drive (SmC 16474) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | From Remote Drive (SmC 16703) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | From Remote Drive (SmC 16709) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-MD4x1-4KZ-E AUX Output (SmC 15233) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-MD4x1-4KZ-E HDMI Input 1 (SmC 15226) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-MD4x1-4KZ-E HDMI Input 2 (SmC 15227) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-MD4x1-4KZ-E HDMI Input 3 (SmC 15228) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-MD4x1-4KZ-E HDMI Input 4 (SmC 15229) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-MD4x1-4KZ-E HDMI Output (SmC 15232) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-MD4x1-4KZ-E Network (SmC 15234) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DM-RMC-4KZ-SCALER-C (SmC 6431) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DMB-4K-O-HD (33-40) (SmC 5446) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DMC-4K-HDO Output 1 (SmC 5324) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DMC-4KZ-C Advanced. (SmC 6345) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DMC-4KZ-CO-HD Output 1. (SmC 6295) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | DMC-4KZ-CO-HD Output 2. (SmC 6296) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | HD-CTL-101 HDMI In (SmC 16965) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | HD-PS402 Audio (SmC 18915) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 Aux 1 Mixer (SmC 18942) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 Aux 2 Mixer (SmC 18943) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 Background Image 1 (SmC 18927) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 Background Image 2 (SmC 18928) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 Background Image From Local Drive 1 (SmC 18929) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 Background Image From Local Drive 2 (SmC 18930) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 Background Image From Remote Drive 1 (SmC 18931) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 Background Image From Remote Drive 2 (SmC 18932) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 DM 1 (SmC 18919) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 DM 2 (SmC 18920) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 HDMI Input 1 (SmC 18911) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 HDMI Input 2 (SmC 18912) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 HDMI Input 3 (SmC 18913) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 HDMI Input 4 (SmC 18914) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 HDMI Output 1 (SmC 18923) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 HDMI Output 2 (SmC 18924) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 Image Overlay 1 (SmC 18933) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 Image Overlay 2 (SmC 18934) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 Image Overlay From Local Drive 1 (SmC 18935) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 Image Overlay From Local Drive 2 (SmC 18936) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 Image Overlay From Remote Drive 1 (SmC 18937) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 Image Overlay From Remote Drive 2 (SmC 18938) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 Mixer 1 (SmC 18939) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 Mixer 2 (SmC 18940) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 Network (SmC 18944) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 Output 1 (SmC 18917) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 Output 2 (SmC 18918) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 Text Overlay 1 (SmC 18925) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | HD-PS402 Text Overlay 2 (SmC 18926) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | TS-1080 Buttons (SmC 18711) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | TS-770 Buttons (SmC 6973) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | TSW-1080 Buttons (SmC 18537) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | TSW-550 Buttons (SmC 4241) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | IV-SAM-VX2 Camera Names (SmC 18371) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | IV-SAM-VX2 Config Names (SmC 18369) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | IV-SAM-VX2 Layouts (SmC 18367) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | IV-SAM-VX2 Scenario Names (SmC 18373) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | IV-SAM-VX2 Scenario Names (SmC 20133) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
+| SIMPL sub-device | TPMC-3SMD Buttons (SmC 3488) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL sub-device | TSW-560 Buttons (SmC 5929) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | TSW-570 Buttons (SmC 6821) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | TSW-750 Buttons (SmC 3748) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | TSW-760 Buttons (SmC 5931) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | TSW-770 Buttons (SmC 6839) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
-| SIMPL sub-device | USB-C 2 In (SmC 7067) | slot, port or extender inside an IP-ID device: not mapped to joins | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL symbol | press and hold v1.2.cmc (SmC 155) | pins in=1 out=2 | 13 | 2026-11-19 | 2026-11-19 |
 | SIMPL symbol | Biamp Tesira State Control v3.3.umc (SmC 155) | pins in=7 out=7 | 9 | 2026-11-19 | 2026-11-19 |
 | SIMPL symbol | Biamp Tesira Command Processor IP v3.3.umc (SmC 155) | pins in=5 out=5 | 8 | 2026-11-19 | 2026-11-19 |
