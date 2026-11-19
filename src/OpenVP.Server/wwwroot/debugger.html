@@ -276,6 +276,7 @@
         <option value="off">follow: off</option><option value="one">only selected</option><option value="near">selected + neighbours</option>
       </select>
       <label title="Show only the rows of the same burst (chain) as the clicked trace row"><input type="checkbox" id="burst"> this burst only</label>
+      <label title="Show changes made by program logic in reaction to another change (the ↳ rows). Uncheck to see only external changes (panel presses, inputs, timers)"><input type="checkbox" id="caused" checked> ↳ caused</label>
     </div>
     <div class="scroll" id="tracescroll">
       <div id="trace" class="vlist nocause">
@@ -1079,9 +1080,10 @@ setInterval(() => {
 // ---------------------------------------------------------------- trace
 
 let followMode = store.get("follow", "off"), selChain = null, selTraceE = null, hasCause = false, lastChain = undefined, band = 0, bandFlip = false;
-let tfilter = { q: null, fset: null, burst: null };
+let tfilter = { q: null, fset: null, burst: null, caused: true };
 let pausedE = null, histE = null, fresh = [], newCount = 0, traceDirty = false, shownTraceCount = -1;
 $("#follow").value = followMode;
+$("#caused").checked = store.get("caused", true);
 
 // Δ column: time since the previous row that is shown (so it follows the filter).
 function fmtDelta(e, prev) { return prev ? "+" + ((e.time - prev.time) / 1000).toFixed(3) + "s" : ""; }
@@ -1089,6 +1091,7 @@ function traceVisible(e, f) {
   if (f.q && !f.q.test(e)) return false;
   if (f.fset && !f.fset.has(e.signal)) return false;
   if (f.burst != null && e.chain !== f.burst) return false;
+  if (!f.caused && e.depth > 0) return false;
   return true;
 }
 function traceFilterState() {
@@ -1096,7 +1099,7 @@ function traceFilterState() {
   let fset = null;
   if (followMode !== "off") fset = selected ? (followMode === "near" && graphReady && nearSet && nearFor === selected ? nearSet : new Set([selected])) : new Set();
   const burst = $("#burst").checked && selChain != null ? selChain : null;
-  return { q, fset, burst };
+  return { q, fset, burst, caused: $("#caused").checked };
 }
 function applyTraceFilter() {
   tfilter = traceFilterState();
@@ -1652,6 +1655,7 @@ $("#save").onclick = saveTrace;
 $("#search").oninput = applyFilter; $("#kfilter").onchange = applyFilter; $("#onlychecked").onchange = applyFilter; $("#activeonly").onchange = applyFilter;
 $("#tsearch").oninput = applyTraceFilter;
 $("#burst").onchange = applyTraceFilter;
+$("#caused").onchange = e => { store.set("caused", e.target.checked); applyTraceFilter(); };
 $("#follow").onchange = e => { followMode = e.target.value; store.set("follow", followMode); nearSet = null; applyTraceFilter(); refreshNear(); };
 $("#resetact").onclick = resetActivity;
 $("#fold").onclick = () => setAllFolders(true); $("#unfold").onclick = () => setAllFolders(false);
