@@ -90,8 +90,9 @@ public static class SymbolCatalogTests
             Assert.Equal(s, LogicSymbolCatalog.ByName(s.Name.ToLowerInvariant()), $"{s.Name} by name");
             foreach (var c in s.SmCodes) Assert.Equal(s, LogicSymbolCatalog.BySmc(c), $"{s.Name} by SmC {c}");
             foreach (var t in s.LpzTypes) Assert.Equal(s, LogicSymbolCatalog.ByLpzType(t), $"{s.Name} by type {t}");
-            Assert.True(s.Evidence == SymbolEvidence.Compiled || (s.SmCodes.Length == 0 && s.LpzTypes.Length == 0),
-                $"{s.Name}: a documented symbol has no confirmed codes");
+            if (s.Evidence == SymbolEvidence.Documented) Assert.True(s.LpzTypes.Length == 0, $"{s.Name}: a documented symbol has no compiled type yet");
+            if (s.Evidence == SymbolEvidence.Inferred) Assert.True(s.LpzTypes.Length > 0, $"{s.Name}: an inferred symbol was seen compiled");
+            if (s.Evidence == SymbolEvidence.Compiled) Assert.True(s.LpzTypes.Length + s.SmCodes.Length > 0, $"{s.Name}: a compiled symbol was seen in real programs");
         }
     }
 
@@ -206,6 +207,127 @@ public static class SymbolCatalogTests
         t.Set("start", true);
         Assert.True(!t.D("done"), "delay not done yet");
         Assert.Eventually(() => t.D("done"), "delay done after 0.1 s");
+    }
+
+    [Test]
+    public static void Digital_sum_counts_high_inputs()
+    {
+        using var t = new Smw().Sym("Digital Sum", 61, ["a", "b", "c"], ["count"]).Run();
+        Assert.Equal((ushort)0, t.A("count"), "none high");
+        t.Set("a", true);
+        t.Set("c", true);
+        Assert.Equal((ushort)2, t.A("count"), "two high");
+        t.Set("a", false);
+        Assert.Equal((ushort)1, t.A("count"), "one high");
+    }
+
+    [Test]
+    public static void Analog_compare_gives_greater_and_equal()
+    {
+        using var t = new Smw().Sym("Analog Compare", 35, ["a", "b"], ["gt", "eq", "lt"]).Run();
+        Assert.True(!t.D("gt") && t.D("eq") && !t.D("lt"), "0 = 0");
+        t.Set("a", (ushort)5);
+        Assert.True(t.D("gt") && !t.D("eq") && !t.D("lt"), "5 > 0");
+        t.Set("b", (ushort)9);
+        Assert.True(!t.D("gt") && !t.D("eq") && t.D("lt"), "5 < 9");
+    }
+
+    [Test]
+    public static void Ascii_keypad_types_deletes_and_clears()
+    {
+        var ins = new string[4 + 128];
+        for (int i = 0; i < ins.Length; i++) ins[i] = "";
+        ins[0] = "clear"; ins[1] = "1"; ins[2] = "back";
+        ins[3 + 'A'] = "kA"; ins[3 + '7'] = "k7"; // pin n + 4 is index n + 3
+        using var t = new Smw().Sym("ASCII Keypad", 123, ins, ["text"], "3d").Run();
+        void Press(string k) { t.Set(k, true); t.Set(k, false); }
+        Press("kA"); Press("k7"); Press("kA");
+        Assert.Equal("A7A", t.S("text"), "typed");
+        Press("kA");
+        Assert.Equal("A7A", t.S("text"), "max length 3");
+        Press("back");
+        Assert.Equal("A7", t.S("text"), "backspace");
+        Press("clear");
+        Assert.Equal("", t.S("text"), "clear");
+    }
+
+    [Test]
+    public static void Ascii_serial_decoder_plays_text_as_presses()
+    {
+        var outs = new string[2 + '9' + 1];
+        for (int i = 0; i < outs.Length; i++) outs[i] = "";
+        outs[0] = "busy"; outs['1' + 1] = "t1"; outs['2' + 1] = "t2";
+        using var t = new Smw()
+            .Sym("ASCII Serial Decoder", 54, ["number", "dial"], outs, "0.02s")
+            .Sym("Toggle", ["t1"], ["saw1"])
+            .Sym("Toggle", ["t2"], ["saw2"])
+            .Run();
+        t.Set("number", "12");
+        t.Set("dial", true);
+        Assert.True(t.D("busy"), "busy while playing");
+        Assert.Eventually(() => !t.D("busy"), "done");
+        Assert.True(t.D("saw1") && t.D("saw2"), "each digit pressed once");
+    }
+
+    [Test]
+    public static void Password_keypad_memory_and_match()
+    {
+        string[] keys = ["clear", "", "k0", "k1", "k2", "k3", "", "", "", "", "", "", "star", ""];
+        using var t = new Smw()
+            .Sym("Digit Keypad", keys, ["code"], "4d")
+            .Sym("Digit Keypad", ["clear", "", "", "", "", "", "", "", "", "", "", "", "any", ""], ["stars"], "4d")
+            .Sym("Password Memory", ["newcode", "store", "recall", ""], ["stored"], "\"1234\"")
+            .Sym("Password Match", ["code", "enter", "", "stored"], ["match"])
+            .Run();
+        void Press(params string[] ks) { foreach (var k in ks) { t.Set(k, true); t.Set(k, false); } }
+        Assert.Equal("1234", t.S("stored"), "default password");
+        Press("k1", "k2", "k3");
+        Press("any", "any", "any");
+        Assert.Equal("123", t.S("code"), "digits");
+        Assert.Equal("***", t.S("stars"), "stars");
+        Press("enter");
+        Assert.True(!t.D("match"), "123 is wrong");
+        Press("clear", "k1", "k2", "k3", "k1");
+        Press("enter");
+        Assert.True(!t.D("match"), "1231 is wrong");
+        t.Set("newcode", "1231");
+        Press("store");
+        Assert.Equal("1231", t.S("stored"), "new password stored");
+        Press("enter");
+        Assert.True(t.D("match"), "1231 now matches");
+    }
+
+    [Test]
+    public static void Numeric_keypad_and_delay_with_analog_time()
+    {
+        string[] keys = ["d0", "d1", "", "", "", "", "", "", "", "", "clear", "up", "down", "enter"];
+        using var t = new Smw()
+            .Sym("Numeric Keypad", keys, ["value", "entered"], "15d")
+            .Sym("Toggle", ["entered"], ["saw_enter"])
+            .Sym("Delay (Analog Time)", ["start", "cancel", "time"], ["late"])
+            .Run();
+        void Press(string k) { t.Set(k, true); t.Set(k, false); }
+        Press("d1"); Press("d0");
+        Assert.Equal((ushort)10, t.A("value"), "10");
+        Press("d1");
+        Assert.Equal((ushort)10, t.A("value"), "101 is over the maximum of 15");
+        Press("up");
+        Assert.Equal((ushort)11, t.A("value"), "up");
+        Press("enter");
+        Assert.True(t.D("saw_enter"), "enter pulsed");
+        Press("clear");
+        Assert.Equal((ushort)0, t.A("value"), "clear");
+
+        t.Set("time", (ushort)5); // 0.05 s
+        t.Set("start", true);
+        Press("cancel");
+        Thread.Sleep(150);
+        Assert.True(!t.D("late"), "cancelled");
+        t.Set("start", false);
+        t.Set("start", true);
+        Assert.Eventually(() => t.D("late"), "high after the analog time");
+        t.Set("start", false);
+        Assert.True(!t.D("late"), "drops with the input");
     }
 
     [Test]

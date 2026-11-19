@@ -549,15 +549,17 @@ public sealed class StringLengthPrim : EvalPrim
     protected override void Eval(IPrimitiveContext c) => c.Set(1, (ushort)Math.Min(c.Serial(1).Length, 65535));
 }
 
-/// <summary>Type 100, Analog Sum (clamped to 0–65535).</summary>
+/// <summary>Type 100, Analog Sum and Digital Sum (both compile to it): the sum of the analog inputs plus the
+/// number of digital inputs that are high, clamped to 0–65535. Digital Sum (SmC 61) counts high inputs; real
+/// programs use it to count configured sources or routed microphones.</summary>
 public sealed class AnalogSumPrim : EvalPrim
 {
-    public override SigKind? InputKind(int pin) => SigKind.Analog;
     public override SigKind? OutputKind(int pin) => SigKind.Analog;
     protected override void Eval(IPrimitiveContext c)
     {
         long sum = 0;
-        for (int i = 1; i <= c.InputCount; i++) sum += c.Analog(i);
+        // A signal is one kind: the other reads as 0/false, so each input adds its value or its 1.
+        for (int i = 1; i <= c.InputCount; i++) sum += c.Analog(i) + (c.Digital(i) ? 1 : 0);
         c.Set(1, (ushort)Math.Clamp(sum, 0, 65535));
     }
 }

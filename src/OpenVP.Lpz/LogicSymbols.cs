@@ -9,9 +9,13 @@ public enum SymbolEvidence
     /// primitive type, its pin order and its parameters were checked against real .lpz/.smw pairs.</summary>
     Compiled,
     /// <summary>Written from the SIMPL Windows symbol descriptions only. Pin order and parameter units are
-    /// best guesses until a real program confirms them; the symbol is matched by name, and its SmC code
-    /// and compiled type are unknown until a real program supplies them.</summary>
+    /// best guesses until a real program confirms them; the symbol is matched by name (and by SmC code where a
+    /// real program has shown it), and its compiled type is unknown until a real program supplies it.</summary>
     Documented,
+    /// <summary>The compiled type and its pins were seen in real programs, but the behavior is inferred from how
+    /// those programs wire and name its pins (usually because it sits inside a macro whose source isn't
+    /// available). The primitive's summary says what the inference rests on.</summary>
+    Inferred,
 }
 
 /// <summary>
@@ -47,16 +51,19 @@ public static class LogicSymbolCatalog
     private static LogicSymbol D(string name, string category, Func<Primitive> create, string pins, params string[] aliases) =>
         new(name, category, create, SymbolEvidence.Documented, pins, [], [], aliases);
 
+    private static LogicSymbol I(string name, string category, Func<Primitive> create, string pins, int[] smc, int[] lpz, params string[] aliases) =>
+        new(name, category, create, SymbolEvidence.Inferred, pins, smc, lpz, aliases);
+
     private static readonly Func<int, bool> AllHigh = static _ => true;
 
     public static readonly IReadOnlyList<LogicSymbol> All =
     [
         // ---------------------------------------------------------------- digital
         C("AND", "Digital", () => new AndPrim(), "in: i1..iN · out: o", [1], [0]) with { UnwiredHigh = AllHigh },
-        D("NAND", "Digital", () => new NandPrim(), "in: i1..iN · out: o") with { UnwiredHigh = AllHigh },
+        D("NAND", "Digital", () => new NandPrim(), "in: i1..iN · out: o") with { SmCodes = [2], UnwiredHigh = AllHigh },
         C("OR", "Digital", () => new OrPrim(false), "in: i1..iN · out: o", [3], [2]),
         C("NOR", "Digital", () => new OrPrim(true), "in: i1..iN · out: o", [4], [3]),
-        C("XOR", "Digital", () => new XorPrim(), "in: i1..iN · out: o (odd number high)", [], [4]),
+        C("XOR", "Digital", () => new XorPrim(), "in: i1..iN · out: o (odd number high)", [5], [4], "Exclusive OR"),
         D("XNOR", "Digital", () => new XnorPrim(), "in: i1..iN · out: o (even number high)"),
         C("NOT", "Digital", () => new NotPrim(), "in: i1..iN · out: o1..oN", [205], [1]),
         C("Multiple NOT", "Digital", () => new NotPrim(), "in: i1..iN · out: o1..oN", [418], [206]),
@@ -80,6 +87,7 @@ public static class LogicSymbolCatalog
         C("Retriggerable One Shot", "Timers", () => new OneShotPrim(true), "in: trigger, -, cancel · out: o, o* · params: time", [10], [17]),
         C("Pulse Stretcher", "Timers", () => new StretchPrim(), "in: i · out: o · params: time", [11], [16]),
         C("Delay", "Timers", () => new DelayPrim(), "in: i · out: o · params: time", [16], [27]),
+        I("Delay (Analog Time)", "Timers", () => new AnalogTimeDelayPrim(), "in: start, cancel, time (analog, 1/100 s) · out: o", [], [200]),
         D("Long Delay", "Timers", () => new DelayPrim(), "in: i · out: o · params: time"),
         C("Multiple One Shots", "Timers", () => new MultiOneShotPrim(), "in: t1..tN · out: o1..oN · params: time", [21], [29]),
         C("Debounce", "Timers", () => new DebouncePrim(), "in: i · out: o · params: time", [50], [56]),
@@ -95,12 +103,15 @@ public static class LogicSymbolCatalog
         C("Analog Scaler with I/O Limits", "Analog", () => new AnalogScalerLimitsPrim(), "in: a · out: a · params: in lo, in hi, out lo, out hi", [541], [224]),
         C("Analog RAM", "Analog", () => new AnalogRamPrim(), "in: a1..aN, store, recall, bank selects · out: a1..aN", [34], [36]),
         C("Analog Step", "Analog", () => new AnalogStepPrim(), "in: clock, reset · out: a · params: values", [45], [37]),
-        C("Analog Ramp", "Analog", () => new AnalogRampPrim(), "in: up, down · out: a · params: full-range time", [], [20]),
+        C("Analog Ramp", "Analog", () => new AnalogRampPrim(), "in: up, down · out: a · params: full-range time", [22], [20]),
         C("Analog Ramp (Bounds Limited)", "Analog", () => new BoundedRampPrim(), "in: up, down · out: a · params: time, lower, upper, initial", [540], [223]),
         C("Analog Rate Limiter", "Analog", () => new RateLimiterPrim(), "in: a · out: a · params: full-range time", [66], [80]),
         C("Analog Flip", "Analog", () => new AnalogFlipPrim(), "in: a · out: 65535 - a", [58], [87]),
-        C("Analog Sum", "Analog", () => new AnalogSumPrim(), "in: a1..aN · out: sum", [57], [100]),
+        C("Analog Sum", "Analog", () => new AnalogSumPrim(), "in: a1..aN, or digitals · out: sum (a high digital counts 1)", [57, 61], [100], "Digital Sum"),
         C("Analog DivMod", "Analog", () => new DivModPrim(), "in: a · out: quotient, remainder · params: divisor", [114], [136]),
+        I("Analog Compare", "Analog", () => new AnalogComparePrim(), "in: a, b · out: a > b, a = b, a < b", [35], [45]),
+        I("Preset", "Analog", () => new PresetPrim(), "in: trigger · out: v1..vN · params: -, v1..vN", [], [21]),
+        I("Numeric Keypad", "Analog", () => new NumericKeypadPrim(), "in: 0-9, clear, up, down, enter · out: value, entered · params: max, min", [], [41]),
         C("Analog Comparison (Full Set)", "Analog", () => new ComparePrim(), "in: a, b · out: =, ≠, <, ≤, >, ≥", [492], [220]),
         C("Analog Increment", "Analog", () => new AnalogIncrementPrim(), "in: up, down, ... · out: a · params: step, hold, repeat, ...", [543], [230]),
         C("Analog Increment with Optional Feedback", "Analog", () => new AnalogIncrementPrim(), "in: up, down, -, feedback · out: a", [605], [236]),
@@ -115,10 +126,16 @@ public static class LogicSymbolCatalog
         C("Serial Buffer", "Serial", () => new HoldBufferPrim(Core.SigKind.Serial), "in: enable, s1..sN · out: s1..sN (hold while disabled)", [56], [88]),
         C("Serial Send", "Serial", () => new SerialSendPrim(), "in: t1..tN · out: s · params: strings", [89], [58]),
         C("Multiple Serial Send", "Serial", () => new SerialSendPrim(), "in: trigger · out: s1..sN · params: strings", [1477], []),
-        C("Multiple Discrete Serial Send", "Serial", () => new MultiSerialSendPrim(), "in: t1..tN · out: s1..sN · params: strings", [], [266]),
+        C("Multiple Discrete Serial Send", "Serial", () => new MultiSerialSendPrim(), "in: t1..tN · out: s1..sN · params: strings", [3106], [266]),
         C("Serial I/O", "Serial", () => new SerialIoPrim(), "in: rx, t1..tN · out: tx, m1..mN · params: strings", [101], [97]),
         C("Serial Gather", "Serial", () => new SerialGatherPrim(), "in: s · out: s · params: delimiter, max length", [62], [93]),
-        C("Serial Concatenation", "Serial", () => new SerialMergePrim(), "in: s1..sN · out: s (whatever arrives)", [], [122]),
+        C("Serial Concatenation", "Serial", () => new SerialMergePrim(), "in: s1..sN · out: s (whatever arrives)", [126], [122]),
+        I("ASCII Serial Decoder", "Serial", () => new AsciiSerialDecoderPrim(), "in: text, play · out: busy, then char n at pin n + 2 · params: time per char", [54], [65]),
+        I("ASCII Keypad", "Serial", () => new AsciiKeypadPrim(), "in: clear, enable, backspace, then char n at pin n + 4 · out: text · params: max length", [123], [109]),
+        I("Digit Keypad", "Serial", () => new DigitKeypadPrim(), "in: clear, select, 0-9, *, # · out: text · params: max length", [], [63]),
+        I("Password Memory", "Serial", () => new PasswordMemoryPrim(), "in: text, store, recall, enter · out: stored text · params: default", [], [66]),
+        I("Password Match", "Serial", () => new PasswordMatchPrim(), "in: text, enter, enable, reference · out: match · params: password", [], [144]),
+        D("Serial Force", "Serial", () => new NoOpPrim(), "in: s1..sN (no outputs; does nothing)") with { SmCodes = [470] },
         D("Serial Substring", "Serial", () => new SerialSubstringPrim(), "in: s · out: s · params: start (1-based), length"),
         C("Serial to Analog", "Serial", () => new SerialToAnalogPrim(), "in: s · out: a", [96], [103]),
         C("Analog to Serial", "Serial", () => new AnalogToSerialPrim(), "in: trigger, a1..aN · out: s · params: strings", [77], [82]),
@@ -128,13 +145,14 @@ public static class LogicSymbolCatalog
         C("Intersystem Communications", "Serial", () => new XsigPrim(), "in: xsig, joins · out: xsig, joins · params: offset", [327], [85]),
 
         // ---------------------------------------------------------------- system
-        C("Clock Driver", "System", () => new ClockPrim(), "out: time of day", [43], [62]),
+        C("Clock Driver", "System", () => new ClockPrim(), "out: time of day", [43, 3078], [62], "Clock Driver w/out DST"),
         C("When", "System", () => new WhenPrim(), "in: time of day · out: pulse · params: time, when", [74], [61]),
-        C("Ethernet Offline Manager", "System", () => new ConstantLowPrim(), "out: offline (always low)", [511, 633], [156]),
+        C("Ethernet Offline Manager", "System", () => new ConstantLowPrim(), "out: offline / activity (always low)", [511, 633, 1069], [156], "Activity Detection"),
+        D("Poll Manager", "System", () => new ConstantLowPrim(), "in: ... · out: offline (always low)") with { SmCodes = [345] },
         C("Console", "System", () => new ConsolePrim(), "in: command · out: reply", [], [202]),
-        C("Clock Adjust (provisional)", "System", () => new NoOpPrim(), "follows the host clock; does nothing", [], [121]),
+        C("Set System Clock", "System", () => new NoOpPrim(), "in: hour up, hour down, minute up, minute down (follows the host clock; does nothing)", [154], [121]),
         C("Time-of-day Relay (provisional)", "System", () => new TimeOfDayRelayPrim(), "in: s · out: s", [], [101]),
-        C("Constant (provisional)", "System", () => new NoOpPrim(), "does nothing", [], [161]),
+        C("Touchpanel Sleep/Wake Manager", "System", () => new NoOpPrim(), "in: sleep, wake (does nothing)", [392], [161]),
     ];
 
     private static readonly Dictionary<string, LogicSymbol> ByNameMap = BuildByName();
@@ -153,7 +171,13 @@ public static class LogicSymbolCatalog
     }
 
     /// <summary>By library name or alias, ignoring case and surrounding spaces.</summary>
-    public static LogicSymbol? ByName(string? name) => name != null && ByNameMap.TryGetValue(name.Trim(), out var s) ? s : null;
+    /// <remarks>Some library names end in a period in .smw files ("Activity Detection."); that is ignored.</remarks>
+    public static LogicSymbol? ByName(string? name)
+    {
+        if (name == null) return null;
+        var n = name.Trim();
+        return ByNameMap.TryGetValue(n, out var s) || ByNameMap.TryGetValue(n.TrimEnd('.').TrimEnd(), out s) ? s : null;
+    }
     /// <summary>By .smw symbol code (SmC).</summary>
     public static LogicSymbol? BySmc(int code) => BySmcMap.GetValueOrDefault(code);
     /// <summary>By compiled primitive type.</summary>
@@ -169,9 +193,11 @@ public static class LogicSymbolCatalog
         sb.Append("Every symbol has one implementation, used both for `.smw` source and compiled `.lpz` programs.\n\n");
         sb.Append("- **compiled**: checked against compiled programs that ship their source: primitive type, pin order and parameters.\n");
         sb.Append("- **documented**: written from the SIMPL Windows symbol descriptions. It runs from `.smw` (matched by name). Pin order and parameter units are best guesses, ");
-        sb.Append("and the SmC code and compiled type are unknown until a real program shows them. To run one in a compiled program, name its type in `primitives.json`.\n\n");
-        var compiled = All.Count(x => x.Evidence == SymbolEvidence.Compiled);
-        sb.Append($"{All.Count} symbols: {compiled} compiled, {All.Count - compiled} documented.\n");
+        sb.Append("and the compiled type is unknown until a real program shows it. To run one in a compiled program, name its type in `primitives.json`.\n");
+        sb.Append("- **inferred**: the compiled type and pins were seen in real programs (`Sample Programs/`), but the behavior is inferred from how those programs wire and name the pins, usually because the symbol sits inside a macro whose source isn't available. ");
+        sb.Append("Each one's code comment (`src/OpenVP.Lpz/Primitives4.cs`) says what the inference rests on.\n\n");
+        int Count(SymbolEvidence e) => All.Count(x => x.Evidence == e);
+        sb.Append($"{All.Count} symbols: {Count(SymbolEvidence.Compiled)} compiled, {Count(SymbolEvidence.Inferred)} inferred, {Count(SymbolEvidence.Documented)} documented.\n");
         foreach (var group in All.GroupBy(x => x.Category))
         {
             sb.Append($"\n## {group.Key}\n\n");

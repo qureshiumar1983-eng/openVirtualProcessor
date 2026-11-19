@@ -169,7 +169,7 @@ public sealed class SymbolSurvey
     {
         var map = new SortedDictionary<int, string>();
         foreach (var (m, _) in Matches.OrderByDescending(p => p.Value))
-            if (m.Type >= 0 && !PrimitiveLibrary.Supports(m.Type) && Resolve(m.Code, m.Name) is { } sym)
+            if (m.Type >= 0 && !PrimitiveLibrary.Supports(m.Type) && !PrimitiveCatalog.Known.ContainsKey(m.Type) && Resolve(m.Code, m.Name) is { } sym)
                 map.TryAdd(m.Type, sym.Name);
         return map;
     }
