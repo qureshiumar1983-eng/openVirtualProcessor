@@ -231,11 +231,18 @@ public sealed class SlotDispatcher : IDisposable
         return $"{type?.Name ?? "?"}.{name}";
     }
 
-    public void Dispose()
+    public void Dispose() => Dispose(TimeSpan.FromSeconds(5));
+
+    /// <summary>
+    /// Shut down and wait up to <paramref name="joinTimeout"/> for the thread to finish the event it is running.
+    /// A thread can't be stopped from outside, so one that is still inside an event when the wait ends (a library's
+    /// worker loop, say) is left to exit on its own: it is a background thread and its queue is closed.
+    /// </summary>
+    public void Dispose(TimeSpan joinTimeout)
     {
         if (_mode == Closed) return;
         _mode = Closed;
         _queue.Writer.TryComplete();
-        if (!IsCurrentThread) _thread.Join(TimeSpan.FromSeconds(5));
+        if (!IsCurrentThread) _thread.Join(joinTimeout);
     }
 }

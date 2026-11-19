@@ -1,4 +1,5 @@
 using System.Buffers;
+using Microsoft.AspNetCore.ResponseCompression;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -30,6 +31,14 @@ public static class OpenVpServer
         processor.AddLoader(new LpzLoader(Path.Combine(processor.DataDirectory, "primitives.json")));
         processor.LogWritten += e => Console.WriteLine($"{e.Time:HH:mm:ss} [slot {e.Slot:00}] {e.Level,-7} {e.Message}");
         builder.Services.AddSingleton(processor);
+        builder.Services.AddResponseCompression(o =>
+        {
+            o.EnableForHttps = true; // off by default because of BREACH; these responses are program data, not pages that echo a secret
+            o.Providers.Add<BrotliCompressionProvider>();
+            o.Providers.Add<GzipCompressionProvider>();
+        });
+        builder.Services.Configure<BrotliCompressionProviderOptions>(o => o.Level = System.IO.Compression.CompressionLevel.Fastest);
+        builder.Services.Configure<GzipCompressionProviderOptions>(o => o.Level = System.IO.Compression.CompressionLevel.Fastest);
 
         CipServer? cip = null;
         if (cfg.GetValue("CipEnabled", true))
@@ -56,8 +65,17 @@ public static class OpenVpServer
         var app = builder.Build();
         app.Use(auth.Handle);
         app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20) });
+        // gzip/brotli for JSON, html, js and the like (the default MIME list; downloads of programs and other
+        // binary files are not touched). Compression only applies to a response whose request asks for it, so
+        // WebSocket upgrades (101, no body) pass straight through.
+        app.UseResponseCompression();
         app.UseDefaultFiles();
-        app.UseStaticFiles();
+        // Pages are served with an ETag and no-cache: the browser keeps them but asks every time, and an unchanged
+        // file costs a 304, so an edited page still shows at once in dev mode.
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            OnPrepareResponse = c => c.Context.Response.Headers[Microsoft.Net.Http.Headers.HeaderNames.CacheControl] = "no-cache"
+        });
 
         var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         var uploads = Path.Combine(processor.DataDirectory, "uploads");
@@ -270,22 +288,17 @@ public static class OpenVpServer
         });
 
         slotApi.MapGet("/signals", (int n) =>
-            (processor.Slot(n).Runtime?.GetSignals() ?? Array.Empty<SignalInfo>())
-                .Select(s => new { name = s.Name, kind = s.Kind.ToString(), value = s.Value }));
+            new RawJson(GraphJson.WriteSignals(processor.Slot(n).Runtime?.GetSignals() ?? Array.Empty<SignalInfo>())));
 
-        // The program's wiring, for the debugger's path view (docs/debugger-paths.md section 1).
-        slotApi.MapGet("/graph", (int n) =>
+        // The program's wiring, for the debugger's path view (docs/debugger-paths.md section 1). Serialized once per
+        // loaded program and kept; ?compact=1 leaves out unwired and constant pins. ETag + If-None-Match give a 304.
+        slotApi.MapGet("/graph", (int n, HttpRequest req) =>
         {
             var rt = processor.Slot(n).Runtime;
             if (rt == null) return Results.NotFound(new { error = "No program in that slot." });
             if (rt is not IProgramGraphSource src) return Results.NotFound(new { error = $"{rt.Kind} programs can't describe their wiring." });
-            var g = src.GetGraph();
-            return Results.Json(new
-            {
-                kind = g.Kind,
-                symbols = g.Symbols.Select(x => new { id = x.Id, name = x.Name, path = x.Path, group = x.Group, device = x.Device, inputs = x.Inputs, outputs = x.Outputs }),
-                signals = g.Signals.Select(x => new { name = x.Name, kind = x.Kind })
-            });
+            var compact = req.Query.TryGetValue("compact", out var c) && c.ToString() is "1" or "true";
+            return new ValidatedJson(GraphJson.For(src, compact));
         });
 
         slotApi.MapPost("/signals", (int n, JsonElement body) =>

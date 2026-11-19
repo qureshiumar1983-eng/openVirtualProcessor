@@ -133,6 +133,41 @@ const isOpenVpUrl = url => {
   catch { return false; }
 };
 
+const POPUP_OPTIONS = { width: 1100, height: 800, autoHideMenuBar: true, backgroundColor: '#202020' };
+const popups = new Map();   // window.open name -> its window, so a named window (openvp-debugger-2) is reused, as the browser does
+
+/** The handlers every OpenVP window has: pop-ups, and keeping navigation inside OpenVP. */
+function wire(win) {
+  // Pop-ups on the OpenVP server (test panels, debugger, paths) get their own app window; other links open in
+  // the normal browser. The pop-up is made here and the opener's request is denied, not 'allow'ed: with 'allow'
+  // Electron puts a same-origin child in the opener's renderer process, so a busy debugger would freeze the
+  // paths window. A window we create ourselves gets its own process. (No page uses window.opener or the
+  // return value of window.open, which is null for a denied request.)
+  win.webContents.setWindowOpenHandler(({ url, frameName }) => {
+    if (isOpenVpUrl(url)) { openPopup(url, frameName); return { action: 'deny' }; }
+    if (/^(https?|mailto):/.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (e, url) => {
+    if (!isOpenVpUrl(url)) { e.preventDefault(); if (/^https?:/.test(url)) shell.openExternal(url); }
+  });
+}
+
+function openPopup(url, name) {
+  const existing = name && popups.get(name);
+  if (existing && !existing.isDestroyed()) {
+    if (existing.isMinimized()) existing.restore();
+    if (existing.webContents.getURL() !== url) existing.loadURL(url);
+    existing.focus();
+    return;
+  }
+  const win = new BrowserWindow({ ...POPUP_OPTIONS, title: 'OpenVP', icon: path.join(__dirname, 'build', 'icon.ico'),
+    webPreferences: { contextIsolation: true, sandbox: true } });
+  if (name) { popups.set(name, win); win.on('closed', () => { if (popups.get(name) === win) popups.delete(name); }); }
+  wire(win);
+  win.loadURL(url);
+}
+
 function createWindow(width, height) {
   const win = new BrowserWindow({
     width, height,
@@ -142,17 +177,7 @@ function createWindow(width, height) {
     icon: path.join(__dirname, 'build', 'icon.ico'),
     webPreferences: { contextIsolation: true, sandbox: true },
   });
-  // Pop-ups on the OpenVP server (test panels, debugger) get their own app window; other links open in
-  // the normal browser.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (isOpenVpUrl(url))
-      return { action: 'allow', overrideBrowserWindowOptions: { width: 1100, height: 800, autoHideMenuBar: true, backgroundColor: '#202020' } };
-    if (/^(https?|mailto):/.test(url)) shell.openExternal(url);
-    return { action: 'deny' };
-  });
-  win.webContents.on('will-navigate', (e, url) => {
-    if (!isOpenVpUrl(url)) { e.preventDefault(); if (/^https?:/.test(url)) shell.openExternal(url); }
-  });
+  wire(win);
   return win;
 }
 

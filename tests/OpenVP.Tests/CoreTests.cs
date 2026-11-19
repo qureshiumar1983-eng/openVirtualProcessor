@@ -207,4 +207,18 @@ public static class CoreTests
         Assert.Equal(1, set.Count, "one live timer after 1000 retriggers");
         set.CancelAll();
     }
+
+    [Test]
+    public static void Dispose_with_a_timeout_does_not_wait_for_a_handler_that_never_returns()
+    {
+        using var release = new ManualResetEventSlim();
+        using var started = new ManualResetEventSlim();
+        var d = new SlotDispatcher("t", _ => { });
+        d.Post(() => { started.Set(); release.Wait(); }); // a library's worker loop parked on the dispatcher
+        Assert.True(started.Wait(2000), "handler started");
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        d.Dispose(TimeSpan.FromMilliseconds(100));
+        Assert.True(sw.ElapsedMilliseconds < 2000, $"returned after {sw.ElapsedMilliseconds} ms, not the default 5 s");
+        release.Set(); // the thread then finds its queue closed and exits
+    }
 }

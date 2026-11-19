@@ -672,7 +672,10 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
         Stop();
         _timers.Dispose();
         if (_slot.Metrics.Callbacks == _callbacks) _slot.Metrics.Callbacks = null;
-        _callbacks?.Dispose();
+        // A SIMPL# library can park a worker loop on this dispatcher (the Crestron driver SDK's DriverClock does) that
+        // never returns, and nothing can stop it from here. Waiting the full 5 s for it made every unload of such a
+        // program stall; a short wait still lets ordinary callbacks finish.
+        _callbacks?.Dispose(TimeSpan.FromMilliseconds(250));
         _callbacks = null;
         _alc?.Unload();
         _alc = null;
