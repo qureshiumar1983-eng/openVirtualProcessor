@@ -452,4 +452,23 @@ public static class LpzRuntimeTests
         Thread.Sleep(50);
         Assert.True((bool)panel.GetFeedback(D(1)), "Toggle on 1 flipped once at start");
     }
+
+    [Test]
+    public static void Multiple_serial_send_with_one_trigger_sets_every_output()
+    {
+        // Programs set every room, display and source name at start-up with one Multiple Serial Send on the
+        // constant 1: one trigger, output k = parameter k.
+        const int N1 = 10, N2 = 11, N3 = 12;
+        var path = BuildPanelProgram("multisend",
+        [
+            Record(-12, "IP-ID-03", [N1, N2, N3], [], Int(6, 3), Int(10, 0), Int(11, 0), Int(12, 0), Int(13, 0)),
+            Record(58, "S-1", [1], [N1, N2, N3], Int(15, 3), Str(3, "Room"), Str(3, "Local HDMI"), Str(3, "Cable 1")),
+        ]);
+        using var p = new Processor(Paths.TempData());
+        p.AddLoader(new LpzLoader());
+        var panel = LoadPanel(p, path);
+        Assert.Eventually(() => (string)panel.GetFeedback(S(3)) == "Cable 1", "last output set");
+        Assert.Equal("Room", (string)panel.GetFeedback(S(1)), "first output");
+        Assert.Equal("Local HDMI", (string)panel.GetFeedback(S(2)), "second output");
+    }
 }

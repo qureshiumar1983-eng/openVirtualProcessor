@@ -303,7 +303,14 @@ public sealed class SerialSendSymbol : SymbolBehavior
     public override SigKind OutputKind(int pin) => SigKind.Serial;
     public override void OnInput(ISymbolContext c, int pin, object o, object n)
     {
-        if (Rising(o, n)) c.SetOutput(1, SmwFile.ParseString(c.Param(pin)));
+        if (!Rising(o, n)) return;
+        // Multiple Serial Send with one trigger and several outputs: output k gets parameter k, all at once.
+        if (c.InputCount == 1 && c.OutputCount > 1)
+        {
+            for (int k = 1; k <= c.OutputCount; k++) c.SetOutput(k, SmwFile.ParseString(c.Param(k)));
+            return;
+        }
+        c.SetOutput(1, SmwFile.ParseString(c.Param(pin)));
     }
 }
 
@@ -463,6 +470,7 @@ public sealed class SymbolLibrary
         ["Equate"] = () => new EquateSymbol(),
         ["Analog Equate"] = () => new EquateSymbol(),
         ["Serial Send"] = () => new SerialSendSymbol(),
+        ["Multiple Serial Send"] = () => new SerialSendSymbol(),
         ["Analog Ramp (Bounds Limited)"] = () => new BoundedRampSymbol(),
         ["Analog Rate Limiter"] = () => new RateLimiterSymbol(),
     };

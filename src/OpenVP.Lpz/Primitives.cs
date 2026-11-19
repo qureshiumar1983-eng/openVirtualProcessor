@@ -487,12 +487,19 @@ public sealed class EquatePrim : EvalPrim
 }
 
 /// <summary>Type 58, Serial Send / Multiple Serial Send: rising input k sends string parameter k on output 1
-/// (or on output k when there is one output per input).</summary>
+/// (or on output k when there is one output per input). Multiple Serial Send with one trigger and several
+/// outputs (programs use it to set every room, display and source name at start-up) sends parameter k on
+/// output k, all of them, on that one trigger.</summary>
 public sealed class SerialSendPrim : EdgePrim
 {
     public override SigKind? OutputKind(int pin) => SigKind.Serial;
     protected override void OnEdge(IPrimitiveContext c, int p)
     {
+        if (c.InputCount == 1 && c.OutputCount > 1)
+        {
+            for (int k = 1; k <= c.OutputCount; k++) c.Set(k, c.Text(k - 1) ?? string.Empty);
+            return;
+        }
         var outPin = c.OutputCount >= p ? p : 1;
         c.Set(outPin, c.Text(p - 1) ?? string.Empty);
     }
