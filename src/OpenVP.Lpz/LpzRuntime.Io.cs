@@ -94,6 +94,9 @@ public sealed partial class LpzRuntime
             case -200:
                 Register(new ComPortNode(this, sym));
                 return true;
+            case -202:
+                Register(new IrPortNode(this, sym));
+                return true;
         }
         return false;
     }
@@ -372,19 +375,94 @@ public sealed partial class LpzRuntime
         }
     }
 
+    /// <summary>Installs the bridge each new runtime uses for its IR and COM ports. Null (the default) means none:
+    /// sends are only logged.</summary>
+    public static Func<ProgramSlot, IPortBridge>? PortBridgeFactory { get; set; }
+
+    private IPortBridge? _portBridge;
+
+    /// <summary>What carries this program's IR and COM ports. Replace it before <see cref="Start"/>.</summary>
+    public IPortBridge PortBridge
+    {
+        get => _portBridge ??= PortBridgeFactory?.Invoke(_slot) ?? NullPortBridge.Instance;
+        set => _portBridge = value;
+    }
+
+    private readonly List<PortInfo> _ports = new();
+
+    /// <summary>The IR and COM ports the program uses, in program order.</summary>
+    public IReadOnlyList<PortInfo> Ports => _ports;
+
     /// <summary>
-    /// Type −200, COM port. A virtual processor has no serial ports, so a port can be bridged to a serial
-    /// device server: comports.json in the program folder (or the data folder) maps the port's name to
-    /// "host:port", e.g. { "COM-01": "192.168.1.50:4999" }. Unmapped ports just drop what is sent.
+    /// Type −202, an IR port driven by "Crestron DB IR-controlled device" symbols. Each record is one such
+    /// symbol on port field 6 + 1. Inputs 1 and 2 are fixed (constants 1 and 0 in every record seen); input
+    /// 2 + k is the trigger for params[k], an index into the driver commands the program uses (only wired pins are
+    /// compiled, so they are not simply 0..n). A virtual processor has no IR emitter: a rising trigger is
+    /// logged and handed to the port bridge.
     /// </summary>
-    private sealed class ComPortNode(LpzRuntime rt, BinSymbol sym) : SocketNode(rt, sym)
+    private sealed class IrPortNode : Node
+    {
+        private readonly PortInfo _port;
+        private readonly int _first; // first command pin; params line up with the pins from here
+
+        public IrPortNode(LpzRuntime rt, BinSymbol sym) : base(rt, sym)
+        {
+            _port = PortInfo.From(PortKind.Ir, sym, rt._pkg.Logic.Symbols);
+            _first = Math.Max(0, sym.Inputs.Length - sym.Params.Count) + 1;
+            rt._ports.Add(_port);
+        }
+
+        public override SigKind? InputKind(int pin) => SigKind.Digital;
+        public override SigKind? OutputKind(int pin) => null;
+
+        public override void OnInput(int pin, object o, object n)
+        {
+            if (pin < _first || !(o is false && n is true)) return;
+            var k = pin - _first;
+            if (k >= Symbol.Params.Count) return;
+            var cmd = (int)(Symbol.Params[k].Number ?? k);
+            var name = Runtime.NameOf(Symbol.Inputs[pin - 1]);
+            Runtime._slot.Log("Info", $"{_port.Label}: {name} (cmd {cmd})");
+            try { Runtime.PortBridge.SendIr(_port, cmd, name); }
+            catch (Exception e) { Runtime._slot.Log("Warning", $"{_port.Label}: port bridge: {e.Message}"); }
+        }
+    }
+
+    /// <summary>
+    /// Type −200, COM port: input 1 is the serial text to send (input 2 is a constant 1 in every record seen),
+    /// output 1 is the text received. The port number is field 6 + 1, and the record sits under its device's
+    /// card slot (IP-ID-11 → Slot-08 → COM-01). Port settings (baud, parity) aren't in the record. A virtual
+    /// processor has no serial ports: every send is logged and handed to the port bridge, and text can be
+    /// injected by forcing the receive signal in the debugger. A port can also be bridged to a serial device
+    /// server: comports.json in the program folder (or the data folder) maps the port's path to "host:port",
+    /// e.g. { "IP-ID-11/Slot-08/COM-01": "192.168.1.50:4999" }. The bare name "COM-01" works too, but every
+    /// port of that number shares it.
+    /// </summary>
+    private sealed class ComPortNode : SocketNode
     {
         private NetworkStream? _stream;
+        private readonly PortInfo _port;
+
+        public ComPortNode(LpzRuntime rt, BinSymbol sym) : base(rt, sym)
+        {
+            _port = PortInfo.From(PortKind.Com, sym, rt._pkg.Logic.Symbols);
+            rt._ports.Add(_port);
+        }
+
         public override SigKind? InputKind(int pin) => pin == 1 ? SigKind.Serial : SigKind.Digital;
         public override SigKind? OutputKind(int pin) => pin == 1 ? SigKind.Serial : null;
+        public override bool WatchesOutputs => true;
+
+        public override void Stop()
+        {
+            base.Stop();
+            try { Runtime.PortBridge.Close(_port); } catch (Exception) { }
+        }
 
         public override void Start()
         {
+            try { Runtime.PortBridge.Open(_port, text => Post(() => Runtime.DriveOut(this, 1, text))); }
+            catch (Exception e) { Log("Warning", $"port bridge: {e.Message}"); }
             var target = Lookup();
             if (target == null) return;
             var colon = target.LastIndexOf(':');
@@ -402,7 +480,7 @@ public sealed partial class LpzRuntime
                 try
                 {
                     var map = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(f));
-                    if (map != null && map.TryGetValue(Symbol.Path, out var t)) return t;
+                    if (map != null && (map.TryGetValue(_port.Path, out var t) || map.TryGetValue(Symbol.Path, out t))) return t;
                 }
                 catch (Exception e) { Log("Warning", $"comports.json: {e.Message}"); }
             }
@@ -411,10 +489,17 @@ public sealed partial class LpzRuntime
 
         public override void OnInput(int pin, object o, object n)
         {
-            if (pin == 1 && n is string s && s.Length > 0)
+            if (n is not string s || s.Length == 0) return;
+            if (pin < 0) // our own receive signal changed: from the bridge, a socket or a value forced in the debugger
             {
-                try { _stream?.WriteAsync(Encoding.Latin1.GetBytes(s)); } catch (Exception) { }
+                Runtime._slot.Log("Info", $"{_port.Label} RX ({s.Length}): \"{PortInfo.Printable(s)}\"");
+                return;
             }
+            if (pin != 1) return;
+            Runtime._slot.Log("Info", $"{_port.Label} TX ({s.Length}): \"{PortInfo.Printable(s)}\"");
+            try { Runtime.PortBridge.SendCom(_port, s); }
+            catch (Exception e) { Log("Warning", $"port bridge: {e.Message}"); }
+            try { _stream?.WriteAsync(Encoding.Latin1.GetBytes(s)); } catch (Exception) { }
         }
 
         private async Task Run(string host, int port, CancellationToken ct)
