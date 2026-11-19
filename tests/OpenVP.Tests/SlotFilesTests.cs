@@ -117,3 +117,112 @@ public static class ProgramFolderTests
         Assert.Equal("file_name", OpenVP.Lpz.LpzPackage.Open(Lpz("Program File: file_name.smw")).ProgramName, "falls back to the file name");
     }
 }
+
+public static class MissingFileTests
+{
+    static (MissingFileLog log, List<string> lines, string dir) New()
+    {
+        var dir = Directory.CreateTempSubdirectory("openvp-missing").FullName;
+        SlotFiles.EnsureRoots(dir);
+        var lines = new List<string>();
+        return (new MissingFileLog(() => dir, (_, m) => lines.Add(m)), lines, dir);
+    }
+
+    [Test]
+    public static void AMissingConfigFileSuggestsTheFolderToCreate()
+    {
+        var (log, lines, dir) = New();
+        var m = log.Report(@"\USER\config\rooms\rooms.json");
+        Assert.True(m != null, "reported");
+        Assert.Equal("user", m!.Root, "root");
+        Assert.Equal("config/rooms", m.Folder, "folder inside the root");
+        Assert.Equal("rooms.json", m.Name, "file name");
+        Assert.Equal(@"\USER\config\rooms\rooms.json", m.ProgramPath, "program path");
+        Assert.Equal(@"\USER\config\rooms\", m.FolderPath, "folder path");
+        Assert.Equal(Path.Combine(dir, "user", "config", "rooms"), m.DiskFolder, "folder on disk");
+        Assert.True(!m.FolderExists, "folder isn't there yet");
+        Assert.Equal(1, lines.Count, "logged once");
+        Assert.True(lines[0].Contains(@"Create the folder \USER\config\rooms\") && lines[0].Contains(m.DiskFolder), "log says which folder to create and where: " + lines[0]);
+
+        log.Report("/user/config/rooms/rooms.json");
+        Assert.Equal(1, lines.Count, "same file, other spelling: not logged again");
+        Assert.Equal(1, log.Items.Count, "listed once");
+    }
+
+    [Test]
+    public static void OnlyTheFileMissingSaysWhereToPutIt()
+    {
+        var (log, lines, dir) = New();
+        Directory.CreateDirectory(Path.Combine(dir, "nvram", "cfg"));
+        var m = log.Report(@"\NVRAM\cfg\a.txt")!;
+        Assert.True(m.FolderExists, "folder is there");
+        Assert.True(lines[0].Contains(@"Put a.txt in \NVRAM\cfg\") && lines[0].Contains("NVRAM tab"), "log: " + lines[0]);
+    }
+
+    [Test]
+    public static void MissingFoldersAndExistingFilesAndOtherPaths()
+    {
+        var (log, lines, dir) = New();
+        var f = log.Report(@"\USER\logs", isFolder: true)!;
+        Assert.True(f.IsFolder && f.Folder == "logs" && f.FolderPath == @"\USER\logs\", "a missing folder is the folder itself");
+
+        File.WriteAllText(Path.Combine(dir, "user", "here.json"), "{}");
+        Assert.True(log.Report(@"\USER\here.json") == null, "a file that's there isn't reported");
+        Assert.True(log.Report(@"\HTML\index.html") == null, "only NVRAM and USER, the folders the console can fill");
+        Assert.True(log.Report(@"\USER\..\..\x") == null, "paths outside the slot are ignored, not thrown");
+        Assert.True(log.Report("") == null, "empty path");
+        Assert.Equal(1, lines.Count, "only the folder was logged");
+    }
+
+    [Test]
+    public static void PuttingTheFileInPlaceTakesItOffTheList()
+    {
+        var (log, _, dir) = New();
+        log.Report(@"\USER\config\rooms.json");
+        Assert.Equal(1, log.Items.Count, "listed");
+        Directory.CreateDirectory(Path.Combine(dir, "user", "config"));
+        Assert.True(log.Items[0].FolderExists, "folder made");
+        File.WriteAllText(Path.Combine(dir, "user", "config", "rooms.json"), "{}");
+        Assert.Equal(0, log.Items.Count, "gone once the file is there");
+    }
+
+    [Test]
+    public static void SlotsReportMissingFilesToTheirLog()
+    {
+        using var p = new Processor(Paths.TempData());
+        var slot = p.Slot(2);
+        slot.ReportMissing(@"\USER\config\rooms.json");
+        Assert.Equal(1, slot.MissingFiles.Items.Count, "listed on the slot");
+        Assert.Equal(0, p.Slot(1).MissingFiles.Items.Count, "other slots unaffected");
+        Assert.Equal(Path.Combine(slot.Directory, "user", "config"), slot.MissingFiles.Items[0].DiskFolder, "inside the slot folder");
+    }
+}
+
+public static class MissingFileApiTests
+{
+    [Test]
+    public static void SimplSharpFileApiReportsMissingConfigFiles()
+    {
+        using var p = new Processor(Paths.TempData());
+        var slot = p.Slot(3);
+        var before = OpenVP.SimplSharp.OpenVPBridge.Slot;
+        OpenVP.SimplSharp.OpenVPBridge.Slot = slot;
+        try
+        {
+            Assert.True(!Crestron.SimplSharp.CrestronIO.File.Exists(@"\USER\config\rooms.json"), "File.Exists is false");
+            var threw = false;
+            try { Crestron.SimplSharp.CrestronIO.File.OpenRead(@"\NVRAM\settings\a.json"); }
+            catch (FileNotFoundException) { threw = true; }
+            Assert.True(threw, "opening a missing file for reading still throws FileNotFoundException");
+            Assert.True(!Directory.Exists(Path.Combine(slot.Directory, "nvram", "settings")), "reading doesn't make an empty folder");
+            Assert.True(!Crestron.SimplSharp.CrestronIO.Directory.Exists(@"\USER\logs"), "Directory.Exists is false");
+            var paths = slot.MissingFiles.Items.Select(m => m.ProgramPath).ToList();
+            Assert.Equal(@"\USER\config\rooms.json|\NVRAM\settings\a.json|\USER\logs\", string.Join("|", paths), "all three listed");
+
+            using (var w = new Crestron.SimplSharp.CrestronIO.StreamWriter(@"\USER\config\rooms.json")) w.Write("{}");
+            Assert.True(Crestron.SimplSharp.CrestronIO.File.Exists(@"\USER\config\rooms.json"), "writing still creates the folder");
+            Assert.Equal(2, slot.MissingFiles.Items.Count, "written file drops off the list");
+        }
+        finally { OpenVP.SimplSharp.OpenVPBridge.Slot = before; }
+    }
+}

@@ -27,6 +27,7 @@ public sealed class ProgramSlot : IDisposable
         Number = number;
         Stepper.Changed += _ => Processor.NotifyStepChanged(this);
         Metrics = new SlotMetrics(() => Volatile.Read(ref _generation));
+        MissingFiles = new MissingFileLog(() => Directory, Log);
         _dispatcher = NewDispatcher();
         LoadSettings();
     }
@@ -120,6 +121,14 @@ public sealed class ProgramSlot : IDisposable
 
     /// <summary>Maps a processor path (<c>\NVRAM\x</c>, <c>/user/x</c>) to a file inside this slot's folder.</summary>
     public string MapPath(string? processorPath) => SlotFiles.Map(Directory, processorPath);
+
+    /// <summary>Files and folders the program looked for in <c>\NVRAM</c> or <c>\USER</c> and didn't find
+    /// (config files nobody has put in place yet), so the console can say which folders to create.</summary>
+    public MissingFileLog MissingFiles { get; }
+
+    /// <summary>The program looked for a file (or folder) at this processor path and it may not be there.
+    /// Logged once with the folder to create; see <see cref="MissingFiles"/>.</summary>
+    public void ReportMissing(string? processorPath, bool isFolder = false) => MissingFiles.Report(processorPath, isFolder);
 
     public SlotDispatcher Dispatcher => _dispatcher;
 
@@ -251,6 +260,7 @@ public sealed class ProgramSlot : IDisposable
         lock (Lifecycle)
         {
             Unload();
+            MissingFiles.Clear();
             ProgramPath = path;
             Runtime = runtime;
             Interlocked.Increment(ref _generation);
