@@ -52,6 +52,17 @@
          border-radius:6px; padding:6px 9px; font-size:12px; box-shadow:0 4px 14px #0008; }
   #tip b { color:#fff; } #tip .k { color:var(--muted); }
   #empty { position:absolute; inset:0; display:none; place-items:center; text-align:center; color:var(--muted); padding:24px; pointer-events:none; }
+  /* loading / error state: a card in the middle while there is no maze yet, a small pill on top of an existing one */
+  #status { position:absolute; z-index:6; left:50%; top:50%; transform:translate(-50%,-50%); max-width:min(440px, calc(100% - 32px)); text-align:center;
+            background:#151a20ee; border:1px solid var(--line); border-radius:8px; padding:14px 20px; color:var(--text); box-shadow:0 6px 24px #000a; }
+  #status.pill { top:12px; transform:translate(-50%,0); padding:5px 12px; border-radius:14px; font-size:12px; color:var(--muted); }
+  #status.pill .bar { display:none; }
+  #status.err { border-color:#7a2f2f; }
+  #status.err #stMsg { color:#ff9a9a; }
+  #status .bar { height:3px; width:220px; max-width:100%; margin:10px auto 2px; background:#232b35; border-radius:2px; overflow:hidden; }
+  #status .bar i { display:block; height:100%; width:35%; background:var(--neon); border-radius:2px; animation:slide 1.1s ease-in-out infinite; }
+  @keyframes slide { 0% { margin-left:-35%; } 100% { margin-left:100%; } }
+  #status button { margin-top:10px; }
 
   .side { border-left:1px solid var(--line); background:var(--pane); min-height:0; overflow:auto; display:flex; flex-direction:column; }
   .side h2 { margin:0; padding:5px 8px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted);
@@ -122,6 +133,7 @@
   <div class="stage" id="stage">
     <canvas id="cv"></canvas>
     <div id="empty"></div>
+    <div id="status" class="card" role="status"><div id="stMsg">Loading wiring…</div><div class="bar"><i id="stBar"></i></div><button id="stRetry" style="display:none">Retry</button></div>
     <div id="legend"><i style="border-color:#4a5360"></i>wire<i style="border-color:#19e6ff"></i>signal path<i style="border-color:#ff3dcb"></i>loop</div>
     <div id="hud"></div>
     <div id="tip"></div>
@@ -142,16 +154,21 @@
 <script>
 openvpAuth.init();
 const $ = s => document.querySelector(s);
+const T0 = performance.now();
 
 // ---------------------------------------------------------------- tunables
 const HOP_MS = 150;          // time for the pulse to cross one signal -> symbol -> signal hop
 const FADE_MS = 2500;        // how long a lit node / edge takes to fade out
-const FAN = 12;              // children drawn per node before collapsing the rest into "+K more"
-const MAX_NODES = 1800;      // hard cap on drawn nodes
+const FAN = 12;              // children drawn per node before collapsing the rest into "+K more" (cone view only)
+const MAX_NODES = 80000;     // hard cap on drawn nodes (breadth-first, so what is drawn stays connected)
 const COL_W = 190, ROW_H = 40;
 const OSC_CHAIN = 6;         // changes of one signal inside one burst that count as oscillation
 const OSC_RATE = 20;         // changes per second that count as oscillation
 const OSC_HOLD = 6000;       // how long an oscillation stays flagged after the last change
+const QMAX = 30000;          // received trace events waiting for playback; older ones are dropped beyond this
+const SCHED_MAX = 6000;      // events waiting for their hop time
+const LIT_N_FULL = 700, LIT_E_FULL = 1500;   // lit nodes / wires that get the full glow treatment per frame
+const SLICE_MS = 8;          // main-thread budget per frame for static drawing and event playback
 
 const COL = {
   edge: "#3a424d", edgeBack: "#5b3350", node: "#2c333d", nodeText: "#8a94a2", symText: "#9aa4b2",
@@ -161,23 +178,27 @@ const COL = {
 // ---------------------------------------------------------------- state
 let slot = Number(new URLSearchParams(location.search).get("slot")) || 1;
 let startSig = new URLSearchParams(location.search).get("signal") || "";
-let G = null;                       // program graph: { symbols:Map, signals:Map }
-let V = null;                       // current view (the drawn sub-graph): nodes, edges, maps
-let expanded = new Set();           // node keys whose "+K more" was opened
+let G = null;                       // program graph (typed arrays, see onGraph)
+let pendingG = null;                // a newly loaded graph waiting for its first view; the old maze stays up meanwhile
+let V = null;                       // current view (the drawn sub-graph), typed arrays from the worker
+let expanded = new Set();           // "+K more" codes that were opened (signal id, or nSig + symbol id)
 let vals = new Map();               // signal name -> current value (from /signals and trace events)
 let ws = null;
 const cfg = { dir: "fwd", depth: 8, whole: false, follow: false, speed: 1 };
 const T = { x: 0, y: 0, k: 1 };     // pan / zoom (screen = world * k + xy)
+const timing = { t0: T0 };
 
 // live-animation state (all times are performance.now() ms)
-const litN = new Map();             // node key -> { t, high, kind, n, ring }
-const litE = new Map();             // edge key -> { t, dur, high, kind, loop }
-const sched = [];                   // events waiting for their hop time: { at, e }
-const queue = [];                   // received events waiting for slow-motion playback: { r, e }
+const litN = new Map();             // node index -> { t, high, kind, n, ring }
+const litE = new Map();             // edge index -> { t, dur, high, kind }
+const hiSet = new Set();            // view node indices of digital signals that are steadily high
+const sched = [];                   // events waiting for their hop time: { at, arr, e, n, hop }
+let Q = [], qh = 0;                 // received events waiting for playback (array + head index = O(1) shift)
+let droppedEv = 0;
 const chainBase = new Map();        // chain -> time its first event played
 const chainArr = new Map();         // chain|signal -> time that signal's light arrives
 const chainCnt = new Map();         // chain|signal -> number of changes in this chain
-const rate = new Map();             // signal -> recent change timestamps
+const rate = new Map();             // signal -> { t0, c }: changes in the current one-second window
 const osc = new Map();              // signal -> { t, n, reason }
 const bursts = new Map();           // chain -> [events] (recent chains only)
 let lastBurst = null, lastFollow = 0, playClock = 0, lastFrame = 0, flash = null, replaySeq = 0;
@@ -196,7 +217,7 @@ async function api(path, init) {
 }
 const pad = (n, w = 2) => String(n).padStart(w, "0");
 const isHigh = v => v === true || v === 1 || v === "1" || v === "True" || v === "true";
-const isConst = n => !n || n === "0" || n === "1"; // also drops unwired pins (empty name)
+const KINDS = ["Digital", "Analog", "Serial"];
 function fmt(kind, v) {
   if (v === undefined) return "?";
   if (kind === "Digital") return isHigh(v) ? "1" : "0";
@@ -206,264 +227,615 @@ function fmt(kind, v) {
 }
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 function setHud(html) { $("#hud").innerHTML = html; }
+const nf = n => Number(n).toLocaleString("en-US");
 
-// ---------------------------------------------------------------- program graph
-// Bipartite: signal -> symbol (symbol reads it as an input) and symbol -> signal (symbol drives it as an output).
-async function loadGraph() {
-  G = null; V = null; $("#empty").style.display = "none";
-  let raw;
-  try { raw = await api(`/api/slots/${slot}/graph`); }
-  catch (e) { showEmpty("No wiring graph for slot " + slot + ": " + e.message); draw(); return; }
-  const symbols = new Map(), signals = new Map();
-  const sig = (name, kind) => {
-    let s = signals.get(name);
-    if (!s) signals.set(name, s = { name, kind: kind || "Digital", drivers: [], readers: [] });
-    else if (kind) s.kind = kind;
-    return s;
-  };
-  for (const s of raw.signals || []) if (!isConst(s.name)) sig(s.name, s.kind);
-  for (const y of raw.symbols || []) {
-    y.inputs = (y.inputs || []).filter(n => !isConst(n)); y.outputs = (y.outputs || []).filter(n => !isConst(n));
-    symbols.set(y.id, y);
-    for (const n of new Set(y.inputs)) sig(n).readers.push(y.id);
-    for (const n of new Set(y.outputs)) sig(n).drivers.push(y.id);
+// ---------------------------------------------------------------- worker: fetch, parse, index, build, lay out
+// Everything heavy happens in here (an inline Blob worker). The function is written so it also runs on the page itself
+// (cooperatively time-sliced) if a worker cannot be created.
+function workerMain(S) {
+  const now = () => performance.now();
+  const yq = [], mc = new MessageChannel();
+  mc.port1.onmessage = () => { const r = yq.shift(); if (r) r(); };
+  const yieldNow = () => new Promise(r => { yq.push(r); mc.port2.postMessage(0); });
+  const CANCEL = { cancelled: true };
+  const slicer = isStale => { let last = now(); return async () => { if (now() - last > 10) { await yieldNow(); if (isStale()) throw CANCEL; last = now(); } }; };
+  const abs = () => performance.timeOrigin + now();
+  let G = null, latestView = 0, latestLoad = 0, gseq = 0;
+  const isC = n => !n || n === "0" || n === "1";
+
+  async function load(m) {
+    const id = m.id; latestLoad = id;
+    const stale = () => latestLoad !== id, sl = slicer(stale);
+    const post = (o, tr) => S.postMessage(Object.assign({ id }, o), tr || []);
+    try {
+      post({ t: "prog", stage: "fetch", bytes: 0 });
+      const res = await fetch(m.url, { credentials: "same-origin", headers: { accept: "application/json" } });
+      if (res.status === 401) { post({ t: "err", auth: true, message: "Log in with the access key first." }); return; }
+      if (!res.ok) {
+        let msg = res.statusText || ("HTTP " + res.status);
+        try { const j = await res.json(); if (j && j.error) msg = j.error; } catch { }
+        post({ t: "err", status: res.status, message: msg }); return;
+      }
+      const chunks = []; let got = 0, lastP = 0;
+      if (res.body && res.body.getReader) {
+        const rd = res.body.getReader();
+        for (;;) {
+          const { done, value } = await rd.read(); if (done) break;
+          chunks.push(value); got += value.length;
+          if (now() - lastP > 120) { lastP = now(); post({ t: "prog", stage: "fetch", bytes: got }); if (stale()) { try { rd.cancel(); } catch { } return; } }
+        }
+      } else { const b = new Uint8Array(await res.arrayBuffer()); chunks.push(b); got = b.length; }
+      if (stale()) return;
+      const tBytes = abs();
+      post({ t: "prog", stage: "parse", bytes: got, ts: tBytes });
+      const text = await new Blob(chunks).text();
+      if (stale()) return;
+      let h = 2166136261 >>> 0;
+      for (let i = 0, n = text.length; i < n; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+      const sig = (h >>> 0).toString(36) + ":" + text.length + ":" + m.slot;
+      if (!m.force && G && G.sig === sig) { post({ t: "same", ts: abs() }); return; }
+      await yieldNow(); if (stale()) return;
+      const raw = JSON.parse(text);
+      post({ t: "prog", stage: "index", symbols: (raw.symbols || []).length });
+      await yieldNow(); if (stale()) return;
+
+      // ---- index: integer ids + CSR adjacency
+      const rs = raw.signals || [], ry = raw.symbols || [];
+      const sigMap = new Map(), sigNames = [], kinds = [];
+      const kc = k => k === "Analog" ? 1 : k === "Serial" ? 2 : 0;
+      const sidOf = n => { let i = sigMap.get(n); if (i === undefined) { i = sigNames.length; sigMap.set(n, i); sigNames.push(String(n).replace(/[\r\n]/g, " ")); kinds.push(0); } return i; };
+      for (let i = 0; i < rs.length; i++) { const s = rs[i]; if (isC(s.name)) continue; const j = sidOf(s.name); if (s.kind) kinds[j] = kc(s.kind); if ((i & 8191) === 0) await sl(); }
+      const nSym = ry.length;
+      const symInS = new Int32Array(nSym + 1), symOutS = new Int32Array(nSym + 1);
+      const inL = [], outL = [], symNames = new Array(nSym), symPaths = new Array(nSym), symGroups = new Array(nSym), symIds = new Array(nSym);
+      const symDev = new Uint8Array(nSym);
+      const addPins = (arr, dst) => {
+        if (!arr) return;
+        const start = dst.length; let set = null;
+        for (let j = 0; j < arr.length; j++) {
+          const n = arr[j]; if (isC(n)) continue;
+          const id2 = sidOf(n);
+          if (dst.length - start < 32) { let dup = false; for (let k = start; k < dst.length; k++) if (dst[k] === id2) { dup = true; break; } if (dup) continue; }
+          else { if (!set) set = new Set(dst.slice(start)); if (set.has(id2)) continue; set.add(id2); }
+          dst.push(id2);
+        }
+      };
+      const clean = s => String(s == null ? "" : s).replace(/[\r\n]/g, " ");
+      for (let i = 0; i < nSym; i++) {
+        const y = ry[i];
+        addPins(y.inputs, inL); symInS[i + 1] = inL.length;
+        addPins(y.outputs, outL); symOutS[i + 1] = outL.length;
+        symIds[i] = clean(y.id); symNames[i] = clean(y.name || y.id); symPaths[i] = clean(y.path || y.id); symGroups[i] = clean(y.group);
+        symDev[i] = y.device ? 1 : 0;
+        if ((i & 1023) === 0) await sl();
+      }
+      const nSig = sigNames.length;
+      const symIn = Int32Array.from(inL), symOut = Int32Array.from(outL);
+      const invert = (S1, L1) => {
+        const cnt = new Int32Array(nSig + 1);
+        for (let p = 0; p < L1.length; p++) cnt[L1[p] + 1]++;
+        for (let i = 0; i < nSig; i++) cnt[i + 1] += cnt[i];
+        const cur = cnt.slice(0, nSig), out = new Int32Array(L1.length);
+        for (let y = 0; y < nSym; y++) for (let p = S1[y]; p < S1[y + 1]; p++) out[cur[L1[p]]++] = y;
+        return [cnt, out];
+      };
+      const [sigRdS, sigRd] = invert(symInS, symIn), [sigDrS, sigDr] = invert(symOutS, symOut);
+      G = { id: ++gseq, sig, nSig, nSym, symDev, symInS, symIn, symOutS, symOut, sigRdS, sigRd, sigDrS, sigDr, sigKind: Uint8Array.from(kinds),
+            sigNames, symNames };
+      if (stale()) return;
+      post({
+        t: "graph", gid: G.id, sig, ts: abs(), tBytes, kind: raw.kind || "", nSig, nSym, nPins: inL.length + outL.length,
+        sigNames: sigNames.join("\n"), symNames: symNames.join("\n"), symPaths: symPaths.join("\n"), symGroups: symGroups.join("\n"), symIds: symIds.join("\n"),
+        sigKind: G.sigKind, symDev, symInS, symIn, symOutS, symOut, sigRdS, sigRd, sigDrS, sigDr
+      });
+    } catch (e) {
+      if (e === CANCEL) return;
+      post({ t: "err", message: (e && e.message) || String(e) });
+    }
   }
-  G = { symbols, signals, kind: raw.kind };
-  try { // current values, so steady-state highs can be shown
-    for (const s of await api(`/api/slots/${slot}/signals`)) vals.set(s.name, s.value);
+
+  async function view(m) {
+    const id = m.id; latestView = id;
+    const post = (o, tr) => S.postMessage(Object.assign({ id }, o), tr || []);
+    const g = G;
+    if (!g || g.id !== m.gid) { post({ t: "err", message: "graph not ready", stale: true }); return; }
+    const stale = () => latestView !== id, sl = slicer(stale);
+    try {
+      const tStart = now();
+      const COL_W = m.colW, ROW_H = m.rowH;
+      const { nSig, nSym } = g;
+      const back = m.dir === "back", whole = !!m.whole, limit = whole ? Infinity : m.depth, cap = m.maxNodes, fan = m.fan;
+      const expanded = new Set(m.expanded);
+      const sigNode = new Int32Array(nSig).fill(-1), symNode = new Int32Array(nSym).fill(-1), symDone = new Uint8Array(nSym);
+      const nType = [], nRef = [], nK = [], nCode = [], nBey = [], eA = [], eB = [];
+      let truncated = false, hidden = 0;
+      const addNode = (type, ref, k, code) => {
+        if (nType.length >= cap) { truncated = true; return -1; }
+        nType.push(type); nRef.push(ref); nK.push(k); nCode.push(code); nBey.push(0); return nType.length - 1;
+      };
+      const q = [], qd = [];
+      const pushSig = (s, d) => { if (sigNode[s] >= 0) return; const n = addNode(0, s, 0, 0); if (n < 0) return; sigNode[s] = n; q.push(s); qd.push(d); };
+      const symN = y => { let n = symNode[y]; if (n >= 0) return n; n = addNode(1, y, 0, 0); if (n >= 0) symNode[y] = n; return n; };
+      const addEdge = (a, b) => { eA.push(a); eB.push(b); };
+      const moreEdge = (parent, k, code) => { const mn = addNode(2, parent, k, code); if (mn >= 0) { if (back) addEdge(mn, parent); else addEdge(parent, mn); } };
+
+      // total size of the connected part of the program (for the HUD)
+      let total = 0;
+      for (let s = 0; s < nSig; s++) if (g.sigRdS[s + 1] > g.sigRdS[s] || g.sigDrS[s + 1] > g.sigDrS[s]) total++;
+      for (let y = 0; y < nSym; y++) if (g.symInS[y + 1] > g.symInS[y] || g.symOutS[y + 1] > g.symOutS[y]) total++;
+
+      let seedNode = -1;
+      if (!whole) {
+        // ---- cone: breadth-first from the start signal, `depth` signal hops, children capped to `fan`
+        if (m.startId >= 0) {
+          pushSig(m.startId, 0); seedNode = 0;
+          const lS = back ? g.sigDrS : g.sigRdS, lL = back ? g.sigDr : g.sigRd, oS = back ? g.symInS : g.symOutS, oL = back ? g.symIn : g.symOut;
+          for (let qi = 0; qi < q.length; qi++) {
+            const sid = q[qi], d = qd[qi], sn = sigNode[sid], a = lS[sid], b = lS[sid + 1];
+            if (d >= limit) { if (b > a) nBey[sn] = 1; continue; }
+            const cnt = b - a, doCap = cnt > fan && !expanded.has(sid), lim = doCap ? a + fan : b;
+            if (doCap) hidden += cnt - fan;
+            for (let p = a; p < lim; p++) {
+              const y = lL[p], yn = symN(y); if (yn < 0) break;
+              if (g.symDev[y] || symDone[y]) continue;     // device symbols are sinks (forward) / sources (backward)
+              symDone[y] = 1;
+              const oa = oS[y], ob = oS[y + 1], ocnt = ob - oa, c2 = ocnt > fan && !expanded.has(nSig + y), ol = c2 ? oa + fan : ob;
+              if (c2) hidden += ocnt - fan;
+              for (let p2 = oa; p2 < ol; p2++) pushSig(oL[p2], d + 1);
+              if (c2) moreEdge(yn, ocnt - fan, nSig + y);
+            }
+            if (doCap) moreEdge(sn, cnt - fan, sid);
+            if ((qi & 1023) === 0) await sl();
+          }
+        }
+      } else {
+        // ---- whole program: undirected breadth-first from the entry signals, so a node budget keeps the drawing connected
+        const roots = [], rest = [];
+        for (let s = 0; s < nSig; s++) {
+          const nr = g.sigRdS[s + 1] - g.sigRdS[s], nd = g.sigDrS[s + 1] - g.sigDrS[s];
+          if (!nr && !nd) continue;
+          let isRoot;
+          if (back) isRoot = !nr;
+          else { isRoot = !nd; if (!isRoot) { isRoot = true; for (let p = g.sigDrS[s]; p < g.sigDrS[s + 1]; p++) if (!g.symDev[g.sigDr[p]]) { isRoot = false; break; } } }
+          (isRoot ? roots : rest).push(s);
+        }
+        if (total > cap) { const w = back ? g.sigDrS : g.sigRdS; roots.sort((a, b) => (w[b + 1] - w[b]) - (w[a + 1] - w[a])); }
+        const order = roots.concat(rest);
+        let qi = 0;
+        for (let oi = 0; oi < order.length; oi++) {
+          if (truncated) break;
+          pushSig(order[oi], 0);
+          for (; qi < q.length; qi++) {
+            const sid = q[qi];
+            for (let side = 0; side < 2; side++) {
+              const lS = side ? g.sigDrS : g.sigRdS, lL = side ? g.sigDr : g.sigRd;
+              for (let p = lS[sid]; p < lS[sid + 1]; p++) {
+                const y = lL[p], yn = symN(y); if (yn < 0) break;
+                if (symDone[y]) continue; symDone[y] = 1;
+                for (let p2 = g.symInS[y]; p2 < g.symInS[y + 1]; p2++) pushSig(g.symIn[p2], 0);
+                for (let p2 = g.symOutS[y]; p2 < g.symOutS[y + 1]; p2++) pushSig(g.symOut[p2], 0);
+              }
+            }
+            if ((qi & 1023) === 0) await sl();
+          }
+          if ((oi & 1023) === 0) await sl();
+        }
+      }
+      // edges between everything that made it into the view. A device (panel, EISC...) is an end of the maze, not a hop:
+      // in a cone, don't wire its far side back in, or every button whose feedback returns to the same panel would look like a loop.
+      let N = nType.length;
+      for (let n = 0; n < N; n++) {
+        if (nType[n] !== 1) continue;
+        const y = nRef[n], dev = g.symDev[y] && !whole;
+        if (!(dev && back)) for (let p = g.symInS[y]; p < g.symInS[y + 1]; p++) { const s = sigNode[g.symIn[p]]; if (s >= 0) addEdge(s, n); }
+        if (!(dev && !back)) for (let p = g.symOutS[y]; p < g.symOutS[y + 1]; p++) { const s = sigNode[g.symOut[p]]; if (s >= 0) addEdge(n, s); }
+        if ((n & 4095) === 0) await sl();
+      }
+      const E = eA.length;
+      post({ t: "prog", stage: "build", n: N, e: E });
+      await yieldNow(); if (stale()) throw CANCEL;
+
+      // ---- layout. Columns come from the longest path through the graph with loop-closing edges removed, so everything flows
+      // left to right and only real feedback edges run backwards. Rows are ordered with barycenter sweeps.
+      post({ t: "prog", stage: "layout", n: N, e: E });
+      const A = Int32Array.from(eA), B = Int32Array.from(eB), isBack = new Uint8Array(E);
+      const outS = new Int32Array(N + 1), inS = new Int32Array(N + 1);
+      for (let e = 0; e < E; e++) { outS[A[e] + 1]++; inS[B[e] + 1]++; }
+      for (let i = 0; i < N; i++) { outS[i + 1] += outS[i]; inS[i + 1] += inS[i]; }
+      const outE = new Int32Array(E), inE = new Int32Array(E);
+      { const co = outS.slice(0, N), ci = inS.slice(0, N); for (let e = 0; e < E; e++) { outE[co[A[e]]++] = e; inE[ci[B[e]]++] = e; } }
+      // 1) feedback edges: an edge into a node on the DFS stack closes a loop
+      const state = new Uint8Array(N), order = new Int32Array(N), stk = new Int32Array(N), cur = outS.slice(0, N);
+      let oc = 0, steps = 0;
+      const dfsFrom = async r => {
+        let sp = 0; stk[sp++] = r; state[r] = 1;
+        while (sp) {
+          const n = stk[sp - 1];
+          if (cur[n] < outS[n + 1]) {
+            const e = outE[cur[n]++], mm = B[e], st = state[mm];
+            if (st === 1) isBack[e] = 1; else if (st === 0) { state[mm] = 1; stk[sp++] = mm; }
+          } else { state[n] = 2; order[oc++] = n; sp--; }
+          if ((++steps & 16383) === 0) await sl();
+        }
+      };
+      if (!back && seedNode >= 0 && !state[seedNode]) await dfsFrom(seedNode);
+      for (let n = 0; n < N; n++) if (!state[n] && inS[n + 1] === inS[n]) await dfsFrom(n);
+      for (let n = 0; n < N; n++) if (!state[n]) await dfsFrom(n);
+      // 2) longest-path columns (reverse post-order is a topological order of the DAG)
+      const col = new Int32Array(N);
+      for (let i = oc - 1; i >= 0; i--) {
+        const n = order[i], c1 = col[n] + 1;
+        for (let p = outS[n]; p < outS[n + 1]; p++) { const e = outE[p]; if (!isBack[e]) { const mm = B[e]; if (col[mm] < c1) col[mm] = c1; } }
+        if ((i & 8191) === 0) await sl();
+      }
+      let ncol = 1; for (let n = 0; n < N; n++) if (col[n] + 1 > ncol) ncol = col[n] + 1;
+      const colStart = new Int32Array(ncol + 1);
+      for (let n = 0; n < N; n++) colStart[col[n] + 1]++;
+      for (let c = 0; c < ncol; c++) colStart[c + 1] += colStart[c];
+      const cn = new Int32Array(N);
+      { const fill = colStart.slice(0, ncol); for (let i = oc - 1; i >= 0; i--) { const n = order[i]; cn[fill[col[n]]++] = n; } }
+      const pos = new Float32Array(N), bc = new Float64Array(N);
+      const place = c => { const a = colStart[c], b = colStart[c + 1], len = b - a; for (let i = a; i < b; i++) pos[cn[i]] = len > 1 ? (i - a) / (len - 1) : 0.5; };
+      for (let c = 0; c < ncol; c++) place(c);
+      // 3) barycenter sweeps (only the sorted column's positions change, so each step is O(column))
+      const cmp = (p, q2) => bc[p] - bc[q2];
+      const sweep = async (c, useIn) => {
+        const a = colStart[c], b = colStart[c + 1];
+        for (let i = a; i < b; i++) {
+          const n = cn[i]; let s = 0, k = 0;
+          if (useIn) { for (let p = inS[n]; p < inS[n + 1]; p++) { const e = inE[p]; if (!isBack[e]) { s += pos[A[e]]; k++; } } }
+          else { for (let p = outS[n]; p < outS[n + 1]; p++) { const e = outE[p]; if (!isBack[e]) { s += pos[B[e]]; k++; } } }
+          bc[n] = k ? s / k : pos[n];
+        }
+        cn.subarray(a, b).sort(cmp); place(c); await sl();
+      };
+      for (let it = 0; it < 4; it++) {
+        for (let c = 1; c < ncol; c++) await sweep(c, true);
+        for (let c = ncol - 2; c >= 0; c--) await sweep(c, false);
+      }
+      // 4) very tall columns are wrapped into side-by-side bands, so a whole-program drawing is not a million units tall
+      const colX = new Float64Array(ncol + 1), nBand = new Int32Array(N);
+      let R = N + 1;
+      if (N > 2500) {
+        let maxLen = 0; for (let c = 0; c < ncol; c++) maxLen = Math.max(maxLen, colStart[c + 1] - colStart[c]);
+        const widthFor = r => { let w = 0; for (let c = 0; c < ncol; c++) w += Math.max(1, Math.ceil((colStart[c + 1] - colStart[c]) / r)); return w * COL_W; };
+        let r = 60; while (r < maxLen && widthFor(r) > 1.7 * r * ROW_H) r = Math.ceil(r * 1.15);
+        if (r < maxLen) R = r;
+      }
+      const bands = [];      // [a, b) index ranges into cn: one stack of rows each; bandsOf[c] = first band of column c
+      const bandsOf = new Int32Array(ncol + 1);
+      for (let c = 0; c < ncol; c++) {
+        const a = colStart[c], b = colStart[c + 1], len = b - a, subs = Math.max(1, Math.ceil(len / R));
+        bandsOf[c] = bands.length; colX[c + 1] = colX[c] + subs * COL_W;
+        for (let s = 0; s < subs; s++) { const a2 = a + s * R, b2 = Math.min(b, a2 + R); bands.push(a2, b2); for (let i = a2; i < b2; i++) nBand[cn[i]] = s; }
+      }
+      bandsOf[ncol] = bands.length;
+      // coordinates: x by column, y pulled towards neighbours while keeping order and spacing
+      const y = new Float64Array(N), want = new Float64Array(N), blkS = new Float64Array(N + 1), blkC = new Int32Array(N + 1);
+      for (let k = 0; k < bands.length; k += 2) { const a = bands[k], b = bands[k + 1]; for (let i = a; i < b; i++) y[cn[i]] = (i - a - (b - a - 1) / 2) * ROW_H; }
+      const relax = async (c, useIn) => {
+        for (let bi = bandsOf[c]; bi < bandsOf[c + 1]; bi += 2) {
+          const a = bands[bi], b = bands[bi + 1]; if (b <= a) continue;
+          for (let i = a; i < b; i++) {
+            const n = cn[i]; let s = 0, k = 0;
+            if (useIn) { for (let p = inS[n]; p < inS[n + 1]; p++) { const e = inE[p]; if (!isBack[e]) { s += y[A[e]]; k++; } } }
+            else { for (let p = outS[n]; p < outS[n + 1]; p++) { const e = outE[p]; if (!isBack[e]) { s += y[B[e]]; k++; } } }
+            want[n] = k ? s / k : y[n];
+          }
+          // closest order-preserving placement with minimum spacing (pool adjacent violators on want - i*ROW_H)
+          let nb = 0;
+          for (let i = a; i < b; i++) {
+            let sz = want[cn[i]] - (i - a) * ROW_H, cz = 1;
+            while (nb > 0 && blkS[nb - 1] / blkC[nb - 1] > sz / cz) { sz += blkS[nb - 1]; cz += blkC[nb - 1]; nb--; }
+            blkS[nb] = sz; blkC[nb] = cz; nb++;
+          }
+          let i = a;
+          for (let q = 0; q < nb; q++) { const mean = blkS[q] / blkC[q]; for (let t = 0; t < blkC[q]; t++, i++) y[cn[i]] = mean + (i - a) * ROW_H; }
+        }
+        await sl();
+      };
+      for (let it = 0; it < 3; it++) {
+        for (let c = 1; c < ncol; c++) await relax(c, true);
+        for (let c = ncol - 2; c >= 0; c--) await relax(c, false);
+      }
+      // 5) node sizes
+      let mctx = null;
+      try { mctx = new OffscreenCanvas(1, 1).getContext("2d"); mctx.font = "11px system-ui, sans-serif"; } catch { mctx = null; }
+      const nx = new Float32Array(N), ny = new Float32Array(N), nw = new Float32Array(N), nh = new Float32Array(N);
+      for (let n = 0; n < N; n++) {
+        const t = nType[n];
+        const label = t === 0 ? g.sigNames[nRef[n]] : t === 1 ? g.symNames[nRef[n]] : "+" + nK[n] + " more";
+        const tw = mctx ? mctx.measureText(label).width : label.length * 5.9;
+        nx[n] = colX[col[n]] + nBand[n] * COL_W; ny[n] = y[n];
+        if (t === 0) { nw[n] = Math.min(140, tw + 22); nh[n] = 20; } else { nw[n] = Math.min(140, Math.max(54, tw + 16)); nh[n] = 32; }
+        if ((n & 2047) === 0) await sl();
+      }
+      // 6) edge classification + bounds
+      let x0 = Infinity, y0 = Infinity, x1b = -Infinity, y1b = -Infinity, loops = 0;
+      for (let n = 0; n < N; n++) {
+        x0 = Math.min(x0, nx[n] - nw[n] / 2); x1b = Math.max(x1b, nx[n] + nw[n] / 2); y0 = Math.min(y0, ny[n] - nh[n] / 2); y1b = Math.max(y1b, ny[n] + nh[n] / 2);
+      }
+      if (!N) { x0 = y0 = 0; x1b = y1b = 1; }
+      const backD = (e, a, b) => Math.min(36 + 10 * Math.abs(nx[a] - nx[b]) / COL_W, 300) * ((e & 1) ? 1 : -1);
+      for (let e = 0; e < E; e++) {
+        const a = A[e], b = B[e];
+        if (isBack[e] || nx[b] - nw[b] / 2 < nx[a] + nw[a] / 2 + 8) {
+          isBack[e] = 1; loops++;
+          const d = backD(e, a, b); y0 = Math.min(y0, ny[a] + d, ny[b] + d); y1b = Math.max(y1b, ny[a] + d, ny[b] + d);
+        }
+        if ((e & 16383) === 0) await sl();
+      }
+      // 7) spatial grid (nodes and edges) for culling and hit-testing
+      let cw = COL_W, chh = 120;
+      const bx0 = x0 - 20, by0 = y0 - 20, bw = x1b - x0 + 40, bh = y1b - y0 + 40;
+      while (Math.ceil(bw / cw) * Math.ceil(bh / chh) > 250000) { cw *= 1.5; chh *= 1.5; }
+      const gx = Math.max(1, Math.ceil(bw / cw)), gy = Math.max(1, Math.ceil(bh / chh)), nCells = gx * gy;
+      const cx = v => Math.min(gx - 1, Math.max(0, Math.floor((v - bx0) / cw))), cy = v => Math.min(gy - 1, Math.max(0, Math.floor((v - by0) / chh)));
+      const nCnt = new Int32Array(nCells + 1);
+      for (let n = 0; n < N; n++) {
+        const a0 = cx(nx[n] - nw[n] / 2), a1 = cx(nx[n] + nw[n] / 2), b0 = cy(ny[n] - nh[n] / 2), b1 = cy(ny[n] + nh[n] / 2);
+        for (let j = b0; j <= b1; j++) for (let i = a0; i <= a1; i++) nCnt[j * gx + i + 1]++;
+      }
+      for (let i = 0; i < nCells; i++) nCnt[i + 1] += nCnt[i];
+      const nItems = new Int32Array(nCnt[nCells]);
+      { const fill = nCnt.slice(0, nCells);
+        for (let n = 0; n < N; n++) {
+          const a0 = cx(nx[n] - nw[n] / 2), a1 = cx(nx[n] + nw[n] / 2), b0 = cy(ny[n] - nh[n] / 2), b1 = cy(ny[n] + nh[n] / 2);
+          for (let j = b0; j <= b1; j++) for (let i = a0; i <= a1; i++) nItems[fill[j * gx + i]++] = n;
+        } }
+      await sl();
+      const eCnt = new Int32Array(nCells + 1), longE = [], ebb = new Int32Array(E * 4);   // per edge: cell range a0,a1,b0,b1 (or a0=-1: long)
+      for (let e = 0; e < E; e++) {
+        const a = A[e], b = B[e], xa = nx[a] + nw[a] / 2, xb = nx[b] - nw[b] / 2;
+        let lx = Math.min(xa, xb), hx = Math.max(xa, xb), ly = Math.min(ny[a], ny[b]), hy = Math.max(ny[a], ny[b]);
+        if (isBack[e]) { const d = backD(e, a, b); lx -= 70; hx += 70; ly = Math.min(ly, ny[a] + d, ny[b] + d); hy = Math.max(hy, ny[a] + d, ny[b] + d); }
+        const a0 = cx(lx), a1 = cx(hx), b0 = cy(ly), b1 = cy(hy);
+        if ((a1 - a0 + 1) * (b1 - b0 + 1) > 24) { ebb[e * 4] = -1; longE.push(e); continue; }
+        ebb[e * 4] = a0; ebb[e * 4 + 1] = a1; ebb[e * 4 + 2] = b0; ebb[e * 4 + 3] = b1;
+        for (let j = b0; j <= b1; j++) for (let i = a0; i <= a1; i++) eCnt[j * gx + i + 1]++;
+        if ((e & 16383) === 0) await sl();
+      }
+      for (let i = 0; i < nCells; i++) eCnt[i + 1] += eCnt[i];
+      const eItems = new Int32Array(eCnt[nCells]);
+      { const fill = eCnt.slice(0, nCells);
+        for (let e = 0; e < E; e++) { if (ebb[e * 4] < 0) continue; const a0 = ebb[e * 4], a1 = ebb[e * 4 + 1], b0 = ebb[e * 4 + 2], b1 = ebb[e * 4 + 3]; for (let j = b0; j <= b1; j++) for (let i = a0; i <= a1; i++) eItems[fill[j * gx + i]++] = e; } }
+      if (stale()) throw CANCEL;
+      let nSigs = 0, nSyms = 0, nMore = 0;
+      for (let n = 0; n < N; n++) { const t = nType[n]; if (t === 0) nSigs++; else if (t === 1) nSyms++; else nMore++; }
+      const res = {
+        t: "view", gid: g.id, ts: abs(), ms: Math.round(now() - tStart), N, E, nSigs, nSyms, nMore, loops, hidden, truncated, total,
+        bbox: [x0, y0, x1b, y1b], ncol, startNode: seedNode, wrapRows: R > N ? 0 : R, colLens: Array.from({ length: ncol }, (_, c) => colStart[c + 1] - colStart[c]).slice(0, 400),
+        nType: Uint8Array.from(nType), nRef: Int32Array.from(nRef), nK: Int32Array.from(nK), nCode: Int32Array.from(nCode), nBey: Uint8Array.from(nBey),
+        x: nx, y: ny, w: nw, h: nh, A, B, back: isBack, outS, outE, inS, inE,
+        grid: { x0: bx0, y0: by0, cw, ch: chh, gx, gy, nCnt, nItems, eCnt, eItems, longE: Int32Array.from(longE) }
+      };
+      const tr = []; for (const k in res) { const v = res[k]; if (v && v.buffer && v.buffer.byteLength) tr.push(v.buffer); }
+      for (const k in res.grid) { const v = res.grid[k]; if (v && v.buffer && v.buffer.byteLength) tr.push(v.buffer); }
+      post(res, tr);
+    } catch (e) {
+      if (e === CANCEL) return;
+      post({ t: "err", message: (e && e.message) || String(e) });
+    }
+  }
+
+  S.onmessage = ev => {
+    const m = ev.data;
+    if (m.t === "load") load(m);
+    else if (m.t === "view") view(m);
+  };
+}
+
+// ---------------------------------------------------------------- worker plumbing, loading state
+let worker = null;
+function startWorker() {
+  try {
+    const url = URL.createObjectURL(new Blob(["(" + workerMain.toString() + ")(self);"], { type: "text/javascript" }));
+    worker = new Worker(url);
+    worker.onmessage = onWorker;
+    worker.onerror = e => { e.preventDefault && e.preventDefault(); showError("The maze worker failed: " + (e.message || "unknown error")); };
+  } catch (e) {
+    // no Worker (or blocked): run the same code on the page, time-sliced
+    const scope = { postMessage(m) { setTimeout(() => onWorker({ data: m }), 0); }, onmessage: null };
+    workerMain(scope);
+    worker = { postMessage(m) { setTimeout(() => scope.onmessage({ data: m }), 0); } };
+  }
+}
+let reqSeq = 0, curLoad = 0, curView = 0, viewReq = null, pillTimer = null, viewPending = false;
+const status = $("#status");
+function setStatus(msg, o = {}) {
+  clearTimeout(pillTimer);
+  status.className = (o.error ? "err " : "") + (V && !o.error ? "pill" : "card");
+  $("#stMsg").textContent = msg;
+  $("#stRetry").style.display = o.error ? "" : "none";
+  $("#stBar").parentElement.style.display = o.error ? "none" : "";
+  status.style.display = "block";
+}
+function hideStatus() { clearTimeout(pillTimer); status.style.display = "none"; }
+// A rebuild on top of an existing maze: only show the pill if it takes a while, so quick depth changes do not flicker.
+function busy(msg) { if (!V) setStatus(msg); else { clearTimeout(pillTimer); pillTimer = setTimeout(() => setStatus(msg), 150); } }
+function showError(msg) { setStatus(msg, { error: true }); setHud(""); }
+$("#stRetry").onclick = () => { hideStatus(); if (G || pendingG) rebuild(true); else loadGraph({}); };
+
+function loadGraph(o = {}) {
+  const id = ++reqSeq; curLoad = id;
+  $("#empty").style.display = "none";
+  busy("Loading wiring…");
+  worker.postMessage({ t: "load", id, slot, url: location.origin + `/api/slots/${slot}/graph?compact=1`, force: !G || !!o.force });
+  fetchSignals(id);
+}
+async function fetchSignals(id) {
+  try {
+    const list = await api(`/api/slots/${slot}/signals`);
+    if (id !== curLoad && id !== curLoad - 1) { /* a newer load started; still fine to use these values */ }
+    const m = new Map(); for (let i = 0; i < list.length; i++) m.set(list[i].name, list[i].value);
+    for (const [k, v] of vals) if (!m.has(k)) m.set(k, v);   // keep anything learned live meanwhile
+    vals = m; timing.tSignals = performance.now();
+    recomputeHigh(); draw();
   } catch { }
-  if (!startSig || !signals.has(startSig)) startSig = defaultStart();
+}
+function onWorker(ev) {
+  const m = ev.data;
+  if (m.t === "prog") {
+    if (m.id !== curLoad && m.id !== curView) return;
+    if (m.stage === "fetch") busy("Loading wiring…" + (m.bytes ? " " + (m.bytes / 1048576).toFixed(1) + " MB" : ""));
+    else if (m.stage === "parse") { timing.tBytes = performance.now(); busy("Reading wiring… " + (m.bytes / 1048576).toFixed(1) + " MB"); }
+    else if (m.stage === "index") busy("Indexing " + nf(m.symbols) + " symbols…");
+    else if (m.stage === "build") busy("Building maze… " + nf(m.n) + " nodes");
+    else if (m.stage === "layout") busy("Laying out… " + nf(m.n) + " nodes, " + nf(m.e) + " wires");
+  } else if (m.t === "graph") {
+    if (m.id !== curLoad) return;
+    timing.tGraph = performance.now();
+    onGraph(m);
+  } else if (m.t === "same") {
+    if (m.id !== curLoad) return;
+    if (!V && (G || pendingG)) rebuild(true); else hideStatus();
+  } else if (m.t === "err") {
+    if (m.id !== curLoad && m.id !== curView) return;
+    if (m.stale) return;
+    if (m.id === curView) viewPending = false;
+    if (m.auth) { openvpAuth.check({ status: 401 }); }
+    if (m.id === curLoad && !m.stale) { pendingG = null; }
+    showError(m.id === curView ? "Could not lay out the maze: " + m.message : "Could not load the wiring graph for slot " + slot + ": " + m.message);
+  } else if (m.t === "view") {
+    if (m.id !== curView) return;
+    timing.tView = performance.now();
+    installView(m);
+  }
+}
+
+// ---------------------------------------------------------------- program graph (typed arrays)
+// Bipartite: signal -> symbol (symbol reads it as an input) and symbol -> signal (symbol drives it as an output).
+function onGraph(m) {
+  const g = {
+    id: m.gid, sig: m.sig, kind: m.kind, nSig: m.nSig, nSym: m.nSym, nPins: m.nPins,
+    sigNames: m.sigNames.split("\n"), symNames: m.symNames.split("\n"), symPaths: m.symPaths.split("\n"), symGroups: m.symGroups.split("\n"), symIds: m.symIds.split("\n"),
+    sigKind: m.sigKind, symDev: m.symDev, symInS: m.symInS, symIn: m.symIn, symOutS: m.symOutS, symOut: m.symOut,
+    sigRdS: m.sigRdS, sigRd: m.sigRd, sigDrS: m.sigDrS, sigDr: m.sigDr, sigLower: null
+  };
+  if (!m.nSig) g.sigNames = []; if (!m.nSym) { g.symNames = []; g.symPaths = []; g.symGroups = []; g.symIds = []; }
+  g.sigIdx = new Map(); for (let i = 0; i < g.sigNames.length; i++) g.sigIdx.set(g.sigNames[i], i);
+  g.symIdx = new Map(); for (let i = 0; i < g.symIds.length; i++) g.symIdx.set(g.symIds[i], i);
+  pendingG = g;
+  if (!startSig || !g.sigIdx.has(startSig)) startSig = defaultStart(g);
   $("#start").value = startSig;
-  rebuild(true);
+  rebuild(true, null, true);
 }
 // A good first pick: a signal nobody drives (an input) that reads into the most symbols.
-function defaultStart() {
-  let best = null;
-  for (const s of G.signals.values()) if (!s.drivers.length && (!best || s.readers.length > best.readers.length)) best = s;
-  if (!best) for (const s of G.signals.values()) if (!best || s.readers.length > best.readers.length) best = s;
-  return best ? best.name : "";
+function defaultStart(g) {
+  let best = -1, bestN = -1, bestAny = -1, bestAnyN = -1;
+  for (let s = 0; s < g.nSig; s++) {
+    const nr = g.sigRdS[s + 1] - g.sigRdS[s], nd = g.sigDrS[s + 1] - g.sigDrS[s];
+    if (!nd && nr > bestN) { best = s; bestN = nr; }
+    if (nr > bestAnyN) { bestAny = s; bestAnyN = nr; }
+  }
+  const s = best >= 0 && bestN > 0 ? best : bestAny;
+  return s >= 0 ? g.sigNames[s] : "";
 }
 function showEmpty(t) { const e = $("#empty"); e.textContent = t; e.style.display = "grid"; setHud(""); }
 
 // ---------------------------------------------------------------- building the drawn sub-graph ("the maze")
-// Nodes: { key, type:"sig"|"sym"|"more", label, ... }; edges: { key, a, b, back }.
-function buildView() {
-  const nodes = [], nmap = new Map(), emap = new Map(), edges = [];
-  let truncated = false, hidden = 0;
-  const back = cfg.dir === "back";
-  const addNode = n => { if (nodes.length >= MAX_NODES) { truncated = true; return null; } nmap.set(n.key, n); nodes.push(n); return n; };
-  const sigNode = (name, depth) => {
-    let n = nmap.get("s:" + name); if (n) return n;
-    const s = G.signals.get(name);
-    return addNode({ key: "s:" + name, type: "sig", name, label: name, kind: s ? s.kind : "Digital", depth, s });
-  };
-  const symNode = id => {
-    let n = nmap.get("y:" + id); if (n) return n;
-    const y = G.symbols.get(id);
-    return addNode({ key: "y:" + id, type: "sym", id, label: y.name || id, sym: y, dev: !!y.device });
-  };
-  const moreNode = (parentKey, k) => addNode({ key: "m:" + parentKey, type: "more", label: "+" + k + " more", parentKey, k });
-  // Cap a list of children to FAN unless the user opened this node's "+K more".
-  const capped = (list, parentKey) => {
-    if (list.length <= FAN || expanded.has(parentKey)) return list;
-    const extra = list.length - FAN;
-    hidden += extra;
-    return list.slice(0, FAN).concat([{ more: extra }]);
-  };
-
-  // Breadth-first from the seed signals; a signal's `depth` counts signal-to-signal hops.
-  const limit = cfg.whole ? Infinity : cfg.depth;
-  let seeds = [];
-  if (cfg.whole) {
-    for (const s of G.signals.values()) {
-      if (!s.drivers.length && !s.readers.length) continue;
-      if (back ? !s.readers.length : (!s.drivers.length || s.drivers.every(d => G.symbols.get(d).device))) seeds.push(s.name);
-    }
-    for (const s of G.signals.values()) if (s.drivers.length + s.readers.length) seeds.push(s.name); // cycles with no entry point
-  } else if (G.signals.has(startSig)) seeds = [startSig];
-
-  const q = [];
-  const pushSig = (name, d) => { if (!nmap.has("s:" + name) && sigNode(name, d)) q.push({ name, d }); };
-  for (const s of seeds) pushSig(s, 0);
-  for (let qi = 0; qi < q.length; qi++) {
-    const { name, d } = q[qi], s = G.signals.get(name), sk = "s:" + name;
-    if (!s || d >= limit) { const nd = nmap.get(sk); if (nd && s && (back ? s.drivers.length : s.readers.length)) nd.more_beyond = true; continue; }
-    const symIds = back ? s.drivers : s.readers;
-    for (const item of capped(symIds, sk)) {
-      if (item.more) { const m = moreNode(sk, item.more); if (m) addEdge(back ? m.key : sk, back ? sk : m.key); continue; }
-      const y = symNode(item); if (!y) break;
-      if (y.dev) continue;                      // device symbols are sinks (forward) / sources (backward)
-      const outs = back ? y.sym.inputs : y.sym.outputs, yk = "y:" + item;
-      for (const o of capped(outs, yk)) {
-        if (o.more) { const m = moreNode(yk, o.more); if (m) addEdge(back ? m.key : yk, back ? yk : m.key); continue; }
-        pushSig(o, d + 1);
-      }
-    }
-  }
-  function addEdge(a, b) { const k = a + ">" + b; if (!emap.has(k)) { const e = { key: k, a, b, back: false }; emap.set(k, e); edges.push(e); } }
-  // Edges between everything that made it into the view.
-  // A device (panel, EISC...) is an end of the maze, not a hop: in a cone, don't wire its far side back in,
-  // or every button whose feedback returns to the same panel would show up as a loop.
-  for (const n of nodes) {
-    if (n.type !== "sym") continue;
-    const cutIn = n.dev && !cfg.whole && back, cutOut = n.dev && !cfg.whole && !back;
-    if (!cutIn) for (const i of n.sym.inputs) if (nmap.has("s:" + i)) addEdge("s:" + i, n.key);
-    if (!cutOut) for (const o of n.sym.outputs) if (nmap.has("s:" + o)) addEdge(n.key, "s:" + o);
-  }
-  // "more" nodes were wired above before the later nodes existed; make sure their edges point at real nodes.
-  for (const e of edges) { e.na = nmap.get(e.a); e.nb = nmap.get(e.b); }
-  return { nodes, nmap, edges, emap, truncated, hidden, seeds };
+function rebuild(refit, then, fromGraph) {
+  const g = pendingG || G; if (!g) return;
+  clearTimeout(clickTimer); clickTimer = null;
+  const id = ++reqSeq; curView = id; viewPending = true;
+  viewReq = { refit: refit !== false, then, id };
+  busy("Building maze…");
+  const sid = g.sigIdx.get(startSig);
+  worker.postMessage({ t: "view", id, gid: g.id, dir: cfg.dir, whole: cfg.whole, depth: cfg.depth, startId: sid === undefined ? -1 : sid, expanded: [...expanded], maxNodes: MAX_NODES, fan: FAN, colW: COL_W, rowH: ROW_H });
 }
-
-// ---------------------------------------------------------------- layout
-// Columns come from the longest path through the graph with loop-closing edges removed, so everything
-// flows left to right and only real feedback edges run backwards. Rows are ordered with barycenter sweeps.
-function layout(v) {
-  const { nodes, edges } = v;
-  for (const n of nodes) { n.out = []; n.inn = []; }
-  for (const e of edges) { e.na.out.push(e); e.nb.inn.push(e); }
-  // 1) find feedback edges with a DFS (an edge into a node on the current stack closes a loop)
-  const state = new Map(), order = [];
-  const dfs = start => {
-    const stack = [[start, 0]]; state.set(start, 1);
-    while (stack.length) {
-      const top = stack[stack.length - 1], n = top[0];
-      if (top[1] < n.out.length) {
-        const e = n.out[top[1]++], m = e.nb;
-        const st = state.get(m);
-        if (st === 1) e.back = true;
-        else if (!st) { state.set(m, 1); stack.push([m, 0]); }
-      } else { state.set(n, 2); order.push(n); stack.pop(); }
-    }
-  };
-  const roots = [];
-  if (cfg.dir === "fwd") for (const s of v.seeds) { const n = v.nmap.get("s:" + s); if (n) roots.push(n); }
-  for (const n of nodes) if (!n.inn.length) roots.push(n);
-  for (const n of nodes) roots.push(n);
-  for (const r of roots) if (!state.get(r)) dfs(r);
-  // 2) longest-path columns over the DAG (reverse post-order is a topological order)
-  for (const n of nodes) n.col = 0;
-  for (let i = order.length - 1; i >= 0; i--) {
-    const n = order[i];
-    for (const e of n.out) if (!e.back && e.nb.col < n.col + 1) e.nb.col = n.col + 1;
-  }
-  const ncol = nodes.reduce((m, n) => Math.max(m, n.col), 0) + 1;
-  const cols = Array.from({ length: ncol }, () => []);
-  // initial order: discovery order of the DFS (keeps related nodes close)
-  for (let i = order.length - 1; i >= 0; i--) cols[order[i].col].push(order[i]);
-  const place = () => { for (const c of cols) c.forEach((n, i) => n.pos = c.length > 1 ? i / (c.length - 1) : 0.5); };
-  place();
-  // 3) barycenter sweeps to cut crossings
-  const bary = (n, list) => { let s = 0, c = 0; for (const e of list) if (!e.back) { s += (list === n.inn ? e.na : e.nb).pos; c++; } return c ? s / c : n.pos; };
-  for (let it = 0; it < 4; it++) {
-    for (let c = 1; c < ncol; c++) { cols[c].forEach(n => n.bc = bary(n, n.inn)); cols[c].sort((a, b) => a.bc - b.bc); place(); }
-    for (let c = ncol - 2; c >= 0; c--) { cols[c].forEach(n => n.bc = bary(n, n.out)); cols[c].sort((a, b) => a.bc - b.bc); place(); }
-  }
-  // 4) coordinates: x by column, y pulled towards neighbours while keeping order and spacing
-  cols.forEach((c, ci) => c.forEach((n, i) => { n.y = (i - (c.length - 1) / 2) * ROW_H; }));
-  const relax = (c, list) => {
-    for (const n of c) {
-      let s = 0, k = 0; for (const e of n[list]) if (!e.back) { s += (list === "inn" ? e.na : e.nb).y; k++; }
-      n.want = k ? s / k : n.y;
-    }
-    let prev = -Infinity;
-    for (const n of c) { n.y = Math.max(n.want, prev + ROW_H); prev = n.y; }
-    let sh = 0; for (const n of c) sh += n.want - n.y; sh /= c.length;       // re-centre on where they wanted to be
-    for (const n of c) n.y += sh;
-    prev = -Infinity; for (const n of c) { n.y = Math.max(n.y, prev + ROW_H); prev = n.y; }
-  };
-  for (let it = 0; it < 3; it++) {
-    for (let c = 1; c < ncol; c++) relax(cols[c], "inn");
-    for (let c = ncol - 2; c >= 0; c--) relax(cols[c], "out");
-  }
-  ctx.font = "11px system-ui, sans-serif";
-  for (const n of nodes) {
-    n.x = n.col * COL_W;
-    const tw = ctx.measureText(n.label).width;
-    n.w = n.type === "sig" ? Math.min(140, tw + 22) : Math.min(140, Math.max(54, tw + 16));
-    n.h = n.type === "sig" ? 20 : 32;
-    n.text = fitText(n.label, n.w - (n.type === "sig" ? 20 : 12));
-  }
-  // 5) edge geometry (cubic beziers; feedback edges swing out above/below)
-  let flip = 0;
-  for (const e of edges) {
-    const a = e.na, b = e.nb;
-    const x1 = a.x + a.w / 2, y1 = a.y, x2 = b.x - b.w / 2, y2 = b.y;
-    if (e.back || x2 < x1 + 8) {
-      e.back = true;
-      const d = (36 + 10 * Math.abs(a.col - b.col)) * ((flip++ & 1) ? 1 : -1);
-      e.p = [x1, y1, x1 + 70, y1 + d, x2 - 70, y2 + d, x2, y2];
-    } else {
-      const dx = Math.max(30, (x2 - x1) * 0.5);
-      e.p = [x1, y1, x1 + dx, y1, x2 - dx, y2, x2, y2];
-    }
-  }
-}
-const fitCache = new Map();
-function fitText(s, maxW) {
-  const key = s + "|" + Math.round(maxW);
-  let r = fitCache.get(key); if (r) return r;
-  if (ctx.measureText(s).width <= maxW) r = s;
-  else { let lo = 1, hi = s.length; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (ctx.measureText(s.slice(0, m) + "…").width <= maxW) lo = m; else hi = m - 1; } r = s.slice(0, lo) + "…"; }
-  if (fitCache.size > 5000) fitCache.clear();
-  fitCache.set(key, r); return r;
-}
-
-function rebuild(refit) {
-  if (!G) return;
-  litN.clear(); litE.clear(); sched.length = 0;
-  V = buildView();
-  layout(V);
-  const loops = V.edges.filter(e => e.back).length;
-  V.loops = loops;
+function installView(m) {
+  viewPending = false;
+  if (pendingG && pendingG.id === m.gid) {
+    G = pendingG; pendingG = null;
+    vals = vals;   // values stay (they were fetched alongside the graph)
+    lastBurstGraphChanged();
+  } else if (!G || G.id !== m.gid) return;
+  const g = G, req = viewReq || { refit: true };
+  const v = m;
+  v.sigNode = new Int32Array(g.nSig).fill(-1); v.symNode = new Int32Array(g.nSym).fill(-1);
+  for (let n = 0; n < v.N; n++) { const t = v.nType[n]; if (t === 0) v.sigNode[v.nRef[n]] = n; else if (t === 1) v.symNode[v.nRef[n]] = n; }
+  v.txt = new Array(v.N); v.txt2 = new Array(v.N);
+  v.visE = new Int32Array(v.E); v.visB = new Int32Array(v.E); v.visS = new Int32Array(v.N); v.visY = new Int32Array(v.N);
+  v.stE = new Uint32Array(v.E); v.stN = new Uint32Array(v.N); v.stamp = 0;
+  v.nodes = { length: v.N }; v.edges = { length: v.E };       // test hook compatibility
+  litN.clear(); litE.clear(); sched.length = 0; hiSet.clear();
+  V = v; flash = null;
+  recomputeHigh();
+  hideStatus();
   $("#empty").style.display = "none";
-  if (!V.nodes.length) showEmpty(cfg.whole ? "The program has no connected signals." : "Pick a start signal.");
+  if (!V.N) showEmpty(cfg.whole ? "The program has no connected signals." : g.sigIdx.has(startSig) ? "Nothing is connected to this signal." : "Pick a start signal.");
   updateHud();
-  if (refit !== false) fit(); else draw();
+  invalidateStatic(true);
+  if (req.refit) fit(); else draw();
+  if (req.then) req.then();
+  timing.tInstalled = performance.now();
+}
+function lastBurstGraphChanged() { burstDirty = loopsDirty = true; }
+function recomputeHigh() {
+  hiSet.clear(); if (!V || !G) return;
+  for (let n = 0; n < V.N; n++) {
+    if (V.nType[n] !== 0) continue;
+    const s = V.nRef[n]; if (G.sigKind[s] !== 0) continue;
+    if (isHigh(vals.get(G.sigNames[s]))) hiSet.add(n);
+  }
 }
 function updateHud() {
   if (!V) return;
-  const sigs = V.nodes.filter(n => n.type === "sig").length, syms = V.nodes.filter(n => n.type === "sym").length;
-  let h = `${sigs} signals · ${syms} symbols · ${V.loops} loop edge${V.loops === 1 ? "" : "s"}`;
-  if (V.hidden) h += ` · <span class="warn">${V.hidden} hidden in "+K more" (click one to open)</span>`;
-  if (V.truncated) h += ` · <span class="warn">capped at ${MAX_NODES} nodes — lower the depth</span>`;
-  if (queue.length) h += ` · <span class="warn">${queue.length} queued</span>`;
-  $("#skip").style.display = queue.length ? "" : "none";
+  let h = `${nf(V.nSigs)} signals · ${nf(V.nSyms)} symbols · ${nf(V.loops)} loop edge${V.loops === 1 ? "" : "s"}`;
+  const shown = V.nSigs + V.nSyms;
+  if (V.truncated) h += cfg.whole ? ` · <span class="warn">showing ${nf(shown)} of ${nf(V.total)} nodes (${Math.round(100 * shown / Math.max(1, V.total))}%) — breadth-first from the program inputs, the rest is left out</span>`
+                                  : ` · <span class="warn">capped at ${nf(MAX_NODES)} nodes (breadth-first) — lower the depth</span>`;
+  else if (cfg.whole) h += ` · whole program (${nf(V.total)} nodes)`;
+  if (V.hidden) h += ` · <span class="warn">${nf(V.hidden)} hidden in "+K more" (click one to open)</span>`;
+  const ql = Q.length - qh;
+  if (ql) h += ` · <span class="warn">${nf(ql)} queued</span>`;
+  if (droppedEv) h += ` · <span class="warn">${nf(droppedEv)} events skipped</span>`;
+  $("#skip").style.display = ql ? "" : "none";
   setHud(h);
 }
 
 // ---------------------------------------------------------------- canvas, pan / zoom
+// Two layers: a "static" bitmap (wires + unlit nodes) that is only re-rendered when the view or the transform changes, and the
+// visible canvas, where the bitmap is composited (transformed while panning/zooming) and the live lights are drawn on top.
 const cv = $("#cv"), ctx = cv.getContext("2d");
+const mctx = document.createElement("canvas").getContext("2d");
+// CPU-backed so the cost of a drawing slice is paid inside the slice (an accelerated canvas defers rasterisation to the next flush)
+const LAY = [0, 1].map(() => { const c = document.createElement("canvas"); return { c, x: c.getContext("2d", { willReadFrequently: true }) }; });
+let fi = 0, frontOK = false, frontT = null, job = null, staticDirty = false, lastInteract = 0;
 let cw = 300, ch = 300, dpr = 1;
 function resize() {
   const st = $("#stage"); dpr = window.devicePixelRatio || 1;
   cw = st.clientWidth; ch = st.clientHeight;
   cv.width = Math.max(1, Math.round(cw * dpr)); cv.height = Math.max(1, Math.round(ch * dpr));
+  for (const L of LAY) { L.c.width = cv.width; L.c.height = cv.height; }
+  frontOK = false; job = null; staticDirty = true; lastInteract = 0;
   draw();
 }
 new ResizeObserver(resize).observe($("#stage"));
+function invalidateStatic(newView) {
+  staticDirty = true; job = null;
+  if (newView) { frontOK = false; lastInteract = 0; } else lastInteract = performance.now();
+}
 
 function fit(force) {
-  if (!V || !V.nodes.length) { draw(); return; }
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const n of V.nodes) { x0 = Math.min(x0, n.x - n.w / 2); x1 = Math.max(x1, n.x + n.w / 2); y0 = Math.min(y0, n.y - n.h / 2); y1 = Math.max(y1, n.y + n.h / 2); }
-  for (const e of V.edges) if (e.back) for (const i of [3, 5]) { y0 = Math.min(y0, e.p[i]); y1 = Math.max(y1, e.p[i]); }
+  if (!V || !V.N) { draw(); return; }
+  const [x0, y0, x1, y1] = V.bbox;
   const pw = 30, bw = Math.max(1, x1 - x0), bh = Math.max(1, y1 - y0);
-  const fitK = Math.min((cw - pw * 2) / bw, (ch - pw * 2 - 20) / bh), minK = force === true ? 0.02 : cfg.whole ? 0.1 : cw < 600 ? 0.5 : 0.75;
+  const fitK = Math.min((cw - pw * 2) / bw, (ch - pw * 2 - 20) / bh), minK = force === true ? 0.002 : cfg.whole ? 0.002 : cw < 600 ? 0.5 : 0.75;
   T.k = Math.min(1.6, Math.max(fitK, minK));
   if (fitK >= minK) { T.x = cw / 2 - (x0 + bw / 2) * T.k; T.y = ch / 2 - (y0 + bh / 2) * T.k - 6; }
   else { // too big to read when fitted: keep text legible, anchor on the start of the maze (use zoom out / Fit again to see all)
-    const s = V.nodes.find(n => n.key === "s:" + startSig) || V.nodes[0];
-    T.x = cfg.dir === "back" ? cw - pw - x1 * T.k : pw - x0 * T.k; T.y = ch / 2 - s.y * T.k - 6;
+    const s = V.startNode >= 0 ? V.startNode : 0;
+    T.x = cfg.dir === "back" ? cw - pw - x1 * T.k : pw - x0 * T.k; T.y = ch / 2 - V.y[s] * T.k - 6;
   }
-  draw();
+  invalidateStatic(); draw();
 }
 const toWorld = (sx, sy) => [(sx - T.x) / T.k, (sy - T.y) / T.k];
 function zoomAt(sx, sy, f) {
-  const k = Math.min(4, Math.max(0.03, T.k * f)); f = k / T.k;
-  T.x = sx - (sx - T.x) * f; T.y = sy - (sy - T.y) * f; T.k = k; draw();
+  const k = Math.min(4, Math.max(0.002, T.k * f)); f = k / T.k;
+  T.x = sx - (sx - T.x) * f; T.y = sy - (sy - T.y) * f; T.k = k; invalidateStatic(); draw();
 }
-function panTo(n) { T.x = cw / 2 - n.x * T.k; T.y = ch / 2 - n.y * T.k; }
+function panTo(n) { T.x = cw / 2 - V.x[n] * T.k; T.y = ch / 2 - V.y[n] * T.k; invalidateStatic(); }
 
 // pointers: one = pan, two = pinch
 const ptrs = new Map(); let moved = 0, clickTimer = null;
@@ -478,12 +850,12 @@ cv.addEventListener("pointermove", e => {
     const mx0 = (a.x + b.x) / 2, my0 = (a.y + b.y) / 2;
     p.x = e.offsetX; p.y = e.offsetY;
     const d1 = Math.hypot(a.x - b.x, a.y - b.y), mx1 = (a.x + b.x) / 2, my1 = (a.y + b.y) / 2;
-    T.x += mx1 - mx0; T.y += my1 - my0; if (d0 > 0) zoomAt(mx1, my1, d1 / d0); else draw();
+    T.x += mx1 - mx0; T.y += my1 - my0; if (d0 > 0) zoomAt(mx1, my1, d1 / d0); else { invalidateStatic(); draw(); }
     moved = 99;
   } else {
     moved += Math.abs(e.offsetX - p.x) + Math.abs(e.offsetY - p.y);
     T.x += e.offsetX - p.x; T.y += e.offsetY - p.y; p.x = e.offsetX; p.y = e.offsetY;
-    if (moved > 4) { hideTip(); draw(); }
+    if (moved > 4) { hideTip(); invalidateStatic(); draw(); }
   }
 });
 const endPtr = e => { ptrs.delete(e.pointerId); if (!ptrs.size) cv.classList.remove("drag"); };
@@ -494,90 +866,283 @@ cv.addEventListener("wheel", e => { e.preventDefault(); zoomAt(e.offsetX, e.offs
 cv.addEventListener("dblclick", e => {
   clearTimeout(clickTimer); clickTimer = null;
   const n = hit(e.offsetX, e.offsetY);
-  if (n && n.type === "sig" && n.kind === "Digital") pulse(n.name);
+  if (n >= 0 && V.nType[n] === 0 && G.sigKind[V.nRef[n]] === 0) pulse(G.sigNames[V.nRef[n]]);
 });
 
+// topmost node under a screen point, via the spatial grid
 function hit(sx, sy) {
-  if (!V) return null;
-  const [x, y] = toWorld(sx, sy), pad = 3 / T.k;
-  for (let i = V.nodes.length - 1; i >= 0; i--) {
-    const n = V.nodes[i];
-    if (Math.abs(x - n.x) <= n.w / 2 + pad && Math.abs(y - n.y) <= n.h / 2 + pad) return n;
+  if (!V || !V.N) return -1;
+  const x = (sx - T.x) / T.k, y = (sy - T.y) / T.k, pad = 3 / T.k, g = V.grid;
+  const cx = v => Math.min(g.gx - 1, Math.max(0, Math.floor((v - g.x0) / g.cw))), cy = v => Math.min(g.gy - 1, Math.max(0, Math.floor((v - g.y0) / g.ch)));
+  const a0 = cx(x - pad), a1 = cx(x + pad), b0 = cy(y - pad), b1 = cy(y + pad);
+  let best = -1;
+  for (let j = b0; j <= b1; j++) for (let i = a0; i <= a1; i++) {
+    const c = j * g.gx + i;
+    for (let p = g.nCnt[c], e = g.nCnt[c + 1]; p < e; p++) {
+      const n = g.nItems[p];
+      if (n > best && Math.abs(x - V.x[n]) <= V.w[n] / 2 + pad && Math.abs(y - V.y[n]) <= V.h[n] / 2 + pad) best = n;
+    }
   }
-  return null;
+  return best;
 }
 // A single click picks a new start signal; delayed so a double-click (pulse) does not also re-root the maze.
 function clicked(sx, sy) {
-  const n = hit(sx, sy); if (!n) return;
+  const n = hit(sx, sy); if (n < 0) return;
   clearTimeout(clickTimer);
+  const view = V;
   clickTimer = setTimeout(() => {
     clickTimer = null;
-    if (n.type === "more") { expanded.add(n.parentKey); rebuild(false); }
-    else if (n.type === "sig") setStart(n.name, false);
+    if (V !== view) return;
+    const t = V.nType[n];
+    if (t === 2) { expanded.add(V.nCode[n]); rebuild(false); }
+    else if (t === 0) setStart(G.sigNames[V.nRef[n]], false);
   }, 260);
 }
 
 // ---------------------------------------------------------------- tooltip
 const tip = $("#tip");
 function hideTip() { tip.style.display = "none"; cv.classList.remove("hand"); }
+const symName = id => { const i = G && G.symIdx.get(id); return i === undefined || i === null ? id : G.symNames[i]; };
 function hover(sx, sy) {
   const n = hit(sx, sy);
-  if (!n) { hideTip(); return; }
+  if (n < 0) { hideTip(); return; }
   cv.classList.add("hand");
-  let h;
-  if (n.type === "sig") {
-    const v = vals.get(n.name);
-    h = `<b>${esc(n.name)}</b><br><span class="k">${n.kind} ·</span> <span class="mono">${esc(fmt(n.kind, v))}</span>`;
-    h += `<br><span class="k">driven by</span> ${n.s.drivers.length ? n.s.drivers.slice(0, 4).map(d => esc(G.symbols.get(d).name)).join(", ") + (n.s.drivers.length > 4 ? "…" : "") : "—"}`;
-    h += `<br><span class="k">read by</span> ${n.s.readers.length} symbol${n.s.readers.length === 1 ? "" : "s"}`;
-    h += `<br><span class="k">click: start here${n.kind === "Digital" ? " · double-click: pulse" : ""}</span>`;
-  } else if (n.type === "sym") {
-    const y = n.sym, list = a => a.length ? a.slice(0, 10).map(esc).join(", ") + (a.length > 10 ? ` … (+${a.length - 10})` : "") : "—";
-    h = `<b>${esc(y.name)}</b>${y.device ? ' <span class="k">(device)</span>' : ""}<br><span class="k">path</span> <span class="mono">${esc(y.path || y.id)}</span>`;
-    if (y.group) h += `<br><span class="k">in</span> ${esc(y.group)}`;
-    h += `<br><span class="k">inputs</span> ${list(y.inputs)}<br><span class="k">outputs</span> ${list(y.outputs)}`;
-  } else h = `<b>${esc(n.label)}</b><br><span class="k">click to open</span>`;
+  let h; const t = V.nType[n], r = V.nRef[n];
+  if (t === 0) {
+    const name = G.sigNames[r], kind = KINDS[G.sigKind[r]], v = vals.get(name);
+    const da = G.sigDrS[r], db = G.sigDrS[r + 1], nr = G.sigRdS[r + 1] - G.sigRdS[r];
+    const drv = []; for (let p = da; p < Math.min(db, da + 4); p++) drv.push(esc(G.symNames[G.sigDr[p]]));
+    h = `<b>${esc(name)}</b><br><span class="k">${kind} ·</span> <span class="mono">${esc(fmt(kind, v))}</span>`;
+    h += `<br><span class="k">driven by</span> ${db > da ? drv.join(", ") + (db - da > 4 ? "…" : "") : "—"}`;
+    h += `<br><span class="k">read by</span> ${nr} symbol${nr === 1 ? "" : "s"}`;
+    h += `<br><span class="k">click: start here${kind === "Digital" ? " · double-click: pulse" : ""}</span>`;
+  } else if (t === 1) {
+    const list = (S, L) => { const a = S[r], b = S[r + 1]; if (b <= a) return "—"; const o = []; for (let p = a; p < Math.min(b, a + 10); p++) o.push(esc(G.sigNames[L[p]])); return o.join(", ") + (b - a > 10 ? ` … (+${b - a - 10})` : ""); };
+    h = `<b>${esc(G.symNames[r])}</b>${G.symDev[r] ? ' <span class="k">(device)</span>' : ""}<br><span class="k">path</span> <span class="mono">${esc(G.symPaths[r])}</span>`;
+    if (G.symGroups[r]) h += `<br><span class="k">in</span> ${esc(G.symGroups[r])}`;
+    h += `<br><span class="k">inputs</span> ${list(G.symInS, G.symIn)}<br><span class="k">outputs</span> ${list(G.symOutS, G.symOut)}`;
+  } else h = `<b>${esc("+" + V.nK[n] + " more")}</b><br><span class="k">click to open</span>`;
   tip.innerHTML = h; tip.style.display = "block";
-  const st = $("#stage"), tw = tip.offsetWidth, th = tip.offsetHeight;
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
   tip.style.left = Math.max(4, Math.min(cw - tw - 4, sx + 14)) + "px";
   tip.style.top = Math.max(4, Math.min(ch - th - 4, sy + 14)) + "px";
 }
 
-// ---------------------------------------------------------------- drawing
-const bez = (p, t) => { const u = 1 - t; return [u*u*u*p[0] + 3*u*u*t*p[2] + 3*u*t*t*p[4] + t*t*t*p[6], u*u*u*p[1] + 3*u*u*t*p[3] + 3*u*t*t*p[5] + t*t*t*p[7]]; };
+// ---------------------------------------------------------------- drawing helpers
+const P = new Float64Array(8);
+// Cubic bezier control points of edge e (feedback edges swing out above/below).
+function edgeP(e) {
+  const a = V.A[e], b = V.B[e], x1 = V.x[a] + V.w[a] / 2, y1 = V.y[a], x2 = V.x[b] - V.w[b] / 2, y2 = V.y[b];
+  P[0] = x1; P[1] = y1; P[6] = x2; P[7] = y2;
+  if (V.back[e]) {
+    const d = Math.min(36 + 10 * Math.abs(V.x[a] - V.x[b]) / COL_W, 300) * ((e & 1) ? 1 : -1);
+    P[2] = x1 + 70; P[3] = y1 + d; P[4] = x2 - 70; P[5] = y2 + d;
+  } else { const dx = Math.max(30, (x2 - x1) * 0.5); P[2] = x1 + dx; P[3] = y1; P[4] = x2 - dx; P[5] = y2; }
+}
+const bez = (t, out) => { const u = 1 - t; out[0] = u*u*u*P[0] + 3*u*u*t*P[2] + 3*u*t*t*P[4] + t*t*t*P[6]; out[1] = u*u*u*P[1] + 3*u*u*t*P[3] + 3*u*t*t*P[5] + t*t*t*P[7]; };
+const BZ = [0, 0];
 const kindColor = (kind, high) => kind === "Analog" ? COL.ana : kind === "Serial" ? COL.ser : high ? COL.hi : COL.lo;
 const fadeMs = () => FADE_MS * Math.min(3, 1 / cfg.speed);
 const inten = (t, now) => { if (now < t) return 0; const f = 1 - (now - t) / fadeMs(); return f > 0 ? f * f : 0; };
-function rr(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); }
+function rr(c, x, y, w, h, r) { c.beginPath(); c.roundRect ? c.roundRect(x, y, w, h, r) : c.rect(x, y, w, h); }
 function rgba(hex, a) { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; }
+const fitCache = new Map();
+function fitText(s, maxW, small) {
+  const key = s + "|" + Math.round(maxW) + (small ? "s" : "");
+  let r = fitCache.get(key); if (r) return r;
+  mctx.font = small ? "9px system-ui" : "11px system-ui, sans-serif";
+  if (mctx.measureText(s).width <= maxW) r = s;
+  else { let lo = 1, hi = s.length; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (mctx.measureText(s.slice(0, m) + "…").width <= maxW) lo = m; else hi = m - 1; } r = s.slice(0, lo) + "…"; }
+  if (fitCache.size > 20000) fitCache.clear();
+  fitCache.set(key, r); return r;
+}
+function nlabel(i) { const t = V.nType[i]; return t === 0 ? G.sigNames[V.nRef[i]] : t === 1 ? G.symNames[V.nRef[i]] : "+" + V.nK[i] + " more"; }
+function ntext(i) { let s = V.txt[i]; if (s === undefined) V.txt[i] = s = fitText(nlabel(i), V.w[i] - (V.nType[i] === 0 ? 20 : 12)); return s; }
+function ntext2(i) { let s = V.txt2[i]; if (s === undefined) V.txt2[i] = s = fitText(G.symPaths[V.nRef[i]], V.w[i] - 8, true); return s; }
 
+// ---------------------------------------------------------------- static layer (progressively rendered into an off-screen bitmap)
+function estimateVisible() {
+  const g = V.grid, k = T.k;
+  const a0 = Math.max(0, Math.floor((-T.x / k - g.x0) / g.cw)), a1 = Math.min(g.gx - 1, Math.floor(((cw - T.x) / k - g.x0) / g.cw));
+  const b0 = Math.max(0, Math.floor((-T.y / k - g.y0) / g.ch)), b1 = Math.min(g.gy - 1, Math.floor(((ch - T.y) / k - g.y0) / g.ch));
+  let n = g.longE.length;
+  for (let j = b0; j <= b1; j++) for (let i = a0; i <= a1; i++) { const c = j * g.gx + i; n += g.nCnt[c + 1] - g.nCnt[c] + g.eCnt[c + 1] - g.eCnt[c]; }
+  return n;
+}
+function startJob() {
+  const v = V, g = v.grid, k = T.k, li = 1 - fi, L = LAY[li];
+  const wx0 = -T.x / k, wy0 = -T.y / k, wx1 = (cw - T.x) / k, wy1 = (ch - T.y) / k;
+  const a0 = Math.max(0, Math.floor((wx0 - g.x0) / g.cw)), a1 = Math.min(g.gx - 1, Math.floor((wx1 - g.x0) / g.cw));
+  const b0 = Math.max(0, Math.floor((wy0 - g.y0) / g.ch)), b1 = Math.min(g.gy - 1, Math.floor((wy1 - g.y0) / g.ch));
+  const stamp = ++v.stamp; let nE = 0, nB = 0, nS = 0, nY = 0;
+  if (a1 >= a0 && b1 >= b0) {
+    for (let j = b0; j <= b1; j++) for (let i = a0; i <= a1; i++) {
+      const c = j * g.gx + i;
+      for (let p = g.nCnt[c], e = g.nCnt[c + 1]; p < e; p++) {
+        const n = g.nItems[p]; if (v.stN[n] === stamp) continue; v.stN[n] = stamp;
+        if (v.x[n] + v.w[n] / 2 < wx0 || v.x[n] - v.w[n] / 2 > wx1 || v.y[n] + v.h[n] / 2 < wy0 || v.y[n] - v.h[n] / 2 > wy1) continue;
+        if (v.nType[n] === 0) v.visS[nS++] = n; else v.visY[nY++] = n;
+      }
+      for (let p = g.eCnt[c], e = g.eCnt[c + 1]; p < e; p++) {
+        const ed = g.eItems[p]; if (v.stE[ed] === stamp) continue; v.stE[ed] = stamp;
+        if (v.back[ed]) v.visB[nB++] = ed; else v.visE[nE++] = ed;
+      }
+    }
+  }
+  for (let p = 0; p < g.longE.length; p++) {
+    const ed = g.longE[p]; if (v.stE[ed] === stamp) continue; v.stE[ed] = stamp;
+    edgeP(ed);
+    const lx = Math.min(P[0], P[6], P[2], P[4]), hx = Math.max(P[0], P[6], P[2], P[4]), ly = Math.min(P[1], P[7], P[3], P[5]), hy = Math.max(P[1], P[7], P[3], P[5]);
+    if (hx < wx0 || lx > wx1 || hy < wy0 || ly > wy1) continue;
+    if (v.back[ed]) v.visB[nB++] = ed; else v.visE[nE++] = ed;
+  }
+  const phases = [0, 1];
+  if (k > 0.45) phases.push(2, 8);
+  if (k >= 0.32) phases.push(3, 4); else phases.push(5, 6, 7);
+  L.x.setTransform(1, 0, 0, 1, 0, 0); L.x.clearRect(0, 0, L.c.width, L.c.height);
+  job = { li, T: { x: T.x, y: T.y, k }, nE, nB, nS, nY, phases, ph: 0, i: 0, v, t0: performance.now() };
+}
+// read one pixel back: forces the canvas to rasterise what has been recorded so far, so the time spent is visible to the slicer
+const flush = c => { try { c.getImageData(0, 0, 1, 1); } catch { } };
+function jobStep(j, t0) {
+  const c = LAY[j.li].x, k = j.T.k, v = j.v;
+  c.setTransform(dpr * k, 0, 0, dpr * k, dpr * j.T.x, dpr * j.T.y);
+  c.lineCap = "round";
+  const out = () => performance.now() - t0 > SLICE_MS;
+  const tiny = k < 0.12, straight = k < 0.2;
+  for (; j.ph < j.phases.length; j.ph++, j.i = 0) {
+    const ph = j.phases[j.ph];
+    if (ph <= 1) {                                   // wires: normal, then feedback (dashed)
+      const list = ph === 0 ? v.visE : v.visB, n = ph === 0 ? j.nE : j.nB;
+      if (j.i >= n) continue;
+      c.globalAlpha = tiny ? 0.55 : 1;
+      c.strokeStyle = ph === 0 ? COL.edge : COL.edgeBack;
+      c.lineWidth = k >= 0.5 ? 1 / k : tiny ? 1.2 / k : 2;
+      c.setLineDash(ph === 1 && !straight ? [5, 4] : []);
+      let i = j.i;
+      while (i < n) {                                // strokes are issued in chunks so one call never takes long
+        const stop = Math.min(n, i + 600);
+        c.beginPath();
+        for (; i < stop; i++) {
+          const e = list[i], a = v.A[e], b = v.B[e], x1 = v.x[a] + v.w[a] / 2, y1 = v.y[a], x2 = v.x[b] - v.w[b] / 2, y2 = v.y[b];
+          c.moveTo(x1, y1);
+          if (straight) c.lineTo(x2, y2);
+          else if (ph === 1) { const d = Math.min(36 + 10 * Math.abs(v.x[a] - v.x[b]) / COL_W, 300) * ((e & 1) ? 1 : -1); c.bezierCurveTo(x1 + 70, y1 + d, x2 - 70, y2 + d, x2, y2); }
+          else { const dx = Math.max(30, (x2 - x1) * 0.5); c.bezierCurveTo(x1 + dx, y1, x2 - dx, y2, x2, y2); }
+        }
+        c.stroke(); flush(c);
+        if (i < n && out()) break;
+      }
+      c.setLineDash([]); c.globalAlpha = 1; j.i = i;
+      if (i < n) return false;
+    } else if (ph === 2 || ph === 8) {               // arrow heads: normal (2), feedback (8)
+      const list = ph === 2 ? v.visE : v.visB, n = ph === 2 ? j.nE : j.nB;
+      if (j.i >= n) continue;
+      c.fillStyle = ph === 2 ? COL.edge : COL.edgeBack;
+      let i = j.i;
+      while (i < n) {
+        const stop = Math.min(n, i + 1500);
+        c.beginPath();
+        for (; i < stop; i++) { const b = v.B[list[i]], x2 = v.x[b] - v.w[b] / 2, y2 = v.y[b]; c.moveTo(x2, y2); c.lineTo(x2 - 6, y2 - 3); c.lineTo(x2 - 6, y2 + 3); c.closePath(); }
+        c.fill(); flush(c);
+        if (i < n && out()) break;
+      }
+      j.i = i;
+      if (i < n) return false;
+    } else if (ph === 3 || ph === 4) {               // nodes, full detail: signals (3), then symbols and "more" (4)
+      const list = ph === 3 ? v.visS : v.visY, n = ph === 3 ? j.nS : j.nY;
+      if (j.i >= n) continue;
+      c.font = "11px system-ui, sans-serif"; c.textBaseline = "middle";
+      let i = j.i;
+      for (; i < n; i++) { drawNodeFull(c, list[i], k); if ((i & 15) === 15) { flush(c); if (out()) { i++; break; } } }
+      j.i = i;
+      if (i < n) return false;
+    } else {                                         // nodes, simple rectangles: signals (5), symbols (6), devices + "more" (7)
+      const list = ph === 5 ? v.visS : v.visY, n = ph === 5 ? j.nS : j.nY;
+      if (j.i >= n) continue;
+      const mn = 2 / k;
+      c.fillStyle = ph === 5 ? "#2e3844" : ph === 6 ? "#415066" : "#5a4f8e";
+      let i = j.i;
+      while (i < n) {
+        const stop = Math.min(n, i + 3000);
+        c.beginPath();
+        for (; i < stop; i++) {
+          const nd = list[i];
+          if (ph !== 5) { const isDevOrMore = v.nType[nd] === 2 || G.symDev[v.nRef[nd]] === 1; if (isDevOrMore !== (ph === 7)) continue; }
+          const w = Math.max(v.w[nd], mn), h = Math.max(v.h[nd], mn);
+          c.rect(v.x[nd] - w / 2, v.y[nd] - h / 2, w, h);
+        }
+        c.fill(); flush(c);
+        if (i < n && out()) break;
+      }
+      j.i = i;
+      if (i < n) return false;
+    }
+  }
+  return true;
+}
+function drawNodeFull(c, i, k) {
+  const t = V.nType[i], w = V.w[i], h = V.h[i], cx = V.x[i], cy = V.y[i], x = cx - w / 2, y = cy - h / 2;
+  if (t === 0) {
+    rr(c, x, y, w, h, h / 2); c.fillStyle = "#171c23"; c.fill(); c.strokeStyle = COL.node; c.lineWidth = 1; c.stroke();
+    c.fillStyle = "#2a313b"; c.beginPath(); c.arc(x + 9, cy, 3, 0, 6.3); c.fill();
+    c.fillStyle = COL.nodeText; c.textAlign = "left"; c.fillText(ntext(i), x + 16, cy + 0.5);
+    if (V.nBey[i]) { c.fillStyle = "#59626f"; c.fillText("›", x + w + 3, cy); }
+  } else if (t === 1) {
+    const dev = G.symDev[V.nRef[i]] === 1;
+    rr(c, x, y, w, h, 4); c.fillStyle = dev ? "#1b1830" : "#13181e"; c.fill();
+    c.strokeStyle = dev ? COL.dev : "#3a424d"; c.lineWidth = dev ? 1.6 : 1;
+    if (dev) c.setLineDash([2, 2]); c.stroke(); c.setLineDash([]);
+    c.fillStyle = dev ? "#a99bdc" : COL.symText; c.textAlign = "center";
+    c.fillText(ntext(i), cx, cy - (k > 0.7 ? 5 : 0));
+    if (k > 0.7) { c.font = "9px system-ui"; c.fillStyle = "#57606c"; c.fillText(ntext2(i), cx, cy + 8); c.font = "11px system-ui, sans-serif"; }
+  } else {
+    rr(c, x, y, w, h, 5); c.setLineDash([3, 3]); c.strokeStyle = "#566070"; c.lineWidth = 1; c.stroke(); c.setLineDash([]);
+    c.fillStyle = "#8fa0b5"; c.textAlign = "center"; c.fillText(ntext(i), cx, cy);
+  }
+}
+function staticStep(now) {
+  if (!V || !V.N) return;
+  if (staticDirty) {
+    const interacting = now - lastInteract < 140;
+    if (!frontOK || !interacting || estimateVisible() <= 6000) { startJob(); staticDirty = false; }
+  }
+  if (job) {
+    if (jobStep(job, performance.now())) {
+      fi = job.li; frontOK = true; frontT = job.T; timing.tStatic = performance.now(); timing.staticMs = timing.tStatic - job.t0; job = null;
+    }
+  }
+}
+
+// ---------------------------------------------------------------- frame loop
 let drawQueued = false;
 function draw() { if (!drawQueued) { drawQueued = true; requestAnimationFrame(frame); } }
-
-function frame(ts) {
+function frame() {
   drawQueued = false;
   const now = performance.now(), dt = lastFrame ? Math.min(100, now - lastFrame) : 16; lastFrame = now;
   advance(now, dt);
-  paint(now);
-  if (animating()) { lastFrameKeep = true; draw(); } else lastFrame = 0;
+  staticStep(now);
+  composite(now);
+  if (!timing.tFirstFrame && V && V.N && (frontOK || job)) timing.tFirstFrame = performance.now();
+  if (animating()) draw(); else lastFrame = 0;
 }
-let lastFrameKeep = false;
 function animating() {
-  return sched.length || queue.length || litN.size || litE.size || osc.size || flash;
+  return sched.length || Q.length > qh || litN.size || litE.size || osc.size || flash || job || staticDirty;
 }
 
 // Play queued events (slow-motion gate), fire scheduled hops, drop things that have fully faded.
 function advance(now, dt) {
-  if (queue.length) {
-    if (!playClock) playClock = queue[0].r;
+  if (Q.length > qh) {
+    if (!playClock) playClock = Q[qh]._r;
     playClock += dt * cfg.speed;
-    // at 1x the queue is a pass-through: everything received is already due
-    while (queue.length && queue[0].r <= playClock) { const q = queue.shift(); play(q.e, now); }
-    if (!queue.length) { playClock = 0; updateHud(); }
+    const tb = performance.now(); let cnt = 0;
+    while (qh < Q.length && Q[qh]._r <= playClock) { const e = Q[qh++]; play(e, now); if ((++cnt & 63) === 0 && performance.now() - tb > SLICE_MS) break; }
+    if (qh >= Q.length) { Q.length = 0; qh = 0; playClock = 0; updateHud(); }
+    else if (qh > 8192 && qh * 2 > Q.length) { Q = Q.slice(qh); qh = 0; }
   }
   if (sched.length) {
     let w = 0;
-    for (const it of sched) { if (it.at <= now) fire(it.e, it.at, it.arr); else sched[w++] = it; }
+    for (let i = 0; i < sched.length; i++) { const it = sched[i]; if (it.at <= now) fire(it.e, it.at, it.arr, it.n, it.hop, it.sn, it.yn); else sched[w++] = it; }
     sched.length = w;
   }
   const f = fadeMs();
@@ -585,134 +1150,147 @@ function advance(now, dt) {
   for (const [k, l] of litE) if (now - l.t > f) litE.delete(k);
   for (const [k, o] of osc) if (now - o.t > OSC_HOLD) { osc.delete(k); loopsDirty = true; }
   if (flash && now - flash.t > 1400) flash = null;
-  if (burstDirty || loopsDirty) renderPanels(now);
+  if (burstDirty || loopsDirty || Q.length > qh || droppedEv) renderPanels(now);
 }
 
-function paint(now) {
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, cw, ch);
-  if (!V || !V.nodes.length) return;
-  ctx.save();
-  ctx.translate(T.x, T.y); ctx.scale(T.k, T.k);
-  const k = T.k, vx0 = -T.x / k - 200, vy0 = -T.y / k - 120, vx1 = (cw - T.x) / k + 200, vy1 = (ch - T.y) / k + 120;
-  const vis = e => { const p = e.p; return Math.max(p[0], p[6]) >= vx0 && Math.min(p[0], p[6]) <= vx1 && Math.max(p[1], p[3], p[5], p[7]) >= vy0 && Math.min(p[1], p[3], p[5], p[7]) <= vy1; };
-  ctx.lineCap = "round";
-
-  // static wires: two batched strokes (normal, loop), dim grey
-  const path = (list) => { ctx.beginPath(); for (const e of list) { const p = e.p; ctx.moveTo(p[0], p[1]); ctx.bezierCurveTo(p[2], p[3], p[4], p[5], p[6], p[7]); } };
-  const ve = V.edges.filter(vis);
-  ctx.lineWidth = 1 / Math.max(k, 0.5);
-  ctx.strokeStyle = COL.edge; path(ve.filter(e => !e.back)); ctx.stroke();
-  ctx.strokeStyle = COL.edgeBack; ctx.setLineDash([5, 4]); path(ve.filter(e => e.back)); ctx.stroke(); ctx.setLineDash([]);
-  if (k > 0.45) { // arrow heads
-    ctx.fillStyle = COL.edge;
-    for (const e of ve) { const p = e.p; arrow(p[6], p[7], e.back ? COL.edgeBack : COL.edge); }
+function composite(now) {
+  const c = ctx;
+  c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, cv.width, cv.height);
+  if (!V || !V.N) return;
+  const src = frontOK ? LAY[fi] : job ? LAY[job.li] : null, sT = frontOK ? frontT : job ? job.T : null;
+  if (src) {
+    const s = T.k / sT.k, dx = T.x - s * sT.x, dy = T.y - s * sT.y;
+    if (s === 1 && dx === 0 && dy === 0) c.drawImage(src.c, 0, 0);
+    else c.drawImage(src.c, 0, 0, src.c.width, src.c.height, dx * dpr, dy * dpr, src.c.width * s, src.c.height * s);
   }
+  overlay(c, now);
+}
 
+// ---------------------------------------------------------------- live overlay (lights, rings, markers) drawn over the bitmap
+function overlay(c, now) {
+  const k = T.k, gk = Math.max(k, 0.6), v = V;
+  c.setTransform(dpr * k, 0, 0, dpr * k, dpr * T.x, dpr * T.y);
+  const vx0 = -T.x / k - 200, vy0 = -T.y / k - 120, vx1 = (cw - T.x) / k + 200, vy1 = (ch - T.y) / k + 120;
+  const inView = n => v.x[n] + v.w[n] / 2 >= vx0 && v.x[n] - v.w[n] / 2 <= vx1 && v.y[n] + v.h[n] / 2 >= vy0 && v.y[n] - v.h[n] / 2 <= vy1;
+  c.lineCap = "round"; c.lineJoin = "round";
+  const full = k >= 0.32;
+  c.font = "11px system-ui, sans-serif"; c.textBaseline = "middle";
+
+  // steady-high dots (only readable when zoomed in)
+  if (full && hiSet.size) {
+    c.fillStyle = "#2f7a5b"; c.beginPath();
+    for (const n of hiSet) { if (v.nType[n] !== 0 || !inView(n)) continue; const x = v.x[n] - v.w[n] / 2 + 9, y = v.y[n]; c.moveTo(x + 3, y); c.arc(x, y, 3, 0, 6.3); }
+    c.fill();
+  }
   // lit wires: glow underlay + bright core, with a travelling dot
-  for (const [key, l] of litE) {
-    const e = V.emap.get(key); if (!e || !vis(e)) continue;
+  let cnt = 0;
+  for (const [e, l] of litE) {
     const i = inten(l.t, now); if (i <= 0) continue;
-    const col = e.back ? COL.loop : kindColor(l.kind, l.high), p = e.p;
-    ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.bezierCurveTo(p[2], p[3], p[4], p[5], p[6], p[7]);
-    ctx.strokeStyle = rgba(col, 0.22 * i); ctx.lineWidth = 7 / Math.max(k, 0.6); ctx.stroke();
-    ctx.strokeStyle = rgba(col, (l.high ? 0.95 : 0.6) * i); ctx.lineWidth = (l.high ? 2.2 : 1.6) / Math.max(k, 0.6); ctx.stroke();
+    edgeP(e);
+    const lx = Math.min(P[0], P[6]), hx = Math.max(P[0], P[6]), ly = Math.min(P[1], P[3], P[5], P[7]), hy = Math.max(P[1], P[3], P[5], P[7]);
+    if (hx < vx0 || lx > vx1 || hy < vy0 || ly > vy1) continue;
+    const col = v.back[e] ? COL.loop : kindColor(l.kind, l.high), det = cnt++ < LIT_E_FULL;
+    c.beginPath(); c.moveTo(P[0], P[1]); c.bezierCurveTo(P[2], P[3], P[4], P[5], P[6], P[7]);
+    if (det) { c.strokeStyle = rgba(col, 0.22 * i); c.lineWidth = 7 / gk; c.stroke(); }
+    c.strokeStyle = rgba(col, (l.high ? 0.95 : 0.6) * i); c.lineWidth = (l.high ? 2.2 : 1.6) / gk; c.stroke();
     const f = (now - l.t) / l.dur;                                  // 0..1 while the pulse crosses this edge
-    if (f >= 0 && f <= 1) {
-      const [dx, dy] = bez(p, f);
-      for (let s = 0; s < 4; s++) { const [tx, ty] = bez(p, Math.max(0, f - s * 0.05)); ctx.fillStyle = rgba(col, 0.5 - s * 0.12); ctx.beginPath(); ctx.arc(tx, ty, (4 - s * 0.7) / Math.max(k, 0.7), 0, 6.3); ctx.fill(); }
-      ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(dx, dy, 2.2 / Math.max(k, 0.7), 0, 6.3); ctx.fill();
+    if (det && f >= 0 && f <= 1) {
+      const kk = Math.max(k, 0.7);
+      for (let s = 0; s < 4; s++) { bez(Math.max(0, f - s * 0.05), BZ); c.fillStyle = rgba(col, 0.5 - s * 0.12); c.beginPath(); c.arc(BZ[0], BZ[1], (4 - s * 0.7) / kk, 0, 6.3); c.fill(); }
+      bez(f, BZ); c.fillStyle = "#fff"; c.beginPath(); c.arc(BZ[0], BZ[1], 2.2 / kk, 0, 6.3); c.fill();
     }
   }
-
-  // nodes
-  const lod = k < 0.32;
-  ctx.font = "11px system-ui, sans-serif"; ctx.textBaseline = "middle"; ctx.textAlign = "center";
-  const sk = V.seedKey;
-  for (const n of V.nodes) {
-    if (n.x + n.w / 2 < vx0 || n.x - n.w / 2 > vx1 || n.y + n.h / 2 < vy0 || n.y - n.h / 2 > vy1) continue;
-    const l = litN.get(n.key), i = l ? inten(l.t, now) : 0, o = n.type === "sig" ? osc.get(n.name) : null;
-    drawNode(n, i, l, o, lod, now);
+  // lit nodes (and oscillating ones, which stay red)
+  cnt = 0;
+  for (const [n, l] of litN) {
+    if (!inView(n)) continue;
+    const i = inten(l.t, now); if (i <= 0 && !(v.nType[n] === 0 && osc.has(G.sigNames[v.nRef[n]]))) continue;
+    drawNodeLit(c, n, l, i, v.nType[n] === 0 ? osc.get(G.sigNames[v.nRef[n]]) : null, full, cnt++ < LIT_N_FULL, gk, k);
+  }
+  for (const [name, o] of osc) {
+    const id = G.sigIdx.get(name), n = id === undefined ? -1 : v.sigNode[id];
+    if (n < 0 || litN.has(n) || !inView(n)) continue;
+    drawNodeLit(c, n, null, 0, o, full, cnt++ < LIT_N_FULL, gk, k);
+  }
+  // start node marker
+  if (v.startNode >= 0) {
+    const n = v.startNode, w = v.w[n], h = v.h[n];
+    if (full) { c.strokeStyle = "#c7d0dc"; c.lineWidth = 1.6; rr(c, v.x[n] - w / 2, v.y[n] - h / 2, w, h, h / 2); c.stroke(); }
+    else { c.strokeStyle = "#c7d0dc"; c.lineWidth = 1.5 / k; const r = 7 / k; c.beginPath(); c.arc(v.x[n], v.y[n], r, 0, 6.3); c.stroke(); }
   }
   // rings / badges / focus flash on top
-  for (const [key, l] of litN) {
-    const n = V.nmap.get(key); if (!n || !l.ring) continue;
-    const i = inten(l.t, now); if (i <= 0 && !osc.has(n.name)) continue;
-    const pulse = (now % 700) / 700;
-    ctx.strokeStyle = rgba(osc.has(n.name) ? COL.osc : COL.loop, Math.max(0.15, i) * (1 - pulse));
-    ctx.lineWidth = 2 / Math.max(k, 0.6);
-    rr(n.x - n.w / 2 - 3 - pulse * 8, n.y - n.h / 2 - 3 - pulse * 8, n.w + 6 + pulse * 16, n.h + 6 + pulse * 16, 12 + pulse * 6); ctx.stroke();
+  for (const [n, l] of litN) {
+    if (!l.ring || !inView(n)) continue;
+    const isOsc = v.nType[n] === 0 && osc.has(G.sigNames[v.nRef[n]]);
+    const i = inten(l.t, now); if (i <= 0 && !isOsc) continue;
+    const pulse = (now % 700) / 700, w = v.w[n], h = v.h[n], x = v.x[n], y = v.y[n];
+    c.strokeStyle = rgba(isOsc ? COL.osc : COL.loop, Math.max(0.15, i) * (1 - pulse));
+    c.lineWidth = 2 / gk;
+    rr(c, x - w / 2 - 3 - pulse * 8, y - h / 2 - 3 - pulse * 8, w + 6 + pulse * 16, h + 6 + pulse * 16, 12 + pulse * 6); c.stroke();
     if (k > 0.3) {
-      const txt = "×" + l.n; ctx.font = "bold 10px system-ui"; const bw = ctx.measureText(txt).width + 8;
-      ctx.fillStyle = osc.has(n.name) ? COL.osc : COL.loop; rr(n.x + n.w / 2 - bw + 4, n.y - n.h / 2 - 9, bw, 14, 7); ctx.fill();
-      ctx.fillStyle = "#fff"; ctx.fillText(txt, n.x + n.w / 2 - bw / 2 + 4, n.y - n.h / 2 - 2);
+      const txt = "×" + l.n; c.font = "bold 10px system-ui"; const bw = c.measureText(txt).width + 8;
+      c.fillStyle = isOsc ? COL.osc : COL.loop; rr(c, x + w / 2 - bw + 4, y - h / 2 - 9, bw, 14, 7); c.fill();
+      c.fillStyle = "#fff"; c.textAlign = "center"; c.fillText(txt, x + w / 2 - bw / 2 + 4, y - h / 2 - 2);
     }
   }
-  if (flash) {
-    const n = V.nmap.get(flash.key);
-    if (n) { const a = 1 - (now - flash.t) / 1400; ctx.strokeStyle = rgba("#ffffff", a); ctx.lineWidth = 2.5 / Math.max(k, 0.6); const g = 6 + (now - flash.t) / 60; rr(n.x - n.w / 2 - g, n.y - n.h / 2 - g, n.w + 2 * g, n.h + 2 * g, 14); ctx.stroke(); }
+  if (flash && flash.n >= 0 && flash.n < v.N) {
+    const n = flash.n, a = 1 - (now - flash.t) / 1400;
+    c.strokeStyle = rgba("#ffffff", Math.max(0, a)); c.lineWidth = 2.5 / gk; const g = 6 + (now - flash.t) / 60;
+    rr(c, v.x[n] - v.w[n] / 2 - g, v.y[n] - v.h[n] / 2 - g, v.w[n] + 2 * g, v.h[n] + 2 * g, 14); c.stroke();
   }
-  ctx.restore();
 }
-function arrow(x, y, col) {
-  ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 6, y - 3); ctx.lineTo(x - 6, y + 3); ctx.closePath(); ctx.fill();
-}
-
-function drawNode(n, i, l, o, lod, now) {
-  const x = n.x - n.w / 2, y = n.y - n.h / 2;
-  const isStart = n.type === "sig" && n.name === startSig;
-  let col = null;
-  if (o) col = COL.osc; else if (l && i > 0) col = kindColor(l.kind, l.high);
-  ctx.save();
-  if (n.type === "sig") {
-    const val = vals.get(n.name), steadyHigh = n.kind === "Digital" && isHigh(val);
-    rr(x, y, n.w, n.h, n.h / 2);
-    ctx.fillStyle = "#171c23"; ctx.fill();
-    ctx.strokeStyle = isStart ? "#c7d0dc" : COL.node; ctx.lineWidth = isStart ? 1.6 : 1; ctx.stroke();
-    if (col) {
-      ctx.shadowColor = col; ctx.shadowBlur = 16 * i + (o ? 8 : 0);
-      ctx.fillStyle = rgba(col, 0.16 + 0.34 * i); ctx.fill();
-      ctx.strokeStyle = rgba(col, 0.35 + 0.65 * i); ctx.lineWidth = 1.6; ctx.stroke(); ctx.shadowBlur = 0;
-    }
-    if (!lod) {
-      // little state dot: steady high is a faint green, a lit node shows its colour
-      ctx.fillStyle = col ? rgba(col, 0.4 + 0.6 * i) : steadyHigh ? "#2f7a5b" : "#2a313b";
-      ctx.beginPath(); ctx.arc(x + 9, n.y, 3, 0, 6.3); ctx.fill();
-      ctx.fillStyle = col ? "#fff" : COL.nodeText; ctx.globalAlpha = col ? 0.6 + 0.4 * i : 1;
-      ctx.textAlign = "left"; ctx.fillText(n.text, x + 16, n.y + 0.5);
-      if (n.more_beyond) { ctx.fillStyle = "#59626f"; ctx.textAlign = "left"; ctx.fillText("›", x + n.w + 3, n.y); }
-    }
-  } else if (n.type === "sym") {
-    rr(x, y, n.w, n.h, 4);
-    ctx.fillStyle = n.dev ? "#1b1830" : "#13181e"; ctx.fill();
-    ctx.strokeStyle = n.dev ? COL.dev : "#3a424d"; ctx.lineWidth = n.dev ? 1.6 : 1;
-    if (n.dev) ctx.setLineDash([2, 2]); ctx.stroke(); ctx.setLineDash([]);
-    if (col || (l && i > 0)) {
-      const c = col || COL.hi;
-      ctx.shadowColor = c; ctx.shadowBlur = 14 * i; ctx.fillStyle = rgba(c, 0.1 + 0.25 * i); ctx.fill();
-      ctx.strokeStyle = rgba(c, 0.3 + 0.7 * i); ctx.lineWidth = 1.5; ctx.stroke(); ctx.shadowBlur = 0;
-    }
-    if (!lod) {
-      ctx.fillStyle = (l && i > 0) ? "#fff" : n.dev ? "#a99bdc" : COL.symText; ctx.textAlign = "center";
-      ctx.fillText(n.text, n.x, n.y - (T.k > 0.7 ? 5 : 0));
-      if (T.k > 0.7) { ctx.font = "9px system-ui"; ctx.fillStyle = "#57606c"; ctx.fillText(fitText((n.sym.path || n.sym.id) + "", n.w - 8), n.x, n.y + 8); ctx.font = "11px system-ui"; }
-      else ctx.font = "11px system-ui";
-    }
-  } else {
-    rr(x, y, n.w, n.h, 5); ctx.setLineDash([3, 3]); ctx.strokeStyle = "#566070"; ctx.lineWidth = 1; ctx.stroke(); ctx.setLineDash([]);
-    if (!lod) { ctx.fillStyle = "#8fa0b5"; ctx.textAlign = "center"; ctx.fillText(n.label, n.x, n.y); }
+// A lit node is redrawn over the bitmap. The glow is a few widening translucent strokes instead of shadowBlur (which is very slow).
+function drawNodeLit(c, n, l, i, o, full, glow, gk, k) {
+  const v = V, t = v.nType[n], w = v.w[n], h = v.h[n], cx = v.x[n], cy = v.y[n], x = cx - w / 2, y = cy - h / 2;
+  let col;
+  if (o) col = COL.osc; else if (l) col = t === 1 && !l.kind ? COL.hi : kindColor(l.kind, l.high); else return;
+  if (!full) {                                   // zoomed out: a bright block, big enough to see
+    const mw = Math.max(w, 4 / k), mh = Math.max(h, 4 / k);
+    if (glow) { c.fillStyle = rgba(col, 0.18 * Math.max(i, o ? 1 : 0)); c.fillRect(cx - mw, cy - mh, mw * 2, mh * 2); }
+    c.fillStyle = rgba(col, 0.55 + 0.45 * Math.max(i, o ? 1 : 0)); c.fillRect(cx - mw / 2, cy - mh / 2, mw, mh);
+    return;
   }
-  ctx.restore();
+  if (t === 0) {
+    rr(c, x, y, w, h, h / 2); c.fillStyle = "#171c23"; c.fill();
+    c.strokeStyle = COL.node; c.lineWidth = 1; c.stroke();
+    if (glow) {
+      const b = (16 * i + (o ? 8 : 0)) / gk;
+      c.strokeStyle = rgba(col, 0.07 * Math.max(i, 0.4)); c.lineWidth = b * 1.1; c.stroke();
+      c.strokeStyle = rgba(col, 0.12 * Math.max(i, 0.4)); c.lineWidth = b * 0.55; c.stroke();
+    }
+    c.fillStyle = rgba(col, 0.16 + 0.34 * i); c.fill();
+    c.strokeStyle = rgba(col, 0.35 + 0.65 * i); c.lineWidth = 1.6; c.stroke();
+    c.fillStyle = rgba(col, 0.4 + 0.6 * i); c.beginPath(); c.arc(x + 9, cy, 3, 0, 6.3); c.fill();
+    c.fillStyle = "#fff"; c.globalAlpha = 0.6 + 0.4 * i; c.textAlign = "left"; c.fillText(ntext(n), x + 16, cy + 0.5); c.globalAlpha = 1;
+  } else if (t === 1) {
+    const dev = G.symDev[v.nRef[n]] === 1;
+    rr(c, x, y, w, h, 4); c.fillStyle = dev ? "#1b1830" : "#13181e"; c.fill();
+    c.strokeStyle = dev ? COL.dev : "#3a424d"; c.lineWidth = dev ? 1.6 : 1; c.stroke();
+    if (glow) {
+      const b = 14 * i / gk;
+      c.strokeStyle = rgba(col, 0.07 * i); c.lineWidth = b * 1.1; c.stroke();
+      c.strokeStyle = rgba(col, 0.12 * i); c.lineWidth = b * 0.55; c.stroke();
+    }
+    c.fillStyle = rgba(col, 0.1 + 0.25 * i); c.fill();
+    c.strokeStyle = rgba(col, 0.3 + 0.7 * i); c.lineWidth = 1.5; c.stroke();
+    c.fillStyle = i > 0 ? "#fff" : dev ? "#a99bdc" : COL.symText; c.textAlign = "center";
+    c.fillText(ntext(n), cx, cy - (k > 0.7 ? 5 : 0));
+    if (k > 0.7) { c.font = "9px system-ui"; c.fillStyle = "#57606c"; c.fillText(ntext2(n), cx, cy + 8); c.font = "11px system-ui, sans-serif"; }
+  }
 }
 
 // ---------------------------------------------------------------- live trace -> light trails
 // Events pass through three stages: received (queue, gated by slow-motion), played (loop counting,
 // scheduled one hop after the event that caused them), fired (lights switched on).
-function onTrace(m) {
+function onTrace(m, now) {
   vals.set(m.signal, m.value);
-  const now = performance.now();
-  queue.push({ r: now, e: m });
-  if (!animating() || queue.length === 1) draw();
+  if (G && V) {
+    const id = G.sigIdx.get(m.signal);
+    if (id !== undefined) { const n = V.sigNode[id]; if (n >= 0 && G.sigKind[id] === 0) { if (isHigh(m.value)) hiSet.add(n); else hiSet.delete(n); } }
+  }
+  m._r = now;
+  Q.push(m);
+  if (Q.length - qh > QMAX) { const drop = (Q.length - qh) - Math.floor(QMAX * 0.75); qh += drop; droppedEv += drop; }
 }
 
 function play(e, now, isReplay) {
@@ -722,16 +1300,19 @@ function play(e, now, isReplay) {
   let n = 1;
   if (!isReplay) {
     if (chain != null) { const ck = chain + "|" + e.signal; n = (chainCnt.get(ck) || 0) + 1; chainCnt.set(ck, n); trimMap(chainCnt, 4000); }
-    let r = rate.get(e.signal); if (!r) rate.set(e.signal, r = []);
-    r.push(now); while (r.length && now - r[0] > 1000) r.shift();
-    let reason = n > OSC_CHAIN ? `${n} changes in one burst` : r.length >= OSC_RATE ? `${r.length} changes/second` : null;
+    let r = rate.get(e.signal); if (!r) { rate.set(e.signal, r = { t0: now, c: 0 }); trimMap(rate, 30000); }
+    if (now - r.t0 > 1000) { r.t0 = now; r.c = 0; }
+    r.c++;
+    const reason = n > OSC_CHAIN ? `${n} changes in one burst` : r.c >= OSC_RATE ? `${r.c} changes/second` : null;
+    let o = osc.get(e.signal);
     if (reason) {
-      const o = osc.get(e.signal); if (!o) loopsDirty = true;
-      osc.set(e.signal, { t: now, n: Math.max(n, r.length), reason });
-      loopsDirty = true;
-    } else if (osc.has(e.signal)) osc.get(e.signal).t = Math.max(osc.get(e.signal).t, now - OSC_HOLD + 1500); // let it expire soon
-    if (n >= 2 && !osc.has(e.signal)) loopsDirty = true;
-    if (n >= 2) loopSeen.set(e.signal, { t: now, n, chain });
+      if (!o) osc.set(e.signal, o = { t: now, n: 0, reason });
+      o.t = now; o.n = Math.max(n, r.c); o.reason = reason; loopsDirty = true;
+    } else if (o) o.t = Math.max(o.t, now - OSC_HOLD + 1500); // let it expire soon
+    if (n >= 2) {
+      if (!o) loopsDirty = true;
+      const ls = loopSeen.get(e.signal); if (ls) { ls.t = now; ls.n = n; ls.chain = chain; } else loopSeen.set(e.signal, { t: now, n, chain });
+    }
   }
   // --- remember the burst for the "Last burst" panel
   if (chain != null && !isReplay) {
@@ -740,52 +1321,47 @@ function play(e, now, isReplay) {
     if (b.length >= 2 || !lastBurst) { if (lastBurst !== b) { lastBurst = b; } burstDirty = true; }
     else if (lastBurst && lastBurst.length < 2) { lastBurst = b; burstDirty = true; }
   } else if (!isReplay && !lastBurst) { lastBurst = [e]; burstDirty = true; }
+  // --- is this signal / symbol in the picture at all?
+  const id = G ? G.sigIdx.get(e.signal) : undefined;
+  const sn = V && id !== undefined ? V.sigNode[id] : -1;
+  const yi = V && sym ? G.symIdx.get(sym) : undefined, yn = yi !== undefined && V ? V.symNode[yi] : -1;
   // --- follow live changes: a new external burst outside the maze re-roots it
-  if (cfg.follow && !isReplay && e.depth === 0 && V && !V.nmap.has("s:" + e.signal) && G && G.signals.has(e.signal) && now - lastFollow > 1500) {
-    lastFollow = now; setStart(e.signal, true);
-  }
+  if (cfg.follow && !isReplay && e.depth === 0 && V && sn < 0 && id !== undefined && now - lastFollow > 1500) { lastFollow = now; setStart(e.signal, true); return; }
   // --- schedule the hop: a change is shown one hop after the change that caused it arrived
   const hop = HOP_MS / cfg.speed;
-  let at = now, base = null;
+  let at = now;
   if (chain != null) {
-    base = chainBase.get(chain); if (base == null) { chainBase.set(chain, now); base = now; trimMap(chainBase, 400); }
+    let base = chainBase.get(chain); if (base == null) { chainBase.set(chain, now); trimMap(chainBase, 400); }
     if (cause) { const ca = chainArr.get(chain + "|" + cause); if (ca != null) at = Math.max(now, ca); }
   }
-  const hasHop = !!(sym && cause);
-  const arr = at + (hasHop ? hop : 0);
+  const arr = at + ((sym && cause) ? hop : 0);
   if (chain != null) { chainArr.set(chain + "|" + e.signal, arr); trimMap(chainArr, 4000); }
-  const item = { at, arr, e: Object.assign({}, e, { _n: n, _hop: hop }) };
-  if (at <= now) fire(item.e, at, arr); else sched.push(item);
+  if (sn < 0 && yn < 0) return;                  // not in view: nothing to light
+  if (at <= now || sched.length > SCHED_MAX) fire(e, at, arr, n, hop, sn, yn); else sched.push({ at, arr, e, n, hop, sn, yn });
 }
 function trimMap(m, max) { if (m.size > max) { let c = m.size - max; for (const k of m.keys()) { m.delete(k); if (--c <= 0) break; } } }
 
-function fire(e, at, arr) {
+function fire(e, at, arr, n, hop, sn, yn) {
   if (!V) return;
   const high = e.kind === "Digital" ? isHigh(e.value) : true, kind = e.kind;
-  const hop = e._hop || HOP_MS;
-  const sk = "s:" + e.signal;
-  const sigIn = V.nmap.has(sk);
-  if (e.symbol && e.cause) {
-    const yk = "y:" + e.symbol;
-    const e1 = V.emap.get("s:" + e.cause + ">" + yk), e2 = V.emap.get(yk + ">" + sk);
-    if (e1) litE.set(e1.key, { t: at, dur: hop / 2, high, kind });
-    if (e2) litE.set(e2.key, { t: at + hop / 2, dur: hop / 2, high, kind });
-    if (V.nmap.has(yk)) litN.set(yk, { t: at + hop / 4, high, kind, n: 1 });
+  if (e.symbol && e.cause && yn >= 0 && yn < V.N) {
+    const ci = G.sigIdx.get(e.cause), cn = ci !== undefined ? V.sigNode[ci] : -1;
+    if (cn >= 0) for (let p = V.inS[yn]; p < V.inS[yn + 1]; p++) { const ed = V.inE[p]; if (V.A[ed] === cn) { litE.set(ed, { t: at, dur: hop / 2, high, kind }); break; } }
+    if (sn >= 0) for (let p = V.outS[yn]; p < V.outS[yn + 1]; p++) { const ed = V.outE[p]; if (V.B[ed] === sn) { litE.set(ed, { t: at + hop / 2, dur: hop / 2, high, kind }); break; } }
+    litN.set(yn, { t: at + hop / 4, high, kind, n: 1, ring: false });
   }
-  if (sigIn) {
-    const prev = litN.get(sk), n = e._n || 1;
-    const ring = n >= 2 || (prev && prev.ring && arr - prev.t < FADE_MS * 2);
-    litN.set(sk, { t: arr, high, kind, n: Math.max(n, 1), ring: n >= 2 });
-    if (ring && n < 2) litN.get(sk).ring = false;
-  }
+  if (sn >= 0 && sn < V.N) litN.set(sn, { t: arr, high, kind, n: Math.max(n, 1), ring: n >= 2 });
 }
 const loopSeen = new Map();   // signal -> { t, n, chain }: re-lit inside one burst (shown in the loops panel)
 
 // ---------------------------------------------------------------- side panels
-let burstDirty = false, loopsDirty = false, panelAt = 0;
+let burstDirty = false, loopsDirty = false, panelAt = 0, lastQl = 0;
 function renderPanels(now) {
   if (now - panelAt < 250) return;
   panelAt = now;
+  const ql = Q.length - qh;
+  if (ql || lastQl) updateHud();
+  lastQl = ql;
   if (loopsDirty || loopSeen.size) {
     loopsDirty = false;
     const rows = [];
@@ -813,8 +1389,7 @@ function renderPanels(now) {
     const frag = document.createDocumentFragment();
     b.slice(0, 250).forEach(e => {
       const d = document.createElement("div"); d.className = "row";
-      const y = e.symbol && G ? G.symbols.get(e.symbol) : null;
-      const via = e.cause ? `via ${esc(y ? y.name : e.symbol || "?")} ← ${esc(e.cause)}` : e.symbol ? `via ${esc(y ? y.name : e.symbol)}` : "external";
+      const via = e.cause ? `via ${esc(e.symbol ? symName(e.symbol) : "?")} ← ${esc(e.cause)}` : e.symbol ? `via ${esc(symName(e.symbol))}` : "external";
       const hi = e.kind === "Digital" && isHigh(e.value);
       d.innerHTML = `<span class="d">${e.depth ?? ""}</span><span class="s">${esc(e.signal)}<small>${via}</small></span><span class="v mono ${hi ? "hi" : ""}">${esc(fmt(e.kind, e.value))}</span>`;
       d.onclick = () => focusSignal(e.signal);
@@ -825,22 +1400,22 @@ function renderPanels(now) {
   }
 }
 function focusSignal(name) {
-  if (!V) return;
-  const n = V.nmap.get("s:" + name);
-  if (!n) { setHud(`<span class="warn">${esc(name)} is not in the current view. Click it again after picking it as the start signal.</span>`); setStartPrompt(name); return; }
-  panTo(n); flash = { key: n.key, t: performance.now() }; draw();
+  if (!V || !G) return;
+  const id = G.sigIdx.get(name), n = id === undefined ? -1 : V.sigNode[id];
+  if (n < 0) { setHud(`<span class="warn">${esc(name)} is not in the current view. Click it again after picking it as the start signal.</span>`); setStartPrompt(name); return; }
+  panTo(n); flash = { n, t: performance.now() }; draw();
 }
 // Signals outside the view offer a one-click jump.
 function setStartPrompt(name) { $("#hud").style.pointerEvents = "auto"; $("#hud").innerHTML += ` <a href="#" id="jump">Start from ${esc(name)}</a>`; $("#jump").onclick = ev => { ev.preventDefault(); $("#hud").style.pointerEvents = "none"; setStart(name, false); }; }
 
 // ---------------------------------------------------------------- controls
 function setStart(name, keepZoom) {
-  if (!G || !G.signals.has(name)) { $("#start").style.borderColor = "var(--err)"; return; }
+  const g = pendingG || G;
+  if (!g || !g.sigIdx.has(name)) { $("#start").style.borderColor = "var(--err)"; return; }
   $("#start").style.borderColor = ""; startSig = name; $("#start").value = name; expanded.clear();
   try { history.replaceState(null, "", `?slot=${slot}&signal=${encodeURIComponent(name)}`); } catch { }
-  rebuild(!keepZoom);
-  const n = V.nmap.get("s:" + name); if (keepZoom && n) panTo(n);
-  draw();
+  const id = g.sigIdx.get(name);
+  rebuild(!keepZoom, keepZoom ? () => { const n = V.sigNode[id]; if (n >= 0) panTo(n); draw(); } : null);
 }
 async function pulse(name) {
   try {
@@ -858,7 +1433,7 @@ document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
   cfg.speed = Number(b.dataset.s); store.set("speed", cfg.speed);
   document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
 });
-$("#skip").onclick = () => { queue.length = 0; playClock = 0; sched.length = 0; updateHud(); };
+$("#skip").onclick = () => { Q.length = 0; qh = 0; playClock = 0; sched.length = 0; updateHud(); };
 $("#replay").onclick = () => {
   if (!lastBurst || !lastBurst.length) return;
   const id = "replay" + (++replaySeq), now = performance.now();
@@ -868,16 +1443,23 @@ $("#replay").onclick = () => {
 };
 $("#slot").onchange = e => switchSlot(Number(e.target.value));
 
-// start-signal autocomplete
+// start-signal autocomplete (scans a pre-lowercased name list; never copies the 44k-entry map)
 const inp = $("#start"), sugg = $("#sugg"); let suggIdx = -1, suggList = [];
 function showSugg() {
-  if (!G) return;
+  const g = G || pendingG; if (!g) return;
   const q = inp.value.trim().toLowerCase();
-  const all = [...G.signals.values()];
-  const starts = [], inc = [];
-  for (const s of all) { const l = s.name.toLowerCase(); if (!q || l.startsWith(q)) starts.push(s); else if (l.includes(q)) inc.push(s); }
-  suggList = starts.concat(inc).slice(0, 60); suggIdx = suggList.length ? 0 : -1;
-  sugg.replaceChildren(...suggList.map((s, i) => { const d = document.createElement("div"); d.className = i === 0 ? "act" : ""; d.innerHTML = `${esc(s.name)}<i>${s.kind}</i>`; d.onmousedown = ev => { ev.preventDefault(); pick(s.name); }; return d; }));
+  if (!g.sigLower) g.sigLower = g.sigNames.length ? g.sigNames.join("\n").toLowerCase().split("\n") : [];
+  const L = g.sigLower, starts = [], inc = [];
+  for (let i = 0; i < L.length; i++) {
+    const l = L[i];
+    if (!q || l.startsWith(q)) { starts.push(i); if (starts.length >= 60) break; }
+    else if (inc.length < 60 && l.includes(q)) inc.push(i);
+  }
+  suggList = starts.concat(inc).slice(0, 60).map(i => g.sigNames[i]); suggIdx = suggList.length ? 0 : -1;
+  sugg.replaceChildren(...suggList.map((name, i) => {
+    const d = document.createElement("div"); d.className = i === 0 ? "act" : ""; d.innerHTML = `${esc(name)}<i>${KINDS[g.sigKind[g.sigIdx.get(name)]]}</i>`;
+    d.onmousedown = ev => { ev.preventDefault(); pick(name); }; return d;
+  }));
   sugg.style.display = suggList.length ? "block" : "none";
 }
 function pick(name) { sugg.style.display = "none"; setStart(name, false); inp.blur(); }
@@ -890,12 +1472,14 @@ inp.onkeydown = e => {
     [...sugg.children].forEach((c, i) => c.classList.toggle("act", i === suggIdx)); sugg.children[suggIdx].scrollIntoView({ block: "nearest" });
   } else if (e.key === "Enter") {
     e.preventDefault();
-    const exact = G && G.signals.has(inp.value.trim()) ? inp.value.trim() : null;
-    pick(exact || (suggList[suggIdx] && suggList[suggIdx].name) || inp.value.trim());
+    const g = G || pendingG, exact = g && g.sigIdx.has(inp.value.trim()) ? inp.value.trim() : null;
+    pick(exact || suggList[suggIdx] || inp.value.trim());
   } else if (e.key === "Escape") { sugg.style.display = "none"; inp.blur(); }
 };
 
 // ---------------------------------------------------------------- connection, slots
+// Only real program lifecycle messages (ProgramSlot.cs) reload the wiring; ordinary program log output does not.
+const LIFECYCLE = /^(Program started|Program stopped|Loaded .+ program '.*')$/;
 function connect() {
   ws?.close();
   const proto = location.protocol === "https:" ? "wss://" : "ws://";
@@ -904,10 +1488,13 @@ function connect() {
   sock.onclose = () => { if (sock !== ws) return; setConn(false); setTimeout(() => { if (sock === ws) connect(); }, 2000); };
   sock.onmessage = ev => {
     const data = JSON.parse(ev.data);   // an array of events (a single object is accepted too)
+    const now = performance.now();
+    let got = false;
     for (const m of Array.isArray(data) ? data : [data]) {
-      if (m.t === "trace") onTrace(m);
-      else if (m.t === "log" && /Loaded|started|stopped|Unload/i.test(m.message || "")) { clearTimeout(reloadT); reloadT = setTimeout(() => { loadSlots(); loadGraph(); }, 400); }
+      if (m.t === "trace") { onTrace(m, now); got = true; }
+      else if (m.t === "log" && LIFECYCLE.test(String(m.message || "").trim())) { clearTimeout(reloadT); reloadT = setTimeout(() => { loadSlots(); loadGraph({ reload: true }); }, 400); }
     }
+    if (got && !drawQueued) draw();
   };
 }
 let reloadT = null;
@@ -927,10 +1514,11 @@ async function loadSlots() {
   $("#dbglink").href = `debugger.html?slot=${slot}`;
 }
 function switchSlot(n) {
-  slot = n; startSig = ""; expanded.clear(); vals.clear(); queue.length = 0; sched.length = 0;
+  slot = n; startSig = ""; expanded.clear(); vals = new Map(); Q.length = 0; qh = 0; sched.length = 0; droppedEv = 0;
   bursts.clear(); lastBurst = null; osc.clear(); loopSeen.clear(); burstDirty = loopsDirty = true;
+  G = null; pendingG = null; V = null; litN.clear(); litE.clear(); hiSet.clear(); invalidateStatic(true); hideTip(); setHud("");
   try { history.replaceState(null, "", `?slot=${n}`); } catch { }
-  loadSlots(); loadGraph(); connect();
+  loadSlots(); loadGraph({ force: true }); connect(); draw();
 }
 
 // restore saved settings
@@ -943,10 +1531,15 @@ function switchSlot(n) {
   document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", Number(x.dataset.s) === cfg.speed));
 })();
 $("#dbglink").href = `debugger.html?slot=${slot}`;
+startWorker(); loadGraph({});
 resize(); loopsDirty = burstDirty = true; renderPanels(performance.now() + 1000); panelAt = 0;
-loadSlots(); loadGraph(); connect();
+loadSlots(); connect();
 // Test hook: lets automated tests read what is on screen.
-window.__paths = { get view() { return V; }, cfg, litN, litE, osc, T };
+window.__paths = {
+  get view() { return V; }, get graph() { return G; }, cfg, litN, litE, osc, T, timing, hiSet,
+  get queued() { return Q.length - qh; }, get dropped() { return droppedEv; },
+  get ready() { return !!(V && frontOK && !job && !staticDirty && !viewPending); }
+};
 </script>
 </body>
 </html>
