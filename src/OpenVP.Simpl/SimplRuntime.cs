@@ -21,7 +21,41 @@ public sealed class SimplLoader : IProgramLoader
         if (_symbolMapPath != null) lib.LoadMap(_symbolMapPath);
         lib.LoadMap(Path.ChangeExtension(path, ".symbols.json"));
         var options = SimplOptions.Load(Path.ChangeExtension(path, ".openvp.json"));
-        return new SimplRuntime(slot, SmwFile.Load(path), lib, options);
+        var compiled = CompanionLpz(path, slot);
+        var problems = new List<string>();
+        var overrides = compiled != null ? LogicSymbolCatalog.LoadMap(Path.ChangeExtension(compiled.Path, ".primitives.json"), problems) : null;
+        foreach (var p in problems) slot.Log("Warning", p);
+        return new SimplRuntime(slot, SmwFile.Load(path), lib, options, compiled, overrides);
+    }
+
+    /// <summary>
+    /// The program's compiled .lpz, to run what the .smw can't (user macros, SIMPL+ modules): the .lpz of the same
+    /// name next to the .smw, else the only .lpz in its folder. Signal names come from the .sig next to it, or from
+    /// the archive inside it if that one agrees with the compile.
+    /// </summary>
+    private static LpzPackage? CompanionLpz(string smwPath, ProgramSlot slot)
+    {
+        var dir = Path.GetDirectoryName(Path.GetFullPath(smwPath))!;
+        var lpz = Path.ChangeExtension(smwPath, ".lpz");
+        if (!File.Exists(lpz))
+        {
+            var all = Directory.GetFiles(dir, "*.lpz");
+            if (all.Length != 1) return null;
+            lpz = all[0];
+        }
+        try
+        {
+            var pkg = LpzPackage.Open(lpz);
+            var sig = Path.ChangeExtension(lpz, ".sig");
+            if (File.Exists(sig)) pkg.UseSignals(SigTable.Parse(File.ReadAllBytes(sig)));
+            if (pkg.Signals != null && !SigCheck.Matches(pkg.Logic, pkg.Signals, out _)) pkg.UseSignals(null);
+            return pkg;
+        }
+        catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            slot.Log("Warning", $"Couldn't read {Path.GetFileName(lpz)} for the program's macros and SIMPL+ modules: {e.Message}");
+            return null;
+        }
     }
 }
 
@@ -88,7 +122,11 @@ public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
     private long _dispChain;
     private long _chainSeq;
 
-    public SimplRuntime(ProgramSlot slot, SmwFile file, SymbolLibrary library, SimplOptions options)
+    /// <param name="compiled">The program's compiled .lpz (with signal names), if there is one: symbols the .smw
+    /// can't run on its own (user macros, SIMPL+ modules) run from it.</param>
+    /// <param name="primitiveOverrides">Compiled types named in primitives.json, for those borrowed records.</param>
+    public SimplRuntime(ProgramSlot slot, SmwFile file, SymbolLibrary library, SimplOptions options,
+        LpzPackage? compiled = null, IReadOnlyDictionary<int, LogicSymbol>? primitiveOverrides = null)
     {
         _slot = slot;
         _file = file;
@@ -106,6 +144,8 @@ public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
             foreach (var h in sym.Inputs) max = Math.Max(max, h);
             foreach (var h in sym.Outputs) max = Math.Max(max, h);
         }
+        if (primitiveOverrides != null) _primitiveOverrides = primitiveOverrides;
+        if (compiled != null) PlanBorrowing(compiled, ref max);
         if (max > MaxHandle) throw new InvalidDataException($"Signal handle {max} is larger than the {MaxHandle:N0} OpenVP supports.");
         var count = max + 1;
         _dig = new bool[count];
@@ -117,6 +157,7 @@ public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
         _fanout = new List<(Node, int)>[count];
         foreach (var sg in file.Signals.Values)
             if (sg.Handle > 0 && sg.Name is "0" or "1") _constant[sg.Handle] = true;
+        foreach (var h in _extraOnes) _constant[h] = true;
 
         Build();
         Array.Fill(_ser, string.Empty);
@@ -194,6 +235,7 @@ public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
             }
 
             if (BuildSpecial(sym)) continue;
+            if (BuildBorrowed(sym)) continue;
             var logic = _library.Resolve(sym);
             if (logic == null)
             {
@@ -212,6 +254,8 @@ public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
         }
 
         LinkPanelChildren();
+        UseCompiledKinds();
+        ReportBorrowing();
 
         // Signals no pin gave a kind to are digital.
         foreach (var node in _nodes)
@@ -294,7 +338,8 @@ public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
         {
             case SigKind.Digital: Enqueue(handle, value ? 1u : 0u, null, source); break;
             case SigKind.Analog: Enqueue(handle, value ? 1u : 0u, null, source); break;
-            default: Enqueue(handle, 0, value ? "True" : "False", source); break;
+            // As in compiled programs: a digital value (an input tied to 0 or 1) into a serial signal is empty text.
+            default: Enqueue(handle, 0, string.Empty, source); break;
         }
         Solve();
     }
@@ -547,8 +592,9 @@ public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
         _slot.Dispatcher.Invoke(() =>
         {
             _running = true;
-            var ones = _file.Signals.Values.Where(s => s.Name == "1" && s.Handle > 0 && s.Handle < _dig.Length).ToList();
-            foreach (var sg in ones) _dig[sg.Handle] = true; // the constant 1 reads high from the start, as on a processor
+            var ones = _file.Signals.Values.Where(s => s.Name == "1" && s.Handle > 0 && s.Handle < _dig.Length).Select(s => s.Handle)
+                .Concat(_extraOnes).ToList();
+            foreach (var h in ones) _dig[h] = true; // the constant 1 reads high from the start, as on a processor
             foreach (var d in _devices) d.Attach();
             _solving = true; // collect start-up changes, then solve once
             try
@@ -560,10 +606,10 @@ public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
                 }
 
                 // The "1" constant rises at start: devices, and symbols that want it, see a rising edge.
-                foreach (var sg in ones)
+                foreach (var one in ones)
                 {
                     if (_slot.TraceWanted) _slot.Trace("1", SigKind.Digital, true, "start");
-                    for (int e = _edgeStart[sg.Handle]; e < _edgeStart[sg.Handle + 1]; e++)
+                    for (int e = _edgeStart[one]; e < _edgeStart[one + 1]; e++)
                     {
                         var edge = _edges[e];
                         if (edge.Pin < 0 || !edge.Node.WantsStartEdge) continue;
@@ -583,6 +629,8 @@ public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
     public void Stop()
     {
         _running = false;
+        foreach (var m in _borrowedModules)
+            try { m.Stop(); } catch (Exception) { }
         _timers.CancelAll();
         foreach (var d in _devices) d.Detach();
         _store.Flush();
@@ -626,6 +674,8 @@ public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
     {
         Stop();
         _timers.Dispose();
+        _modules?.Dispose();
+        _modules = null;
     }
 
     // ------------------------------------------------------------------ nodes

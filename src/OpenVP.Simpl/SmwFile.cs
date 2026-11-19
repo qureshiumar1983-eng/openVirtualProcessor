@@ -107,6 +107,10 @@ public sealed class SmwFile
         Finish();
 
         foreach (var b in file.Blocks) file.Index(b);
+        // Handles 1 and 2 are SIMPL's built-in constants 0 and 1 (the compiler's signals 0 and 1). Real files don't
+        // write blocks for them; a symbol triggered "on 1" (Analog Initialize, start-up pulses) is wired to handle 2.
+        file.Signals.TryAdd(1, new SmwSignal { Handle = 1, Name = "0" });
+        file.Signals.TryAdd(2, new SmwSignal { Handle = 2, Name = "1" });
         return file;
 
         void Finish()

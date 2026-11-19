@@ -1,3 +1,4 @@
+slot1 1 D=1 <- start
 -- delay in on
 slot1 delay_press D=1 <- IPID03
 slot1 delay_fb D=1 <- Delay

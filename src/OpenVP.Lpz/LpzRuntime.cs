@@ -154,7 +154,6 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
         _fanout = null; // only needed while building
     }
 
-    private LpzLoadContext? _alc;
     private readonly List<SplusNode> _modules = new();
 
     internal ProgramSlot Slot => _slot;
@@ -203,7 +202,7 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
     }
 
     private readonly HashSet<string> _moduleErrors = new();
-    private SlotDispatcher? _callbacks;
+    private SplusModuleFactory? _modulesFactory;
 
     /// <summary>Load and instantiate the SIMPL+ module a −48 record points at.</summary>
     private SplusNode? CreateModule(BinSymbol sym)
@@ -214,49 +213,15 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
             _slot.ReportUnsupported("SIMPL+ module", "(record names no compiled .dll)", "type -48 record without a module file name", ProgramName);
             return null;
         }
-        object? instance = null;
-        try
+        _modulesFactory ??= new SplusModuleFactory(_slot, _pkg);
+        var module = _modulesFactory.Create(dll, sym.Path, out var error);
+        if (module != null) return new SplusNode(this, sym, module);
+        if (_moduleErrors.Add(dll))
         {
-            if (_alc == null)
-            {
-                var dir = Path.Combine(_slot.Directory, "lpz");
-                _pkg.ExtractAssemblies(dir);
-                _alc = new LpzLoadContext(_slot.Number, dir, AppContext.BaseDirectory);
-                // Point the SIMPL# runtime used by modules and their libraries at this slot.
-                var shim = _alc.LoadFromAssemblyName(new System.Reflection.AssemblyName("OpenVP.SimplSharp"));
-                var bridge = shim.GetType("OpenVP.SimplSharp.OpenVPBridge");
-                bridge?.GetProperty("Slot")?.SetValue(null, _slot);
-                // Library callbacks get a thread of their own, so the step debugger holding the logic
-                // thread doesn't freeze the SIMPL+ modules that depend on them.
-                _callbacks = new SlotDispatcher($"slot{_slot.Number:00}-simplsharp",
-                    e => _slot.Log("Error", $"Unhandled exception in SIMPL# library callback: {e}"));
-                bridge?.GetProperty("Callbacks")?.SetValue(null, _callbacks);
-                _slot.Metrics.Callbacks = _callbacks;
-            }
-            var asm = _alc.LoadFromAssemblyName(new System.Reflection.AssemblyName(Path.GetFileNameWithoutExtension(dll)));
-            var splusObject = _alc.LoadFromAssemblyName(new System.Reflection.AssemblyName("SplusObjects"))
-                .GetType("Crestron.Logos.SplusObjects.SplusObject", throwOnError: true)!;
-            var type = asm.GetTypes().FirstOrDefault(t => !t.IsAbstract && splusObject.IsAssignableFrom(t))
-                ?? throw new InvalidDataException("no SIMPL+ module class");
-            var ctor = type.GetConstructors().First(c => c.GetParameters().Length == 3);
-            var encType = ctor.GetParameters()[2].ParameterType;
-            instance = ctor.Invoke(new object[] { sym.Path, sym.Path, Enum.ToObject(encType, 1) });
-            return new SplusNode(this, sym, (ISplusModule)instance);
+            _slot.Log("Warning", $"SIMPL+ module {dll} can't run yet: {error}");
+            _slot.ReportUnsupported("SIMPL+ module", Path.GetFileName(dll), error, ProgramName);
         }
-        catch (Exception e)
-        {
-            // A module that was created but can't run must release the program-wide start-up barrier it joined
-            // in its constructor; otherwise every other module's WaitForInitializationComplete waits for it.
-            try { (instance as ISplusModule)?.Stop(); } catch (Exception) { }
-            var inner = e is System.Reflection.TargetInvocationException t && t.InnerException != null ? t.InnerException : e;
-            var unresolved = _alc?.Unresolved.Count > 0 ? $" (missing: {string.Join(", ", _alc.Unresolved.Distinct())})" : "";
-            if (_moduleErrors.Add(dll!))
-            {
-                _slot.Log("Warning", $"SIMPL+ module {dll} can't run yet: {inner.GetType().Name}: {inner.Message}{unresolved}");
-                _slot.ReportUnsupported("SIMPL+ module", Path.GetFileName(dll!), $"{inner.GetType().Name}: {inner.Message}{unresolved}", ProgramName);
-            }
-            return null;
-        }
+        return null;
     }
 
     private void Register(Node node)
@@ -683,14 +648,8 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
     {
         Stop();
         _timers.Dispose();
-        if (_slot.Metrics.Callbacks == _callbacks) _slot.Metrics.Callbacks = null;
-        // A SIMPL# library can park a worker loop on this dispatcher (the Crestron driver SDK's DriverClock does) that
-        // never returns, and nothing can stop it from here. Waiting the full 5 s for it made every unload of such a
-        // program stall; a short wait still lets ordinary callbacks finish.
-        _callbacks?.Dispose(TimeSpan.FromMilliseconds(250));
-        _callbacks = null;
-        _alc?.Unload();
-        _alc = null;
+        _modulesFactory?.Dispose();
+        _modulesFactory = null;
     }
 
     // ------------------------------------------------------------------ nodes
