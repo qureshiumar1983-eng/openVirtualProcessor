@@ -95,6 +95,12 @@ Symbols implemented: AND, OR, XOR, NOT, Buffer (digital/analog/serial), Interloc
 
 The fastest way to close these gaps is real `.smw` files. If you can share one (even a trivial program with one of each symbol), open an issue.
 
+### IR and COM ports (compiled programs)
+
+A virtual processor has no IR emitters or serial ports, so compiled programs' IR ports and COM ports (including those of DM-NVX encoders and decoders) don't talk to hardware. They still run honestly: every IR command (a rising trigger on an IR driver symbol) and every COM transmission is written once to the slot log, e.g. `IR IPID 31 port 1: DRV.CBL.1.KEYPAD.1 (cmd 0)` or `COM IPID 11 port 1 TX (7): "PWR ON\x0D"`, and the signals involved show in the debugger trace. To feed a program a COM reply, force the port's receive signal in the debugger; it is logged as `RX`. IR ports on the control processor itself read `IR processor slot 6 port 1`.
+
+To reach a real serial device through a serial device server, add `comports.json` to the program folder (or `data/`) mapping a port to `host:port`, e.g. `{ "IP-ID-11/Slot-08/COM-01": "192.168.1.50:4999" }`. Code that can reach real ports (say, NVX endpoints) can implement `IPortBridge` and set `LpzRuntime.PortBridgeFactory`; nothing ships that speaks to NVX hardware yet.
+
 ### Panels
 
 - **Browser / CH5:** `ws://host:8080/ws/panel?ipid=03&slot=1`, JSON `{"t":"b","j":1,"v":true}` (`b` digital, `n` analog, `s` serial). `wwwroot/openvp-crcomlib.js` gives a page `CrComLib.publishEvent` / `subscribeState` for numeric join names, so simple CH5 projects can point at OpenVP. `panel.html` is a ready-made test panel.

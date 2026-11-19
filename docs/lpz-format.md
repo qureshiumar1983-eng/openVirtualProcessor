@@ -62,6 +62,13 @@ Pins appear in the same order as on the SIMPL symbol. Unconnected pins point at 
 
 Records of type −12 named `IP-ID-xx` are the program's IP devices. Inputs are feedback to the device and outputs come from it. Field 10 is the number of digital inputs and field 12 the end of the analog inputs, so serial inputs follow. Fields 11 and 13 split the outputs the same way. Within each group, position n is join n.
 
+### Hardware tree and ports
+
+Field 7 of a hardware record is the index (in the file's record list, header record = 0) of its parent; 0 means top level. A DM-NVX's COM port reads `IP-ID-11` (−12) → `Slot-08` (−201) → `COM-01` (−200); the control processor's own IR ports read top-level `Slot-06` (−203) → `Port-01`, `Port-02` (−202). Field 6 is the slot number on slot records and the 0-based port number on port records. Paths repeat (`COM-01` appears under every device), so identify a port by walking field 7.
+
+- **−200, COM port.** Two inputs, one output: input 1 is the serial text to send, input 2 is a constant `1` in every record seen, output 1 is the text received. Port settings are not in the record (fields 0, 1, 18 hold constants like `2500`).
+- **−202, IR port.** One record per "Crestron DB IR-controlled device" symbol (SmC 107) on the port, so a port can have several records. Inputs 1 and 2 are constants `1` and `0`; input 2 + k is the trigger for IR command `params[k]` (fields tag 2, one per wired pin). Only wired pins are compiled and the numbers are a compact index of the driver commands the program uses, shared by every symbol on that driver (a symbol with only CH+ and CH− wired has params 20, 21, the same as in the fully wired symbol). They are not the `.ir` file's own command numbers, so names can only come from the `.smw`.
+
 ## Signal names (.sig)
 
 Written next to the `.smw` at compile time. It is not inside the `.lpz`.
