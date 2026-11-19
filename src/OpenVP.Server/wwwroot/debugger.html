@@ -8,9 +8,11 @@
   :root { --bg:#0f1216; --pane:#151a20; --head:#1b2129; --line:#29303a; --text:#e6e9ee; --muted:#8b95a3; --accent:#4c8dff;
           --sel:#22344f; --hi:#7fe0b1; --lo:#6b7480; --ana:#f2cf7a; --ser:#9ecbff; --err:#e05252; }
   * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
   html, body { height:100%; }
   body { margin:0; font:13px/1.35 system-ui, sans-serif; background:var(--bg); color:var(--text);
-         display:grid; grid-template-rows:auto auto auto 1fr auto auto; overflow:hidden; }
+         display:flex; flex-direction:column; overflow:hidden; }
+  body > * { flex:none; }
   .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size:12px; }
   button, input, select { font:inherit; color:var(--text); background:#111519; border:1px solid var(--line); border-radius:4px; padding:3px 8px; }
   button { cursor:pointer; } button:hover { border-color:var(--accent); }
@@ -20,13 +22,15 @@
   /* title + toolbar */
   .title { display:flex; align-items:center; gap:10px; padding:6px 10px; border-bottom:1px solid var(--line); background:var(--head); }
   .title b { font-size:14px; } .title .muted { color:var(--muted); }
+  .title a { color:var(--accent); }
   .toolbar { display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center; padding:6px 10px; border-bottom:1px solid var(--line); background:var(--pane); }
   .group { display:flex; gap:6px; align-items:center; }
   .sep { width:1px; height:20px; background:var(--line); }
 
   /* panes */
-  .panes { display:grid; grid-template-columns: var(--left, 42%) 5px 1fr; min-height:0; }
+  .panes { flex:1 1 auto; min-height:0; display:grid; grid-template-columns: var(--left, 42%) 5px 1fr; grid-template-rows:minmax(0,1fr); }
   .pane { display:grid; grid-template-rows:auto auto 1fr; min-height:0; min-width:0; background:var(--pane); }
+  .pane.sigpane { grid-template-rows:auto auto auto 1fr auto; }
   .pane h2 { margin:0; padding:5px 8px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted);
              background:var(--head); border-bottom:1px solid var(--line); display:flex; gap:8px; align-items:center; }
   .pane h2 .count { margin-left:auto; text-transform:none; letter-spacing:0; }
@@ -35,6 +39,24 @@
   .splitter { background:var(--line); cursor:col-resize; }
   .splitter:hover, .splitter.drag { background:var(--accent); }
   .scroll { overflow:auto; min-height:0; }
+
+  /* segmented flat|tree toggle, help tooltip */
+  .seg { display:inline-flex; text-transform:none; letter-spacing:0; }
+  .seg button { padding:1px 8px; border-radius:0; font-size:11px; color:var(--muted); }
+  .seg button:first-child { border-radius:4px 0 0 4px; } .seg button:last-child { border-radius:0 4px 4px 0; border-left:0; }
+  .seg button.on { background:var(--sel); border-color:var(--accent); color:var(--text); }
+  .help { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border:1px solid var(--line); border-radius:50%;
+          color:var(--muted); font-size:11px; cursor:help; flex:none; text-transform:none; }
+  .help:hover { color:var(--text); border-color:var(--accent); }
+  .minibtn { padding:1px 7px; font-size:11px; color:var(--muted); }
+
+  /* watch-group tabs */
+  .tabs { display:flex; gap:2px; padding:4px 8px 0; border-bottom:1px solid var(--line); background:var(--pane); overflow-x:auto; }
+  .tab { padding:3px 10px; border:1px solid transparent; border-bottom:0; border-radius:4px 4px 0 0; background:transparent; color:var(--muted); white-space:nowrap; }
+  .tab:hover { color:var(--text); border-color:var(--line); }
+  .tab.on { background:var(--sel); color:var(--text); border-color:var(--line); }
+  .tab small { color:var(--muted); margin-left:4px; }
+  .tab.plus { color:var(--accent); font-weight:600; }
 
   table { width:100%; border-collapse:collapse; table-layout:fixed; }
   thead th { position:sticky; top:0; z-index:1; background:var(--head); color:var(--muted); font-weight:500; font-size:11px;
@@ -47,11 +69,45 @@
   .k-Digital { color:var(--lo); } .k-Digital.high { color:var(--hi); font-weight:600; }
   .k-Analog { color:var(--ana); } .k-Serial { color:var(--ser); }
   .type { color:var(--muted); }
+  #sigs td.chg { color:var(--muted); text-align:right; font-size:11px; }
   #trace td.n { color:var(--muted); text-align:right; }
   #trace td.dt { color:var(--muted); text-align:right; }
+  #trace td.via { color:var(--muted); font-size:11px; }
+  #trace.nocause .via, #trace.nocause col.via { display:none; }
   #trace tr.flash { animation: flash .6s ease-out; }
   @keyframes flash { from { background:#2a3b22; } to { background:transparent; } }
   .empty { padding:24px; color:var(--muted); text-align:center; }
+
+  /* activity glow: two identical keyframes, swapped per change so the animation restarts without a reflow */
+  #sigs tr.g1 { animation: glow1 2s ease-out; } #sigs tr.g2 { animation: glow2 2s ease-out; }
+  @keyframes glow1 { from { background:rgba(127,224,177,.38); } to { background:transparent; } }
+  @keyframes glow2 { from { background:rgba(127,224,177,.38); } to { background:transparent; } }
+
+  /* tree view */
+  #sigs tr.folder td { background:#181e26; color:var(--text); cursor:pointer; user-select:none; font-weight:500; border-bottom:1px solid var(--line); }
+  #sigs tr.folder:hover td { background:#1d2531; }
+  #sigs tr.folder td { text-align:left; }
+  #sigs tr.folder .tw { display:inline-block; width:14px; color:var(--muted); }
+  #sigs tr.folder .fc { color:var(--muted); font-weight:400; margin-left:6px; font-size:11px; }
+  #sigs tr.folder .adot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-left:8px; background:transparent; vertical-align:middle; transition:background 1s; }
+  #sigs tr.folder.act .adot { background:var(--hi); transition:none; }
+
+  /* causality bands in the trace (alternate per burst) */
+  #trace tbody tr.b1 { background:rgba(76,141,255,.07); }
+  #trace tbody tr.b1:hover { background:#1a2029; }
+  #trace td.cause-name .arrow { color:var(--muted); }
+
+  /* inline "drives / driven by" panel */
+  .rel { border-top:1px solid var(--accent); background:#121820; max-height:min(240px, 40vh); overflow:auto; min-height:0; }
+  .rel .relhd { position:sticky; top:0; display:flex; align-items:center; gap:8px; padding:4px 8px; background:var(--head); border-bottom:1px solid var(--line); }
+  .rel .relhd b { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .rel .sym { padding:4px 8px; border-bottom:1px solid #1e242c; }
+  .rel .sym .path { color:var(--muted); margin-left:6px; font-size:11px; }
+  .rel .sym .dev { color:var(--ana); font-size:10px; margin-left:6px; border:1px solid var(--ana); border-radius:3px; padding:0 3px; }
+  .rel .chips { display:flex; flex-wrap:wrap; gap:3px 4px; margin-top:3px; }
+  .rel .chip { padding:0 6px; border:1px solid var(--line); border-radius:9px; cursor:pointer; background:#111519; }
+  .rel .chip:hover { border-color:var(--accent); }
+  .rel .chip.me { border-color:var(--hi); color:var(--hi); }
 
   /* force bar + status */
   .force { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:6px 10px; border-top:1px solid var(--line); background:var(--pane); }
@@ -61,6 +117,12 @@
   .status .grow { flex:1; }
   .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--lo); margin-right:5px; vertical-align:middle; }
   .dot.ok { background:#2f9e6e; } .dot.bad { background:var(--err); }
+
+  /* waveform panel */
+  #wavewrap { height:var(--wh, 220px); display:flex; flex-direction:column; border-top:1px solid var(--line); background:var(--pane); }
+  #wsplit { height:5px; flex:none; background:var(--line); cursor:row-resize; }
+  #wsplit:hover, #wsplit.drag { background:var(--accent); }
+  #wavebody { flex:1; min-height:0; position:relative; overflow:hidden; }
 
   /* step-through */
   :root { --brk:#e0a052; --pause:#3a2a12; }
@@ -81,19 +143,22 @@
   tbody tr.paused, tbody tr.paused:hover { background:var(--pause); box-shadow: inset 3px 0 0 var(--brk); }
 
   /* context menu */
-  #menu { position:fixed; z-index:10; min-width:170px; background:#1b2129; border:1px solid var(--line); border-radius:6px; padding:4px 0;
+  #menu { position:fixed; z-index:10; min-width:170px; max-height:90vh; overflow:auto; background:#1b2129; border:1px solid var(--line); border-radius:6px; padding:4px 0;
           box-shadow:0 8px 24px rgba(0,0,0,.45); display:none; }
   #menu div { padding:5px 14px; cursor:pointer; } #menu div:hover { background:var(--sel); }
   #menu hr { border:0; border-top:1px solid var(--line); margin:4px 0; }
   #menu .hd { color:var(--muted); font-size:11px; cursor:default; } #menu .hd:hover { background:none; }
 
   @media (max-width: 760px) {
-    body { overflow:auto; grid-template-rows:auto auto auto auto auto; }
-    .panes { grid-template-columns: 1fr; grid-template-rows: 45vh 0 55vh; }
+    body { display:block; overflow:auto; }
+    .panes { grid-template-columns: 1fr; grid-template-rows: 55vh 0 55vh; }
     .splitter { display:none; }
     .title, .group { flex-wrap:wrap; }
     .title select, .toolbar select { max-width:100%; }
     #prog { flex-basis:100%; order:5; }
+    #wavewrap { height:200px; }
+    #sigs col:nth-child(4), #sigs col:nth-child(5), #trace col.via { width:0 !important; }
+    #sigs tbody tr:not(.folder) td:nth-child(4), #sigs tbody tr:not(.folder) td:nth-child(5), #sigs th:nth-child(4), #sigs th:nth-child(5), #trace .via { padding:0; border:0; font-size:0; overflow:hidden; }
   }
 </style>
 </head>
@@ -103,7 +168,8 @@
   <select id="slot" title="Program slot"></select>
   <span id="prog" class="muted mono"></span>
   <span style="flex:1"></span>
-  <a href="/" style="color:var(--accent)">Console</a>
+  <a id="pathslink" href="paths.html" target="_blank" rel="noopener" title="Open the signal paths view (follows the selected signal)">Paths</a>
+  <a href="/">Console</a>
 </div>
 
 <div class="toolbar">
@@ -123,6 +189,7 @@
   <div class="sep"></div>
   <div class="group">
     <label>Trace <select id="tmode"><option value="all">all signals</option><option value="watch">checked signals only</option></select></label>
+    <button id="wavebtn" title="Show a waveform (logic analyzer) of the signals checked for trace">Waveform</button>
   </div>
   <div class="sep"></div>
   <div class="group">
@@ -142,42 +209,67 @@
 </div>
 
 <div class="panes" id="panes">
-  <section class="pane">
-    <h2>Signals <span class="count mono" id="sigcount"></span></h2>
+  <section class="pane sigpane">
+    <h2>Signals <span class="seg" id="viewseg"><button data-v="flat" title="One flat list">flat</button><button data-v="tree" title="Group signals into folders by program structure or name prefix">tree</button></span>
+      <span class="count mono" id="sigcount"></span></h2>
+    <div class="tabs" id="tabs"></div>
     <div class="filters">
-      <input type="search" id="search" placeholder="Find signal" class="mono">
+      <input type="search" id="search" placeholder="Find signal" class="mono" autocomplete="off">
+      <span class="help" id="shelp" title="">?</span>
       <select id="kfilter" title="Signal type">
         <option value="">all types</option><option>Digital</option><option>Analog</option><option>Serial</option>
       </select>
+      <select id="sortsel" title="Sort order (column headers sort too)">
+        <option value="name">sort: name</option><option value="kind">sort: type</option>
+        <option value="recent">sort: recently changed</option><option value="count">sort: most changes</option>
+      </select>
       <label title="Show only signals checked for tracing"><input type="checkbox" id="onlychecked"> checked</label>
       <label title="Show only signals marked to break on"><input type="checkbox" id="onlybreak"> ⏸ marked</label>
+      <label title="Show only signals that changed since the page loaded or activity was last reset"><input type="checkbox" id="activeonly"> active only</label>
+      <button id="resetact" class="minibtn" title="Forget which signals changed and how often">reset activity</button>
       <button id="checkall" title="Check every visible signal">✓ all</button>
       <button id="checknone" title="Uncheck every visible signal">✗ all</button>
+      <span id="foldbtns" hidden><button id="fold" class="minibtn" title="Collapse every folder">⊟</button> <button id="unfold" class="minibtn" title="Expand every folder">⊞</button></span>
     </div>
     <div class="scroll" id="sigscroll">
       <table id="sigs">
-        <colgroup><col style="width:28px"><col style="width:28px"><col><col style="width:62px"><col style="width:34%"></colgroup>
-        <thead><tr><th title="Trace this signal">T</th><th class="b" title="Break: pause on changes to this signal when Break on = marked signals (F9)">⏸</th><th class="sortable" data-sort="name">Signal name</th><th class="sortable" data-sort="kind">Type</th><th>Value</th></tr></thead>
+        <colgroup><col style="width:28px"><col style="width:28px"><col><col style="width:62px"><col style="width:40px"><col style="width:34%"></colgroup>
+        <thead><tr><th title="Trace this signal">T</th><th class="b" title="Break: pause on changes to this signal when Break on = marked signals (F9)">⏸</th><th class="sortable" data-sort="name">Signal name</th><th class="sortable" data-sort="kind">Type</th><th class="sortable" data-sort="count" title="Number of changes seen">Chg</th><th>Value</th></tr></thead>
         <tbody></tbody>
       </table>
       <div class="empty" id="sigempty" hidden>No program in this slot.</div>
+      <div class="empty" id="signone" hidden>No signal matches.</div>
+    </div>
+    <div class="rel" id="rel" hidden>
+      <div class="relhd"><b id="reltitle"></b><button id="relclose" class="minibtn" title="Close">×</button></div>
+      <div id="relbody"></div>
     </div>
   </section>
   <div class="splitter" id="splitter"></div>
   <section class="pane">
     <h2>Trace <span class="count mono" id="tracecount"></span></h2>
     <div class="filters">
-      <input type="search" id="tsearch" placeholder="Filter trace" class="mono">
+      <input type="search" id="tsearch" placeholder="Filter trace" class="mono" autocomplete="off">
+      <span class="help" id="thelp" title="">?</span>
+      <select id="follow" title="Limit the trace to the signal selected in the list">
+        <option value="off">follow: off</option><option value="one">only selected</option><option value="near">selected + neighbours</option>
+      </select>
+      <label title="Show only the rows of the same burst (chain) as the clicked trace row"><input type="checkbox" id="burst"> this burst only</label>
     </div>
     <div class="scroll" id="tracescroll">
-      <table id="trace">
-        <colgroup><col style="width:56px"><col style="width:110px"><col style="width:86px"><col><col style="width:34%"><col style="width:80px"></colgroup>
-        <thead><tr><th>#</th><th>Time</th><th title="Time since the row above it (among the rows the filter shows)">Δ</th><th>Signal name</th><th>Value</th><th>Source</th></tr></thead>
+      <table id="trace" class="nocause">
+        <colgroup><col style="width:52px"><col style="width:104px"><col style="width:76px"><col><col class="via" style="width:84px"><col style="width:24%"><col style="width:64px"></colgroup>
+        <thead><tr><th>#</th><th>Time</th><th title="Time since the row above it (among the rows the filter shows)">Δ</th><th>Signal name</th><th class="via" title="The program symbol whose output produced this change (hover a row for the signal that triggered it)">via</th><th>Value</th><th>Source</th></tr></thead>
         <tbody></tbody>
       </table>
       <div class="empty" id="traceempty">Waiting for signal changes…</div>
     </div>
   </section>
+</div>
+
+<div id="wavewrap" hidden>
+  <div id="wsplit" title="Drag to resize"></div>
+  <div id="wavebody"></div>
 </div>
 
 <div class="force">
@@ -200,6 +292,7 @@
 <div id="menu"></div>
 
 <script src="openvp-auth.js"></script>
+<script src="debugger-wave.js"></script>
 <script>
 openvpAuth.init();
 const $ = s => document.querySelector(s);
@@ -208,18 +301,21 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem("openvp.dbg." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem("openvp.dbg." + k, JSON.stringify(v)); } catch { } }
 };
+const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
 let slot = Number(new URLSearchParams(location.search).get("slot")) || 1;
-let ws = null, streaming = true, sortBy = "name", sortDir = 1, selected = null;
-let signals = new Map();      // name -> { name, kind, value, watch, tr, valTd, chk }
-let trace = [];               // { n, time, signal, kind, value, source, tr }
+let ws = null, streaming = true, sortBy = store.get("sort", "name"), sortDir = store.get("sortdir", 1), selected = null;
+if (!["name", "kind", "recent", "count"].includes(sortBy)) sortBy = "name";
+if (sortBy === "recent" || sortBy === "count") sortDir = -1; else if (sortDir !== -1) sortDir = 1;
+let signals = new Map();      // name -> { name, lname, kind, value, watch, brk, lastChange, changeCount, tr, valTd, chk, ... }
+let trace = [];               // { n, time, signal, kind, value, source, symbol, cause, depth, chain, tr }
 let seq = 0, firstTime = null, pending = [], rafQueued = false, refreshTimer = null;
 // Step-through state, mirrored from the server (which owns it: the pause happens in the logic engine).
 let currentState = "—", stepVersion = -1;
 // Step-back history (page-side). Every change is logged with the value it replaced, and every pause
 // remembers which change it stopped on, so values at any earlier step can be rebuilt by undoing later changes.
 const MAX_CHANGES = 50000;
-let changes = [], cseq = 0;   // { cn, signal, prev, value }
+let changes = [], cseq = 0;   // { cn, time, signal, prev, value }
 let stepLog = [];             // { step, signal, kind, value, source, cn }
 let view = null, viewVals = null; // index into stepLog while looking back; null = live
 let step = { enabled: false, onlyBreakSignals: false, breakSignals: new Set(), paused: null }, stepSynced = false;
@@ -276,61 +372,219 @@ function parseForce(kind, text) {
     h ? String.fromCharCode(parseInt(h, 16)) : ({ "\\r": "\r", "\\n": "\n", "\\t": "\t", "\\\\": "\\" })[s.toLowerCase()]);
 }
 
+// ---------------------------------------------------------------- search language
+
+const SEARCH_HELP = "Search syntax (all terms must match, case-insensitive):\n" +
+  "  word word      every word must appear in the name\n" +
+  "  Room*Power     * matches anything\n" +
+  "  /regex/        regular expression on the name\n" +
+  "  d: a: s:       type: Digital / Analog / Serial (d:vol = digital with 'vol' in the name)\n" +
+  "  =1  =500  =on  current value equals (value as shown, or number)\n" +
+  "  >100  <50%  >=1Fh  numeric value tests (digital is 0/1)\n" +
+  "  -term          exclude: -tp01  -d:  -/regex/";
+$("#shelp").title = $("#thelp").title = SEARCH_HELP;
+
+const escRe = s => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+function textTest(s) {
+  if (!s) return null;
+  if (s.includes("*")) { const re = new RegExp(s.split("*").map(escRe).join(".*"), "i"); return o => re.test(o.name); }
+  const ls = s.toLowerCase();
+  return o => o.lname.includes(ls);
+}
+function numOf(kind, v) { if (kind === "Digital") return isHigh(v) ? 1 : 0; const n = Number(v); return v === "" || v == null ? NaN : n; }
+function parseNum(t) {
+  t = t.trim(); let m;
+  if ((m = /^(\d+(?:\.\d+)?)%$/.exec(t))) return Number(m[1]) * 655.35;
+  if ((m = /^([0-9a-f]+)h$/i.exec(t)) || (m = /^0x([0-9a-f]+)$/i.exec(t))) return parseInt(m[1], 16);
+  return t === "" ? NaN : Number(t.replace(/d$/i, ""));
+}
+// Returns null for an empty query, else { test(o), usesValue }. `o` needs name, lname, kind, value.
+function compileQuery(text) {
+  text = (text || "").trim();
+  if (!text) return null;
+  const toks = text.match(/-?\/(?:\\.|[^\/\\])+\/i?|\S+/g) || [];
+  const terms = []; let usesValue = false;
+  for (let t of toks) {
+    let neg = false, test = null, m;
+    if (t.length > 1 && t[0] === "-") { neg = true; t = t.slice(1); }
+    if ((m = /^\/((?:\\.|[^\/\\])+)\/i?$/.exec(t))) {
+      try { const re = new RegExp(m[1], "i"); test = o => re.test(o.name); } catch { continue; }
+    } else if ((m = /^([das]):(.*)$/i.exec(t))) {
+      const k = { d: "Digital", a: "Analog", s: "Serial" }[m[1].toLowerCase()], sub = textTest(m[2]);
+      test = o => o.kind === k && (!sub || sub(o));
+    } else if ((m = /^(>=|<=|>|<|=)(.+)$/.exec(t))) {
+      usesValue = true;
+      const op = m[1], rest = m[2], lt = rest.toLowerCase(), n = parseNum(rest);
+      if (op === "=") {
+        const dig = /^(1|true|on|high)$/.test(lt) ? 1 : /^(0|false|off|low)$/.test(lt) ? 0 : NaN;
+        test = o => {
+          if (fmt(o.kind, o.value).toLowerCase() === lt) return true;
+          if (o.kind === "Serial") return String(o.value ?? "").toLowerCase() === lt;
+          if (o.kind === "Digital") return numOf("Digital", o.value) === dig;
+          return !isNaN(n) && numOf(o.kind, o.value) === n;
+        };
+      } else {
+        test = o => {
+          const v = numOf(o.kind, o.value); if (isNaN(v) || isNaN(n)) return false;
+          return op === ">" ? v > n : op === "<" ? v < n : op === ">=" ? v >= n : v <= n;
+        };
+      }
+    } else test = textTest(t);
+    if (!test) continue;
+    terms.push(neg ? o => !test(o) : test);
+  }
+  if (!terms.length) return null;
+  return { usesValue, test: o => { for (let i = 0; i < terms.length; i++) if (!terms[i](o)) return false; return true; } };
+}
+
+// ---------------------------------------------------------------- program graph
+
+let graph = null;   // { symbols, bySig: Map name -> {out:[sym], in:[sym]} } or null when the server can't describe the program
+const CONST_SIGS = new Set(["0", "1"]);
+function setGraph(g) {
+  if (!g || !Array.isArray(g.symbols)) { graph = null; return; }
+  const bySig = new Map(), slotFor = n => { let e = bySig.get(n); if (!e) bySig.set(n, e = { out: [], in: [] }); return e; };
+  for (const sym of g.symbols) {
+    for (const n of sym.outputs || []) if (!CONST_SIGS.has(n)) slotFor(n).out.push(sym);
+    for (const n of sym.inputs || []) if (!CONST_SIGS.has(n)) slotFor(n).in.push(sym);
+  }
+  graph = { symbols: g.symbols, bySig };
+}
+// The symbol a signal "belongs" to for the tree: a device it is attached to, else any symbol that has a module path.
+function symOf(name) {
+  const e = graph && graph.bySig.get(name); if (!e) return null;
+  const all = e.out.concat(e.in);
+  return all.find(s => s.device) || all.find(s => s.group) || null;
+}
+// Signals one symbol away from `name`: every pin of every symbol it connects to.
+function neighbours(name) {
+  const set = new Set([name]); const e = graph && graph.bySig.get(name); if (!e) return set;
+  for (const sym of e.out.concat(e.in)) { for (const n of sym.inputs || []) set.add(n); for (const n of sym.outputs || []) set.add(n); }
+  return set;
+}
+
+// ---------------------------------------------------------------- watch groups (tabs)
+
+let groups = new Map(), activeTab = null;       // groups: name -> Set(signal names); activeTab: name or null for "All"
+const groupsKey = () => "groups." + slot, tabKey = () => "tab." + slot;
+function loadGroups() {
+  groups = new Map(Object.entries(store.get(groupsKey(), {})).map(([k, v]) => [k, new Set(v)]));
+  activeTab = store.get(tabKey(), null);
+  if (activeTab != null && !groups.has(activeTab)) activeTab = null;
+  renderTabs();
+}
+function saveGroups() { store.set(groupsKey(), Object.fromEntries([...groups].map(([k, v]) => [k, [...v]]))); store.set(tabKey(), activeTab); }
+function renderTabs() {
+  const box = $("#tabs"), frag = document.createDocumentFragment();
+  const mk = (label, on, count, cls) => {
+    const b = document.createElement("button"); b.className = "tab" + (on ? " on" : "") + (cls ? " " + cls : ""); b.textContent = label;
+    if (count != null) { const sm = document.createElement("small"); sm.textContent = count; b.appendChild(sm); }
+    frag.appendChild(b); return b;
+  };
+  mk("All", activeTab == null).onclick = () => setTab(null);
+  for (const [name, set] of groups) {
+    const b = mk(name, name === activeTab, set.size);
+    b.title = "Right-click: rename, delete, add checked signals";
+    b.onclick = () => setTab(name);
+    b.oncontextmenu = e => { e.preventDefault(); tabMenu(e.clientX, e.clientY, name); };
+  }
+  const plus = mk("+", false, null, "plus"); plus.title = "New watch group"; plus.onclick = () => newGroup();
+  box.replaceChildren(frag);
+}
+function setTab(name) { activeTab = name; saveGroups(); renderTabs(); applyFilter(); }
+function newGroup(thenAdd) {
+  const name = (prompt("Name of the new watch group:") || "").trim();
+  if (!name) return null;
+  if (groups.has(name)) { setTab(name); if (thenAdd) addToGroup(name, thenAdd); return name; }
+  groups.set(name, new Set());
+  if (thenAdd) groups.get(name).add(thenAdd.name);
+  setTab(name); return name;
+}
+function addToGroup(name, s) { groups.get(name)?.add(s.name); saveGroups(); renderTabs(); applyFilter(); }
+function removeFromGroup(name, s) { groups.get(name)?.delete(s.name); saveGroups(); renderTabs(); applyFilter(); }
+function tabMenu(x, y, name) {
+  popMenu(x, y, [[name, null, "hd"],
+    ["Rename…", () => {
+      const n = (prompt("Rename group:", name) || "").trim(); if (!n || n === name) return;
+      if (groups.has(n)) return msg(`A group named '${n}' already exists`, true);
+      groups = new Map([...groups].map(([k, v]) => [k === name ? n : k, v]));
+      if (activeTab === name) activeTab = n; saveGroups(); renderTabs();
+    }],
+    ["Add checked signals", () => { for (const s of signals.values()) if (s.watch) groups.get(name).add(s.name); saveGroups(); renderTabs(); applyFilter(); }],
+    ["Add shown signals", () => { for (const s of signals.values()) if (s.vis) groups.get(name).add(s.name); saveGroups(); renderTabs(); applyFilter(); }],
+    ["Empty group", () => { groups.get(name).clear(); saveGroups(); renderTabs(); applyFilter(); }],
+    ["-"],
+    ["Delete group", () => { groups.delete(name); if (activeTab === name) activeTab = null; saveGroups(); renderTabs(); applyFilter(); }]]);
+}
+
 // ---------------------------------------------------------------- signal list
 
 function watchKey() { return "watch." + slot; }
 function saveWatch() { store.set(watchKey(), [...signals.values()].filter(s => s.watch).map(s => s.name)); }
+// Anything that changes which signals are checked for tracing lands here.
+function watchChanged() { saveWatch(); applyFilter(); renderTabs(); scheduleLanes(); }
 
 async function loadSignals() {
-  const list = await api(`/api/slots/${slot}/signals`).catch(() => []);
+  const [list, g] = await Promise.all([api(`/api/slots/${slot}/signals`).catch(() => []), api(`/api/slots/${slot}/graph`).catch(() => null)]);
+  setGraph(g);
   const watched = new Set(store.get(watchKey(), []));
   const old = signals;
   signals = new Map();
   for (const s of list) {
     const prev = old.get(s.name);
-    signals.set(s.name, { name: s.name, kind: s.kind, value: s.value, watch: prev ? prev.watch : watched.has(s.name), brk: step.breakSignals.has(s.name) });
+    signals.set(s.name, { name: s.name, lname: s.name.toLowerCase(), kind: s.kind, value: s.value, watch: prev ? prev.watch : watched.has(s.name), brk: step.breakSignals.has(s.name),
+                          lastChange: prev ? prev.lastChange : 0, changeCount: prev ? prev.changeCount : 0 });
   }
   buildSignalTable();
+  scheduleLanes();
 }
 
 function sortedSignals() {
-  const arr = [...signals.values()];
-  const cmp = sortBy === "kind"
-    ? (a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name, undefined, { numeric: true })
-    : (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true });
+  const arr = [...signals.values()], nm = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true });
+  let cmp;
+  if (sortBy === "kind") cmp = (a, b) => a.kind.localeCompare(b.kind) || nm(a, b);
+  else if (sortBy === "recent") cmp = (a, b) => (a.lastChange - b.lastChange) || nm(b, a);   // dir -1 => newest first, then by name
+  else if (sortBy === "count") cmp = (a, b) => (a.changeCount - b.changeCount) || nm(b, a);
+  else cmp = nm;
   return arr.sort((a, b) => cmp(a, b) * sortDir);
 }
 
 function buildSignalTable() {
-  const tb = $("#sigs tbody"), frag = document.createDocumentFragment(), dl = document.createDocumentFragment();
-  for (const s of sortedSignals()) {
+  const dl = document.createDocumentFragment();
+  tree = null;
+  for (const s of signals.values()) {
     const tr = document.createElement("tr");
     const chk = document.createElement("input"); chk.type = "checkbox"; chk.checked = s.watch;
-    chk.onclick = e => { e.stopPropagation(); s.watch = chk.checked; saveWatch(); applyFilter(); };
+    chk.onclick = e => { e.stopPropagation(); s.watch = chk.checked; watchChanged(); };
     const c0 = document.createElement("td"); c0.appendChild(chk);
     const bchk = document.createElement("input"); bchk.type = "checkbox"; bchk.className = "brk"; bchk.checked = s.brk; bchk.title = "Break on this signal";
     bchk.onclick = e => { e.stopPropagation(); setBreak(s, bchk.checked); };
     const cb = document.createElement("td"); cb.className = "b"; cb.appendChild(bchk);
     const c1 = document.createElement("td"); c1.className = "mono"; c1.textContent = s.name; c1.title = s.name;
     const c2 = document.createElement("td"); c2.className = "type"; c2.textContent = s.kind;
+    const cc = document.createElement("td"); cc.className = "chg mono"; cc.textContent = s.changeCount || "";
     const c3 = document.createElement("td");
-    tr.append(c0, cb, c1, c2, c3);
+    tr.append(c0, cb, c1, c2, cc, c3);
     tr.onclick = () => selectSignal(s.name);
     tr.ondblclick = () => { if (s.kind === "Digital") force(s.name, isHigh(s.value) ? 0 : 1); else { selectSignal(s.name); $("#fval").focus(); } };
     tr.oncontextmenu = e => { e.preventDefault(); selectSignal(s.name); showMenu(e.clientX, e.clientY, s); };
-    Object.assign(s, { tr, valTd: c3, chk, bchk });
+    Object.assign(s, { tr, valTd: c3, chk, bchk, nameTd: c1, chgTd: cc, folder: null, label: s.name, vis: true, g: false });
     paintValue(s);
-    frag.appendChild(tr);
     const o = document.createElement("option"); o.value = s.name; dl.appendChild(o);
   }
-  tb.replaceChildren(frag);
   $("#siglist").replaceChildren(dl);
+  layout();
   if (selected && signals.has(selected)) signals.get(selected).tr.classList.add("sel");
   if (step.paused && signals.has(step.paused.signal)) signals.get(step.paused.signal).tr.classList.add("paused");
-  document.querySelectorAll("#sigs th.sortable").forEach(th =>
-    th.textContent = th.textContent.replace(/ [▲▼]$/, "") + (th.dataset.sort === sortBy ? (sortDir > 0 ? " ▲" : " ▼") : ""));
+  syncSortUi();
   $("#sigempty").hidden = signals.size > 0;
   applyFilter();
+}
+
+function syncSortUi() {
+  document.querySelectorAll("#sigs th.sortable").forEach(th =>
+    th.textContent = th.textContent.replace(/ [▲▼]$/, "") + (th.dataset.sort === sortBy ? (sortDir > 0 ? " ▲" : " ▼") : ""));
+  $("#sortsel").value = sortBy;
 }
 
 function paintValue(s) {
@@ -342,18 +596,145 @@ function paintValue(s) {
   s.valTd.title = past ? `At this step: ${fmt(s.kind, v)} · now: ${fmt(s.kind, s.value)}` : s.kind === "Serial" ? fmt(s.kind, v) : "";
 }
 
+// ---- tree: folders are built once per signal list / graph, then only shown, hidden and re-ordered.
+let viewMode = store.get("view", "flat") === "tree" ? "tree" : "flat";
+let tree = null;                        // { root, folders[] }
+let collapsedMap = {};                  // folder key -> bool (explicit choices)
+const collapsedKey = () => "collapsed." + slot;
+const litFolders = new Set();
+
+function ensureTree() { return tree || (tree = buildTree()); }
+
+function buildTree() {
+  const folders = [], byKey = new Map();
+  const bigDefault = signals.size > 300;   // big programs start collapsed
+  const mk = (key, label, parent, title) => {
+    const f = { key, label, parent, depth: parent ? parent.depth + 1 : 0, kids: [], items: [], total: 0, vis: 0, last: 0, lit: false, agg: 0, closed: false,
+                collapsed: key in collapsedMap ? collapsedMap[key] : bigDefault };
+    if (parent) {
+      parent.kids.push(f);
+      const tr = document.createElement("tr"); tr.className = "folder";
+      const td = document.createElement("td"); td.colSpan = 6; td.style.paddingLeft = (6 + (f.depth - 1) * 14) + "px";
+      td.innerHTML = '<span class="tw"></span><span class="fl"></span><span class="fc mono"></span><i class="adot"></i>';
+      td.querySelector(".fl").textContent = label; if (title) td.title = title;
+      tr.appendChild(td); tr.onclick = () => toggleFolder(f);
+      f.tr = tr; f.tw = td.querySelector(".tw"); f.fc = td.querySelector(".fc");
+      folders.push(f);
+    }
+    byKey.set(key, f); return f;
+  };
+  const root = mk("", "", null);
+  const child = (parent, key, label, title) => byKey.get(key) || mk(key, label, parent, title);
+  const put = (f, s, label) => { s.folder = f; s.label = label; s.depth = f.depth; for (let p = f; p; p = p.parent) p.total++; };
+  const loose = [];
+  for (const s of signals.values()) {
+    const sym = graph ? symOf(s.name) : null;
+    if (sym && sym.device) {
+      const top = child(root, "Devices", "Devices");
+      put(child(top, "Devices/" + sym.path, sym.name + " · " + sym.path, sym.path), s, s.name);
+    } else if (sym && sym.group) {
+      const top = child(root, "Modules", "Modules");
+      put(child(top, "Modules/" + sym.group, sym.group), s, s.name);
+    } else loose.push(s);
+  }
+  // Fallback structure: prefix folders from the names (split on _ . : [ and space) when >= 3 signals share a prefix.
+  const items = loose.map(s => {
+    const toks = [], offs = [], re = /[^_.:\[\] ]+/g; let m;
+    while ((m = re.exec(s.name))) { toks.push(m[0]); offs.push(m.index); }
+    if (!toks.length) { toks.push(s.name); offs.push(0); }
+    return { s, toks, offs };
+  });
+  const fill = (list, parent, i, depth) => {
+    const grp = new Map(), direct = [];
+    for (const it of list) {
+      if (i < it.toks.length - 1) { const k = it.toks[i]; const g = grp.get(k); if (g) g.push(it); else grp.set(k, [it]); }
+      else direct.push(it);
+    }
+    for (const [tok, g] of grp) {
+      if (g.length >= 3 && depth < 3) fill(g, child(parent, parent.key + "/" + tok, tok), i + 1, depth + 1);
+      else direct.push(...g);
+    }
+    for (const it of direct) put(parent, it.s, i > 0 ? it.s.name.slice(it.offs[i]) : it.s.name);
+  };
+  fill(items, root, 0, 0);
+  const t = { root, folders, byKey };
+  return t;
+}
+
+function toggleFolder(f) {
+  f.collapsed = !f.collapsed; collapsedMap[f.key] = f.collapsed; store.set(collapsedKey(), collapsedMap); applyFilter();
+}
+function setAllFolders(c) { if (!tree) return; for (const f of tree.folders) { f.collapsed = c; collapsedMap[f.key] = c; } store.set(collapsedKey(), collapsedMap); applyFilter(); }
+
+let lastLayout = 0;
+// (Re)order the table body: flat sorted list, or folders with their signals under them.
+function layout() {
+  lastLayout = performance.now();
+  const tb = $("#sigs tbody"), frag = document.createDocumentFragment(), arr = sortedSignals();
+  if (viewMode === "tree") {
+    const t = ensureTree();
+    for (const f of t.folders) { f.items = []; f.agg = 0; }
+    for (const s of arr) {
+      s.folder.items.push(s);
+      for (let f = s.folder; f && f !== t.root; f = f.parent) f.agg = sortBy === "recent" ? Math.max(f.agg, s.lastChange) : f.agg + s.changeCount;
+    }
+    const fcmp = sortBy === "recent" || sortBy === "count" ? (a, b) => (b.agg - a.agg) || a.label.localeCompare(b.label, undefined, { numeric: true })
+                                                            : (a, b) => a.label.localeCompare(b.label, undefined, { numeric: true });
+    const emit = f => {
+      if (f !== t.root) frag.appendChild(f.tr);
+      f.kids.sort(fcmp).forEach(emit);
+      for (const s of f.items) {
+        if (s.nameTd.textContent !== s.label) s.nameTd.textContent = s.label;
+        s.nameTd.style.paddingLeft = (6 + s.depth * 14 + 14) + "px";
+        frag.appendChild(s.tr);
+      }
+    };
+    emit(t.root);
+  } else {
+    for (const s of arr) {
+      if (s.nameTd.textContent !== s.name) s.nameTd.textContent = s.name;
+      s.nameTd.style.paddingLeft = "";
+      frag.appendChild(s.tr);
+    }
+  }
+  tb.replaceChildren(frag);
+}
+
+function setViewMode(v) {
+  viewMode = v; store.set("view", v);
+  document.querySelectorAll("#viewseg button").forEach(b => b.classList.toggle("on", b.dataset.v === v));
+  $("#foldbtns").hidden = v !== "tree";
+  layout(); applyFilter();
+}
+
+let curQuery = null;
 function applyFilter() {
-  const q = $("#search").value.toLowerCase(), k = $("#kfilter").value, only = $("#onlychecked").checked, onlyB = $("#onlybreak").checked;
+  const q = compileQuery($("#search").value), k = $("#kfilter").value, only = $("#onlychecked").checked, onlyB = $("#onlybreak").checked, act = $("#activeonly").checked;
+  curQuery = q;
+  const grp = activeTab ? groups.get(activeTab) : null;
+  const isTree = viewMode === "tree" && tree;
+  const forceOpen = !!q;                    // a search overrides collapsed folders so matches are never hidden
+  if (isTree) {
+    for (const f of tree.folders) { f.vis = 0; f.closed = !forceOpen && (f.collapsed || (f.parent !== tree.root && f.parent.closed)); }
+  }
   let shown = 0, watched = 0, marked = 0;
   for (const s of signals.values()) {
     if (s.watch) watched++;
     if (s.brk) marked++;
-    const vis = (!q || s.name.toLowerCase().includes(q)) && (!k || s.kind === k) && (!only || s.watch) && (!onlyB || s.brk);
-    if (s.tr) s.tr.hidden = !vis;
-    if (vis) shown++;
+    const vis = (!q || q.test(s)) && (!k || s.kind === k) && (!only || s.watch) && (!onlyB || s.brk) && (!act || s.changeCount > 0) && (!grp || grp.has(s.name));
+    s.vis = vis;
+    if (vis) { shown++; if (isTree) for (let f = s.folder; f && f !== tree.root; f = f.parent) f.vis++; }
+    if (s.tr) s.tr.hidden = !vis || (isTree && s.folder.closed);
+  }
+  if (isTree) for (const f of tree.folders) {
+    f.tr.hidden = f.vis === 0 || (f.parent !== tree.root && f.parent.closed);
+    f.tw.textContent = forceOpen || !f.collapsed ? "▾" : "▸";
+    f.fc.textContent = f.vis === f.total ? `(${f.total})` : `(${f.vis}/${f.total})`;
   }
   $("#sigcount").textContent = `${shown} shown · ${watched} checked · ${marked} ⏸`;
   $("#st-sigs").textContent = `${signals.size} signals`;
+  $("#signone").hidden = shown > 0 || signals.size === 0;
+  $("#signone").textContent = activeTab && groups.get(activeTab)?.size === 0 ? "This group is empty: right-click a signal and choose Add to group." : "No signal matches.";
 }
 
 function selectSignal(name) {
@@ -363,19 +744,93 @@ function selectSignal(name) {
   s?.tr?.classList.add("sel");
   $("#fname").value = name;
   if (s && s.kind !== "Digital") $("#fval").value = fmt(s.kind, s.value);
+  $("#pathslink").href = pathsUrl(name);
+  if (followMode !== "off") applyTraceFilter();
 }
+const pathsUrl = name => `paths.html?slot=${slot}` + (name ? `&signal=${encodeURIComponent(name)}` : "");
+
+// Make a signal visible (clearing whatever hides it) and scroll to it.
+function revealSignal(name) {
+  const s = signals.get(name); if (!s) return;
+  selectSignal(name);
+  if (!s.vis || s.tr.hidden) {
+    if (!s.vis) {
+      $("#search").value = ""; $("#kfilter").value = ""; $("#onlychecked").checked = $("#onlybreak").checked = $("#activeonly").checked = false;
+      if (activeTab) { activeTab = null; saveGroups(); renderTabs(); }
+    }
+    if (viewMode === "tree" && tree) { for (let f = s.folder; f && f !== tree.root; f = f.parent) { f.collapsed = false; collapsedMap[f.key] = false; } store.set(collapsedKey(), collapsedMap); }
+    applyFilter();
+  }
+  s.tr.scrollIntoView({ block: "center" });
+}
+
+// ---- activity: glow on change, dots on folders, periodic re-sort
+const glowQ = new Set();
+let glowQueued = false, actDirty = false;
+function noteChange(s) {
+  s.lastChange = Date.now(); s.changeCount++;
+  glowQ.add(s); actDirty = true;
+  if (!glowQueued) { glowQueued = true; requestAnimationFrame(flushGlow); }
+}
+function flushGlow() {
+  glowQueued = false;
+  const now = Date.now();
+  for (const s of glowQ) {
+    if (!s.tr) continue;
+    s.g = !s.g; s.tr.classList.remove(s.g ? "g2" : "g1"); s.tr.classList.add(s.g ? "g1" : "g2");
+    s.chgTd.textContent = s.changeCount;
+    if (tree) for (let f = s.folder; f && f !== tree.root; f = f.parent) {
+      f.last = now;
+      if (!f.lit) { f.lit = true; f.tr.classList.add("act"); litFolders.add(f); }
+    }
+  }
+  glowQ.clear();
+}
+function resetActivity() {
+  for (const s of signals.values()) { s.lastChange = 0; s.changeCount = 0; if (s.tr) { s.tr.classList.remove("g1", "g2"); s.chgTd.textContent = ""; } }
+  for (const f of litFolders) { f.lit = false; f.tr.classList.remove("act"); } litFolders.clear();
+  if (sortBy === "recent" || sortBy === "count") layout();
+  applyFilter();
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const f of litFolders) if (now - f.last > 2000) { f.lit = false; f.tr.classList.remove("act"); litFolders.delete(f); }
+  if (actDirty && glowQ.size === 0) {
+    if (curQuery?.usesValue || $("#activeonly").checked) applyFilter();
+    if (sortBy === "recent" || sortBy === "count") {
+      // re-sort at most every ~1.4 s, and not under an open context menu
+      if (performance.now() - lastLayout > 1400 && $("#menu").style.display !== "block") { actDirty = false; layout(); applyFilter(); }
+    } else actDirty = false;
+  }
+}, 400);
 
 // ---------------------------------------------------------------- trace
 
+let followMode = store.get("follow", "off"), followSet = null, selChain = null, selTraceE = null, hasCause = false, lastChain = undefined, band = 0;
+$("#follow").value = followMode;
+
 // Δ column: time since the previous row that is shown (so it follows the filter).
 function fmtDelta(e, prev) { return prev ? "+" + ((e.time - prev.time) / 1000).toFixed(3) + "s" : ""; }
-function traceMatches(e, q) { return !q || e.signal.toLowerCase().includes(q); }
+function traceVisible(e, q, fset, burst) {
+  if (q && !q.test({ name: e.signal, lname: e.lname, kind: e.kind, value: e.value })) return false;
+  if (fset && !fset.has(e.signal)) return false;
+  if (burst != null && e.chain !== burst) return false;
+  return true;
+}
+function traceFilterState() {
+  const q = compileQuery($("#tsearch").value);
+  let fset = null;
+  if (followMode !== "off") fset = selected ? (followMode === "near" && graph ? neighbours(selected) : new Set([selected])) : new Set();
+  followSet = fset;
+  const burst = $("#burst").checked && selChain != null ? selChain : null;
+  return { q, fset, burst };
+}
 function lastShown() { for (let i = trace.length - 1; i >= 0; i--) if (!trace[i].tr.hidden) return trace[i]; return null; }
 function applyTraceFilter() {
-  const q = $("#tsearch").value.toLowerCase();
+  const { q, fset, burst } = traceFilterState();
   let prev = null;
   for (const e of trace) {
-    const show = traceMatches(e, q);
+    const show = traceVisible(e, q, fset, burst);
     e.tr.hidden = !show;
     if (show) { e.tr.children[2].textContent = fmtDelta(e, prev); prev = e; }
   }
@@ -383,50 +838,67 @@ function applyTraceFilter() {
 
 function onTrace(m) {
   let s = signals.get(m.signal);
-  const cn = ++cseq;
-  changes.push({ cn, signal: m.signal, prev: s ? s.value : undefined, value: m.value });
+  const cn = ++cseq, time = Date.parse(m.time);
+  changes.push({ cn, time, signal: m.signal, prev: s ? s.value : undefined, value: m.value });
   if (changes.length > MAX_CHANGES) changes.splice(0, changes.length - MAX_CHANGES);
   const h = stepLog[stepLog.length - 1];
   if (h && h.cn == null && h.signal === m.signal) h.cn = cn; // pause notice beat its trace event here
-  if (s) { s.value = m.value; paintValue(s); }
+  if (s) { s.value = m.value; paintValue(s); noteChange(s); }
   else scheduleRefresh();
+  waveFeed({ time, signal: m.signal, kind: m.kind, value: m.value }, s);
   if (!streaming) return;
   if (opts.tmode === "watch" && !(s && s.watch)) return;
-  const e = { cn, n: ++seq, time: Date.parse(m.time), signal: m.signal, kind: m.kind, value: m.value, source: m.source || "" };
+  const chain = m.chain ?? null;
+  if (chain == null) band = 0; else { if (chain !== lastChain) bandFlip = !bandFlip; band = bandFlip ? 1 : 0; }
+  lastChain = chain;
+  const e = { cn, n: ++seq, time, signal: m.signal, lname: m.signal.toLowerCase(), kind: m.kind, value: m.value, source: m.source || "",
+              symbol: m.symbol ?? null, cause: m.cause ?? null, depth: m.depth | 0, chain, band };
+  if (!hasCause && (m.symbol != null || m.chain != null)) { hasCause = true; $("#trace").classList.remove("nocause"); }
   if (firstTime == null) firstTime = e.time;
   pending.push(e);
   if (!rafQueued) { rafQueued = true; requestAnimationFrame(flushTrace); }
 }
+let bandFlip = false;
 
 function traceRow(e) {
   const tr = document.createElement("tr");
-  tr.innerHTML = `<td class="n mono"></td><td class="mono"></td><td class="dt mono"></td><td class="mono"></td><td></td><td class="type"></td>`;
+  tr.innerHTML = `<td class="n mono"></td><td class="mono"></td><td class="dt mono"></td><td class="mono cause-name"></td><td class="via mono"></td><td></td><td class="type"></td>`;
+  if (e.band) tr.classList.add("b1");
   e.tr = tr; paintTraceRow(e);
-  tr.onclick = () => { if (signals.has(e.signal)) { selectSignal(e.signal); signals.get(e.signal).tr?.scrollIntoView({ block: "nearest" }); } };
+  tr.onclick = () => {
+    selTraceE?.tr.classList.remove("sel"); selTraceE = e; selChain = e.chain; tr.classList.add("sel");
+    const s = signals.get(e.signal);
+    if (s) { selectSignal(e.signal); if (!s.tr.hidden) s.tr.scrollIntoView({ block: "nearest" }); }
+    if ($("#burst").checked) applyTraceFilter();
+  };
   return tr;
 }
 
 function paintTraceRow(e) {
   const c = e.tr.children;
-  c[0].textContent = e.n; c[1].textContent = fmtTime(e); c[3].textContent = e.signal; c[3].title = e.signal;
-  c[4].className = valClass(e.kind, e.value); c[4].textContent = fmt(e.kind, e.value); c[5].textContent = e.source;
+  c[0].textContent = e.n; c[1].textContent = fmtTime(e);
+  c[3].textContent = (e.depth > 0 ? "↳ " : "") + e.signal;
+  c[3].style.paddingLeft = e.depth > 0 ? (6 + Math.min(e.depth, 8) * 10) + "px" : "";
+  c[3].title = e.signal + (e.chain != null ? `\nburst ${e.chain} · depth ${e.depth}` : "");
+  c[4].textContent = e.symbol || ""; c[4].title = e.symbol ? (e.cause ? `${e.symbol}\ntriggered by ${e.cause}` : e.symbol) : "";
+  c[5].className = valClass(e.kind, e.value); c[5].textContent = fmt(e.kind, e.value); c[6].textContent = e.source;
 }
 
 function flushTrace() {
   rafQueued = false;
   if (!pending.length) return;
-  const tb = $("#trace tbody"), frag = document.createDocumentFragment(), q = $("#tsearch").value.toLowerCase();
+  const tb = $("#trace tbody"), frag = document.createDocumentFragment(), { q, fset, burst } = traceFilterState();
   let prev = lastShown();
   for (const e of pending) {
     const tr = traceRow(e);
-    if (traceMatches(e, q)) { tr.children[2].textContent = fmtDelta(e, prev); prev = e; }
+    if (traceVisible(e, q, fset, burst)) { tr.children[2].textContent = fmtDelta(e, prev); prev = e; }
     else tr.hidden = true;
     if (pending.length < 20) tr.classList.add("flash");
     trace.push(e); frag.appendChild(tr);
   }
   pending = [];
   tb.appendChild(frag);
-  while (trace.length > MAX_TRACE) trace.shift().tr.remove();
+  while (trace.length > MAX_TRACE) { const o = trace.shift(); o.tr.remove(); if (o === selTraceE) selTraceE = null; }
   $("#traceempty").hidden = trace.length > 0;
   updateTraceCount();
   if ($("#autoscroll").checked) { const sc = $("#tracescroll"); sc.scrollTop = sc.scrollHeight; }
@@ -443,13 +915,15 @@ function rerenderValues() {
 }
 
 function clearTrace() {
-  trace = []; seq = 0; firstTime = null; pending = [];
+  trace = []; seq = 0; firstTime = null; pending = []; selTraceE = null; selChain = null; lastChain = undefined;
   $("#trace tbody").replaceChildren(); $("#traceempty").hidden = false; updateTraceCount();
+  wave?.clear(); waveBuf = [];
 }
 
 function saveTrace() {
-  const head = `OpenVP trace · slot ${slot} · ${$("#prog").textContent}\n#\tTime\tDelta\tSignal\tType\tValue\tSource\n`;
-  const body = trace.map((e, i) => [e.n, fmtTime(e), fmtDelta(e, trace[i - 1]), e.signal, e.kind, fmt(e.kind, e.value), e.source].join("\t")).join("\n");
+  const head = `OpenVP trace · slot ${slot} · ${$("#prog").textContent}\n#\tTime\tDelta\tSignal\tType\tValue\tSource\tVia\tCause\tDepth\tChain\n`;
+  const body = trace.map((e, i) => [e.n, fmtTime(e), fmtDelta(e, trace[i - 1]), e.signal, e.kind, fmt(e.kind, e.value), e.source,
+                                    e.symbol ?? "", e.cause ?? "", e.chain != null ? e.depth : "", e.chain ?? ""].join("\t")).join("\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([head + body + "\n"], { type: "text/plain" }));
   const d = new Date();
@@ -581,6 +1055,7 @@ function renderStep(newPause) {
       if (trace[i].signal === p.signal) { trace[i].tr.classList.add("paused"); break; }
   }
   $("#st-state").textContent = view != null ? "Paused (looking back)" : p ? "Paused (step)" : step.enabled ? "Stepping" : currentState;
+  updateWaveCursor();
 }
 
 // The stepLog entry that counts as "now": the live pause if there is one, else just past the end.
@@ -621,6 +1096,52 @@ $("#steprun").onclick = $("#steprun2").onclick = () => stepPost("/run");
 $("#bmode").onchange = e => stepPost("", { onlyBreakSignals: e.target.value === "marked" });
 $("#onlybreak").onchange = applyFilter;
 
+// ---------------------------------------------------------------- waveform panel
+
+let wave = null, waveBuf = [], laneTimer = null;
+const waveOk = !!(window.WaveView && typeof window.WaveView.create === "function");
+function waveLanes() { return [...signals.values()].filter(s => s.watch).map(s => ({ name: s.name, kind: s.kind, value: s.value })); }
+function scheduleLanes() { if (!wave) return; clearTimeout(laneTimer); laneTimer = setTimeout(() => wave && wave.setSignals(waveLanes()), 30); }
+function waveFeed(ev, s) {
+  if (!waveOk) return;
+  if (wave) wave.push(ev);
+  else if (s && s.watch) { waveBuf.push(ev); if (waveBuf.length > 20000) waveBuf.splice(0, waveBuf.length - 20000); }
+}
+function setWaveOpen(on) {
+  if (!waveOk) return;
+  $("#wavewrap").hidden = !on; $("#wavebtn").classList.toggle("on", on); store.set("waveopen", on);
+  if (on && !wave) {
+    wave = window.WaveView.create($("#wavebody"), {
+      format: fmt,
+      onRemove: name => { const s = signals.get(name); if (s) { s.watch = false; if (s.chk) s.chk.checked = false; watchChanged(); } }
+    });
+    wave.setSignals(waveLanes());
+    for (const ev of waveBuf) wave.push(ev); waveBuf = [];
+    updateWaveCursor();
+  }
+}
+function updateWaveCursor() {
+  if (!wave) return;
+  let t = null;
+  if (view != null) { const cn = stepLog[view]?.cn; if (cn != null) { const c = changes.find(x => x.cn === cn); if (c) t = c.time; } }
+  wave.setCursor(t);
+}
+if (!waveOk) $("#wavebtn").hidden = true;
+$("#wavebtn").onclick = () => setWaveOpen($("#wavewrap").hidden);
+(() => {
+  const sp = $("#wsplit"), wrap = $("#wavewrap");
+  const h = store.get("waveh", 220); wrap.style.setProperty("--wh", h + "px");
+  sp.onpointerdown = e => {
+    sp.setPointerCapture(e.pointerId); sp.classList.add("drag");
+    const y0 = e.clientY, h0 = wrap.getBoundingClientRect().height;
+    sp.onpointermove = ev => {
+      const nh = Math.round(Math.max(80, Math.min(innerHeight * 0.7, h0 + (y0 - ev.clientY))));
+      wrap.style.setProperty("--wh", nh + "px"); store.set("waveh", nh);
+    };
+    sp.onpointerup = () => { sp.classList.remove("drag"); sp.onpointermove = null; };
+  };
+})();
+
 // ---------------------------------------------------------------- forcing signals
 
 async function force(name, value) {
@@ -657,7 +1178,50 @@ $("#fpulse").onclick = () => { const s = forceTarget(); if (!s) return; if (s.ki
 $("#fval").onkeydown = e => { if (e.key === "Enter") $("#fset").click(); };
 $("#fname").onchange = () => { if (signals.has($("#fname").value)) selectSignal($("#fname").value); };
 
+// ---------------------------------------------------------------- drives / driven by
+
+function showRelated(name, dir) {
+  const e = graph && graph.bySig.get(name);
+  const syms = e ? (dir === "drivers" ? e.out : e.in) : [];
+  $("#reltitle").textContent = (dir === "drivers" ? "Driven by" : "Drives") + " · " + name + ` (${syms.length} symbol${syms.length === 1 ? "" : "s"})`;
+  const body = $("#relbody"), frag = document.createDocumentFragment();
+  if (!syms.length) { const d = document.createElement("div"); d.className = "sym"; d.style.color = "var(--muted)"; d.textContent = dir === "drivers" ? "Nothing in the program drives this signal (it is an input or a constant)." : "This signal doesn't feed anything."; frag.appendChild(d); }
+  for (const sym of syms.slice(0, 200)) {
+    const d = document.createElement("div"); d.className = "sym";
+    const head = document.createElement("div");
+    head.innerHTML = '<b></b><span class="path mono"></span>'; head.firstChild.textContent = sym.name; head.querySelector(".path").textContent = sym.path;
+    if (sym.device) { const t = document.createElement("span"); t.className = "dev"; t.textContent = "device"; head.appendChild(t); }
+    const chips = document.createElement("div"); chips.className = "chips";
+    // what feeds the symbol (when listing drivers) or what it produces (when listing loads)
+    const others = dir === "drivers" ? sym.inputs || [] : sym.outputs || [];
+    const lab = document.createElement("span"); lab.style.color = "var(--muted)"; lab.textContent = dir === "drivers" ? "inputs:" : "outputs:"; chips.appendChild(lab);
+    for (const n of others.slice(0, 60)) {
+      const c = document.createElement("span"); c.className = "chip mono" + (n === name ? " me" : ""); c.textContent = n;
+      const s = signals.get(n); if (s) c.title = `${s.kind} = ${fmt(s.kind, s.value)}`; else if (CONST_SIGS.has(n)) c.title = "constant";
+      c.onclick = () => { if (signals.has(n)) revealSignal(n); }; chips.appendChild(c);
+    }
+    if (others.length > 60) { const more = document.createElement("span"); more.style.color = "var(--muted)"; more.textContent = `+${others.length - 60} more`; chips.appendChild(more); }
+    d.append(head, chips); frag.appendChild(d);
+  }
+  body.replaceChildren(frag); $("#rel").hidden = false;
+}
+$("#relclose").onclick = () => { $("#rel").hidden = true; };
+
 // ---------------------------------------------------------------- context menu
+
+const KEEP = Symbol("keep");
+function popMenu(x, y, items) {
+  const m = $("#menu");
+  m.replaceChildren(...items.map(([label, fn, cls]) => {
+    if (label === "-") return document.createElement("hr");
+    const d = document.createElement("div"); d.textContent = label; if (cls) d.className = cls;
+    if (fn) d.onclick = ev => { if (fn() === KEEP) ev.stopPropagation(); else hideMenu(); };
+    return d;
+  }));
+  m.style.display = "block";
+  m.style.left = Math.max(0, Math.min(x, innerWidth - m.offsetWidth - 4)) + "px";
+  m.style.top = Math.max(0, Math.min(y, innerHeight - m.offsetHeight - 4)) + "px";
+}
 
 function showMenu(x, y, s) {
   const items = [[s.name, null, "hd"]];
@@ -665,18 +1229,18 @@ function showMenu(x, y, s) {
   else if (s.kind === "Analog") items.push(["Set value…", () => { $("#fval").focus(); $("#fval").select(); }], ["Set to 0", () => force(s.name, 0)], ["Set to 65535", () => force(s.name, 65535)]);
   else items.push(["Send string…", () => { $("#fval").value = ""; $("#fval").focus(); }], ["Clear string", () => force(s.name, "")]);
   items.push(["-"], [s.brk ? "Don't break on this signal" : "Break on this signal ⏸", () => setBreak(s, !s.brk)],
-             [s.watch ? "Uncheck for trace" : "Check for trace", () => { s.watch = !s.watch; s.chk.checked = s.watch; saveWatch(); applyFilter(); }],
-             ["Copy name", () => navigator.clipboard?.writeText(s.name)]);
-  const m = $("#menu");
-  m.replaceChildren(...items.map(([label, fn, cls]) => {
-    if (label === "-") return document.createElement("hr");
-    const d = document.createElement("div"); d.textContent = label; if (cls) d.className = cls;
-    if (fn) d.onclick = () => { hideMenu(); fn(); };
-    return d;
-  }));
-  m.style.display = "block";
-  m.style.left = Math.min(x, innerWidth - m.offsetWidth - 4) + "px";
-  m.style.top = Math.min(y, innerHeight - m.offsetHeight - 4) + "px";
+             [s.watch ? "Uncheck for trace" : "Check for trace", () => { s.watch = !s.watch; s.chk.checked = s.watch; watchChanged(); }]);
+  // watch groups
+  items.push(["-"], ["Add to group ▸", () => { popMenu(x, y, [["Add " + s.name + " to…", null, "hd"],
+      ...[...groups.keys()].map(g => [(groups.get(g).has(s.name) ? "✓ " : "") + g, () => addToGroup(g, s)]),
+      ["New group…", () => { newGroup(s); }]]); return KEEP; }]);
+  const mine = [...groups].filter(([, set]) => set.has(s.name)).map(([g]) => g);
+  if (mine.length) items.push(["Remove from group" + (mine.length > 1 ? " ▸" : ` “${mine[0]}”`), mine.length === 1 ? () => removeFromGroup(mine[0], s)
+    : () => { popMenu(x, y, [["Remove " + s.name + " from…", null, "hd"], ...mine.map(g => [g, () => removeFromGroup(g, s)])]); return KEEP; }]);
+  if (graph) items.push(["-"], ["Show what drives this", () => showRelated(s.name, "drivers")], ["Show what this drives", () => showRelated(s.name, "loads")],
+                        ["Show paths from here ▸", () => window.open(pathsUrl(s.name), "_blank", "noopener")]);
+  items.push(["-"], ["Copy name", () => navigator.clipboard?.writeText(s.name)]);
+  popMenu(x, y, items);
 }
 function hideMenu() { $("#menu").style.display = "none"; }
 addEventListener("click", hideMenu); addEventListener("blur", hideMenu);
@@ -736,21 +1300,34 @@ function switchSlot(n) {
   selected = null; $("#fname").value = ""; $("#fval").value = "";
   step = { enabled: false, onlyBreakSignals: false, breakSignals: new Set(), paused: null };
   changes = []; stepLog = []; view = null; viewVals = null; renderStep(false);
+  graph = null; tree = null; litFolders.clear(); glowQ.clear(); $("#rel").hidden = true; $("#pathslink").href = pathsUrl();
+  collapsedMap = store.get(collapsedKey(), {}) || {};
+  loadGroups();
   clearTrace(); loadSlots(); loadSignals(); connect();
+  if (wave) wave.setSignals([]);
 }
 
 $("#slot").onchange = e => switchSlot(Number(e.target.value));
 $("#stream").onclick = () => { streaming = !streaming; $("#stream").classList.toggle("on", streaming); $("#stream").textContent = streaming ? "● Stream" : "○ Stream"; };
 $("#clear").onclick = clearTrace;
 $("#save").onclick = saveTrace;
-$("#search").oninput = applyFilter; $("#kfilter").onchange = applyFilter; $("#onlychecked").onchange = applyFilter;
-$("#tsearch").oninput = applyTraceFilter;
-function checkVisible(v) { for (const s of signals.values()) if (s.tr && !s.tr.hidden) { s.watch = v; s.chk.checked = v; } saveWatch(); applyFilter(); }
+$("#search").oninput = debounce(applyFilter, 80); $("#kfilter").onchange = applyFilter; $("#onlychecked").onchange = applyFilter; $("#activeonly").onchange = applyFilter;
+$("#tsearch").oninput = debounce(applyTraceFilter, 80);
+$("#burst").onchange = applyTraceFilter;
+$("#follow").onchange = e => { followMode = e.target.value; store.set("follow", followMode); applyTraceFilter(); };
+$("#resetact").onclick = resetActivity;
+$("#fold").onclick = () => setAllFolders(true); $("#unfold").onclick = () => setAllFolders(false);
+document.querySelectorAll("#viewseg button").forEach(b => b.onclick = () => setViewMode(b.dataset.v));
+function checkVisible(v) { for (const s of signals.values()) if (s.tr && !s.tr.hidden) { s.watch = v; s.chk.checked = v; } watchChanged(); }
 $("#checkall").onclick = () => checkVisible(true); $("#checknone").onclick = () => checkVisible(false);
-document.querySelectorAll("#sigs th.sortable").forEach(th => th.onclick = () => {
-  if (sortBy === th.dataset.sort) sortDir = -sortDir; else { sortBy = th.dataset.sort; sortDir = 1; }
-  buildSignalTable();
-});
+function setSort(by) {
+  if (sortBy === by && (by === "name" || by === "kind")) sortDir = -sortDir;
+  else { sortBy = by; sortDir = by === "recent" || by === "count" ? -1 : 1; }
+  store.set("sort", sortBy); store.set("sortdir", sortDir);
+  layout(); syncSortUi(); applyFilter();
+}
+document.querySelectorAll("#sigs th.sortable").forEach(th => th.onclick = () => setSort(th.dataset.sort));
+$("#sortsel").onchange = e => { const v = e.target.value; if (v !== sortBy) { sortBy = v; sortDir = v === "recent" || v === "count" ? -1 : 1; store.set("sort", sortBy); store.set("sortdir", sortDir); layout(); syncSortUi(); applyFilter(); } };
 
 // splitter
 (() => {
@@ -767,7 +1344,11 @@ document.querySelectorAll("#sigs th.sortable").forEach(th => th.onclick = () => 
   };
 })();
 
+document.querySelectorAll("#viewseg button").forEach(b => b.classList.toggle("on", b.dataset.v === viewMode));
+$("#foldbtns").hidden = viewMode !== "tree";
+syncSortUi();
 switchSlot(slot);
+if (store.get("waveopen", false)) setWaveOpen(true);
 setInterval(loadSlots, 3000);
 </script>
 </body>

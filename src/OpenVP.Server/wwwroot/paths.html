@@ -196,7 +196,7 @@ async function api(path, init) {
 }
 const pad = (n, w = 2) => String(n).padStart(w, "0");
 const isHigh = v => v === true || v === 1 || v === "1" || v === "True" || v === "true";
-const isConst = n => n === "0" || n === "1";
+const isConst = n => !n || n === "0" || n === "1"; // also drops unwired pins (empty name)
 function fmt(kind, v) {
   if (v === undefined) return "?";
   if (kind === "Digital") return isHigh(v) ? "1" : "0";
