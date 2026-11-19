@@ -159,6 +159,33 @@ public static class LogicSymbolCatalog
     /// <summary>By compiled primitive type.</summary>
     public static LogicSymbol? ByLpzType(int type) => ByTypeMap.GetValueOrDefault(type);
 
+    /// <summary>The symbol table as Markdown: docs/symbols.md is this, and the tests keep it in step.</summary>
+    public static string RenderMarkdown()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append("# Logic symbols\n\n");
+        sb.Append("Generated from `src/OpenVP.Lpz/LogicSymbols.cs` (`LogicSymbolCatalog`); the tests fail if this file and the catalog disagree. ");
+        sb.Append("Regenerate with `OPENVP_UPDATE_GOLDEN=1 dotnet run --project tests/OpenVP.Tests Docs_symbols`.\n\n");
+        sb.Append("Every symbol has one implementation, used both for `.smw` source and compiled `.lpz` programs.\n\n");
+        sb.Append("- **compiled**: checked against compiled programs that ship their source: primitive type, pin order and parameters.\n");
+        sb.Append("- **documented**: written from the SIMPL Windows symbol descriptions. It runs from `.smw` (matched by name). Pin order and parameter units are best guesses, ");
+        sb.Append("and the SmC code and compiled type are unknown until a real program shows them. To run one in a compiled program, name its type in `primitives.json`.\n\n");
+        var compiled = All.Count(x => x.Evidence == SymbolEvidence.Compiled);
+        sb.Append($"{All.Count} symbols: {compiled} compiled, {All.Count - compiled} documented.\n");
+        foreach (var group in All.GroupBy(x => x.Category))
+        {
+            sb.Append($"\n## {group.Key}\n\n");
+            sb.Append("| Symbol | Evidence | SmC | Compiled type | Pins |\n|---|---|---|---|---|\n");
+            foreach (var x in group)
+            {
+                var name = x.Aliases.Length > 0 ? $"{x.Name} (also: {string.Join(", ", x.Aliases)})" : x.Name;
+                string List(int[] v) => v.Length == 0 ? "?" : string.Join(", ", v);
+                sb.Append($"| {name} | {x.Evidence.ToString().ToLowerInvariant()} | {List(x.SmCodes)} | {List(x.LpzTypes)} | {x.Pins.Replace("|", "\\|")} |\n");
+            }
+        }
+        return sb.ToString();
+    }
+
     /// <summary>
     /// Reads a code map such as symbols.json or primitives.json: <c>{ "1234": "NAND" }</c>. Numbers that aren't
     /// keys and names the catalog doesn't know are skipped and reported in <paramref name="problems"/>.

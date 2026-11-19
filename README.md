@@ -70,7 +70,8 @@ Both register a panel at IP ID 03 and an EISC at IP ID 10 on 127.0.0.2. Press di
 | `OpenVP.SimplSharp` | Clean-room implementation of the SIMPL# / SIMPL# Pro API (`Crestron.SimplSharp.*` namespaces) |
 | `src/Facades/*` | Empty assemblies named like Crestron's (`SimplSharpPro.dll`…) that forward every type to the shim |
 | `OpenVP.SimplSharpHost` | Loads a program into its own unloadable load context; compatibility scanner |
-| `OpenVP.Simpl` | `.smw` parser and interpreter, logic symbol library |
+| `OpenVP.Simpl` | `.smw` parser and interpreter, symbol survey |
+| `OpenVP.Lpz` | `.lpz` reader and runtime, and the logic symbol library both engines share (`LogicSymbolCatalog`) |
 | `OpenVP.Panels` | Browser panel WebSocket protocol and the CIP server |
 | `OpenVP.Server` | The app: web console, REST API, debugger stream, autoload |
 
@@ -86,14 +87,20 @@ Implemented so far: `CrestronControlSystem`, `InitializeSystem`, program status 
 
 OpenVP reads the `.smw` source, not the compiled `.lpz`, so nothing of Crestron's runtime is decompiled. The file is a list of blocks: `Sm` symbols point at `Sg` signals by handle (`I1=4` = input pin 1 is wired to signal 4), and pins are grouped digital, analog, serial (`n1I`, `n2I`, `n3I`). When a signal changes, every symbol listening to it runs and its outputs drive further signals until the logic settles. The `1` signal goes high at start, as it does on a processor.
 
-Symbols implemented: AND, OR, XOR, NOT, Buffer (digital/analog/serial), Interlock, Toggle, SR Latch, One Shot, Delay, Analog Initialize, Equate, Serial Send. Device symbols (panels, XPanels, EISC) map their pins to joins. Only devices on the processor's Ethernet slot get an IP ID (taken from the hardware tree in the file); their slots, ports and extenders, and Cresnet/COM/IR hardware, are not mapped yet and are listed once in the log.
+**Logic symbols** come from one library shared with compiled programs, so a symbol behaves the same whether you load the `.smw` or the `.lpz`. [docs/symbols.md](docs/symbols.md) lists all of them (75 so far) with their SmC code, compiled type and how sure we are of each: *compiled* symbols were checked against real compiled programs and their source; *documented* ones (NAND, XNOR, Digital to Analog, Analog 2's Offset Converter, Analog Negation, Analog Debounce, Serial Substring, Long Delay) were written from the SIMPL symbol descriptions and still need a real program to confirm their pins. In a `.smw`, parameters are converted the way the compiler does: times to 1/100 s, `\x0D`-style escapes in strings decoded. Device symbols (panels, XPanels, EISC) map their pins to joins. Only devices on the processor's Ethernet slot get an IP ID (taken from the hardware tree in the file); their slots, ports and extenders, and Cresnet/COM/IR hardware, are not mapped yet and are listed once in the log.
 
 **Two things the format doesn't make clear, so you may need to help:**
 
-1. **Symbol codes.** Symbols are identified by a numeric `SmC` code, and Crestron doesn't publish the list. OpenVP matches by code when it knows it, otherwise by the symbol's default name ("AND", "Interlock"…). To teach it codes, add `MyProgram.symbols.json` next to the program (or `data/symbols.json` for all programs): `{ "1234": "AND", "1240": "Interlock" }`.
+1. **Symbol codes.** Symbols are identified by a numeric `SmC` code, and Crestron doesn't publish the list. OpenVP matches by the symbol's library name ("AND", "Interlock"…), then by the codes it knows. To teach it codes, add `MyProgram.symbols.json` next to the program (or `data/symbols.json` for all programs): `{ "1234": "AND", "1240": "Interlock" }`. Compiled programs have the same problem with primitive types; name a type with `MyProgram.primitives.json` (or `data/primitives.json`): `{ "301": "NAND" }`. Names must match [docs/symbols.md](docs/symbols.md); unknown ones are reported in the slot log.
 2. **IP IDs.** Where an IP ID can't be found in the file, set it in `MyProgram.openvp.json`, keyed by symbol handle: `{ "ipids": { "21": "03" } }`.
 
-The fastest way to close these gaps is real `.smw` files. If you can share one (even a trivial program with one of each symbol), open an issue.
+The fastest way to close these gaps is real programs. **Symbol survey** reads any number of them and works out the codes for you:
+
+```bash
+dotnet run --project tools/SymbolSurvey -- path/to/programs --out survey
+```
+
+It lists every symbol the programs use and whether OpenVP runs it. For each compiled `.lpz` that comes with its source (archived inside, or a `.smw` of the same name next to it) and its `.sig`, it pairs each compiled record with the source symbol that drives the same signal. That identifies the symbol's SmC code and compiled type in one go, and it flags any conflict with what OpenVP already believes. With `--out` it writes `symbols.json` and `primitives.json`, ready to drop into `data/`. The quickest test program: one of each symbol from the SIMPL Windows logic library, each output on a named signal, compiled with the source archived.
 
 ### IR and COM ports (compiled programs)
 
@@ -245,8 +252,8 @@ If a program fails with "needs Crestron assemblies OpenVP has no facade for: X",
 ## Roadmap
 
 - More SIMPL# API: `TCPServer`, SSH transport (API is in place, connect not yet), smart objects, HTTP(S) client, CWS server
-- More SIMPL symbols: Analog Ramp, Serial I/O, Analog/Serial conversions, Stepper, Counter…
-- Confirm SIMPL symbol codes and IP ID storage from real `.smw` files
+- The rest of the SIMPL logic library, and confirming the *documented* symbols' pins and codes with the symbol survey (see [docs/symbols.md](docs/symbols.md))
+- Confirm IP ID storage from real `.smw` files
 - Validate CIP against real touch panels; remote EISC between processors
 - **Run compiled SIMPL Windows programs (`.lpz`) directly** so every program works, with or without its source. Progress:
   - [x] Read the package, IP table, compiled logic (`.bin`) and signal names (`.sig`). Checked against 101 real programs; see [docs/lpz-format.md](docs/lpz-format.md)

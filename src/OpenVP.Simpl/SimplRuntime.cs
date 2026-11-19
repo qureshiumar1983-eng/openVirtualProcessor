@@ -804,7 +804,7 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
     /// 1/100 s like every compiled time (<c>0.5s</c> = 50, <c>2m</c> = 12000, <c>250ms</c> = 25). Anything
     /// else is text.
     /// </summary>
-    internal static (long? Number, string? Text) ParseParam(string raw)
+    public static (long? Number, string? Text) ParseParam(string raw)
     {
         var s = raw.Trim();
         if (s.Length >= 2 && s[0] == '"' && s[^1] == '"') return (null, DecodeEscapes(s[1..^1]));
@@ -819,7 +819,7 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
     }
 
     /// <summary>SIMPL string escapes: \xHH, \r, \n, \t, \\ and \".</summary>
-    internal static string DecodeEscapes(string s)
+    public static string DecodeEscapes(string s)
     {
         if (s.IndexOf('\\') < 0) return s;
         var sb = new StringBuilder(s.Length);
