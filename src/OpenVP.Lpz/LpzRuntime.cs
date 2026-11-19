@@ -798,6 +798,7 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
 
         public object Output(int pin) => pin >= 1 && pin <= Symbol.Outputs.Length ? Runtime.Value(Symbol.Outputs[pin - 1]) : false;
         public SigKind OutputSignalKind(int pin) => pin >= 1 && pin <= Symbol.Outputs.Length ? Runtime.KindOf(Symbol.Outputs[pin - 1]) : SigKind.Digital;
+        public int OutputSignal(int pin) => pin >= 1 && pin <= Symbol.Outputs.Length ? Symbol.Outputs[pin - 1] : 0;
 
         public int ParamCount => Symbol.Params.Count;
         public long Number(int index, long fallback = 0) =>

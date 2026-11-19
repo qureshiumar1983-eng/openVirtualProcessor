@@ -345,6 +345,27 @@ public static class SymbolCatalogTests
     }
 
     [Test]
+    public static void Equate_outputs_on_one_signal_act_as_an_or()
+    {
+        using var t = new Smw()
+            .Sym("Analog Equate", ["v", ""], ["inc", "inc", "other", "inc"], "1d", "6d", "7d", "15d")
+            .Sym("Toggle", ["inc", "", ""], ["edges"])
+            .Run();
+        foreach (var v in new ushort[] { 1, 6, 15 })
+        {
+            t.Set("v", v);
+            Assert.True(t.D("inc") && !t.D("other"), $"{v}: one of the shared outputs matches");
+        }
+        Assert.True(t.D("edges"), "no pulse while moving between matching values: one rising edge");
+        t.Set("v", (ushort)7);
+        Assert.True(!t.D("inc") && t.D("other"), "7: only the output on its own signal");
+        t.Set("v", (ushort)6);
+        Assert.True(t.D("inc") && !t.D("other"), "back to a matching value");
+        t.Set("v", (ushort)2);
+        Assert.True(!t.D("inc") && !t.D("other"), "no match");
+    }
+
+    [Test]
     public static void Symbols_json_teaches_codes_and_reports_unknown_names()
     {
         using var t = new Smw().Sym("Some Renamed Thing", 4321, ["a", "b"], ["o"]);
