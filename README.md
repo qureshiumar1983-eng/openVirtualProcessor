@@ -86,7 +86,7 @@ Implemented so far: `CrestronControlSystem`, `InitializeSystem`, program status 
 
 OpenVP reads the `.smw` source, not the compiled `.lpz`, so nothing of Crestron's runtime is decompiled. The file is a list of blocks: `Sm` symbols point at `Sg` signals by handle (`I1=4` = input pin 1 is wired to signal 4), and pins are grouped digital, analog, serial (`n1I`, `n2I`, `n3I`). When a signal changes, every symbol listening to it runs and its outputs drive further signals until the logic settles. The `1` signal goes high at start, as it does on a processor.
 
-Symbols implemented: AND, OR, XOR, NOT, Buffer (digital/analog/serial), Interlock, Toggle, SR Latch, One Shot, Delay, Analog Initialize, Equate, Serial Send. Device symbols (panels, XPanels, EISC) map their pins to joins.
+Symbols implemented: AND, OR, XOR, NOT, Buffer (digital/analog/serial), Interlock, Toggle, SR Latch, One Shot, Delay, Analog Initialize, Equate, Serial Send. Device symbols (panels, XPanels, EISC) map their pins to joins. Only devices on the processor's Ethernet slot get an IP ID (taken from the hardware tree in the file); their slots, ports and extenders, and Cresnet/COM/IR hardware, are not mapped yet and are listed once in the log.
 
 **Two things the format doesn't make clear, so you may need to help:**
 

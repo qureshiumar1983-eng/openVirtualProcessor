@@ -147,13 +147,17 @@ public sealed class SimplRuntime : IProgramRuntime
 
     private void Build()
     {
+        var subDevices = new List<SmwSymbol>();
+        var otherHardware = new List<SmwSymbol>();
         foreach (var sym in _file.Symbols.Values.OrderBy(s => s.Handle))
         {
             if (IsDevice(sym))
             {
                 var dev = new DeviceNode(this, sym);
+                dev.Classify();
                 _devices.Add(dev);
                 Register(dev);
+                if (!dev.Registered) (dev.Role == DeviceRole.SubDevice ? subDevices : otherHardware).Add(sym);
                 continue;
             }
 
@@ -173,6 +177,14 @@ public sealed class SimplRuntime : IProgramRuntime
 
         foreach (var sg in _file.Signals.Values)
             if (sg.Handle > 0) SetKind(sg.Handle, SigKind.Digital);
+
+        // Their pins keep their signals, but nothing drives or reads them: OpenVP only models the join space of an IP-ID device.
+        if (subDevices.Count > 0)
+            _slot.Log("Warning", $"{subDevices.Count} sub-device symbol(s) inside IP-ID devices (slots, ports, extenders) are not mapped to joins yet: " +
+                string.Join(", ", subDevices.Select(s => s.Name).Distinct().Take(10)));
+        if (otherHardware.Count > 0)
+            _slot.Log("Warning", $"{otherHardware.Count} processor hardware symbol(s) (Cresnet, COM, IR, relays...) are not supported yet: " +
+                string.Join(", ", otherHardware.Select(s => s.Name).Distinct().Take(10)));
     }
 
     private static bool IsDevice(SmwSymbol s) =>
@@ -534,6 +546,18 @@ public sealed class SimplRuntime : IProgramRuntime
             Symbol.Name.Contains("Intersystem", StringComparison.OrdinalIgnoreCase) ||
             Symbol.Name.Contains("EISC", StringComparison.OrdinalIgnoreCase);
 
+        /// <summary>Whether this symbol gets a device in the IP table: IP-ID devices do, sub-devices and other hardware don't.</summary>
+        public bool Registered { get; private set; } = true;
+
+        public DeviceRole Role { get; private set; } = DeviceRole.IpId;
+
+        public void Classify()
+        {
+            Role = Runtime._file.RoleOf(Symbol.DeviceHandle);
+            // An explicit "ipids" entry in openvp.json always wins.
+            Registered = Role == DeviceRole.IpId || Runtime._options.Ipids.ContainsKey(Symbol.Handle.ToString());
+        }
+
         public uint IpId
         {
             get
@@ -553,12 +577,13 @@ public sealed class SimplRuntime : IProgramRuntime
                         return (uint)v;
                 }
                 // Otherwise give each device a stable ID derived from its handle, starting at 03.
-                return (uint)(0x03 + Runtime._devices.IndexOf(this));
+                return (uint)(0x03 + Runtime._devices.Where(d => d.Registered).ToList().IndexOf(this));
             }
         }
 
         public void Attach()
         {
+            if (!Registered) return;
             var slot = Runtime._slot;
             _device = slot.RegisterDevice(IpId, IsEisc ? "EISC" : Symbol.Name, $"SIMPL symbol #{Symbol.Handle}");
             _source = $"IPID{_device.IpId:X2}";

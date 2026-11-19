@@ -119,4 +119,57 @@ public static class SimplTests
         sharpPanel.ReceiveInput(new JoinKey(SigKind.Digital, 10), false);
         Assert.Eventually(() => (bool)sharpPanel.GetFeedback(new JoinKey(SigKind.Digital, 10)), "SIMPL press shows on SIMPL# panel");
     }
+
+    /// <summary>
+    /// Real files describe the hardware as a tree of Dv blocks: processor -> EthernetCard -> Ethernet Devices ->
+    /// slot (Ad = IP ID) -> device -> its own slots (Ad = slot number in the device). Only the device on the
+    /// Ethernet slot has an IP ID; its slots and ports, and the Cresnet card, must not show up in the IP table.
+    /// </summary>
+    [Test]
+    public static void Smw_hardware_tree_gives_only_ethernet_devices_an_ipid()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append("[\nObjTp=Hd\nPgmNm=Tree\n]\n");
+        void Dv(int h, int parent, string name, string ad, int sm = 0) =>
+            sb.Append($"[\nObjTp=Dv\nH={h}\nPrH={parent}\nNm={name}\nAd={ad}\n" + (sm > 0 ? $"SmH={sm}\n" : "") + "]\n");
+        void Sym(int h, string name, int dv, int pin) =>
+            sb.Append($"[\nObjTp=Sm\nH={h}\nSmC=1\nNm={name}\nDvH={dv}\nn1I=1\nn1O=1\nmI=1\nmO=1\nI1={pin}\nO1={pin + 1}\n]\n");
+        Dv(2, 0, "CP4", "00");
+        Dv(3, 2, "CresnetCard", "01");
+        Dv(4, 3, "Cresnet Devices", "01", 6);
+        Dv(5, 4, "CresnetSlot", "03");
+        Dv(6, 5, "Cresnet Keypad", "03", 30);                // Cresnet ID 03: not an IP ID
+        Dv(10, 2, "EthernetCard", "02");
+        Dv(11, 10, "Ethernet Devices", "02", 7);
+        Dv(12, 11, "P4Ethernet", "04");
+        Dv(13, 11, "P4Ethernet", "1F");
+        Dv(20, 12, "UI.1", "04", 31);                         // panel at IP ID 04
+        Dv(21, 20, "FixedSlot", "01");
+        Dv(22, 21, "TSW-770 Buttons", "01", 32);              // sub-device: slot 01 of the panel
+        Dv(23, 13, "RT1", "1F", 33);                          // encoder at IP ID 1F
+        Dv(24, 23, "FixedSlot", "04");
+        Dv(25, 24, "HDMI In", "04", 34);                      // sub-device: slot 04 of the encoder
+        Dv(26, 25, "Port", "05", 35);                         // sub-device of a sub-device
+        Sym(30, "Keypad", 6, 100);
+        Sym(31, "TSW-770", 20, 110);
+        Sym(32, "TSW-770 Buttons", 22, 120);
+        Sym(33, "DM-NVX-36x", 23, 130);
+        Sym(34, "DM-NVX-36x HDMI In", 25, 140);
+        Sym(35, "Port", 26, 150);
+
+        var path = Path.Combine(Paths.TempData(), "hardware_tree.smw");
+        File.WriteAllText(path, sb.ToString());
+        using var p = NewProcessor();
+        p.LoadProgram(1, path);
+        var slot = p.Slot(1);
+        Assert.Equal(SlotState.Running, slot.State, "running: " + slot.LastError);
+        Assert.Equal("04,1F", string.Join(",", slot.Devices.Select(d => d.IpId.ToString("X2")).OrderBy(x => x)), "IP table");
+        Assert.Equal("TSW-770", slot.FindDevice(0x04)!.Type, "panel model");
+        Assert.Equal("DM-NVX-36x", slot.FindDevice(0x1F)!.Type, "encoder model");
+
+        // The sidecar still decides when it says so: sub-device symbol 32 forced to IP ID 20.
+        File.WriteAllText(Path.ChangeExtension(path, ".openvp.json"), "{ \"ipids\": { \"32\": \"20\" } }");
+        p.LoadProgram(2, path);
+        Assert.True(p.Slot(2).FindDevice(0x20) != null, "ipids override registers the sub-device");
+    }
 }

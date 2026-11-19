@@ -40,6 +40,17 @@ public sealed class SmwSymbol
     public override string ToString() => $"#{Handle} {Name} (SmC={Code})";
 }
 
+/// <summary>Where a device symbol sits in the hardware tree (see <see cref="SmwFile.RoleOf"/>).</summary>
+public enum DeviceRole
+{
+    /// <summary>On the processor's Ethernet slot: has its own IP ID (panel, EISC, DM-NVX...).</summary>
+    IpId,
+    /// <summary>Inside an IP-ID device: a slot, port or extender. Shares its parent's IP ID, has no ID of its own.</summary>
+    SubDevice,
+    /// <summary>Other processor hardware (Cresnet, COM, IR, relays...). No IP ID.</summary>
+    Other
+}
+
 public sealed class SmwSignal
 {
     public int Handle { get; init; }
@@ -114,7 +125,8 @@ public sealed class SmwFile
                 Header = b;
                 break;
             case "Dv":
-                Devices[b.GetInt("H")] = b;
+                // Runs of unused slots are written as ranges ("H=261.262", "Ad=01,02"); nothing refers to those.
+                if (b.GetInt("H") is > 0 and var dh) Devices[dh] = b;
                 break;
             case "Sg":
                 var sg = new SmwSignal { Handle = b.GetInt("H"), Name = b.Get("Nm") ?? string.Empty };
@@ -180,6 +192,34 @@ public sealed class SmwFile
             var lastSet = groups[2] > 0 ? 2 : groups[1] > 0 ? 1 : groups[0] > 0 ? 0 : -1;
             if (lastSet < 2) groups[lastSet + 1] += total - listed;
         }
+    }
+
+    /// <summary>
+    /// What a device symbol is, going by where its Dv block sits in the hardware tree:
+    /// processor -> card (EthernetCard) -> device list (Ethernet Devices) -> slot (P4Ethernet, Ad = IP ID) ->
+    /// IP-ID device (Ad = IP ID in hex) -> its own slots, ports and extenders (Ad = slot number in the device).
+    /// </summary>
+    public DeviceRole RoleOf(int dvHandle)
+    {
+        // No Dv block, or one that hangs off nothing we know: a hand-written or trimmed file. Treat as an IP-ID device.
+        if (!Devices.TryGetValue(dvHandle, out var dv) || !Devices.ContainsKey(dv.GetInt("PrH"))) return DeviceRole.IpId;
+        if (IsOnIpIdSlot(dv)) return DeviceRole.IpId;
+        for (var a = ParentOf(dv); a != null; a = ParentOf(a))
+            if (IsOnIpIdSlot(a)) return DeviceRole.SubDevice;
+        return DeviceRole.Other;
+    }
+
+    private SmwBlock? ParentOf(SmwBlock dv) => Devices.GetValueOrDefault(dv.GetInt("PrH"));
+
+    /// <summary>A device (it has a symbol) that sits directly on an Ethernet slot of the processor.</summary>
+    private bool IsOnIpIdSlot(SmwBlock dv)
+    {
+        if (dv.GetInt("SmH") <= 0) return false;
+        var slot = ParentOf(dv);
+        if (slot == null) return false;
+        var list = ParentOf(slot);
+        return slot.Get("Nm")?.EndsWith("Ethernet", StringComparison.OrdinalIgnoreCase) == true ||
+               list?.Get("Nm")?.Contains("Ethernet", StringComparison.OrdinalIgnoreCase) == true;
     }
 
     public string SignalName(int handle) =>
