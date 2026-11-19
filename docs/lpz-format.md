@@ -121,3 +121,9 @@ each input/output with a literal id constant (for example `NAME__DigitalInput__`
 
 `samples/SplusModule` is a module written the way the compiler emits it; the test suite runs it inside a synthetic
 `.lpz`.
+
+## Crosspoints in macros
+
+Types 213 (Equipment Crosspoint), 214 (Control Crosspoint) and 215 (Connect) pair up by ID (parameter 1 of 213/214). A macro can ship an equipment crosspoint as an optional remote-control interface. Crestron's "Alarm Clock v2.0" macro does: its 213 record has the ID given in the macro's parameter list (60001, 60002 in one program), takes UI feedback as inputs and presses as outputs. The same signals are also reachable directly, so a program that wires its panel to the macro's pins never needs a 214 or 215 record and the crosspoint stays idle. Check for one before assuming a crosspoint is the only way in: in that program the panel reaches the logic through the macro's input Buffer (type 18) alone.
+
+Type 101 appears in that macro only: one serial input from the Clock Driver (62) `TOD$`, one serial output that goes to a serial join of the equipment crosspoint, parameter 1 = 1. Its symbol is not identified; OpenVP passes the string through (see `TimeOfDayRelayPrim`).
