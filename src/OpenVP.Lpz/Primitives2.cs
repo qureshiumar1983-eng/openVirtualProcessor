@@ -541,6 +541,7 @@ public sealed class TimeOfDayRelayPrim : Primitive
 /// <summary>Type 266, Multiple Discrete Serial Send: a rising input k sends parameter k on output k.</summary>
 public sealed class MultiSerialSendPrim : EdgePrim
 {
+    public override bool WantsStartEdge => false; // Start sends for inputs that are high already
     public override SigKind? OutputKind(int pin) => SigKind.Serial;
     public override void Start(IPrimitiveContext c)
     {

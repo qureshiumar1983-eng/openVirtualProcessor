@@ -15,7 +15,8 @@ public static class SplusTests
         Directory.GetFiles(Path.Combine(Paths.RepoRoot, "samples", "SplusModule", "bin"), "Sample_Splus.dll", SearchOption.AllDirectories)
             .OrderByDescending(File.GetLastWriteTimeUtc).First();
 
-    private static string BuildProgram()
+    /// <param name="startTiedTo1">Tie the module's START input to the constant 1 (a 1 typed on the pin in SIMPL Windows).</param>
+    private static string BuildProgram(bool startTiedTo1 = false)
     {
         var bin = new List<byte>();
         bin.AddRange(Record(31, "LeadingREM", [], [], Int(15, 1), Str(3, "Program File: splus.smw")));
@@ -23,7 +24,7 @@ public static class SplusTests
         bin.AddRange(Record(-12, "IP-ID-04", [Busy, Doubled, Greeting, Ticks], [Press, Start, Level, Name],
             Int(6, 4), Int(10, 1), Int(11, 2), Int(12, 2), Int(13, 3)));
         // SIMPL+ module: 2 digital + 2 analog/serial inputs, 1 digital + 3 analog/serial outputs, STEP = 3
-        bin.AddRange(Record(-48, "S-1", [Press, Start, Level, Name], [Busy, Doubled, Greeting, Ticks],
+        bin.AddRange(Record(-48, "S-1", [Press, startTiedTo1 ? 1 : Start, Level, Name], [Busy, Doubled, Greeting, Ticks],
             Int(10, 2), Int(12, 4), Int(11, 1), Int(13, 4),
             Str(3, "Sample Module"), Str(3, "Sample_Splus.dll"), Int(2, 3)));
 
@@ -266,5 +267,19 @@ public static class SplusTests
             }
             finally { ha.Stop(); hb.Stop(); }
         }
+    }
+
+    [Test]
+    public static void Splus_input_tied_to_1_gets_its_push_at_start()
+    {
+        // On a processor a SIMPL+ input held high by a typed 1 gets its PUSH at start-up. START's PUSH runs a
+        // WAIT loop that ticks onto s2, so ticks appearing with nobody pressing anything shows it ran.
+        using var p = new Processor(Paths.TempData());
+        p.AddLoader(new LpzLoader());
+        p.LoadProgram(1, BuildProgram(startTiedTo1: true));
+        Assert.Equal(SlotState.Running, p.Slot(1).State, "running: " + p.Slot(1).LastError);
+        var panel = p.Slot(1).FindDevice(4)!;
+        Assert.Eventually(() => (string)panel.GetFeedback(S(1)) == "ready", "Function Main ran");
+        Assert.Eventually(() => (string)panel.GetFeedback(S(2)) is { Length: > 0 }, "PUSH on the input tied to 1 ran at start");
     }
 }

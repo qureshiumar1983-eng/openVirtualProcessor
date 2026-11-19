@@ -94,11 +94,15 @@ internal sealed class SplusNode : LpzRuntime.Node, ISplusHost
         return _pins.TryGetValue((false, (uint)(pin - 1 - _digitalOuts)), out var k) ? k : null;
     }
 
+    public override bool WantsStartEdge(int pin) => pin <= _digitalIns;
+
     public override void Start()
     {
+        // A digital input tied to the constant 1 starts low here: the runtime's start-up edge on "1" then raises
+        // it, so the module gets the PUSH/CHANGE a processor gives an input held high by a typed 1.
         for (int pin = 1; pin <= Symbol.Inputs.Length; pin++)
             if (InputOf(pin) is var (kind, id))
-                _module.Preset(kind, id, Runtime.Value(Symbol.Inputs[pin - 1]));
+                _module.Preset(kind, id, Symbol.Inputs[pin - 1] == 1 && kind == SigKind.Digital ? SigValue.False : Runtime.Value(Symbol.Inputs[pin - 1]));
         _module.StartMain();
     }
 
@@ -160,7 +164,9 @@ internal sealed class SplusNode : LpzRuntime.Node, ISplusHost
     {
         int pin = isInput ? (kind == SigKind.Digital ? (int)id + 1 : _digitalIns + (int)id + 1) : OutputPin(kind, id);
         var arr = isInput ? Symbol.Inputs : Symbol.Outputs;
-        return pin >= 1 && pin <= arr.Length && arr[pin - 1] > 1;
+        // The compiler gives a pin left blank (or on a commented-out signal) its own unused signal, so 0 and 1
+        // here are a literal 0 or 1 typed on the pin, which SIMPL+ counts as connected.
+        return pin >= 1 && pin <= arr.Length;
     }
 
     ProgramSlot ISplusHost.Slot => Runtime.Slot;

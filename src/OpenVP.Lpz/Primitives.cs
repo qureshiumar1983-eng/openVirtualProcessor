@@ -46,6 +46,9 @@ public interface IPrimitiveContext
 public abstract class Primitive
 {
     public virtual void Start(IPrimitiveContext c) { }
+    /// <summary>True to get a rising edge at start-up on inputs wired to the constant 1, as on a processor.
+    /// Edge-triggered primitives want it, unless their Start already acts on a high input.</summary>
+    public virtual bool WantsStartEdge => false;
     /// <summary>A change on an input pin, boxed. The typed handlers below call this unless a primitive
     /// overrides them, so a primitive may implement only this one (serial changes always arrive here).</summary>
     public virtual void OnInput(IPrimitiveContext c, int pin, object oldValue, object newValue) { }
@@ -92,6 +95,7 @@ public abstract class EvalPrim : ReactPrim
 /// Analog and serial changes never are an edge, so they do nothing.</summary>
 public abstract class EdgePrim(bool falling = false) : Primitive
 {
+    public override bool WantsStartEdge => !falling;
     protected abstract void OnEdge(IPrimitiveContext c, int pin);
     public override void OnDigital(IPrimitiveContext c, int p, bool o, bool n)
     {
@@ -442,6 +446,7 @@ public sealed class WavePulsePrim : EdgePrim
 /// to parameter k).</summary>
 public sealed class InitPrim : EdgePrim
 {
+    public override bool WantsStartEdge => false; // Start loads inputs that are high already
     public override SigKind? OutputKind(int pin) => null;
     private static bool Multi(IPrimitiveContext c) => c.InputCount > 1 && c.OutputCount == 1;
     public override void Start(IPrimitiveContext c)

@@ -213,6 +213,8 @@ public sealed partial class LpzRuntime : IProgramRuntime
         for (int pin = 1; pin <= node.Symbol.Inputs.Length; pin++)
         {
             var s = node.Symbol.Inputs[pin - 1];
+            // The constant 1 goes high at start: a node that wants that rising edge listens to it (see Start).
+            if (s == 1 && node.WantsStartEdge(pin)) (_fanout![1] ??= new()).Add((node, pin));
             if (s <= 1) continue;
             _used[s] = true;
             Infer(s, node.InputKind(pin));
@@ -528,6 +530,9 @@ public sealed partial class LpzRuntime : IProgramRuntime
         public abstract SigKind? InputKind(int pin);
         public abstract SigKind? OutputKind(int pin);
         public virtual bool WatchesOutputs => false;
+        /// <summary>Whether this node wants a rising edge on an input pin wired to the constant 1 at start-up
+        /// (as a processor gives it). Nodes that already act on a high input in their Start say no.</summary>
+        public virtual bool WantsStartEdge(int pin) => false;
         public virtual void Start() { }
         public virtual void Stop() { }
         /// <summary>A change on one of this node's input pins, boxed. Nodes that don't need the typed
@@ -546,6 +551,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
         public override SigKind? InputKind(int pin) => prim.InputKind(pin);
         public override SigKind? OutputKind(int pin) => prim.OutputKind(pin);
         public override bool WatchesOutputs => prim is IWatchesOutputs;
+        public override bool WantsStartEdge(int pin) => prim.WantsStartEdge;
         public override void Start() => prim.Start(this);
         public override void OnInput(int pin, object o, object n)
         {

@@ -430,4 +430,26 @@ public static class LpzRuntimeTests
         Assert.Equal(true, At(new JoinKey(SigKind.Digital, 4012, 3)), "second item too");
         Assert.Equal(false, At(new JoinKey(SigKind.Digital, 4013, 3)), "item on a real signal is sent with its value");
     }
+
+    [Test]
+    public static void Logic_triggered_by_the_constant_1_fires_once_at_start()
+    {
+        // The 1 signal goes high at start-up, and symbols triggered by it see that rising edge once, as on a
+        // processor: a Serial Send sends, a Toggle flips (once, not twice), an Analog Initialize loads.
+        const int Sent = 10, Toggled = 11, Loaded = 12;
+        var path = BuildPanelProgram("startedge",
+        [
+            Record(-12, "IP-ID-03", [Toggled, Loaded, Sent], [], Int(6, 3), Int(10, 1), Int(11, 0), Int(12, 2), Int(13, 0)),
+            Record(58, "S-1", [1], [Sent], Int(15, 1), Str(3, "hello")),
+            Record(10, "S-2", [1], [Toggled, 0]),
+            Record(38, "S-3", [1], [Loaded], Int(15, 1), Int(2, 42)),
+        ]);
+        using var p = new Processor(Paths.TempData());
+        p.AddLoader(new LpzLoader());
+        var panel = LoadPanel(p, path);
+        Assert.Eventually(() => (string)panel.GetFeedback(S(1)) == "hello", "Serial Send on 1 sent at start");
+        Assert.Eventually(() => (ushort)panel.GetFeedback(A(1)) == 42, "Analog Initialize on 1 loaded at start");
+        Thread.Sleep(50);
+        Assert.True((bool)panel.GetFeedback(D(1)), "Toggle on 1 flipped once at start");
+    }
 }
