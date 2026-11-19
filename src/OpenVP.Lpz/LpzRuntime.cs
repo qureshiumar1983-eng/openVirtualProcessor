@@ -250,6 +250,12 @@ public sealed partial class LpzRuntime : IProgramRuntime
         };
     }
 
+    /// <summary>Whether a device, smart object or crosspoint input wired to <paramref name="sig"/> has a value to
+    /// send when it connects. Real signals do. So does the constant 1 on a digital join: SIMPL Windows lets you
+    /// type 1 on a pin to hold that join high (an item that is always visible or enabled), and the panel only
+    /// knows if it is told. The constant 0 is the panel's default already.</summary>
+    internal static bool HasFeedback(int sig, SigKind joinKind) => sig > 1 || (sig == 1 && joinKind == SigKind.Digital);
+
     // A signal only ever writes the array of its own kind, so reading another kind's array gives that
     // kind's default (false, 0, ""): same answers as the old "is true / is ushort / as string" checks.
     internal bool DigitalAt(int sig) => (uint)sig < (uint)_dig.Length && _dig[sig];
@@ -680,7 +686,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
             _device.InputReceived += OnDeviceInput;
             if (_eisc) Runtime._slot.Processor.Bus.Attach(_device);
             for (int pin = 1; pin <= Symbol.Inputs.Length; pin++)
-                if (Symbol.Inputs[pin - 1] > 1) Feedback(pin, Runtime.Value(Symbol.Inputs[pin - 1]));
+                if (HasFeedback(Symbol.Inputs[pin - 1], InJoin(pin).Kind)) Feedback(pin, Runtime.Value(Symbol.Inputs[pin - 1]));
             foreach (var so in SmartObjects.Values) so.PushAll();
         }
 

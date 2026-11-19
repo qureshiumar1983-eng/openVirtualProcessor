@@ -404,4 +404,30 @@ public static class LpzRuntimeTests
         panel.ReceiveInput(D(1), true); panel.ReceiveInput(D(1), false);
         Assert.Eventually(() => !Fbk(1) && !Fbk(2), "the buffer route still works while connected");
     }
+
+    [Test]
+    public static void Joins_tied_to_the_constant_1_reach_the_panel()
+    {
+        // SIMPL Windows lets you type 1 on a pin to hold a join high, e.g. smart object items that are always
+        // visible. Panel IPID 03: digital feedback d1 = constant 1, d2 = constant 0, d3 = a real signal; smart
+        // object 3 with item visibility d4011..d4012 tied to 1 and d4013 to a real signal.
+        const int Real = 10, SoReal = 11;
+        var so = new int[4013];
+        so[4010] = 1; so[4011] = 1; so[4012] = SoReal;
+        var path = BuildPanelProgram("constone",
+        [
+            Record(-12, "IP-ID-03", [1, 0, Real], [], Int(6, 3), Int(10, 3), Int(11, 0), Int(12, 3), Int(13, 0)),
+            Record(268, "IP-ID-03.2", so, [], Int(10, 4013), Int(11, 0), Int(12, 4013), Int(13, 0), Int(44, 3)),
+        ]);
+        using var p = new Processor(Paths.TempData());
+        p.AddLoader(new LpzLoader());
+        var panel = LoadPanel(p, path);
+        var snap = panel.FeedbackSnapshot();
+        bool? At(JoinKey k) => snap.TryGetValue(k, out var v) ? v is true : null;
+        Assert.Equal(true, At(D(1)), "plain join tied to 1 is sent high");
+        Assert.Equal(false, At(D(3)), "plain join on a real signal is sent with its value");
+        Assert.Equal(true, At(new JoinKey(SigKind.Digital, 4011, 3)), "smart object item visibility tied to 1 is sent high");
+        Assert.Equal(true, At(new JoinKey(SigKind.Digital, 4012, 3)), "second item too");
+        Assert.Equal(false, At(new JoinKey(SigKind.Digital, 4013, 3)), "item on a real signal is sent with its value");
+    }
 }

@@ -117,7 +117,7 @@ public sealed partial class LpzRuntime
         public void PushAll()
         {
             for (int pin = 1; pin <= Symbol.Inputs.Length; pin++)
-                if (Symbol.Inputs[pin - 1] > 1) parent.Device?.SetFeedback(_split.InJoin(pin, Id), Runtime.Value(Symbol.Inputs[pin - 1]));
+                if (HasFeedback(Symbol.Inputs[pin - 1], _split.InJoin(pin).Kind)) parent.Device?.SetFeedback(_split.InJoin(pin, Id), Runtime.Value(Symbol.Inputs[pin - 1]));
         }
 
         public void FromPanel(JoinKey key, object value)
@@ -178,7 +178,7 @@ public sealed partial class LpzRuntime
             Connected = equipment;
             if (equipment == null) return;
             for (int pin = 1; pin <= equipment.Symbol.Inputs.Length; pin++)
-                if (equipment.Symbol.Inputs[pin - 1] > 1)
+                if (HasFeedback(equipment.Symbol.Inputs[pin - 1], equipment.Split.InJoin(pin).Kind))
                     Feedback(equipment.Split.InJoin(pin), Runtime.InValue(equipment, pin));
         }
     }
