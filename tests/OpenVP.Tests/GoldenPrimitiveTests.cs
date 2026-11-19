@@ -6,7 +6,7 @@ namespace OpenVP.Tests;
 /// <summary>
 /// Golden traces for the primitive types the first golden tests don't reach. Same rules as GoldenTests:
 /// no timers, every step ends at a barrier, and the checked-in files never change to make a test pass.
-/// The timer-based types (14-17, 20, 27, 29, 56, 61, 114, 139, 223, 241) are in GoldenTimerTests.cs.
+/// The timer-based types (14-17, 20, 27, 29, 56, 61, 114, 139, 241) are in GoldenTimerTests.cs.
 /// </summary>
 public static partial class GoldenTests
 {
