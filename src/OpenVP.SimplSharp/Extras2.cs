@@ -140,10 +140,11 @@ namespace Crestron.SimplSharp.CrestronIO
     public class DirectoryInfo : FileSystemInfo
     {
         private readonly System.IO.DirectoryInfo _d;
-        public DirectoryInfo(string path) { _d = new System.IO.DirectoryInfo(Paths.Map(path)); }
+        private readonly string _path;
+        public DirectoryInfo(string path) { _path = path; _d = new System.IO.DirectoryInfo(Paths.Map(path)); }
         public override string Name => _d.Name;
         public override string FullName => _d.FullName;
-        public override bool Exists => _d.Exists;
+        public override bool Exists { get { _d.Refresh(); if (!_d.Exists) Paths.Missing(_path, folder: true); return _d.Exists; } }
         public DateTime LastWriteTime => _d.LastWriteTime;
         public void Create() => _d.Create();
         public FileInfo[] GetFiles() => _d.GetFiles().Select(f => new FileInfo(f.FullName)).ToArray();

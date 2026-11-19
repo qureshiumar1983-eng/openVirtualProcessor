@@ -16,6 +16,25 @@ namespace Crestron.SimplSharp.CrestronIO
     {
         public static string Map(string path) =>
             OpenVP.Core.SlotFiles.Map(OpenVPBridge.Slot?.Directory ?? SIO.Path.GetTempPath(), path);
+
+        /// <summary>The program looked for this file or folder and it isn't there: log which folder to create.</summary>
+        public static void Missing(string path, bool folder = false) => OpenVPBridge.Slot?.ReportMissing(path, folder);
+
+        /// <summary>Maps a path the program is about to read, noting it if the file isn't there.</summary>
+        public static string Read(string path)
+        {
+            var full = Map(path);
+            if (!SIO.File.Exists(full)) Missing(path);
+            return full;
+        }
+
+        /// <summary>Maps a folder the program is about to list, noting it if the folder isn't there.</summary>
+        public static string ReadFolder(string path)
+        {
+            var full = Map(path);
+            if (!SIO.Directory.Exists(full)) Missing(path, folder: true);
+            return full;
+        }
     }
 
     public delegate void AsyncCallback(IAsyncResult result);
@@ -96,7 +115,16 @@ namespace Crestron.SimplSharp.CrestronIO
         private static SIO.Stream Open(string path, FileMode mode, FileAccess access, FileShare share)
         {
             var full = Paths.Map(path);
-            SIO.Directory.CreateDirectory(SIO.Path.GetDirectoryName(full)!);
+            if (mode is FileMode.Open or FileMode.Truncate)
+            {
+                // Reading: don't quietly make an empty folder, say which folder and file to put in place.
+                if (!SIO.File.Exists(full))
+                {
+                    Paths.Missing(path);
+                    throw new SIO.FileNotFoundException($"Could not find file '{path}'.", full);
+                }
+            }
+            else SIO.Directory.CreateDirectory(SIO.Path.GetDirectoryName(full)!);
             return new SIO.FileStream(full, (SIO.FileMode)mode, (SIO.FileAccess)access, (SIO.FileShare)share);
         }
     }
@@ -130,8 +158,8 @@ namespace Crestron.SimplSharp.CrestronIO
         public StreamReader(Stream stream, Encoding encoding) { Inner = new SIO.StreamReader(stream.Inner, encoding); }
         public StreamReader(Stream stream, bool detectEncoding) { Inner = new SIO.StreamReader(stream.Inner, detectEncoding); }
         public StreamReader(Stream stream, Encoding encoding, bool detectEncoding) { Inner = new SIO.StreamReader(stream.Inner, encoding, detectEncoding); }
-        public StreamReader(string path) { Inner = new SIO.StreamReader(Paths.Map(path)); }
-        public StreamReader(string path, Encoding encoding) { Inner = new SIO.StreamReader(Paths.Map(path), encoding); }
+        public StreamReader(string path) { Inner = new SIO.StreamReader(Paths.Read(path)); }
+        public StreamReader(string path, Encoding encoding) { Inner = new SIO.StreamReader(Paths.Read(path), encoding); }
         public bool EndOfStream => ((SIO.StreamReader)Inner).EndOfStream;
     }
 
@@ -193,21 +221,26 @@ namespace Crestron.SimplSharp.CrestronIO
 
     public static class File
     {
-        public static bool Exists(string path) => SIO.File.Exists(Paths.Map(path));
+        public static bool Exists(string path)
+        {
+            if (SIO.File.Exists(Paths.Map(path))) return true;
+            Paths.Missing(path);
+            return false;
+        }
         public static void Delete(string path) => SIO.File.Delete(Paths.Map(path));
         public static void Move(string from, string to) => SIO.File.Move(Paths.Map(from), Paths.Map(to), true);
-        public static void Copy(string from, string to) => SIO.File.Copy(Paths.Map(from), Paths.Map(to));
-        public static void Copy(string from, string to, bool overwrite) => SIO.File.Copy(Paths.Map(from), Paths.Map(to), overwrite);
+        public static void Copy(string from, string to) => SIO.File.Copy(Paths.Read(from), Paths.Map(to));
+        public static void Copy(string from, string to, bool overwrite) => SIO.File.Copy(Paths.Read(from), Paths.Map(to), overwrite);
         public static FileStream Create(string path) => new FileStream(path, FileMode.Create, FileAccess.ReadWrite);
         public static FileStream Open(string path, FileMode mode) => new FileStream(path, mode);
         public static FileStream Open(string path, FileMode mode, FileAccess access) => new FileStream(path, mode, access);
         public static FileStream Open(string path, FileMode mode, FileAccess access, FileShare share) => new FileStream(path, mode, access, share);
-        public static string ReadToEnd(string path) => SIO.File.ReadAllText(Paths.Map(path));
+        public static string ReadToEnd(string path) => SIO.File.ReadAllText(Paths.Read(path));
         public static void WriteAllText(string path, string text) => SIO.File.WriteAllText(Paths.Map(path), text);
         public static FileStream OpenRead(string path) => new FileStream(path, FileMode.Open, FileAccess.Read);
         public static FileStream OpenWrite(string path) => new FileStream(path, FileMode.OpenOrCreate, FileAccess.Write);
         public static StreamReader OpenText(string path) => new StreamReader(path);
-        public static string ReadToEnd(string path, Encoding encoding) => SIO.File.ReadAllText(Paths.Map(path), encoding ?? Encoding.UTF8);
+        public static string ReadToEnd(string path, Encoding encoding) => SIO.File.ReadAllText(Paths.Read(path), encoding ?? Encoding.UTF8);
         public static void WriteText(string path, string text) => SIO.File.WriteAllText(Paths.Map(path), text);
         public static DateTime GetCreationTime(string path) => SIO.File.GetCreationTime(Paths.Map(path));
         public static DateTime GetLastWriteTime(string path) => SIO.File.GetLastWriteTime(Paths.Map(path));
@@ -215,16 +248,21 @@ namespace Crestron.SimplSharp.CrestronIO
 
     public static class Directory
     {
-        public static bool Exists(string path) => SIO.Directory.Exists(Paths.Map(path));
+        public static bool Exists(string path)
+        {
+            if (SIO.Directory.Exists(Paths.Map(path))) return true;
+            Paths.Missing(path, folder: true);
+            return false;
+        }
         public static void Create(string path) => SIO.Directory.CreateDirectory(Paths.Map(path));
         public static DirectoryInfo CreateDirectory(string path) { Create(path); return new DirectoryInfo(path); }
         public static DateTime GetLastWriteTime(string path) => SIO.Directory.GetLastWriteTime(Paths.Map(path));
         public static DateTime GetCreationTime(string path) => SIO.Directory.GetCreationTime(Paths.Map(path));
         public static void Delete(string path) => SIO.Directory.Delete(Paths.Map(path));
         public static void Delete(string path, bool recursive) => SIO.Directory.Delete(Paths.Map(path), recursive);
-        public static string[] GetFiles(string path) => SIO.Directory.GetFiles(Paths.Map(path));
-        public static string[] GetFiles(string path, string pattern) => SIO.Directory.GetFiles(Paths.Map(path), pattern);
-        public static string[] GetDirectories(string path) => SIO.Directory.GetDirectories(Paths.Map(path));
+        public static string[] GetFiles(string path) => SIO.Directory.GetFiles(Paths.ReadFolder(path));
+        public static string[] GetFiles(string path, string pattern) => SIO.Directory.GetFiles(Paths.ReadFolder(path), pattern);
+        public static string[] GetDirectories(string path) => SIO.Directory.GetDirectories(Paths.ReadFolder(path));
         public static string GetApplicationDirectory() => InitialParametersClass.ProgramDirectory.TrimEnd(SIO.Path.DirectorySeparatorChar);
         // On a processor this is the file system root, so Combine(root, "user", ...) means \USER. Here the slot folder plays that role.
         public static string GetApplicationRootDirectory() => OpenVPBridge.Slot?.Directory ?? SIO.Path.GetTempPath();
@@ -233,9 +271,10 @@ namespace Crestron.SimplSharp.CrestronIO
     public class FileInfo : FileSystemInfo
     {
         private readonly SIO.FileInfo _f;
-        public FileInfo(string path) { _f = new SIO.FileInfo(Paths.Map(path)); }
+        private readonly string _path;
+        public FileInfo(string path) { _path = path; _f = new SIO.FileInfo(Paths.Map(path)); }
         public long Length => _f.Exists ? _f.Length : 0;
-        public override bool Exists => _f.Exists;
+        public override bool Exists { get { _f.Refresh(); if (!_f.Exists) Paths.Missing(_path); return _f.Exists; } }
         public override string Name => _f.Name;
         public override string FullName => _f.FullName;
         public DateTime LastWriteTime => _f.LastWriteTime;

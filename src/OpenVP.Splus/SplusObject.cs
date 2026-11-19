@@ -249,8 +249,14 @@ namespace Crestron.Logos.SplusObjects
             try
             {
                 var path = MapPath(name?.Str);
-                Directory.CreateDirectory(Path.GetDirectoryName(path));
                 // SIMPL+ flags: _O_RDONLY 0, _O_WRONLY 1, _O_RDWR 2, _O_APPEND 8, _O_CREAT 256, _O_TRUNC 512, _O_EXCL 1024
+                if ((flags & 256) == 0)
+                {
+                    // Opening a file that must already exist (a config file, usually): if it isn't there,
+                    // say which folder to create and where to put it, rather than quietly making an empty folder.
+                    if (!File.Exists(path)) { _host?.Slot.ReportMissing(name?.Str); return -1; }
+                }
+                else Directory.CreateDirectory(Path.GetDirectoryName(path));
                 var write = (flags & 3) != 0;
                 FileMode mode = (flags & 256) != 0 ? ((flags & 512) != 0 ? FileMode.Create : FileMode.OpenOrCreate) : FileMode.Open;
                 var fs = new FileStream(path, mode, write ? FileAccess.ReadWrite : FileAccess.Read, FileShare.ReadWrite);
@@ -292,6 +298,7 @@ namespace Crestron.Logos.SplusObjects
             {
                 var full = MapPath(pattern?.Str);
                 var dir = Path.GetDirectoryName(full);
+                if (!Directory.Exists(dir)) _host?.Slot.ReportMissing(dir, isFolder: true); // dir is already inside the slot folder
                 _findResults = Directory.Exists(dir) ? Directory.GetFileSystemEntries(dir, Path.GetFileName(full)) : Array.Empty<string>();
                 _findIndex = 0;
                 return FindNext(ref info);
