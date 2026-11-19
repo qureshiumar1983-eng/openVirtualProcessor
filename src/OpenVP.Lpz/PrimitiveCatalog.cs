@@ -18,10 +18,10 @@ public static class PrimitiveCatalog
         new PrimitiveInfo(-203, "Card slot", "", true),
         new PrimitiveInfo(-201, "Card slot", "", true),
         new PrimitiveInfo(-12, "IP device / slot / card", "IP-ID records map joins: fields 10-13 split digital/analog/serial.", true),
-        new PrimitiveInfo(-48, "SIMPL+ module", "Runs a compiled SIMPL+ .dll named in a string field.", PrimitiveLibrary.Supports(-48)),
+        new PrimitiveInfo(-48, "SIMPL+ module", "Runs a compiled SIMPL+ .dll named in a string field.", true), // runs as a dedicated node, not a library primitive
         new PrimitiveInfo(-200, "COM port", "Input 1 = serial TX, output 1 = RX; under the device's card slot (IP-ID-xx > Slot > COM-nn). Logged and handed to the port bridge.", true),
         new PrimitiveInfo(-202, "IR port", "Crestron DB IR-controlled device (SmC 107): input 2+k triggers IR command params[k]. Logged and handed to the port bridge.", true),
-        new PrimitiveInfo(-242, "IP serial device", "", PrimitiveLibrary.Supports(-242)),
+        new PrimitiveInfo(-242, "IP serial device", "", true), // runs as a dedicated node, not a library primitive
         new PrimitiveInfo(-310, "Hardware", "", true),
         new PrimitiveInfo(-316, "Hardware", "", true),
         new PrimitiveInfo(-320, "Hardware", "", true),
@@ -76,8 +76,9 @@ public static class PrimitiveCatalog
         new PrimitiveInfo(205, "Make String Permanent", "SmC 858", PrimitiveLibrary.Supports(205)),
         new PrimitiveInfo(206, "Multiple NOT", "SmC 418", PrimitiveLibrary.Supports(206)),
         new PrimitiveInfo(207, "Interlock-Toggle", "SmC 419", PrimitiveLibrary.Supports(207)),
-        new PrimitiveInfo(213, "Equipment Crosspoint Routing", "SmC 446", PrimitiveLibrary.Supports(213)),
-        new PrimitiveInfo(214, "Control Crosspoint Routing", "SmC 447", PrimitiveLibrary.Supports(214)),
+        new PrimitiveInfo(213, "Equipment Crosspoint Routing", "SmC 446", true), // runs as a dedicated node, not a library primitive
+        new PrimitiveInfo(214, "Control Crosspoint Routing", "SmC 447", true), // runs as a dedicated node, not a library primitive
+        new PrimitiveInfo(215, "Crosspoint Connect", "Connects a control crosspoint to an equipment crosspoint", true), // runs as a dedicated node, not a library primitive
         new PrimitiveInfo(220, "Analog Comparison (Full Set)", "SmC 492; output order unconfirmed", PrimitiveLibrary.Supports(220)),
         new PrimitiveInfo(223, "Analog Ramp (Bounds Limited)", "SmC 540", PrimitiveLibrary.Supports(223)),
         new PrimitiveInfo(224, "Analog Scaler with I/O Limits", "SmC 541", PrimitiveLibrary.Supports(224)),
@@ -85,6 +86,6 @@ public static class PrimitiveCatalog
         new PrimitiveInfo(236, "Analog Increment with Optional Feedback", "SmC 605", PrimitiveLibrary.Supports(236)),
         new PrimitiveInfo(241, "Stepper with Progress & Reset", "SmC 777", PrimitiveLibrary.Supports(241)),
         new PrimitiveInfo(254, "String Length", "SmC 2506", PrimitiveLibrary.Supports(254)),
-        new PrimitiveInfo(268, "Touch panel page / smart object link", "Seen with Smart Graphics panels", PrimitiveLibrary.Supports(268)),
+        new PrimitiveInfo(268, "Touch panel page / smart object link", "Seen with Smart Graphics panels", true), // runs as a dedicated node, not a library primitive
     }.ToDictionary(p => p.Type);
 }
