@@ -27,7 +27,7 @@ public static class OpenVpServer
         var processor = new Processor(cfg["DataDirectory"] ?? "data", cfg.GetValue("Slots", 10), cfg.GetValue("SlotSpinMicroseconds", 0));
         processor.AddLoader(new SimplSharpLoader());
         processor.AddLoader(new SimplLoader(Path.Combine(processor.DataDirectory, "symbols.json")));
-        processor.AddLoader(new LpzLoader());
+        processor.AddLoader(new LpzLoader(Path.Combine(processor.DataDirectory, "primitives.json")));
         processor.LogWritten += e => Console.WriteLine($"{e.Time:HH:mm:ss} [slot {e.Slot:00}] {e.Level,-7} {e.Message}");
         builder.Services.AddSingleton(processor);
 
@@ -202,7 +202,7 @@ public static class OpenVpServer
                     if (Directory.Exists(dir)) Directory.Delete(dir, true);
                     Directory.CreateDirectory(dir);
                     using (var fs = File.Create(path)) file.CopyTo(fs);
-                    // Sidecar files (MyProgram.openvp.json, MyProgram.symbols.json) can ride along.
+                    // Sidecar files (MyProgram.openvp.json, MyProgram.symbols.json, MyProgram.primitives.json) can ride along.
                     foreach (var extra in form.Files.Where(f => f != file))
                     {
                         using var fs = File.Create(Path.Combine(dir, Path.GetFileName(extra.FileName)));

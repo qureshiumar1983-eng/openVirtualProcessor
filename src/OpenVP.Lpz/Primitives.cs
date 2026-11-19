@@ -680,80 +680,16 @@ public interface IWatchesOutputs
     void OnOutputChanged(IPrimitiveContext c, int pin, object value);
 }
 
-/// <summary>Primitive types OpenVP can run, keyed by the .bin record type.</summary>
+/// <summary>Primitive types OpenVP can run, keyed by the .bin record type. The table is
+/// <see cref="LogicSymbolCatalog"/>; a program can name more types in primitives.json.</summary>
 public static class PrimitiveLibrary
 {
-    private static readonly Dictionary<int, Func<Primitive>> Factories = new()
-    {
-        [0] = () => new AndPrim(),
-        [1] = () => new NotPrim(),
-        [2] = () => new OrPrim(false),
-        [3] = () => new OrPrim(true),
-        [9] = () => new SrLatchPrim(),
-        [10] = () => new TogglePrim(),
-        [11] = () => new InterlockPrim(),
-        [14] = () => new OscillatorPrim(),
-        [15] = () => new OneShotPrim(false),
-        [16] = () => new StretchPrim(),
-        [17] = () => new OneShotPrim(true),
-        [18] = () => new BufferPrim(),
-        [27] = () => new DelayPrim(),
-        [29] = () => new MultiOneShotPrim(),
-        [38] = () => new InitPrim(),
-        [51] = () => new EquatePrim(),
-        [58] = () => new SerialSendPrim(),
-        [62] = () => new ClockPrim(),
-        [67] = () => new HoldBufferPrim(SigKind.Analog),
-        [88] = () => new HoldBufferPrim(SigKind.Serial),
-        [97] = () => new SerialIoPrim(),
-        [100] = () => new AnalogSumPrim(),
-        [101] = () => new TimeOfDayRelayPrim(),
-        [103] = () => new SerialToAnalogPrim(),
-        [114] = () => new ChangePulsePrim(),
-        [138] = () => new FollowPrim(),
-        [139] = () => new StepperPrim(),
-        [156] = () => new ConstantLowPrim(),
-        [204] = () => new WavePulsePrim(),
-        [206] = () => new NotPrim(),
-        [220] = () => new ComparePrim(),
-        [254] = () => new StringLengthPrim(),
-        [205] = () => new PermanentPrim(),
-        [56] = () => new DebouncePrim(),
-        [23] = () => new RingCounterPrim(),
-        [61] = () => new WhenPrim(),
-        [4] = () => new XorPrim(),
-        [6] = () => new TransitionPrim(false),
-        [7] = () => new TransitionPrim(true),
-        [19] = () => new TruthTablePrim(),
-        [20] = () => new AnalogRampPrim(),
-        [223] = () => new BoundedRampPrim(),
-        [30] = () => new AnalogScalerPrim(),
-        [36] = () => new AnalogRamPrim(),
-        [37] = () => new AnalogStepPrim(),
-        [52] = () => new DecadePrim(),
-        [80] = () => new RateLimiterPrim(),
-        [82] = () => new AnalogToSerialPrim(),
-        [87] = () => new AnalogFlipPrim(),
-        [93] = () => new SerialGatherPrim(),
-        [99] = () => new AnalogScalerSignedPrim(),
-        [106] = () => new AnalogToDigitalPrim(),
-        [121] = () => new NoOpPrim(),
-        [122] = () => new SerialMergePrim(),
-        [136] = () => new DivModPrim(),
-        [202] = () => new ConsolePrim(),
-        [203] = () => new WaveDelayPrim(),
-        [207] = () => new InterlockTogglePrim(),
-        [224] = () => new AnalogScalerLimitsPrim(),
-        [230] = () => new AnalogIncrementPrim(),
-        [236] = () => new AnalogIncrementPrim(),
-        [237] = () => new AnalogClampPrim(),
-        [241] = () => new StepperProgressPrim(),
-        [266] = () => new MultiSerialSendPrim(),
-        [85] = () => new XsigPrim(),
-        [161] = () => new NoOpPrim(),
-    };
+    public static bool Supports(int type) => LogicSymbolCatalog.ByLpzType(type) != null;
+    public static Primitive? Create(int type) => LogicSymbolCatalog.ByLpzType(type)?.Create();
+    public static IEnumerable<int> Types => LogicSymbolCatalog.All.SelectMany(s => s.LpzTypes);
 
-    public static bool Supports(int type) => Factories.ContainsKey(type);
-    public static Primitive? Create(int type) => Factories.TryGetValue(type, out var f) ? f() : null;
-    public static IEnumerable<int> Types => Factories.Keys;
+    /// <summary>Create a primitive for a type, consulting <paramref name="overrides"/> (from primitives.json)
+    /// for types the catalog doesn't know.</summary>
+    public static Primitive? Create(int type, IReadOnlyDictionary<int, LogicSymbol>? overrides) =>
+        Create(type) ?? (overrides != null && overrides.TryGetValue(type, out var s) ? s.Create() : null);
 }

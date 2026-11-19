@@ -1,5 +1,7 @@
+using System.Text;
 using System.Text.Json;
 using OpenVP.Core;
+using OpenVP.Lpz;
 
 namespace OpenVP.Simpl;
 
@@ -71,7 +73,9 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
     private readonly List<Node> _nodes = new();
     private readonly List<DeviceNode> _devices = new();
     private readonly Queue<Pending> _pending = new();
+    private readonly Queue<Action> _nextWave = new();
     private readonly TimerSet _timers;
+    private readonly NvramStore _store;
     private bool _solving;
     private volatile bool _running;
     // Causality (docs/debugger-paths.md section 2); only touched while a debugger is listening. While Solve hands
@@ -92,6 +96,8 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
         _options = options;
         // One OS timer for the whole slot; due timers reach the slot thread in one post (see TimerSet).
         _timers = new TimerSet(() => slot.Dispatcher, () => _running, e => slot.Log("Error", $"Unhandled exception in program: {e}"));
+        _store = new NvramStore(Path.Combine(slot.Directory, "nvram.json"));
+        foreach (var problem in library.Problems) slot.Log("Warning", problem);
 
         var max = 1;
         foreach (var h in file.Signals.Keys) max = Math.Max(max, h);
@@ -184,8 +190,8 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
                 continue;
             }
 
-            var behavior = _library.Create(sym);
-            if (behavior == null)
+            var logic = _library.Resolve(sym);
+            if (logic == null)
             {
                 // Structural symbols (processor, slots, folders) have no pins wired; only warn about the rest.
                 if (sym.Inputs.Any(h => h > 0) || sym.Outputs.Any(h => h > 0))
@@ -195,9 +201,14 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
                 }
                 continue;
             }
-            Register(new LogicNode(this, sym, behavior));
+            if (!sym.Inputs.Any(h => h > 0) && !sym.Outputs.Any(h => h > 0)) continue; // nothing wired: nothing to run
+            Register(new PrimNode(this, sym, logic));
         }
 
+        // Signals no pin gave a kind to are digital.
+        foreach (var node in _nodes)
+            foreach (var h in node.Symbol.Inputs.Concat(node.Symbol.Outputs))
+                if (h > 0) SetKind(h, SigKind.Digital);
         foreach (var sg in _file.Signals.Values)
             if (sg.Handle > 0) SetKind(sg.Handle, SigKind.Digital);
 
@@ -220,13 +231,15 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
         {
             var h = node.Symbol.Inputs[pin - 1];
             if (h <= 0) continue;
-            SetKind(h, node.InputKind(pin));
+            if (node.InputKind(pin) is { } k) SetKind(h, k);
             (_fanout![h] ??= new()).Add((node, pin));
         }
         for (int pin = 1; pin <= node.Symbol.Outputs.Count; pin++)
         {
             var h = node.Symbol.Outputs[pin - 1];
-            if (h > 0) SetKind(h, node.OutputKind(pin));
+            if (h <= 0) continue;
+            if (node.OutputKind(pin) is { } k) SetKind(h, k);
+            if (node.WatchesOutputs) (_fanout![h] ??= new()).Add((node, -pin)); // negative pin = own output
         }
     }
 
@@ -429,8 +442,19 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
     {
         {
             var steps = 0;
-            while (_pending.Count > 0)
+            while (_pending.Count > 0 || _nextWave.Count > 0)
             {
+                if (_pending.Count == 0)
+                {
+                    // Logic settled: run what was deferred to the next wave.
+                    var n = _nextWave.Count;
+                    for (int i = 0; i < n; i++)
+                    {
+                        try { _nextWave.Dequeue()(); }
+                        catch (Exception ex) { _slot.Log("Error", $"Next-wave action: {ex.Message}"); }
+                    }
+                    continue;
+                }
                 if (++steps > MaxStepsPerSolve)
                 {
                     _pending.Clear();
@@ -497,6 +521,13 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
         return _timers.After(ms, action);
     }
 
+    /// <summary>Run after the current logic solve settles (the next logic wave).</summary>
+    internal void Defer(Action a)
+    {
+        _nextWave.Enqueue(a);
+        if (!_solving) _slot.Dispatcher.Post(static (rt, _, _) => ((SimplRuntime)rt!).Solve(), this, null, 0);
+    }
+
     // ------------------------------------------------------------------ lifecycle
 
     public void Start()
@@ -504,17 +535,33 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
         _slot.Dispatcher.Invoke(() =>
         {
             _running = true;
+            var ones = _file.Signals.Values.Where(s => s.Name == "1" && s.Handle > 0 && s.Handle < _dig.Length).ToList();
+            foreach (var sg in ones) _dig[sg.Handle] = true; // the constant 1 reads high from the start, as on a processor
             foreach (var d in _devices) d.Attach();
-            foreach (var n in _nodes) n.Start();
-
-            // Raise the "1" constant: every symbol wired to it sees a rising edge, like a real program start.
-            foreach (var sg in _file.Signals.Values.Where(s => s.Name == "1"))
+            _solving = true; // collect start-up changes, then solve once
+            try
             {
-                _dig[sg.Handle] = true;
-                if (_slot.TraceWanted) _slot.Trace("1", SigKind.Digital, true, "start");
-                for (int e = _edgeStart[sg.Handle]; e < _edgeStart[sg.Handle + 1]; e++)
-                    _edges[e].Node.OnDigital(_edges[e].Pin, false, true);
+                foreach (var n in _nodes)
+                {
+                    try { n.Start(); }
+                    catch (Exception e) { _slot.Log("Error", $"{n.Symbol}: {e.Message}"); }
+                }
+
+                // The "1" constant rises at start: devices, and symbols that want it, see a rising edge.
+                foreach (var sg in ones)
+                {
+                    if (_slot.TraceWanted) _slot.Trace("1", SigKind.Digital, true, "start");
+                    for (int e = _edgeStart[sg.Handle]; e < _edgeStart[sg.Handle + 1]; e++)
+                    {
+                        var edge = _edges[e];
+                        if (edge.Pin < 0 || !edge.Node.WantsStartEdge) continue;
+                        try { edge.Node.OnDigital(edge.Pin, false, true); }
+                        catch (Exception ex) { _slot.Log("Error", $"{edge.Node.Symbol}: {ex.Message}"); }
+                    }
+                }
             }
+            finally { _solving = false; }
+            Solve();
         });
         if (Unsupported.Count > 0)
             _slot.Log("Warning", $"{Unsupported.Count} symbol(s) have no behavior yet: " +
@@ -526,6 +573,7 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
         _running = false;
         _timers.CancelAll();
         foreach (var d in _devices) d.Detach();
+        _store.Flush();
     }
 
     public IReadOnlyList<SignalInfo> GetSignals() =>
@@ -575,8 +623,14 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
         protected Node(SimplRuntime rt, SmwSymbol sym) { Runtime = rt; Symbol = sym; }
         public SimplRuntime Runtime { get; }
         public SmwSymbol Symbol { get; }
-        public abstract SigKind InputKind(int pin);
-        public abstract SigKind OutputKind(int pin);
+        /// <summary>The kind a pin implies for its signal, or null if the node doesn't say (the signal then takes
+        /// its kind from another pin on it, or is digital).</summary>
+        public abstract SigKind? InputKind(int pin);
+        public abstract SigKind? OutputKind(int pin);
+        /// <summary>Whether the node listens to its own outputs (negative pins on its edges).</summary>
+        public virtual bool WatchesOutputs => false;
+        /// <summary>Whether a pin wired to the constant 1 gets a rising edge at start-up.</summary>
+        public virtual bool WantsStartEdge => true;
         public virtual void Start() { }
         public abstract void OnInput(int pin, object oldValue, object newValue);
         // Typed entry points the engine calls. The defaults box (digital uses the shared boxes) and call OnInput.
@@ -592,60 +646,203 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
         }
     }
 
-    private sealed class LogicNode : Node, ISymbolContext
+    /// <summary>
+    /// A logic symbol, run by the same primitive the compiled-program engine uses (see LogicSymbolCatalog).
+    /// Pins map one to one; an unconnected input reads as the constant the compiler would tie it to (0, or 1
+    /// where the catalog says so). Parameters are converted to compiled form: times to 1/100 s, quoted text
+    /// to strings with \x0D-style escapes decoded.
+    /// </summary>
+    private sealed class PrimNode : Node, IPrimitiveContext
     {
-        private readonly SymbolBehavior _behavior;
+        private readonly Primitive _prim;
+        private readonly LogicSymbol _logic;
+        private readonly int[] _in;         // signal handle per input pin; 0 = unconnected
+        private readonly bool[] _unwiredHigh;
+        private readonly BinSymbol _bin;
+        private readonly (long? Number, string? Text)[] _params;
+        private readonly string _source;
 
-        public LogicNode(SimplRuntime rt, SmwSymbol sym, SymbolBehavior behavior) : base(rt, sym) { _behavior = behavior; }
+        public PrimNode(SimplRuntime rt, SmwSymbol sym, LogicSymbol logic) : base(rt, sym)
+        {
+            _logic = logic;
+            _prim = logic.Create();
+            _in = sym.Inputs.ToArray();
+            _unwiredHigh = new bool[_in.Length + 1];
+            for (int pin = 1; pin <= _in.Length; pin++) _unwiredHigh[pin] = _in[pin - 1] <= 0 && logic.UnwiredHigh(pin);
+            // A compiled-style record for primitives that look at it: 0 and 1 are the constants, signal handles
+            // are moved past them so they never collide.
+            _bin = new BinSymbol
+            {
+                Type = logic.LpzTypes.Length > 0 ? logic.LpzTypes[0] : -1,
+                Path = SymbolId(sym),
+                Inputs = Enumerable.Range(1, _in.Length).Select(PinSignal).ToArray(),
+                Outputs = sym.Outputs.Select(h => h > 0 ? h + 2 : 0).ToArray(),
+            };
+            _params = sym.Parameters.Select(ParseParam).ToArray();
+            _source = sym.Name;
+        }
 
-        public override SigKind InputKind(int pin) => Symbol.HasGroups ? FromGroups(Symbol.InputGroups, pin) : _behavior.InputKind(pin);
-        public override SigKind OutputKind(int pin) => Symbol.HasGroups ? FromGroups(Symbol.OutputGroups, pin) : _behavior.OutputKind(pin);
-        public override void Start() => _behavior.Start(this);
-        public override void OnInput(int pin, object o, object n) => _behavior.OnInput(this, pin, o, n);
-        public override void OnDigital(int pin, bool o, bool n) => _behavior.OnDigital(this, pin, o, n);
-        public override void OnAnalog(int pin, ushort o, ushort n) => _behavior.OnAnalog(this, pin, o, n);
-        public override void OnSerial(int pin, string o, string n) => _behavior.OnSerial(this, pin, o, n);
+        private int PinSignal(int pin)
+        {
+            var h = _in[pin - 1];
+            if (h <= 0) return _unwiredHigh[pin] ? 1 : 0;
+            if (Runtime._constant[h]) return Runtime._file.Signals.TryGetValue(h, out var sg) && sg.Name == "1" ? 1 : 0;
+            return h + 2;
+        }
 
-        SmwSymbol ISymbolContext.Symbol => Symbol;
-        public int InputCount => Symbol.Inputs.Count;
+        public override SigKind? InputKind(int pin) =>
+            Symbol.HasGroups ? FromGroups(Symbol.InputGroups, pin) : _prim.InputKind(pin);
+        public override SigKind? OutputKind(int pin) =>
+            Symbol.HasGroups ? FromGroups(Symbol.OutputGroups, pin) : _prim.OutputKind(pin);
+        public override bool WatchesOutputs => _prim is IWatchesOutputs;
+        public override bool WantsStartEdge => _prim.WantsStartEdge;
+        public override void Start() => _prim.Start(this);
+
+        public override void OnInput(int pin, object o, object n)
+        {
+            if (pin < 0) ((IWatchesOutputs)_prim).OnOutputChanged(this, -pin, n);
+            else _prim.OnInput(this, pin, o, n);
+        }
+        public override void OnDigital(int pin, bool o, bool n)
+        {
+            if (pin < 0) ((IWatchesOutputs)_prim).OnOutputChanged(this, -pin, SigValue.Box(n));
+            else _prim.OnDigital(this, pin, o, n);
+        }
+        public override void OnAnalog(int pin, ushort o, ushort n)
+        {
+            if (pin < 0) ((IWatchesOutputs)_prim).OnOutputChanged(this, -pin, n);
+            else _prim.OnAnalog(this, pin, o, n);
+        }
+        public override void OnSerial(int pin, string o, string n)
+        {
+            if (pin < 0) ((IWatchesOutputs)_prim).OnOutputChanged(this, -pin, n);
+            else _prim.OnSerial(this, pin, o, n);
+        }
+
+        // ------------------------------------------------ IPrimitiveContext
+
+        BinSymbol IPrimitiveContext.Symbol => _bin;
+        public int InputCount => _in.Length;
         public int OutputCount => Symbol.Outputs.Count;
-        private int In(int pin) => pin >= 1 && pin <= Symbol.Inputs.Count ? Symbol.Inputs[pin - 1] : 0;
-        public bool IsConnected(int pin) => In(pin) > 0;
-        public bool Digital(int pin) => Runtime.DigitalAt(In(pin));
+        private int In(int pin) => pin >= 1 && pin <= _in.Length ? _in[pin - 1] : 0;
+
+        public bool Digital(int pin)
+        {
+            var h = In(pin);
+            return h > 0 ? Runtime.DigitalAt(h) : pin >= 1 && pin <= _in.Length && _unwiredHigh[pin];
+        }
         public ushort Analog(int pin) => Runtime.AnalogAt(In(pin));
         public string Serial(int pin) => Runtime.SerialAt(In(pin));
-
-        public void SetOutput(int pin, object value)
+        public object Input(int pin)
         {
-            if (pin < 1 || pin > Symbol.Outputs.Count) return;
-            Runtime.Drive(Symbol.Outputs[pin - 1], value, Symbol.Name);
+            var h = In(pin);
+            return h > 0 ? Runtime.Value(h) : SigValue.Box(Digital(pin));
         }
-        public void SetOutput(int pin, bool value)
+        public bool IsConstant(int pin)
         {
-            if (pin < 1 || pin > Symbol.Outputs.Count) return;
-            Runtime.Drive(Symbol.Outputs[pin - 1], value, Symbol.Name);
-        }
-        public void SetOutput(int pin, ushort value)
-        {
-            if (pin < 1 || pin > Symbol.Outputs.Count) return;
-            Runtime.Drive(Symbol.Outputs[pin - 1], value, Symbol.Name);
-        }
-        public void SetOutput(int pin, string value)
-        {
-            if (pin < 1 || pin > Symbol.Outputs.Count) return;
-            Runtime.Drive(Symbol.Outputs[pin - 1], value, Symbol.Name);
+            var h = In(pin);
+            return h <= 0 || Runtime._constant[h];
         }
 
-        public object GetOutput(int pin) =>
-            pin >= 1 && pin <= Symbol.Outputs.Count ? Runtime.Value(Symbol.Outputs[pin - 1]) : false;
+        public void Set(int pin, bool value)
+        {
+            if (pin >= 1 && pin <= Symbol.Outputs.Count) Runtime.Drive(Symbol.Outputs[pin - 1], value, _source);
+        }
+        public void Set(int pin, ushort value)
+        {
+            if (pin >= 1 && pin <= Symbol.Outputs.Count) Runtime.Drive(Symbol.Outputs[pin - 1], value, _source);
+        }
+        public void Set(int pin, string? value)
+        {
+            if (pin >= 1 && pin <= Symbol.Outputs.Count) Runtime.Drive(Symbol.Outputs[pin - 1], value, _source);
+        }
+        public void Set(int pin, object value)
+        {
+            if (pin >= 1 && pin <= Symbol.Outputs.Count) Runtime.Drive(Symbol.Outputs[pin - 1], value, _source);
+        }
 
-        public string Param(int index) => index >= 1 && index <= Symbol.Parameters.Count ? Symbol.Parameters[index - 1] : string.Empty;
+        public void SetFromInput(int pin, int inputPin)
+        {
+            var h = In(inputPin);
+            if (h <= 0) { Set(pin, Digital(inputPin)); return; }
+            switch (Runtime.KindOf(h))
+            {
+                case SigKind.Digital: Set(pin, Runtime.DigitalAt(h)); break;
+                case SigKind.Analog: Set(pin, Runtime.AnalogAt(h)); break;
+                default: Set(pin, Runtime.SerialAt(h)); break;
+            }
+        }
 
-        public long ParamNumber(int index, long fallback) => SmwFile.TryParseNumber(Param(index), out var v) ? v : fallback;
+        public void SetInput(int pin, string value)
+        {
+            var h = In(pin);
+            if (h > 0 && !Runtime._constant[h]) Runtime.Drive(h, value, _source);
+        }
 
-        public IDisposable After(long ms, Action action) => Runtime.After(ms, action);
+        public object Output(int pin) => pin >= 1 && pin <= Symbol.Outputs.Count ? Runtime.Value(Symbol.Outputs[pin - 1]) : SigValue.False;
+        public SigKind OutputSignalKind(int pin) => pin >= 1 && pin <= Symbol.Outputs.Count ? Runtime.KindOf(Symbol.Outputs[pin - 1]) : SigKind.Digital;
 
-        public void Warn(string message) => Runtime._slot.Log("Warning", $"{Symbol}: {message}");
+        public int ParamCount => _params.Length;
+        public long Number(int index, long fallback = 0) =>
+            index >= 0 && index < _params.Length && _params[index].Number is long v ? v : fallback;
+        public string? Text(int index) => index >= 0 && index < _params.Length ? _params[index].Text : null;
+
+        public IDisposable AfterTicks(long ticks, Action action) => Runtime.After(ticks * 10, action);
+        public void NextWave(Action action) => Runtime.Defer(action);
+        public object? Recall(int pin) => Runtime._store.Get($"{_bin.Path}#{pin}");
+        public void Remember(int pin, object value) => Runtime._store.Set($"{_bin.Path}#{pin}", value);
+        public object? RecallKey(string key) => Runtime._store.Get(key);
+        public void RememberKey(string key, object value) => Runtime._store.Set(key, value);
+        public ProgramSlot Slot => Runtime._slot;
+
+        public override string ToString() => $"{Symbol} as {_logic.Name}";
+    }
+
+    /// <summary>
+    /// A .smw parameter in the form compiled programs carry it. Quoted text is a string (escapes decoded).
+    /// Numbers keep their value (<c>10d</c>, <c>1Fh</c>, <c>50%</c> = 32768), except times, which become
+    /// 1/100 s like every compiled time (<c>0.5s</c> = 50, <c>2m</c> = 12000, <c>250ms</c> = 25). Anything
+    /// else is text.
+    /// </summary>
+    internal static (long? Number, string? Text) ParseParam(string raw)
+    {
+        var s = raw.Trim();
+        if (s.Length >= 2 && s[0] == '"' && s[^1] == '"') return (null, DecodeEscapes(s[1..^1]));
+        if (s.Length == 0) return (null, null);
+        if (SmwFile.TryParseNumber(s, out var v))
+        {
+            var last = char.ToLowerInvariant(s[^1]);
+            var time = last is 's' or 'm' or 't'; // "ms" ends in 's' too
+            return (time ? (long)Math.Round(v / 10.0) : v, null);
+        }
+        return (null, DecodeEscapes(s));
+    }
+
+    /// <summary>SIMPL string escapes: \xHH, \r, \n, \t, \\ and \".</summary>
+    internal static string DecodeEscapes(string s)
+    {
+        if (s.IndexOf('\\') < 0) return s;
+        var sb = new StringBuilder(s.Length);
+        for (int i = 0; i < s.Length; i++)
+        {
+            var ch = s[i];
+            if (ch != '\\' || i + 1 >= s.Length) { sb.Append(ch); continue; }
+            var next = s[i + 1];
+            switch (char.ToLowerInvariant(next))
+            {
+                case 'x' when i + 3 < s.Length && IsHex(s[i + 2]) && IsHex(s[i + 3]):
+                    sb.Append((char)Convert.ToInt32(s.Substring(i + 2, 2), 16)); i += 3; break;
+                case 'r': sb.Append('\r'); i++; break;
+                case 'n': sb.Append('\n'); i++; break;
+                case 't': sb.Append('\t'); i++; break;
+                case '\\': sb.Append('\\'); i++; break;
+                case '"': sb.Append('"'); i++; break;
+                default: sb.Append(ch); break;
+            }
+        }
+        return sb.ToString();
+
+        static bool IsHex(char c) => Uri.IsHexDigit(c);
     }
 
     /// <summary>
@@ -660,8 +857,8 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
 
         public DeviceNode(SimplRuntime rt, SmwSymbol sym) : base(rt, sym) { }
 
-        public override SigKind InputKind(int pin) => FromGroups(Symbol.InputGroups, pin);
-        public override SigKind OutputKind(int pin) => FromGroups(Symbol.OutputGroups, pin);
+        public override SigKind? InputKind(int pin) => FromGroups(Symbol.InputGroups, pin);
+        public override SigKind? OutputKind(int pin) => FromGroups(Symbol.OutputGroups, pin);
 
         private bool IsEisc =>
             Symbol.Name.Contains("Intersystem", StringComparison.OrdinalIgnoreCase) ||

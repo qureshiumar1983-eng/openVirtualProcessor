@@ -1,5 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="../OpenVP.Core/OpenVP.Core.csproj" />
+    <!-- Logic symbols are shared with the compiled-program engine: one implementation per symbol (LogicSymbolCatalog). -->
+    <ProjectReference Include="../OpenVP.Lpz/OpenVP.Lpz.csproj" />
   </ItemGroup>
 </Project>

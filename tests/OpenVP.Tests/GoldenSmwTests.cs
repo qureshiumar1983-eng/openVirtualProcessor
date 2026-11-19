@@ -7,10 +7,11 @@ namespace OpenVP.Tests;
 public static partial class GoldenTests
 {
     /// <summary>
-    /// The .smw interpreter with every symbol type it knows (AND, OR, XOR, NOT, Buffer in three kinds,
-    /// Interlock, Toggle, SR Latch, Analog Initialize, Equate, Serial Send), the constant signals "0" and "1",
-    /// a NOT wired to an analog signal (its error is logged, nothing changes) and an input nobody uses.
-    /// Timers have their own scenario in GoldenTimerTests.
+    /// The .smw interpreter running the shared logic primitives (AND, OR, XOR, NOT, Buffer in three kinds,
+    /// Interlock, Toggle, SR Latch, Analog Initialize, Equate, Serial Send) with the pin layouts confirmed from
+    /// compiled programs (Interlock's clear pin first; Toggle clock, reset, set; SR Latch out and out*), the
+    /// constant signals "0" and "1", a NOT wired to an analog signal (reads as "not high") and an input nobody
+    /// uses. Timers have their own scenario in GoldenTimerTests; the rest of the catalog is in SymbolCatalogTests.
     /// </summary>
     [Test]
     public static void Golden_smw_symbols()
@@ -41,8 +42,8 @@ public static partial class GoldenTests
         Sym(21, "OR", [10, 11, 1], [41]);
         Sym(22, "XOR", [10, 11, 12], [42]);
         Sym(23, "NOT", [10, 11], [43, 44]);
-        Sym(24, "Interlock", [12, 13, 14], [45, 46, 47]);
-        Sym(25, "Toggle", [15, 16, 17], [48]);
+        Sym(24, "Interlock", [0, 12, 13, 14], [45, 46, 47]); // clear unconnected
+        Sym(25, "Toggle", [15, 17, 16], [48]);               // clock d6, reset d8, set d7
         Sym(26, "SR Latch", [15, 16], [49]);
         Sym(27, "Buffer", [12, 10, 11], [50, 51]);
         Sym(28, "Analog Buffer", [12, 20], [52]);
@@ -50,7 +51,7 @@ public static partial class GoldenTests
         Sym(30, "Analog Initialize", [13], [54], "777");
         Sym(31, "Equate", [20], [55, 56], "5", "10");
         Sym(32, "Serial Send", [14, 15], [57], "\"x\"", "\"y\"");
-        Sym(33, "NOT", [20], [58]);          // wired to an analog signal: the cast fails and is logged
+        Sym(33, "NOT", [20], [58]);          // wired to an analog signal: any change reads as "not high"
         Sym(34, "NOT", [21], [60]);          // output nobody reads
         for (int h = 10; h <= 17; h++) Sig(h, $"d{h - 9}_press");
         sb.Append("[\nObjTp=Sg\nH=20\nNm=a1_press\n]\n[\nObjTp=Sg\nH=21\nNm=a2_press\n]\n[\nObjTp=Sg\nH=30\nNm=s1_press\n]\n[\nObjTp=Sg\nH=31\nNm=s2_press\n]\n");
