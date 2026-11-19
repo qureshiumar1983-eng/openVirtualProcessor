@@ -3,7 +3,7 @@
  *
  * Load it in a CH5 / HTML panel project instead of (or before) Crestron's CrComLib:
  *   <script src="http://<openvp-host>:8080/openvp-crcomlib.js"></script>
- * and open the page with ?ipid=03 (and optionally &slot=1&host=10.0.0.5:8080).
+ * and open the page with ?ipid=03 (and optionally &slot=1&room=ROOM2&host=10.0.0.5:8080).
  *
  * Supported: publishEvent / subscribeState / unsubscribeState / getState for signal names that are
  * join numbers ("1", "27"). Types: "b" digital, "n" analog, "s" serial, "o" with {repeatdigital: bool}.
@@ -15,9 +15,10 @@
   var cfg = global.OPENVP_CONFIG || {};
   var ipid = (cfg.ipid || params.get("ipid") || "03").toString();
   var slot = cfg.slot || params.get("slot");
+  var room = cfg.room || params.get("room");
   var host = cfg.host || params.get("host") || global.location.host;
   var proto = global.location.protocol === "https:" ? "wss://" : "ws://";
-  var url = proto + host + "/ws/panel?ipid=" + encodeURIComponent(ipid) + (slot ? "&slot=" + encodeURIComponent(slot) : "");
+  var url = proto + host + "/ws/panel?ipid=" + encodeURIComponent(ipid) + (slot ? "&slot=" + encodeURIComponent(slot) : "") + (room ? "&room=" + encodeURIComponent(room) : "");
 
   var state = { b: {}, n: {}, s: {} };
   var subs = { b: {}, n: {}, s: {} };
@@ -136,7 +137,7 @@
     },
     /** OpenVP extra: connection events ("open", "close", "hello", "offline"). */
     on: function (name, fn) { listeners.push({ name: name, fn: fn }); },
-    config: { ipid: ipid, slot: slot, url: url }
+    config: { ipid: ipid, slot: slot, room: room, url: url }
   };
 
   global.CrComLib = global.CrComLib || api;

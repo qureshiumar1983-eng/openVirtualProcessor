@@ -77,7 +77,7 @@
   <div>
     <section>
       <h2>Program slots</h2>
-      <table id="slots"><thead><tr><th>#</th><th>Program</th><th>State</th></tr></thead><tbody></tbody></table>
+      <table id="slots"><thead><tr><th>#</th><th class="roomcol">Room</th><th>Program</th><th>State</th></tr></thead><tbody></tbody></table>
     </section>
     <section style="margin-top:16px">
       <h2>Slot <span id="sel-num">1</span></h2>
@@ -90,13 +90,17 @@
         <button data-act="start">Start</button><button data-act="stop">Stop</button><button data-act="unload">Unload</button>
         <button id="compat">Compatibility</button>
       </div>
+      <div class="bar" id="room-bar" style="display:none">
+        <span class="muted">Room ID</span> <b id="room-id" class="mono"></b>
+        <button id="room-edit" title="Virtual Control Room ID for this slot (panels can connect with ?room=ID)">Edit…</button>
+      </div>
       <div id="sel-info" class="muted mono"></div>
       <div id="devices" class="muted" style="margin-top:8px"></div>
     </section>
   </div>
   <div>
     <section>
-      <h2>IP table · slot <span class="sel-num2">1</span></h2>
+      <h2>IP table · slot <span class="sel-num2">1</span><span class="room-tag"></span></h2>
       <div class="scroll-x">
       <table id="ipt">
         <thead><tr><th>Connected client</th><th>Address</th><th>IP ID</th><th>Type</th><th>Status</th><th class="num">Connected</th><th class="num">Joins in / out</th></tr></thead>
@@ -170,7 +174,7 @@
 <script>
 openvpAuth.init();
 const $ = s => document.querySelector(s);
-let sel = 1, ws = null;
+let sel = 1, ws = null, curRoom;
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
@@ -187,10 +191,16 @@ async function refreshSlots() {
   for (const s of slots) {
     const tr = document.createElement("tr");
     tr.className = "slot" + (s.number === sel ? " sel" : "");
-    tr.innerHTML = `<td>${s.number}</td><td>${s.program ? `${s.program} <span class="muted">· ${s.kind}</span>` : '<span class="muted">empty</span>'}</td><td><span class="state ${s.state}">${s.state}</span></td>`;
+    tr.innerHTML = `<td>${s.number}</td><td class="roomcol mono">${esc(s.roomId)}</td><td>${s.program ? `${s.program} <span class="muted">· ${s.kind}</span>` : '<span class="muted">empty</span>'}</td><td><span class="state ${s.state}">${s.state}</span></td>`;
     tr.onclick = () => select(s.number);
     tb.appendChild(tr);
     if (s.number === sel) {
+      curRoom = s.roomId;
+      document.querySelectorAll(".room-tag").forEach(e => e.textContent = typeof s.roomId === "string" ? ` · room ${s.roomId}` : "");
+      const hasRoom = typeof s.roomId === "string";
+      document.querySelectorAll(".roomcol").forEach(e => e.style.display = hasRoom ? "" : "none");
+      $("#room-bar").style.display = hasRoom ? "" : "none";
+      $("#room-id").textContent = s.roomId ?? "";
       $("#sel-info").textContent = s.file ? `${s.file}${s.error ? "\n" + s.error.split("\n")[0] : ""}` : "No program loaded.";
       const online = s.devices.filter(d => d.online).length;
       $("#devices").textContent = s.devices.length ? `${s.devices.length} IP ID${s.devices.length === 1 ? "" : "s"}, ${online} online. Who's connected is in the IP table.` : "";
@@ -422,6 +432,15 @@ function askName(label, initial = "") {
     d.returnValue = ""; d.showModal(); input.focus(); input.select();
   });
 }
+const ROOM_RE = /^[A-Za-z0-9_.-]{1,64}$/;
+$("#room-edit").onclick = async () => {
+  const v = await askName("Room ID (1-64 letters, digits, _ - .)", curRoom || "");
+  if (v === null || v === curRoom) return;
+  if (!ROOM_RE.test(v)) return alert("Invalid Room ID. Use 1-64 letters, digits, '_', '-' or '.'.");
+  try { await api(`/api/slots/${sel}/room`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ roomId: v }) }); }
+  catch (e) { alert(e.message); }
+  refreshSlots();
+};
 const q = o => new URLSearchParams(o).toString();
 const join = (a, b) => a ? `${a}/${b}` : b;
 
