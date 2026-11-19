@@ -61,6 +61,7 @@ public static class PrimitiveCatalog
         new PrimitiveInfo(97, "Serial I/O", "SmC 101", PrimitiveLibrary.Supports(97)),
         new PrimitiveInfo(99, "Analog Scaler w/o Zero Pass", "SmC 65", PrimitiveLibrary.Supports(99)),
         new PrimitiveInfo(100, "Analog Sum", "SmC 57", PrimitiveLibrary.Supports(100)),
+        new PrimitiveInfo(101, "Time-of-day serial relay (provisional)", "Not identified. Alarm Clock v2.0 macro: Clock Driver TOD$ in, one serial out to an Equipment Crosspoint join, P1 = 1. Run as a pass-through", PrimitiveLibrary.Supports(101)),
         new PrimitiveInfo(103, "Serial to Analog", "SmC 96", PrimitiveLibrary.Supports(103)),
         new PrimitiveInfo(106, "Analog To Digital", "SmC 84", PrimitiveLibrary.Supports(106)),
         new PrimitiveInfo(114, "Serial/Analog One-Shot", "SmC 72", PrimitiveLibrary.Supports(114)),

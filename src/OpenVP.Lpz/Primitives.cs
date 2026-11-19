@@ -667,6 +667,7 @@ public static class PrimitiveLibrary
         [88] = () => new HoldBufferPrim(SigKind.Serial),
         [97] = () => new SerialIoPrim(),
         [100] = () => new AnalogSumPrim(),
+        [101] = () => new TimeOfDayRelayPrim(),
         [103] = () => new SerialToAnalogPrim(),
         [114] = () => new ChangePulsePrim(),
         [138] = () => new FollowPrim(),

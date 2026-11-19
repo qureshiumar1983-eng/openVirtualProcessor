@@ -232,4 +232,67 @@ public static class LpzRuntimeTests
         Thread.Sleep(30);
         Assert.True(!Fb(1) && !Fb(2) && Fb(3), "analog changes while disabled are ignored");
     }
+
+    /// <summary>The Alarm Clock v2.0 macro's shape: panel presses reach the logic through an input Buffer, while an
+    /// Equipment Crosspoint (type 213) drives the same signals and nobody has to connect to it. Both routes must
+    /// work, and the time-of-day relay (type 101) must carry the clock string to a crosspoint serial join.</summary>
+    [Test]
+    public static void Alarm_clock_macro_shape_buffer_route_and_crosspoint_route()
+    {
+        const int Press = 10, Buf = 11, Fb = 12, CtlPress = 13, CtlFb = 14, TodIn = 15, TodOut = 16, CtlTxt = 17,
+                  CidA = 18, EidA = 19, Conn = 20;
+        var bin = new List<byte>();
+        // Panel feedback: d1 Fb, d2 CtlFb, s1 CtlTxt. Presses: d1 Press, d2 CtlPress, d3 Conn, a1 control ID, a2 equipment ID, s1 clock text.
+        bin.AddRange(Record(-12, "IP-ID-03", [Fb, CtlFb, CtlTxt], [Press, CtlPress, Conn, CidA, EidA, TodIn],
+            Int(6, 3), Int(10, 2), Int(11, 3), Int(12, 2), Int(13, 5)));
+        bin.AddRange(Record(18, "S-1.1:S-10.1", [1, Press], [Buf]));                      // the macro's input buffer
+        bin.AddRange(Record(10, "S-1.1:S-5", [Buf], [Fb, 0]));                            // stands in for the alarm logic
+        bin.AddRange(Record(101, "S-1.1:S-1", [TodIn], [TodOut], Int(15, 1), Int(2, 1))); // time-of-day relay
+        bin.AddRange(Record(213, "S-1.1:S-14", [Fb, TodOut], [Buf],                       // drives Buf too, like the macro's
+            Int(15, 1), Int(2, 60001), Int(10, 1), Int(11, 1), Int(12, 1), Int(13, 1)));
+        bin.AddRange(Record(214, "S-2", [CtlPress], [CtlFb, CtlTxt],
+            Int(15, 1), Int(2, 1), Int(10, 1), Int(11, 1), Int(12, 1), Int(13, 1)));
+        bin.AddRange(Record(215, "S-3", [CidA, EidA, Conn, 0, 0, 0, 0], [], Int(15, 0)));
+
+        var path = Path.Combine(Paths.TempData(), "alarmshape.lpz");
+        using (var zip = ZipFile.Open(path, ZipArchiveMode.Create))
+        {
+            void Put(string name, byte[] content) { using var s = zip.CreateEntry(name).Open(); s.Write(content); }
+            Put("boot.bt", Encoding.ASCII.GetBytes("[LG_BOOT_DATA]\r\nBinFileName=alarmshape.bin\r\nSMWFileName=alarmshape.smw\r\nRackType=CP4\r\n"));
+            Put("alarmshape.bin", bin.ToArray());
+            Put("alarmshape.dip", Encoding.ASCII.GetBytes("[IPTable]\r\nid0=03\r\naddr0=127.0.0.1\r\n"));
+        }
+        using var p = new Processor(Paths.TempData());
+        p.AddLoader(new LpzLoader());
+        p.LoadProgram(1, path);
+        Assert.Equal(SlotState.Running, p.Slot(1).State, "running: " + p.Slot(1).LastError);
+        var rt = (LpzRuntime)p.Slot(1).Runtime!;
+        Assert.True(!rt.Unsupported.ContainsKey(101), "type 101 runs");
+        Assert.True(!rt.Unsupported.ContainsKey(213) && !rt.Unsupported.ContainsKey(214) && !rt.Unsupported.ContainsKey(215), "crosspoints run");
+        var panel = p.Slot(1).FindDevice(3) ?? throw new AssertException("panel 03 registered");
+        bool Fbk(uint j) => (bool)panel.GetFeedback(D(j));
+
+        // Route 1: the buffer. The crosspoint has no control connected and must neither block nor echo.
+        panel.ReceiveInput(D(1), true); panel.ReceiveInput(D(1), false);
+        Assert.Eventually(() => Fbk(1), "press through the buffer toggles the logic on");
+        panel.ReceiveInput(D(1), true); panel.ReceiveInput(D(1), false);
+        Assert.Eventually(() => !Fbk(1), "second press toggles it off");
+        Assert.True(!Fbk(2) && (string)panel.GetFeedback(S(1)) == "", "unconnected control sees nothing");
+
+        // The clock string passes through the relay; a control connected later is given it at once.
+        panel.ReceiveInput(S(1), "12:34:56");
+        Thread.Sleep(30);
+        Assert.Equal("", (string)panel.GetFeedback(S(1)), "still nothing while disconnected");
+        panel.ReceiveInput(A(1), (ushort)1); panel.ReceiveInput(A(2), (ushort)60001);
+        panel.ReceiveInput(D(3), true); panel.ReceiveInput(D(3), false);
+        Assert.Eventually(() => (string)panel.GetFeedback(S(1)) == "12:34:56", "connect delivers the relayed time string");
+        panel.ReceiveInput(S(1), "12:34:57");
+        Assert.Eventually(() => (string)panel.GetFeedback(S(1)) == "12:34:57", "relay follows the clock");
+
+        // Route 2: a control crosspoint connected to equipment 60001 presses the same buffered signal.
+        panel.ReceiveInput(D(2), true); panel.ReceiveInput(D(2), false);
+        Assert.Eventually(() => Fbk(1) && Fbk(2), "press through the crosspoint toggles the logic and mirrors the feedback");
+        panel.ReceiveInput(D(1), true); panel.ReceiveInput(D(1), false);
+        Assert.Eventually(() => !Fbk(1) && !Fbk(2), "the buffer route still works while connected");
+    }
 }

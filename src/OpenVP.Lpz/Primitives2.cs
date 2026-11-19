@@ -376,6 +376,27 @@ public sealed class SerialMergePrim : Primitive
     }
 }
 
+/// <summary>
+/// Type 101, PROVISIONAL: a serial relay for the Clock Driver's time-of-day string. The SIMPL symbol it comes
+/// from is not identified; this passes the input through unchanged.
+/// Evidence (the only program seen with it, two instances inside Crestron's "Alarm Clock v2.0" macro): one serial
+/// input wired to the Clock Driver (type 62) TOD$ output, one output that feeds nothing but serial join 11 of the
+/// macro's Equipment Crosspoint (type 213, next to CURRENT.TIME$ and the alarm-time string on joins 12 and 13),
+/// and one numeric parameter (1) of unknown meaning. Nothing inside the macro reads the output: the SIMPL+ module
+/// ticks from an oscillator and builds its own display strings, so the string only matters to a control crosspoint
+/// that is connected to the macro. If the real symbol reformats the time (say 12-hour with AM/PM), that
+/// would change the text on join 11, and nothing else.
+/// </summary>
+public sealed class TimeOfDayRelayPrim : Primitive
+{
+    public override SigKind? InputKind(int pin) => SigKind.Serial;
+    public override SigKind? OutputKind(int pin) => SigKind.Serial;
+    public override void OnInput(IPrimitiveContext c, int p, object o, object n)
+    {
+        if (p == 1 && n is string s) c.Set(1, s);
+    }
+}
+
 /// <summary>Type 266, Multiple Discrete Serial Send: a rising input k sends parameter k on output k.</summary>
 public sealed class MultiSerialSendPrim : EdgePrim
 {
