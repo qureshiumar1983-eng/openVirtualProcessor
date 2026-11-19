@@ -307,12 +307,11 @@ namespace Crestron.Logos.SplusLibrary
         {
             try
             {
-                socket.Udp?.Dispose();
-                socket.Udp = new System.Net.Sockets.UdpClient(port) { EnableBroadcast = true };
+                OpenVP.Splus.UdpPorts.Leave(socket);
                 socket.Remote = new System.Net.IPEndPoint(System.Net.IPAddress.TryParse(address, out var ip) ? ip : System.Net.Dns.GetHostAddresses(address)[0], port);
+                OpenVP.Splus.UdpPorts.Join(socket, port);
                 socket.PortNumber = port;
                 socket.SocketStatus = 2;
-                _ = ReceiveUdp(socket);
                 return 0;
             }
             catch (Exception e) { socket.Owner?.Log("Warning", $"SIMPL+ UDP enable {address}:{port}: {e.Message}"); return -1; }
@@ -320,23 +319,16 @@ namespace Crestron.Logos.SplusLibrary
 
         public static short SocketUDP_Disable(SplusUdpSocket socket)
         {
-            socket.Udp?.Dispose(); socket.Udp = null; socket.SocketStatus = 0; return 0;
+            OpenVP.Splus.UdpPorts.Leave(socket); socket.SocketStatus = 0; return 0;
         }
 
-        private static async System.Threading.Tasks.Task ReceiveUdp(SplusUdpSocket socket)
+        /// <summary>A datagram for this socket (from <see cref="OpenVP.Splus.UdpPorts"/>).</summary>
+        internal static void DeliverUdp(SplusUdpSocket socket, System.Net.IPEndPoint sender, byte[] data)
         {
-            var udp = socket.Udp;
-            while (udp != null && socket.Udp == udp && socket.Owner?.Stopped != true)
-            {
-                try
-                {
-                    var r = await udp.ReceiveAsync();
-                    socket.LastSender = r.RemoteEndPoint;
-                    socket.SocketRxBuf.UpdateValue(S(socket.SocketRxBuf) + Encoding.Latin1.GetString(r.Buffer));
-                    socket.Raise(socket.OnSocketReceive);
-                }
-                catch { return; }
-            }
+            if (socket.Owner?.Stopped == true) return;
+            socket.LastSender = sender;
+            socket.SocketRxBuf.UpdateValue(S(socket.SocketRxBuf) + Encoding.Latin1.GetString(data));
+            socket.Raise(socket.OnSocketReceive);
         }
 
         public static short SocketSend(SocketInfo socket, CrestronString data)
@@ -346,7 +338,7 @@ namespace Crestron.Logos.SplusLibrary
             {
                 switch (socket)
                 {
-                    case SplusUdpSocket u when u.Udp != null: u.Udp.Send(bytes, bytes.Length, u.Remote); return (short)bytes.Length;
+                    case SplusUdpSocket u when u.Udp != null && u.Remote != null: u.Udp.Send(bytes, bytes.Length, u.Remote); return (short)bytes.Length;
                     case SplusTcpClient c when c.Client?.Connected == true: c.Client.GetStream().Write(bytes); return (short)bytes.Length;
                     case SplusTcpServer s when s.Client?.Connected == true: s.Client.GetStream().Write(bytes); return (short)bytes.Length;
                 }

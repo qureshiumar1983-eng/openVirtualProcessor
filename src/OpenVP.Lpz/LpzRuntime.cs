@@ -5,6 +5,13 @@ namespace OpenVP.Lpz;
 /// <summary>Loads compiled SIMPL Windows programs (.lpz).</summary>
 public sealed class LpzLoader : IProgramLoader
 {
+    private readonly string? _primitiveMapPath;
+
+    /// <param name="primitiveMapPath">Optional primitives.json naming the symbol behind compiled primitive types
+    /// the catalog doesn't know yet: <c>{ "301": "NAND" }</c>. A MyProgram.primitives.json next to the program
+    /// is read too and wins.</param>
+    public LpzLoader(string? primitiveMapPath = null) { _primitiveMapPath = primitiveMapPath; }
+
     public bool CanLoad(string path) => LpzInspect.IsLpz(path);
 
     public IProgramRuntime Load(string path, ProgramSlot slot)
@@ -19,7 +26,11 @@ public sealed class LpzLoader : IProgramLoader
             slot.Log("Warning", $"Signal names inside the archive don't match this compile ({agreement:P0} agree); showing signal numbers. Upload the .sig from the compile folder to get names.");
             pkg.UseSignals(null);
         }
-        return new LpzRuntime(slot, pkg);
+        var problems = new List<string>();
+        var overrides = _primitiveMapPath != null ? LogicSymbolCatalog.LoadMap(_primitiveMapPath, problems) : new();
+        foreach (var (k, v) in LogicSymbolCatalog.LoadMap(Path.ChangeExtension(path, ".primitives.json"), problems)) overrides[k] = v;
+        foreach (var p in problems) slot.Log("Warning", p);
+        return new LpzRuntime(slot, pkg, overrides);
     }
 }
 
@@ -66,8 +77,11 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
     private long _chainSeq;
     private readonly Dictionary<BinSymbol, string> _symIds = new();
 
-    public LpzRuntime(ProgramSlot slot, LpzPackage pkg)
+    private readonly IReadOnlyDictionary<int, LogicSymbol>? _primitiveOverrides;
+
+    public LpzRuntime(ProgramSlot slot, LpzPackage pkg, IReadOnlyDictionary<int, LogicSymbol>? primitiveOverrides = null)
     {
+        _primitiveOverrides = primitiveOverrides;
         _slot = slot;
         _pkg = pkg;
         _store = new NvramStore(Path.Combine(slot.Directory, "nvram.json"));
@@ -178,7 +192,7 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
             }
             if (sym.Type == 31) continue; // compile header
             if (BuildSpecial(sym)) continue;
-            var prim = PrimitiveLibrary.Create(sym.Type);
+            var prim = PrimitiveLibrary.Create(sym.Type, _primitiveOverrides);
             if (prim == null) { Count(sym.Type); continue; }
             Register(LogicNode.Create(this, sym, prim));
         }
@@ -198,6 +212,7 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
             _slot.ReportUnsupported("SIMPL+ module", "(record names no compiled .dll)", "type -48 record without a module file name", ProgramName);
             return null;
         }
+        object? instance = null;
         try
         {
             if (_alc == null)
@@ -223,11 +238,14 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
                 ?? throw new InvalidDataException("no SIMPL+ module class");
             var ctor = type.GetConstructors().First(c => c.GetParameters().Length == 3);
             var encType = ctor.GetParameters()[2].ParameterType;
-            var instance = ctor.Invoke(new object[] { sym.Path, sym.Path, Enum.ToObject(encType, 1) });
+            instance = ctor.Invoke(new object[] { sym.Path, sym.Path, Enum.ToObject(encType, 1) });
             return new SplusNode(this, sym, (ISplusModule)instance);
         }
         catch (Exception e)
         {
+            // A module that was created but can't run must release the program-wide start-up barrier it joined
+            // in its constructor; otherwise every other module's WaitForInitializationComplete waits for it.
+            try { (instance as ISplusModule)?.Stop(); } catch (Exception) { }
             var inner = e is System.Reflection.TargetInvocationException t && t.InnerException != null ? t.InnerException : e;
             var unresolved = _alc?.Unresolved.Count > 0 ? $" (missing: {string.Join(", ", _alc.Unresolved.Distinct())})" : "";
             if (_moduleErrors.Add(dll!))

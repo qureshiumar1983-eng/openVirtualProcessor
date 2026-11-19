@@ -1,10 +1,8 @@
+slot1 1 D=1 <- start
 slot1 #43 D=1 <- NOT
 slot1 #44 D=1 <- NOT
-slot1 sbuf_fb S="" <- Serial Buffer
-slot1 init_fb A=777 <- Analog Initialize
 slot1 #58 D=1 <- NOT
 slot1 #60 D=1 <- NOT
-slot1 1 D=1 <- start
 -- d1 on
 slot1 d1_press D=1 <- IPID03
 slot1 #41 D=1 <- OR
@@ -37,7 +35,6 @@ slot1 #51 D=0 <- Buffer
 -- d3 off
 slot1 d3_press D=0 <- IPID03
 slot1 #42 D=0 <- XOR
-slot1 sbuf_fb S="" <- Serial Buffer
 -- d1 and d2 together
 slot1 d1_press D=1 <- IPID03
 slot1 #41 D=1 <- OR
@@ -96,8 +93,6 @@ slot1 #50 D=0 <- Buffer
 -- buffers off (d3)
 slot1 d3_press D=0 <- IPID03
 slot1 #42 D=0 <- XOR
-slot1 abuf_fb A=0 <- Analog Buffer
-slot1 sbuf_fb S="" <- Serial Buffer
 -- a1 = 20 while off
 slot1 a1_press A=20 <- IPID03
 -- a1 = 5 (equate)
@@ -113,6 +108,7 @@ slot1 a2_press A=3 <- IPID03
 slot1 d4_press D=1 <- IPID03
 slot1 #45 D=0 <- Interlock
 slot1 #46 D=1 <- Interlock
+slot1 init_fb A=777 <- Analog Initialize
 -- interlock d4 off
 slot1 d4_press D=0 <- IPID03
 -- interlock d5
@@ -130,8 +126,6 @@ slot1 sbuf_fb S="y" <- Serial Buffer
 -- interlock off
 slot1 d3_press D=0 <- IPID03
 slot1 #42 D=0 <- XOR
-slot1 abuf_fb A=0 <- Analog Buffer
-slot1 sbuf_fb S="" <- Serial Buffer
 slot1 d5_press D=0 <- IPID03
 -- d6 on (toggle, SR set, send y)
 slot1 d6_press D=1 <- IPID03

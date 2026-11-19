@@ -19,7 +19,7 @@ public sealed class BinSymbol
     public int Offset { get; init; }
     public int Type { get; init; }
     /// <summary>Hierarchical position, e.g. "S-2.1.6.1:S-5" (module path : symbol in module) or "IP-ID-03".</summary>
-    public string Path { get; internal set; } = string.Empty;
+    public string Path { get; set; } = string.Empty;
     public List<(int Tag, byte[] Value)> Fields { get; } = new();
     public List<BinParam> Params { get; } = new();
     public int[] Inputs { get; init; } = Array.Empty<int>();

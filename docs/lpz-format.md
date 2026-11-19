@@ -115,6 +115,18 @@ each input/output with a literal id constant (for example `NAME__DigitalInput__`
   `WaitForInitializationComplete` and a blocked `CreateWait` hand it over while waiting.
 - **WAIT.** `CreateWait(label, time, callback)` starts a timer (1/100 s). If a WAIT with the same label is still pending,
   the thread waits (baton released) until it has run, which is what makes `WHILE (1) { WAIT (...) }` tick once per period.
+- **Start-up.** Every module joins a program-wide barrier when it is created; `WaitForInitializationComplete`
+  returns once every module's Main has got going. Past the barrier the Mains take turns in program order (record
+  order): each runs until it first hands over (Delay, ProcessLogic, a WAIT, ...), returns, fails or stops, and then
+  the next goes on. Module libraries rely on it: Q-SYS and Biamp control modules use callbacks their processor
+  module registers right after the barrier, which is why their help asks for the processor module to be placed
+  first. A Main holding its turn for 2 s without handing over loses it. A module that can't be loaded (an API OpenVP
+  lacks) leaves the barrier and the queue, so it can't stall the others.
+- **EVENT.** The catch-all `EVENT` block is `SplusObject.OnEventStatement`; it runs after the input's own handlers
+  on every input change (digital push or release, analog, serial).
+- **UDP.** Several SIMPL+ sockets can enable UDP on the same local port (programs run a module several times on
+  one port). They share one OS socket; a datagram goes to the sockets whose remote address is its sender, or to all
+  of them if none is. Sockets (UDP and TCP) close when their module stops.
 - **MakeString.** The compiler emits .NET composite formats (`"{0:d}:{1:d2}"`); printf-style is a fallback.
 - **Files** map under the slot folder; **CrestronDataStore** keeps JSON per slot (local) and per processor (global).
 - Set `OPENVP_SPLUS_TRACE=1` to log baton, event and output activity.
