@@ -822,6 +822,7 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
         private readonly string _source; // trace source for presses, built once instead of per event
         public JoinDevice? Device => _device;
         public Dictionary<uint, SmartObjectNode> SmartObjects { get; } = new();
+        public List<ExtenderNode> Extenders { get; } = new();
 
         public DeviceNode(LpzRuntime rt, BinSymbol sym, uint ipId) : base(rt, sym)
         {
@@ -863,6 +864,7 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
             for (int pin = 1; pin <= Symbol.Inputs.Length; pin++)
                 if (HasFeedback(Symbol.Inputs[pin - 1], InJoin(pin).Kind)) Feedback(pin, Runtime.Value(Symbol.Inputs[pin - 1]));
             foreach (var so in SmartObjects.Values) so.PushAll();
+            foreach (var ext in Extenders) ext.PushAll();
         }
 
         public void Detach()
@@ -885,7 +887,12 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
                 return;
             }
             var pin = OutPin(key);
-            if (pin < 1) return;
+            if (pin < 1)
+            {
+                foreach (var ext in Extenders)
+                    if (ext.FromPanel(key, value)) return;
+                return;
+            }
             var sig = Symbol.Outputs[pin - 1];
             if (sig > 1) Runtime._slot.Dispatcher.Post(static (n, v, s) => { var d = (DeviceNode)n!; d.Runtime.Drive(s, v!, d._source); }, this, value, sig);
         }

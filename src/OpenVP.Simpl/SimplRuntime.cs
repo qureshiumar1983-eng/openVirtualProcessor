@@ -47,7 +47,7 @@ public sealed class SimplOptions
 /// every symbol with that signal on an input is told, and their outputs drive further signals. All of it
 /// happens on the slot thread, one change at a time, in the order changes were made.
 /// </summary>
-public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
+public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
 {
     private const int MaxStepsPerSolve = 200_000;
 
@@ -190,6 +190,7 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
                 continue;
             }
 
+            if (BuildSpecial(sym)) continue;
             var logic = _library.Resolve(sym);
             if (logic == null)
             {
@@ -206,6 +207,8 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
             if (!sym.Inputs.Any(h => h > 0) && !sym.Outputs.Any(h => h > 0)) continue; // nothing wired: nothing to run
             Register(new PrimNode(this, sym, logic));
         }
+
+        LinkPanelChildren();
 
         // Signals no pin gave a kind to are digital.
         foreach (var node in _nodes)
@@ -863,6 +866,12 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
 
         public DeviceNode(SimplRuntime rt, SmwSymbol sym) : base(rt, sym) { }
 
+        public JoinDevice? Device => _device;
+        /// <summary>Smart Graphics objects on this panel, by object ID.</summary>
+        public Dictionary<uint, SmartObjectNode> SmartObjects { get; } = new();
+        /// <summary>Reserved joins, toolbars and app control: joins at fixed bases on this device.</summary>
+        public List<ExtenderNode> Extenders { get; } = new();
+
         public override SigKind? InputKind(int pin) => FromGroups(Symbol.InputGroups, pin);
         public override SigKind? OutputKind(int pin) => FromGroups(Symbol.OutputGroups, pin);
 
@@ -916,6 +925,8 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
             // Push current feedback values so a panel that connects later sees them.
             for (int pin = 1; pin <= Symbol.Inputs.Count; pin++)
                 if (Symbol.Inputs[pin - 1] > 0) Feedback(pin, Runtime.Value(Symbol.Inputs[pin - 1]));
+            foreach (var so in SmartObjects.Values) so.PushAll();
+            foreach (var ext in Extenders) ext.PushAll();
         }
 
         public void Detach()
@@ -946,6 +957,13 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
 
         private void OnDeviceInput(JoinDevice dev, JoinKey key, object value)
         {
+            if (key.SmartObject != 0)
+            {
+                if (SmartObjects.TryGetValue(key.SmartObject, out var so)) so.FromPanel(key, value);
+                return;
+            }
+            foreach (var ext in Extenders)
+                if (ext.FromPanel(key, value)) return;
             var g = Symbol.OutputGroups;
             var offset = key.Kind switch { SigKind.Digital => 0, SigKind.Analog => g[0], _ => g[0] + g[1] };
             var size = g[(int)key.Kind];

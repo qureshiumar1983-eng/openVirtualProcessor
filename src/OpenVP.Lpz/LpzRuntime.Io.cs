@@ -72,6 +72,18 @@ public sealed partial class LpzRuntime
                     Register(so);
                 }
                 return true; // smart objects of panels OpenVP doesn't host are simply idle
+            case -12 when sym.FieldInt(27) != null:
+                // A device extender (reserved joins, button toolbar, app control): its joins sit on the panel at fixed bases.
+                for (var path = sym.Path; path.LastIndexOf('.') is var d and > 0;)
+                {
+                    path = path[..d];
+                    if (!_devicesByPath.TryGetValue(path, out var owner)) continue;
+                    var ext = new ExtenderNode(this, sym, owner);
+                    owner.Extenders.Add(ext);
+                    Register(ext);
+                    break;
+                }
+                return true;
             case 213:
                 var eq = new XEquipmentNode(this, sym);
                 _xEquipment[eq.Id] = eq;
@@ -126,6 +138,50 @@ public sealed partial class LpzRuntime
             if (pin < 1) return;
             var sig = Symbol.Outputs[pin - 1];
             if (sig > 1) Runtime._slot.Dispatcher.Post(static (n, v, s) => { var d = (SmartObjectNode)n!; d.Runtime.Drive(s, v!, d._source); }, this, value, sig);
+        }
+    }
+
+    /// <summary>
+    /// A type −12 record under an IP-ID device that carries join bases (fields 27-29 for its inputs, 30-32 for its
+    /// outputs, digital/analog/serial): an extender such as a panel's reserved joins, button toolbar or app control.
+    /// Pin k of a kind is join base + k on the owning device; a base of 10000 means the record has none of that kind.
+    /// Identified by pairing the compiled records with their source extenders in the sample programs: the bases are
+    /// Crestron's reserved join ranges (base 17299 = joins from 17300, 18899 = from 18900...).
+    /// </summary>
+    private sealed class ExtenderNode(LpzRuntime rt, BinSymbol sym, DeviceNode owner) : Node(rt, sym)
+    {
+        private readonly JoinSplit _split = new(sym);
+        private readonly string _source = $"{sym.Path} (IP-ID extender)";
+
+        private uint InBase(SigKind k) => (uint)(Symbol.FieldInt(27 + (int)k) ?? 0);
+        private uint OutBase(SigKind k) => (uint)(Symbol.FieldInt(30 + (int)k) ?? 0);
+
+        private JoinKey PanelJoin(int pin)
+        {
+            var k = _split.InJoin(pin);
+            return new JoinKey(k.Kind, InBase(k.Kind) + k.Join);
+        }
+
+        public override SigKind? InputKind(int pin) => _split.InJoin(pin).Kind;
+        public override SigKind? OutputKind(int pin) => _split.OutJoin(pin).Kind;
+        public override void OnInput(int pin, object o, object n) => owner.Device?.SetFeedback(PanelJoin(pin), n);
+
+        public void PushAll()
+        {
+            for (int pin = 1; pin <= Symbol.Inputs.Length; pin++)
+                if (HasFeedback(Symbol.Inputs[pin - 1], _split.InJoin(pin).Kind)) owner.Device?.SetFeedback(PanelJoin(pin), Runtime.Value(Symbol.Inputs[pin - 1]));
+        }
+
+        /// <summary>A press from the panel: true if the join is one of this extender's.</summary>
+        public bool FromPanel(JoinKey key, object value)
+        {
+            var b = OutBase(key.Kind);
+            if (key.Join <= b) return false;
+            var pin = _split.OutPin(new JoinKey(key.Kind, key.Join - b));
+            if (pin < 1) return false;
+            var sig = Symbol.Outputs[pin - 1];
+            if (sig > 1) Runtime._slot.Dispatcher.Post(static (n, v, s) => { var d = (ExtenderNode)n!; d.Runtime.Drive(s, v!, d._source); }, this, value, sig);
+            return true;
         }
     }
 
