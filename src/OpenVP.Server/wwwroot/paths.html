@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenVP Paths</title>
+<style>
+  /* Same palette as debugger.html. */
+  :root { --bg:#0f1216; --pane:#151a20; --head:#1b2129; --line:#29303a; --text:#e6e9ee; --muted:#8b95a3; --accent:#4c8dff;
+          --sel:#22344f; --hi:#7fe0b1; --lo:#6b7480; --ana:#f2cf7a; --ser:#9ecbff; --err:#e05252;
+          --neon:#19e6ff; --loop:#ff3dcb; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; font:13px/1.35 system-ui, sans-serif; background:var(--bg); color:var(--text);
+         display:flex; flex-direction:column; overflow:hidden; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size:12px; }
+  button, input, select { font:inherit; color:var(--text); background:#111519; border:1px solid var(--line); border-radius:4px; padding:3px 8px; }
+  button { cursor:pointer; } button:hover { border-color:var(--accent); }
+  button.on { background:#0f3340; border-color:var(--neon); color:#b9f6ff; }
+  button:disabled { opacity:.45; cursor:default; }
+  label { display:inline-flex; align-items:center; gap:4px; color:var(--muted); }
+  a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
+  .muted { color:var(--muted); }
+
+  .title { display:flex; align-items:center; gap:10px; padding:6px 10px; border-bottom:1px solid var(--line); background:var(--head); flex-wrap:wrap; }
+  .title b { font-size:14px; }
+  .toolbar { display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center; padding:6px 10px; border-bottom:1px solid var(--line); background:var(--pane); }
+  .group { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .sep { width:1px; height:20px; background:var(--line); }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--lo); margin-right:5px; vertical-align:middle; }
+  .dot.ok { background:#2f9e6e; } .dot.bad { background:var(--err); }
+
+  /* start-signal picker with autocomplete */
+  .pick { position:relative; }
+  .pick input { width:230px; }
+  #sugg { position:absolute; left:0; top:100%; z-index:20; min-width:100%; max-height:280px; overflow:auto; background:#1b2129;
+          border:1px solid var(--line); border-radius:4px; margin-top:2px; display:none; }
+  #sugg div { padding:3px 8px; cursor:pointer; white-space:nowrap; font-size:12px; }
+  #sugg div:hover, #sugg div.act { background:var(--sel); }
+  #sugg i { color:var(--muted); font-style:normal; margin-left:8px; font-size:11px; }
+  #depth { width:110px; padding:0; accent-color:var(--neon); }
+
+  .main { flex:1; min-height:0; display:grid; grid-template-columns: 1fr 300px; }
+  .stage { position:relative; min-height:0; min-width:0; overflow:hidden; background:radial-gradient(ellipse at center, #121820 0%, #0b0e12 100%); }
+  canvas { position:absolute; inset:0; width:100%; height:100%; touch-action:none; cursor:grab; display:block; }
+  canvas.drag { cursor:grabbing; } canvas.hand { cursor:pointer; }
+  #hud { position:absolute; left:8px; bottom:6px; right:8px; color:var(--muted); font-size:11px; pointer-events:none; text-shadow:0 0 4px #000; }
+  #hud .warn { color:var(--ana); } #hud .bad { color:var(--err); }
+  #legend { position:absolute; right:8px; top:6px; font-size:11px; color:var(--muted); pointer-events:none; text-align:right; text-shadow:0 0 4px #000; }
+  #legend i { display:inline-block; width:16px; height:0; border-top:2px solid; vertical-align:middle; margin:0 4px 0 10px; }
+  #tip { position:absolute; z-index:5; pointer-events:none; display:none; max-width:320px; background:#1b2129ee; border:1px solid var(--line);
+         border-radius:6px; padding:6px 9px; font-size:12px; box-shadow:0 4px 14px #0008; }
+  #tip b { color:#fff; } #tip .k { color:var(--muted); }
+  #empty { position:absolute; inset:0; display:none; place-items:center; text-align:center; color:var(--muted); padding:24px; pointer-events:none; }
+
+  .side { border-left:1px solid var(--line); background:var(--pane); min-height:0; overflow:auto; display:flex; flex-direction:column; }
+  .side h2 { margin:0; padding:5px 8px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted);
+             background:var(--head); border-bottom:1px solid var(--line); position:sticky; top:0; display:flex; gap:8px; align-items:center; }
+  .side h2 .grow { flex:1; }
+  .list { font-size:12px; }
+  .list .row { display:grid; grid-template-columns: 28px 1fr auto; gap:6px; padding:3px 8px; border-bottom:1px solid #1d232b; cursor:pointer; align-items:baseline; }
+  .list .row:hover { background:var(--sel); }
+  .list .row .d { color:var(--muted); text-align:right; }
+  .list .row .s { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .list .row .s small { color:var(--muted); display:block; font-size:10.5px; overflow:hidden; text-overflow:ellipsis; }
+  .list .row.osc { background:#2a1517; } .list .row.osc .v { color:#ff7878; }
+  .v.hi { color:var(--neon); }
+  .none { padding:10px 8px; color:var(--muted); font-size:12px; }
+  #loops { max-height:34%; overflow:auto; flex:none; } #burst { flex:1; min-height:120px; overflow:auto; }
+
+  @media (max-width: 800px) {
+    body { overflow:auto; height:auto; min-height:100%; }
+    .main { display:block; flex:none; }
+    .stage { height:62vh; min-height:340px; }
+    .side { border-left:0; border-top:1px solid var(--line); }
+    #loops, #burst { max-height:none; }
+    .pick input { width:180px; }
+  }
+</style>
+</head>
+<body>
+<div class="title">
+  <b>Paths</b>
+  <select id="slot" title="Program slot"></select>
+  <span id="prog" class="muted mono"></span>
+  <span style="flex:1"></span>
+  <span id="conn" class="muted"><i class="dot"></i>…</span>
+  <a id="dbglink" href="debugger.html">&larr; Debugger</a>
+  <a href="/">Console</a>
+</div>
+
+<div class="toolbar">
+  <div class="group">
+    <span class="pick">
+      <input id="start" class="mono" placeholder="start signal (search)…" autocomplete="off" spellcheck="false">
+      <div id="sugg"></div>
+    </span>
+    <select id="dir" title="Direction of the search">
+      <option value="fwd">What does it drive? &rarr;</option>
+      <option value="back">&larr; What drives it?</option>
+    </select>
+    <label title="How many signal-to-signal hops to follow from the start signal">Depth
+      <input id="depth" type="range" min="1" max="30" value="8"><b id="depthv" class="mono" style="color:var(--text);min-width:18px">8</b></label>
+    <label title="Draw the whole program instead of just the cone around the start signal"><input id="whole" type="checkbox"> whole program</label>
+    <label title="When a new burst starts on a signal that is not in view, re-centre the maze on it"><input id="follow" type="checkbox"> follow live changes</label>
+  </div>
+  <span class="sep"></span>
+  <div class="group">
+    <button id="fit" title="Fit the maze to the window">Fit</button>
+    <button id="pulse" title="Pulse the start signal (press the button). Double-click a digital signal does the same.">Pulse start</button>
+  </div>
+  <span class="sep"></span>
+  <div class="group" title="Slow motion: queue incoming events and replay them slower">
+    <span class="muted">Speed</span>
+    <button class="spd on" data-s="1">1&times;</button><button class="spd" data-s="0.25">0.25&times;</button><button class="spd" data-s="0.1">0.1&times;</button>
+    <button id="replay" title="Play the last burst again" disabled>&#8635; Replay last burst</button>
+    <button id="skip" title="Drop the queued events and jump to live" style="display:none">Skip queue</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="stage" id="stage">
+    <canvas id="cv"></canvas>
+    <div id="empty"></div>
+    <div id="legend"><i style="border-color:#4a5360"></i>wire<i style="border-color:#19e6ff"></i>signal path<i style="border-color:#ff3dcb"></i>loop</div>
+    <div id="hud"></div>
+    <div id="tip"></div>
+  </div>
+  <aside class="side">
+    <div id="loops">
+      <h2>Loops &amp; oscillations</h2>
+      <div class="list" id="loopsList"></div>
+    </div>
+    <div id="burst">
+      <h2><span class="grow">Last burst</span><span id="burstInfo" class="muted" style="text-transform:none;letter-spacing:0"></span></h2>
+      <div class="list" id="burstList"></div>
+    </div>
+  </aside>
+</div>
+
+<script src="openvp-auth.js"></script>
+<script>
+openvpAuth.init();
+const $ = s => document.querySelector(s);
+
+// ---------------------------------------------------------------- tunables
+const HOP_MS = 150;          // time for the pulse to cross one signal -> symbol -> signal hop
+const FADE_MS = 2500;        // how long a lit node / edge takes to fade out
+const FAN = 12;              // children drawn per node before collapsing the rest into "+K more"
+const MAX_NODES = 1800;      // hard cap on drawn nodes
+const COL_W = 190, ROW_H = 40;
+const OSC_CHAIN = 6;         // changes of one signal inside one burst that count as oscillation
+const OSC_RATE = 20;         // changes per second that count as oscillation
+const OSC_HOLD = 6000;       // how long an oscillation stays flagged after the last change
+
+const COL = {
+  edge: "#3a424d", edgeBack: "#5b3350", node: "#2c333d", nodeText: "#8a94a2", symText: "#9aa4b2",
+  hi: "#19e6ff", lo: "#2aa3b8", ana: "#ffd24d", ser: "#8fb4ff", loop: "#ff3dcb", osc: "#ff4040", dev: "#7a6bb0"
+};
+
+// ---------------------------------------------------------------- state
+let slot = Number(new URLSearchParams(location.search).get("slot")) || 1;
+let startSig = new URLSearchParams(location.search).get("signal") || "";
+let G = null;                       // program graph: { symbols:Map, signals:Map }
+let V = null;                       // current view (the drawn sub-graph): nodes, edges, maps
+let expanded = new Set();           // node keys whose "+K more" was opened
+let vals = new Map();               // signal name -> current value (from /signals and trace events)
+let ws = null;
+const cfg = { dir: "fwd", depth: 8, whole: false, follow: false, speed: 1 };
+const T = { x: 0, y: 0, k: 1 };     // pan / zoom (screen = world * k + xy)
+
+// live-animation state (all times are performance.now() ms)
+const litN = new Map();             // node key -> { t, high, kind, n, ring }
+const litE = new Map();             // edge key -> { t, dur, high, kind, loop }
+const sched = [];                   // events waiting for their hop time: { at, e }
+const queue = [];                   // received events waiting for slow-motion playback: { r, e }
+const chainBase = new Map();        // chain -> time its first event played
+const chainArr = new Map();         // chain|signal -> time that signal's light arrives
+const chainCnt = new Map();         // chain|signal -> number of changes in this chain
+const rate = new Map();             // signal -> recent change timestamps
+const osc = new Map();              // signal -> { t, n, reason }
+const bursts = new Map();           // chain -> [events] (recent chains only)
+let lastBurst = null, lastFollow = 0, playClock = 0, lastFrame = 0, flash = null, replaySeq = 0;
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("openvp.paths." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("openvp.paths." + k, JSON.stringify(v)); } catch { } }
+};
+async function api(path, init) {
+  const r = await fetch(path, init);
+  if (openvpAuth.check(r)) throw new Error("Log in with the access key first.");
+  const ct = r.headers.get("content-type") || "";
+  const body = ct.includes("json") ? await r.json() : await r.text();
+  if (!r.ok) throw new Error(body.error || body || r.statusText);
+  return body;
+}
+const pad = (n, w = 2) => String(n).padStart(w, "0");
+const isHigh = v => v === true || v === 1 || v === "1" || v === "True" || v === "true";
+const isConst = n => n === "0" || n === "1";
+function fmt(kind, v) {
+  if (v === undefined) return "?";
+  if (kind === "Digital") return isHigh(v) ? "1" : "0";
+  if (kind === "Analog") return (Number(v) || 0) + "d";
+  const s = v == null ? "" : String(v);
+  return '"' + s.replace(/[\x00-\x1F\x7F-\xFF\\]/g, c => "\\x" + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")).slice(0, 40) + '"';
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+function setHud(html) { $("#hud").innerHTML = html; }
+
+// ---------------------------------------------------------------- program graph
+// Bipartite: signal -> symbol (symbol reads it as an input) and symbol -> signal (symbol drives it as an output).
+async function loadGraph() {
+  G = null; V = null; $("#empty").style.display = "none";
+  let raw;
+  try { raw = await api(`/api/slots/${slot}/graph`); }
+  catch (e) { showEmpty("No wiring graph for slot " + slot + ": " + e.message); draw(); return; }
+  const symbols = new Map(), signals = new Map();
+  const sig = (name, kind) => {
+    let s = signals.get(name);
+    if (!s) signals.set(name, s = { name, kind: kind || "Digital", drivers: [], readers: [] });
+    else if (kind) s.kind = kind;
+    return s;
+  };
+  for (const s of raw.signals || []) if (!isConst(s.name)) sig(s.name, s.kind);
+  for (const y of raw.symbols || []) {
+    y.inputs = (y.inputs || []).filter(n => !isConst(n)); y.outputs = (y.outputs || []).filter(n => !isConst(n));
+    symbols.set(y.id, y);
+    for (const n of new Set(y.inputs)) sig(n).readers.push(y.id);
+    for (const n of new Set(y.outputs)) sig(n).drivers.push(y.id);
+  }
+  G = { symbols, signals, kind: raw.kind };
+  try { // current values, so steady-state highs can be shown
+    for (const s of await api(`/api/slots/${slot}/signals`)) vals.set(s.name, s.value);
+  } catch { }
+  if (!startSig || !signals.has(startSig)) startSig = defaultStart();
+  $("#start").value = startSig;
+  rebuild(true);
+}
+// A good first pick: a signal nobody drives (an input) that reads into the most symbols.
+function defaultStart() {
+  let best = null;
+  for (const s of G.signals.values()) if (!s.drivers.length && (!best || s.readers.length > best.readers.length)) best = s;
+  if (!best) for (const s of G.signals.values()) if (!best || s.readers.length > best.readers.length) best = s;
+  return best ? best.name : "";
+}
+function showEmpty(t) { const e = $("#empty"); e.textContent = t; e.style.display = "grid"; setHud(""); }
+
+// ---------------------------------------------------------------- building the drawn sub-graph ("the maze")
+// Nodes: { key, type:"sig"|"sym"|"more", label, ... }; edges: { key, a, b, back }.
+function buildView() {
+  const nodes = [], nmap = new Map(), emap = new Map(), edges = [];
+  let truncated = false, hidden = 0;
+  const back = cfg.dir === "back";
+  const addNode = n => { if (nodes.length >= MAX_NODES) { truncated = true; return null; } nmap.set(n.key, n); nodes.push(n); return n; };
+  const sigNode = (name, depth) => {
+    let n = nmap.get("s:" + name); if (n) return n;
+    const s = G.signals.get(name);
+    return addNode({ key: "s:" + name, type: "sig", name, label: name, kind: s ? s.kind : "Digital", depth, s });
+  };
+  const symNode = id => {
+    let n = nmap.get("y:" + id); if (n) return n;
+    const y = G.symbols.get(id);
+    return addNode({ key: "y:" + id, type: "sym", id, label: y.name || id, sym: y, dev: !!y.device });
+  };
+  const moreNode = (parentKey, k) => addNode({ key: "m:" + parentKey, type: "more", label: "+" + k + " more", parentKey, k });
+  // Cap a list of children to FAN unless the user opened this node's "+K more".
+  const capped = (list, parentKey) => {
+    if (list.length <= FAN || expanded.has(parentKey)) return list;
+    const extra = list.length - FAN;
+    hidden += extra;
+    return list.slice(0, FAN).concat([{ more: extra }]);
+  };
+
+  // Breadth-first from the seed signals; a signal's `depth` counts signal-to-signal hops.
+  const limit = cfg.whole ? Infinity : cfg.depth;
+  let seeds = [];
+  if (cfg.whole) {
+    for (const s of G.signals.values()) {
+      if (!s.drivers.length && !s.readers.length) continue;
+      if (back ? !s.readers.length : (!s.drivers.length || s.drivers.every(d => G.symbols.get(d).device))) seeds.push(s.name);
+    }
+    for (const s of G.signals.values()) if (s.drivers.length + s.readers.length) seeds.push(s.name); // cycles with no entry point
+  } else if (G.signals.has(startSig)) seeds = [startSig];
+
+  const q = [];
+  const pushSig = (name, d) => { if (!nmap.has("s:" + name) && sigNode(name, d)) q.push({ name, d }); };
+  for (const s of seeds) pushSig(s, 0);
+  for (let qi = 0; qi < q.length; qi++) {
+    const { name, d } = q[qi], s = G.signals.get(name), sk = "s:" + name;
+    if (!s || d >= limit) { const nd = nmap.get(sk); if (nd && s && (back ? s.drivers.length : s.readers.length)) nd.more_beyond = true; continue; }
+    const symIds = back ? s.drivers : s.readers;
+    for (const item of capped(symIds, sk)) {
+      if (item.more) { const m = moreNode(sk, item.more); if (m) addEdge(back ? m.key : sk, back ? sk : m.key); continue; }
+      const y = symNode(item); if (!y) break;
+      if (y.dev) continue;                      // device symbols are sinks (forward) / sources (backward)
+      const outs = back ? y.sym.inputs : y.sym.outputs, yk = "y:" + item;
+      for (const o of capped(outs, yk)) {
+        if (o.more) { const m = moreNode(yk, o.more); if (m) addEdge(back ? m.key : yk, back ? yk : m.key); continue; }
+        pushSig(o, d + 1);
+      }
+    }
+  }
+  function addEdge(a, b) { const k = a + ">" + b; if (!emap.has(k)) { const e = { key: k, a, b, back: false }; emap.set(k, e); edges.push(e); } }
+  // Edges between everything that made it into the view.
+  for (const n of nodes) {
+    if (n.type !== "sym") continue;
+    for (const i of n.sym.inputs) if (nmap.has("s:" + i)) addEdge("s:" + i, n.key);
+    for (const o of n.sym.outputs) if (nmap.has("s:" + o)) addEdge(n.key, "s:" + o);
+  }
+  // "more" nodes were wired above before the later nodes existed; make sure their edges point at real nodes.
+  for (const e of edges) { e.na = nmap.get(e.a); e.nb = nmap.get(e.b); }
+  return { nodes, nmap, edges, emap, truncated, hidden, seeds };
+}
+
+// ---------------------------------------------------------------- layout
+// Columns come from the longest path through the graph with loop-closing edges removed, so everything
+// flows left to right and only real feedback edges run backwards. Rows are ordered with barycenter sweeps.
+function layout(v) {
+  const { nodes, edges } = v;
+  for (const n of nodes) { n.out = []; n.inn = []; }
+  for (const e of edges) { e.na.out.push(e); e.nb.inn.push(e); }
+  // 1) find feedback edges with a DFS (an edge into a node on the current stack closes a loop)
+  const state = new Map(), order = [];
+  const dfs = start => {
+    const stack = [[start, 0]]; state.set(start, 1);
+    while (stack.length) {
+      const top = stack[stack.length - 1], n = top[0];
+      if (top[1] < n.out.length) {
+        const e = n.out[top[1]++], m = e.nb;
+        const st = state.get(m);
+        if (st === 1) e.back = true;
+        else if (!st) { state.set(m, 1); stack.push([m, 0]); }
+      } else { state.set(n, 2); order.push(n); stack.pop(); }
+    }
+  };
+  const roots = [];
+  if (cfg.dir === "fwd") for (const s of v.seeds) { const n = v.nmap.get("s:" + s); if (n) roots.push(n); }
+  for (const n of nodes) if (!n.inn.length) roots.push(n);
+  for (const n of nodes) roots.push(n);
+  for (const r of roots) if (!state.get(r)) dfs(r);
+  // 2) longest-path columns over the DAG (reverse post-order is a topological order)
+  for (const n of nodes) n.col = 0;
+  for (let i = order.length - 1; i >= 0; i--) {
+    const n = order[i];
+    for (const e of n.out) if (!e.back && e.nb.col < n.col + 1) e.nb.col = n.col + 1;
+  }
+  const ncol = nodes.reduce((m, n) => Math.max(m, n.col), 0) + 1;
+  const cols = Array.from({ length: ncol }, () => []);
+  // initial order: discovery order of the DFS (keeps related nodes close)
+  for (let i = order.length - 1; i >= 0; i--) cols[order[i].col].push(order[i]);
+  const place = () => { for (const c of cols) c.forEach((n, i) => n.pos = c.length > 1 ? i / (c.length - 1) : 0.5); };
+  place();
+  // 3) barycenter sweeps to cut crossings
+  const bary = (n, list) => { let s = 0, c = 0; for (const e of list) if (!e.back) { s += (list === n.inn ? e.na : e.nb).pos; c++; } return c ? s / c : n.pos; };
+  for (let it = 0; it < 4; it++) {
+    for (let c = 1; c < ncol; c++) { cols[c].forEach(n => n.bc = bary(n, n.inn)); cols[c].sort((a, b) => a.bc - b.bc); place(); }
+    for (let c = ncol - 2; c >= 0; c--) { cols[c].forEach(n => n.bc = bary(n, n.out)); cols[c].sort((a, b) => a.bc - b.bc); place(); }
+  }
+  // 4) coordinates: x by column, y pulled towards neighbours while keeping order and spacing
+  cols.forEach((c, ci) => c.forEach((n, i) => { n.y = (i - (c.length - 1) / 2) * ROW_H; }));
+  const relax = (c, list) => {
+    for (const n of c) {
+      let s = 0, k = 0; for (const e of n[list]) if (!e.back) { s += (list === "inn" ? e.na : e.nb).y; k++; }
+      n.want = k ? s / k : n.y;
+    }
+    let prev = -Infinity;
+    for (const n of c) { n.y = Math.max(n.want, prev + ROW_H); prev = n.y; }
+    let sh = 0; for (const n of c) sh += n.want - n.y; sh /= c.length;       // re-centre on where they wanted to be
+    for (const n of c) n.y += sh;
+    prev = -Infinity; for (const n of c) { n.y = Math.max(n.y, prev + ROW_H); prev = n.y; }
+  };
+  for (let it = 0; it < 3; it++) {
+    for (let c = 1; c < ncol; c++) relax(cols[c], "inn");
+    for (let c = ncol - 2; c >= 0; c--) relax(cols[c], "out");
+  }
+  ctx.font = "11px system-ui, sans-serif";
+  for (const n of nodes) {
+    n.x = n.col * COL_W;
+    const tw = ctx.measureText(n.label).width;
+    n.w = n.type === "sig" ? Math.min(140, tw + 22) : Math.min(140, Math.max(54, tw + 16));
+    n.h = n.type === "sig" ? 20 : 32;
+    n.text = fitText(n.label, n.w - (n.type === "sig" ? 20 : 12));
+  }
+  // 5) edge geometry (cubic beziers; feedback edges swing out above/below)
+  let flip = 0;
+  for (const e of edges) {
+    const a = e.na, b = e.nb;
+    const x1 = a.x + a.w / 2, y1 = a.y, x2 = b.x - b.w / 2, y2 = b.y;
+    if (e.back || x2 < x1 + 8) {
+      e.back = true;
+      const d = (36 + 10 * Math.abs(a.col - b.col)) * ((flip++ & 1) ? 1 : -1);
+      e.p = [x1, y1, x1 + 70, y1 + d, x2 - 70, y2 + d, x2, y2];
+    } else {
+      const dx = Math.max(30, (x2 - x1) * 0.5);
+      e.p = [x1, y1, x1 + dx, y1, x2 - dx, y2, x2, y2];
+    }
+  }
+}
+const fitCache = new Map();
+function fitText(s, maxW) {
+  const key = s + "|" + Math.round(maxW);
+  let r = fitCache.get(key); if (r) return r;
+  if (ctx.measureText(s).width <= maxW) r = s;
+  else { let lo = 1, hi = s.length; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (ctx.measureText(s.slice(0, m) + "…").width <= maxW) lo = m; else hi = m - 1; } r = s.slice(0, lo) + "…"; }
+  if (fitCache.size > 5000) fitCache.clear();
+  fitCache.set(key, r); return r;
+}
+
+function rebuild(refit) {
+  if (!G) return;
+  litN.clear(); litE.clear(); sched.length = 0;
+  V = buildView();
+  layout(V);
+  const loops = V.edges.filter(e => e.back).length;
+  V.loops = loops;
+  $("#empty").style.display = "none";
+  if (!V.nodes.length) showEmpty(cfg.whole ? "The program has no connected signals." : "Pick a start signal.");
+  updateHud();
+  if (refit !== false) fit(); else draw();
+}
+function updateHud() {
+  if (!V) return;
+  const sigs = V.nodes.filter(n => n.type === "sig").length, syms = V.nodes.filter(n => n.type === "sym").length;
+  let h = `${sigs} signals · ${syms} symbols · ${V.loops} loop edge${V.loops === 1 ? "" : "s"}`;
+  if (V.hidden) h += ` · <span class="warn">${V.hidden} hidden in "+K more" (click one to open)</span>`;
+  if (V.truncated) h += ` · <span class="warn">capped at ${MAX_NODES} nodes — lower the depth</span>`;
+  if (queue.length) h += ` · <span class="warn">${queue.length} queued</span>`;
+  $("#skip").style.display = queue.length ? "" : "none";
+  setHud(h);
+}
+
+// ---------------------------------------------------------------- canvas, pan / zoom
+const cv = $("#cv"), ctx = cv.getContext("2d");
+let cw = 300, ch = 300, dpr = 1;
+function resize() {
+  const st = $("#stage"); dpr = window.devicePixelRatio || 1;
+  cw = st.clientWidth; ch = st.clientHeight;
+  cv.width = Math.max(1, Math.round(cw * dpr)); cv.height = Math.max(1, Math.round(ch * dpr));
+  draw();
+}
+new ResizeObserver(resize).observe($("#stage"));
+
+function fit(force) {
+  if (!V || !V.nodes.length) { draw(); return; }
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const n of V.nodes) { x0 = Math.min(x0, n.x - n.w / 2); x1 = Math.max(x1, n.x + n.w / 2); y0 = Math.min(y0, n.y - n.h / 2); y1 = Math.max(y1, n.y + n.h / 2); }
+  for (const e of V.edges) if (e.back) for (const i of [3, 5]) { y0 = Math.min(y0, e.p[i]); y1 = Math.max(y1, e.p[i]); }
+  const pw = 30, bw = Math.max(1, x1 - x0), bh = Math.max(1, y1 - y0);
+  const fitK = Math.min((cw - pw * 2) / bw, (ch - pw * 2 - 20) / bh), minK = force === true ? 0.02 : cfg.whole ? 0.1 : cw < 600 ? 0.5 : 0.75;
+  T.k = Math.min(1.6, Math.max(fitK, minK));
+  if (fitK >= minK) { T.x = cw / 2 - (x0 + bw / 2) * T.k; T.y = ch / 2 - (y0 + bh / 2) * T.k - 6; }
+  else { // too big to read when fitted: keep text legible, anchor on the start of the maze (use zoom out / Fit again to see all)
+    const s = V.nodes.find(n => n.key === "s:" + startSig) || V.nodes[0];
+    T.x = cfg.dir === "back" ? cw - pw - x1 * T.k : pw - x0 * T.k; T.y = ch / 2 - s.y * T.k - 6;
+  }
+  draw();
+}
+const toWorld = (sx, sy) => [(sx - T.x) / T.k, (sy - T.y) / T.k];
+function zoomAt(sx, sy, f) {
+  const k = Math.min(4, Math.max(0.03, T.k * f)); f = k / T.k;
+  T.x = sx - (sx - T.x) * f; T.y = sy - (sy - T.y) * f; T.k = k; draw();
+}
+function panTo(n) { T.x = cw / 2 - n.x * T.k; T.y = ch / 2 - n.y * T.k; }
+
+// pointers: one = pan, two = pinch
+const ptrs = new Map(); let moved = 0, clickTimer = null;
+cv.addEventListener("pointerdown", e => {
+  cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.offsetX, y: e.offsetY }); moved = 0; cv.classList.add("drag");
+});
+cv.addEventListener("pointermove", e => {
+  const p = ptrs.get(e.pointerId);
+  if (!p) { hover(e.offsetX, e.offsetY); return; }
+  if (ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()], d0 = Math.hypot(a.x - b.x, a.y - b.y);
+    const mx0 = (a.x + b.x) / 2, my0 = (a.y + b.y) / 2;
+    p.x = e.offsetX; p.y = e.offsetY;
+    const d1 = Math.hypot(a.x - b.x, a.y - b.y), mx1 = (a.x + b.x) / 2, my1 = (a.y + b.y) / 2;
+    T.x += mx1 - mx0; T.y += my1 - my0; if (d0 > 0) zoomAt(mx1, my1, d1 / d0); else draw();
+    moved = 99;
+  } else {
+    moved += Math.abs(e.offsetX - p.x) + Math.abs(e.offsetY - p.y);
+    T.x += e.offsetX - p.x; T.y += e.offsetY - p.y; p.x = e.offsetX; p.y = e.offsetY;
+    if (moved > 4) { hideTip(); draw(); }
+  }
+});
+const endPtr = e => { ptrs.delete(e.pointerId); if (!ptrs.size) cv.classList.remove("drag"); };
+cv.addEventListener("pointerup", e => { const wasClick = moved <= 4 && ptrs.size === 1; endPtr(e); if (wasClick) clicked(e.offsetX, e.offsetY); });
+cv.addEventListener("pointercancel", endPtr);
+cv.addEventListener("pointerleave", () => { hideTip(); });
+cv.addEventListener("wheel", e => { e.preventDefault(); zoomAt(e.offsetX, e.offsetY, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015))); }, { passive: false });
+cv.addEventListener("dblclick", e => {
+  clearTimeout(clickTimer); clickTimer = null;
+  const n = hit(e.offsetX, e.offsetY);
+  if (n && n.type === "sig" && n.kind === "Digital") pulse(n.name);
+});
+
+function hit(sx, sy) {
+  if (!V) return null;
+  const [x, y] = toWorld(sx, sy), pad = 3 / T.k;
+  for (let i = V.nodes.length - 1; i >= 0; i--) {
+    const n = V.nodes[i];
+    if (Math.abs(x - n.x) <= n.w / 2 + pad && Math.abs(y - n.y) <= n.h / 2 + pad) return n;
+  }
+  return null;
+}
+// A single click picks a new start signal; delayed so a double-click (pulse) does not also re-root the maze.
+function clicked(sx, sy) {
+  const n = hit(sx, sy); if (!n) return;
+  clearTimeout(clickTimer);
+  clickTimer = setTimeout(() => {
+    clickTimer = null;
+    if (n.type === "more") { expanded.add(n.parentKey); rebuild(false); }
+    else if (n.type === "sig") setStart(n.name, false);
+  }, 260);
+}
+
+// ---------------------------------------------------------------- tooltip
+const tip = $("#tip");
+function hideTip() { tip.style.display = "none"; cv.classList.remove("hand"); }
+function hover(sx, sy) {
+  const n = hit(sx, sy);
+  if (!n) { hideTip(); return; }
+  cv.classList.add("hand");
+  let h;
+  if (n.type === "sig") {
+    const v = vals.get(n.name);
+    h = `<b>${esc(n.name)}</b><br><span class="k">${n.kind} ·</span> <span class="mono">${esc(fmt(n.kind, v))}</span>`;
+    h += `<br><span class="k">driven by</span> ${n.s.drivers.length ? n.s.drivers.slice(0, 4).map(d => esc(G.symbols.get(d).name)).join(", ") + (n.s.drivers.length > 4 ? "…" : "") : "—"}`;
+    h += `<br><span class="k">read by</span> ${n.s.readers.length} symbol${n.s.readers.length === 1 ? "" : "s"}`;
+    h += `<br><span class="k">click: start here${n.kind === "Digital" ? " · double-click: pulse" : ""}</span>`;
+  } else if (n.type === "sym") {
+    const y = n.sym, list = a => a.length ? a.slice(0, 10).map(esc).join(", ") + (a.length > 10 ? ` … (+${a.length - 10})` : "") : "—";
+    h = `<b>${esc(y.name)}</b>${y.device ? ' <span class="k">(device)</span>' : ""}<br><span class="k">path</span> <span class="mono">${esc(y.path || y.id)}</span>`;
+    if (y.group) h += `<br><span class="k">in</span> ${esc(y.group)}`;
+    h += `<br><span class="k">inputs</span> ${list(y.inputs)}<br><span class="k">outputs</span> ${list(y.outputs)}`;
+  } else h = `<b>${esc(n.label)}</b><br><span class="k">click to open</span>`;
+  tip.innerHTML = h; tip.style.display = "block";
+  const st = $("#stage"), tw = tip.offsetWidth, th = tip.offsetHeight;
+  tip.style.left = Math.max(4, Math.min(cw - tw - 4, sx + 14)) + "px";
+  tip.style.top = Math.max(4, Math.min(ch - th - 4, sy + 14)) + "px";
+}
+
+// ---------------------------------------------------------------- drawing
+const bez = (p, t) => { const u = 1 - t; return [u*u*u*p[0] + 3*u*u*t*p[2] + 3*u*t*t*p[4] + t*t*t*p[6], u*u*u*p[1] + 3*u*u*t*p[3] + 3*u*t*t*p[5] + t*t*t*p[7]]; };
+const kindColor = (kind, high) => kind === "Analog" ? COL.ana : kind === "Serial" ? COL.ser : high ? COL.hi : COL.lo;
+const fadeMs = () => FADE_MS * Math.min(3, 1 / cfg.speed);
+const inten = (t, now) => { if (now < t) return 0; const f = 1 - (now - t) / fadeMs(); return f > 0 ? f * f : 0; };
+function rr(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); }
+function rgba(hex, a) { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; }
+
+let drawQueued = false;
+function draw() { if (!drawQueued) { drawQueued = true; requestAnimationFrame(frame); } }
+
+function frame(ts) {
+  drawQueued = false;
+  const now = performance.now(), dt = lastFrame ? Math.min(100, now - lastFrame) : 16; lastFrame = now;
+  advance(now, dt);
+  paint(now);
+  if (animating()) { lastFrameKeep = true; draw(); } else lastFrame = 0;
+}
+let lastFrameKeep = false;
+function animating() {
+  return sched.length || queue.length || litN.size || litE.size || osc.size || flash;
+}
+
+// Play queued events (slow-motion gate), fire scheduled hops, drop things that have fully faded.
+function advance(now, dt) {
+  if (queue.length) {
+    if (!playClock) playClock = queue[0].r;
+    playClock += dt * cfg.speed;
+    // at 1x the queue is a pass-through: everything received is already due
+    while (queue.length && queue[0].r <= playClock) { const q = queue.shift(); play(q.e, now); }
+    if (!queue.length) { playClock = 0; updateHud(); }
+  }
+  if (sched.length) {
+    let w = 0;
+    for (const it of sched) { if (it.at <= now) fire(it.e, it.at, it.arr); else sched[w++] = it; }
+    sched.length = w;
+  }
+  const f = fadeMs();
+  for (const [k, l] of litN) if (now - l.t > f) litN.delete(k);
+  for (const [k, l] of litE) if (now - l.t > f) litE.delete(k);
+  for (const [k, o] of osc) if (now - o.t > OSC_HOLD) { osc.delete(k); loopsDirty = true; }
+  if (flash && now - flash.t > 1400) flash = null;
+  if (burstDirty || loopsDirty) renderPanels(now);
+}
+
+function paint(now) {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cw, ch);
+  if (!V || !V.nodes.length) return;
+  ctx.save();
+  ctx.translate(T.x, T.y); ctx.scale(T.k, T.k);
+  const k = T.k, vx0 = -T.x / k - 200, vy0 = -T.y / k - 120, vx1 = (cw - T.x) / k + 200, vy1 = (ch - T.y) / k + 120;
+  const vis = e => { const p = e.p; return Math.max(p[0], p[6]) >= vx0 && Math.min(p[0], p[6]) <= vx1 && Math.max(p[1], p[3], p[5], p[7]) >= vy0 && Math.min(p[1], p[3], p[5], p[7]) <= vy1; };
+  ctx.lineCap = "round";
+
+  // static wires: two batched strokes (normal, loop), dim grey
+  const path = (list) => { ctx.beginPath(); for (const e of list) { const p = e.p; ctx.moveTo(p[0], p[1]); ctx.bezierCurveTo(p[2], p[3], p[4], p[5], p[6], p[7]); } };
+  const ve = V.edges.filter(vis);
+  ctx.lineWidth = 1 / Math.max(k, 0.5);
+  ctx.strokeStyle = COL.edge; path(ve.filter(e => !e.back)); ctx.stroke();
+  ctx.strokeStyle = COL.edgeBack; ctx.setLineDash([5, 4]); path(ve.filter(e => e.back)); ctx.stroke(); ctx.setLineDash([]);
+  if (k > 0.45) { // arrow heads
+    ctx.fillStyle = COL.edge;
+    for (const e of ve) { const p = e.p; arrow(p[6], p[7], e.back ? COL.edgeBack : COL.edge); }
+  }
+
+  // lit wires: glow underlay + bright core, with a travelling dot
+  for (const [key, l] of litE) {
+    const e = V.emap.get(key); if (!e || !vis(e)) continue;
+    const i = inten(l.t, now); if (i <= 0) continue;
+    const col = e.back ? COL.loop : kindColor(l.kind, l.high), p = e.p;
+    ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.bezierCurveTo(p[2], p[3], p[4], p[5], p[6], p[7]);
+    ctx.strokeStyle = rgba(col, 0.22 * i); ctx.lineWidth = 7 / Math.max(k, 0.6); ctx.stroke();
+    ctx.strokeStyle = rgba(col, (l.high ? 0.95 : 0.6) * i); ctx.lineWidth = (l.high ? 2.2 : 1.6) / Math.max(k, 0.6); ctx.stroke();
+    const f = (now - l.t) / l.dur;                                  // 0..1 while the pulse crosses this edge
+    if (f >= 0 && f <= 1) {
+      const [dx, dy] = bez(p, f);
+      for (let s = 0; s < 4; s++) { const [tx, ty] = bez(p, Math.max(0, f - s * 0.05)); ctx.fillStyle = rgba(col, 0.5 - s * 0.12); ctx.beginPath(); ctx.arc(tx, ty, (4 - s * 0.7) / Math.max(k, 0.7), 0, 6.3); ctx.fill(); }
+      ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(dx, dy, 2.2 / Math.max(k, 0.7), 0, 6.3); ctx.fill();
+    }
+  }
+
+  // nodes
+  const lod = k < 0.32;
+  ctx.font = "11px system-ui, sans-serif"; ctx.textBaseline = "middle"; ctx.textAlign = "center";
+  const sk = V.seedKey;
+  for (const n of V.nodes) {
+    if (n.x + n.w / 2 < vx0 || n.x - n.w / 2 > vx1 || n.y + n.h / 2 < vy0 || n.y - n.h / 2 > vy1) continue;
+    const l = litN.get(n.key), i = l ? inten(l.t, now) : 0, o = n.type === "sig" ? osc.get(n.name) : null;
+    drawNode(n, i, l, o, lod, now);
+  }
+  // rings / badges / focus flash on top
+  for (const [key, l] of litN) {
+    const n = V.nmap.get(key); if (!n || !l.ring) continue;
+    const i = inten(l.t, now); if (i <= 0 && !osc.has(n.name)) continue;
+    const pulse = (now % 700) / 700;
+    ctx.strokeStyle = rgba(osc.has(n.name) ? COL.osc : COL.loop, Math.max(0.15, i) * (1 - pulse));
+    ctx.lineWidth = 2 / Math.max(k, 0.6);
+    rr(n.x - n.w / 2 - 3 - pulse * 8, n.y - n.h / 2 - 3 - pulse * 8, n.w + 6 + pulse * 16, n.h + 6 + pulse * 16, 12 + pulse * 6); ctx.stroke();
+    if (k > 0.3) {
+      const txt = "×" + l.n; ctx.font = "bold 10px system-ui"; const bw = ctx.measureText(txt).width + 8;
+      ctx.fillStyle = osc.has(n.name) ? COL.osc : COL.loop; rr(n.x + n.w / 2 - bw + 4, n.y - n.h / 2 - 9, bw, 14, 7); ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.fillText(txt, n.x + n.w / 2 - bw / 2 + 4, n.y - n.h / 2 - 2);
+    }
+  }
+  if (flash) {
+    const n = V.nmap.get(flash.key);
+    if (n) { const a = 1 - (now - flash.t) / 1400; ctx.strokeStyle = rgba("#ffffff", a); ctx.lineWidth = 2.5 / Math.max(k, 0.6); const g = 6 + (now - flash.t) / 60; rr(n.x - n.w / 2 - g, n.y - n.h / 2 - g, n.w + 2 * g, n.h + 2 * g, 14); ctx.stroke(); }
+  }
+  ctx.restore();
+}
+function arrow(x, y, col) {
+  ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 6, y - 3); ctx.lineTo(x - 6, y + 3); ctx.closePath(); ctx.fill();
+}
+
+function drawNode(n, i, l, o, lod, now) {
+  const x = n.x - n.w / 2, y = n.y - n.h / 2;
+  const isStart = n.type === "sig" && n.name === startSig;
+  let col = null;
+  if (o) col = COL.osc; else if (l && i > 0) col = kindColor(l.kind, l.high);
+  ctx.save();
+  if (n.type === "sig") {
+    const val = vals.get(n.name), steadyHigh = n.kind === "Digital" && isHigh(val);
+    rr(x, y, n.w, n.h, n.h / 2);
+    ctx.fillStyle = "#171c23"; ctx.fill();
+    ctx.strokeStyle = isStart ? "#c7d0dc" : COL.node; ctx.lineWidth = isStart ? 1.6 : 1; ctx.stroke();
+    if (col) {
+      ctx.shadowColor = col; ctx.shadowBlur = 16 * i + (o ? 8 : 0);
+      ctx.fillStyle = rgba(col, 0.16 + 0.34 * i); ctx.fill();
+      ctx.strokeStyle = rgba(col, 0.35 + 0.65 * i); ctx.lineWidth = 1.6; ctx.stroke(); ctx.shadowBlur = 0;
+    }
+    if (!lod) {
+      // little state dot: steady high is a faint green, a lit node shows its colour
+      ctx.fillStyle = col ? rgba(col, 0.4 + 0.6 * i) : steadyHigh ? "#2f7a5b" : "#2a313b";
+      ctx.beginPath(); ctx.arc(x + 9, n.y, 3, 0, 6.3); ctx.fill();
+      ctx.fillStyle = col ? "#fff" : COL.nodeText; ctx.globalAlpha = col ? 0.6 + 0.4 * i : 1;
+      ctx.textAlign = "left"; ctx.fillText(n.text, x + 16, n.y + 0.5);
+      if (n.more_beyond) { ctx.fillStyle = "#59626f"; ctx.textAlign = "left"; ctx.fillText("›", x + n.w + 3, n.y); }
+    }
+  } else if (n.type === "sym") {
+    rr(x, y, n.w, n.h, 4);
+    ctx.fillStyle = n.dev ? "#1b1830" : "#13181e"; ctx.fill();
+    ctx.strokeStyle = n.dev ? COL.dev : "#3a424d"; ctx.lineWidth = n.dev ? 1.6 : 1;
+    if (n.dev) ctx.setLineDash([2, 2]); ctx.stroke(); ctx.setLineDash([]);
+    if (col || (l && i > 0)) {
+      const c = col || COL.hi;
+      ctx.shadowColor = c; ctx.shadowBlur = 14 * i; ctx.fillStyle = rgba(c, 0.1 + 0.25 * i); ctx.fill();
+      ctx.strokeStyle = rgba(c, 0.3 + 0.7 * i); ctx.lineWidth = 1.5; ctx.stroke(); ctx.shadowBlur = 0;
+    }
+    if (!lod) {
+      ctx.fillStyle = (l && i > 0) ? "#fff" : n.dev ? "#a99bdc" : COL.symText; ctx.textAlign = "center";
+      ctx.fillText(n.text, n.x, n.y - (T.k > 0.7 ? 5 : 0));
+      if (T.k > 0.7) { ctx.font = "9px system-ui"; ctx.fillStyle = "#57606c"; ctx.fillText(fitText((n.sym.path || n.sym.id) + "", n.w - 8), n.x, n.y + 8); ctx.font = "11px system-ui"; }
+      else ctx.font = "11px system-ui";
+    }
+  } else {
+    rr(x, y, n.w, n.h, 5); ctx.setLineDash([3, 3]); ctx.strokeStyle = "#566070"; ctx.lineWidth = 1; ctx.stroke(); ctx.setLineDash([]);
+    if (!lod) { ctx.fillStyle = "#8fa0b5"; ctx.textAlign = "center"; ctx.fillText(n.label, n.x, n.y); }
+  }
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- live trace -> light trails
+// Events pass through three stages: received (queue, gated by slow-motion), played (loop counting,
+// scheduled one hop after the event that caused them), fired (lights switched on).
+function onTrace(m) {
+  vals.set(m.signal, m.value);
+  const now = performance.now();
+  queue.push({ r: now, e: m });
+  if (!animating() || queue.length === 1) draw();
+}
+
+function play(e, now, isReplay) {
+  const chain = e.chain == null ? null : String(e.chain);
+  const sym = e.symbol || null, cause = e.cause || null;
+  // --- loop / oscillation bookkeeping (skipped for replays so they don't double-count)
+  let n = 1;
+  if (!isReplay) {
+    if (chain != null) { const ck = chain + "|" + e.signal; n = (chainCnt.get(ck) || 0) + 1; chainCnt.set(ck, n); trimMap(chainCnt, 4000); }
+    let r = rate.get(e.signal); if (!r) rate.set(e.signal, r = []);
+    r.push(now); while (r.length && now - r[0] > 1000) r.shift();
+    let reason = n > OSC_CHAIN ? `${n} changes in one burst` : r.length >= OSC_RATE ? `${r.length} changes/second` : null;
+    if (reason) {
+      const o = osc.get(e.signal); if (!o) loopsDirty = true;
+      osc.set(e.signal, { t: now, n: Math.max(n, r.length), reason });
+      loopsDirty = true;
+    } else if (osc.has(e.signal)) osc.get(e.signal).t = Math.max(osc.get(e.signal).t, now - OSC_HOLD + 1500); // let it expire soon
+    if (n >= 2 && !osc.has(e.signal)) loopsDirty = true;
+    if (n >= 2) loopSeen.set(e.signal, { t: now, n, chain });
+  }
+  // --- remember the burst for the "Last burst" panel
+  if (chain != null && !isReplay) {
+    let b = bursts.get(chain); if (!b) { bursts.set(chain, b = []); trimMap(bursts, 60); }
+    if (b.length < 500) b.push(e);
+    if (b.length >= 2 || !lastBurst) { if (lastBurst !== b) { lastBurst = b; } burstDirty = true; }
+    else if (lastBurst && lastBurst.length < 2) { lastBurst = b; burstDirty = true; }
+  } else if (!isReplay && !lastBurst) { lastBurst = [e]; burstDirty = true; }
+  // --- follow live changes: a new external burst outside the maze re-roots it
+  if (cfg.follow && !isReplay && e.depth === 0 && V && !V.nmap.has("s:" + e.signal) && G && G.signals.has(e.signal) && now - lastFollow > 1500) {
+    lastFollow = now; setStart(e.signal, true);
+  }
+  // --- schedule the hop: a change is shown one hop after the change that caused it arrived
+  const hop = HOP_MS / cfg.speed;
+  let at = now, base = null;
+  if (chain != null) {
+    base = chainBase.get(chain); if (base == null) { chainBase.set(chain, now); base = now; trimMap(chainBase, 400); }
+    if (cause) { const ca = chainArr.get(chain + "|" + cause); if (ca != null) at = Math.max(now, ca); }
+  }
+  const hasHop = !!(sym && cause);
+  const arr = at + (hasHop ? hop : 0);
+  if (chain != null) { chainArr.set(chain + "|" + e.signal, arr); trimMap(chainArr, 4000); }
+  const item = { at, arr, e: Object.assign({}, e, { _n: n, _hop: hop }) };
+  if (at <= now) fire(item.e, at, arr); else sched.push(item);
+}
+function trimMap(m, max) { if (m.size > max) { let c = m.size - max; for (const k of m.keys()) { m.delete(k); if (--c <= 0) break; } } }
+
+function fire(e, at, arr) {
+  if (!V) return;
+  const high = e.kind === "Digital" ? isHigh(e.value) : true, kind = e.kind;
+  const hop = e._hop || HOP_MS;
+  const sk = "s:" + e.signal;
+  const sigIn = V.nmap.has(sk);
+  if (e.symbol && e.cause) {
+    const yk = "y:" + e.symbol;
+    const e1 = V.emap.get("s:" + e.cause + ">" + yk), e2 = V.emap.get(yk + ">" + sk);
+    if (e1) litE.set(e1.key, { t: at, dur: hop / 2, high, kind });
+    if (e2) litE.set(e2.key, { t: at + hop / 2, dur: hop / 2, high, kind });
+    if (V.nmap.has(yk)) litN.set(yk, { t: at + hop / 4, high, kind, n: 1 });
+  }
+  if (sigIn) {
+    const prev = litN.get(sk), n = e._n || 1;
+    const ring = n >= 2 || (prev && prev.ring && arr - prev.t < FADE_MS * 2);
+    litN.set(sk, { t: arr, high, kind, n: Math.max(n, 1), ring: n >= 2 });
+    if (ring && n < 2) litN.get(sk).ring = false;
+  }
+}
+const loopSeen = new Map();   // signal -> { t, n, chain }: re-lit inside one burst (shown in the loops panel)
+
+// ---------------------------------------------------------------- side panels
+let burstDirty = false, loopsDirty = false, panelAt = 0;
+function renderPanels(now) {
+  if (now - panelAt < 250) return;
+  panelAt = now;
+  if (loopsDirty || loopSeen.size) {
+    loopsDirty = false;
+    const rows = [];
+    for (const [name, o] of osc) rows.push({ name, n: o.n, why: o.reason, bad: true, t: o.t });
+    for (const [name, o] of loopSeen) {
+      if (now - o.t > 8000) { loopSeen.delete(name); continue; }
+      if (!osc.has(name)) rows.push({ name, n: o.n, why: "re-lit within one burst", bad: false, t: o.t });
+    }
+    rows.sort((a, b) => b.bad - a.bad || b.t - a.t);
+    const box = $("#loopsList");
+    box.innerHTML = rows.length ? "" : `<div class="none">None right now. A signal that changes again inside the same burst shows up here; one that changes more than ${OSC_CHAIN} times in a burst, or ${OSC_RATE}+ times a second, turns red.</div>`;
+    for (const r of rows.slice(0, 40)) {
+      const d = document.createElement("div"); d.className = "row" + (r.bad ? " osc" : "");
+      d.innerHTML = `<span class="d">×${r.n}</span><span class="s">${esc(r.name)}<small>${r.bad ? "oscillating · " : ""}${esc(r.why)}</small></span><span class="v">${r.bad ? "●" : ""}</span>`;
+      d.onclick = () => focusSignal(r.name);
+      box.appendChild(d);
+    }
+  }
+  if (burstDirty) {
+    burstDirty = false;
+    const b = lastBurst || [], box = $("#burstList");
+    $("#burstInfo").textContent = b.length ? `${b.length} event${b.length === 1 ? "" : "s"}` : "";
+    $("#replay").disabled = b.length === 0;
+    box.innerHTML = b.length ? "" : `<div class="none">Waiting for a signal change…</div>`;
+    const frag = document.createDocumentFragment();
+    b.slice(0, 250).forEach(e => {
+      const d = document.createElement("div"); d.className = "row";
+      const y = e.symbol && G ? G.symbols.get(e.symbol) : null;
+      const via = e.cause ? `via ${esc(y ? y.name : e.symbol || "?")} ← ${esc(e.cause)}` : e.symbol ? `via ${esc(y ? y.name : e.symbol)}` : "external";
+      const hi = e.kind === "Digital" && isHigh(e.value);
+      d.innerHTML = `<span class="d">${e.depth ?? ""}</span><span class="s">${esc(e.signal)}<small>${via}</small></span><span class="v mono ${hi ? "hi" : ""}">${esc(fmt(e.kind, e.value))}</span>`;
+      d.onclick = () => focusSignal(e.signal);
+      frag.appendChild(d);
+    });
+    box.appendChild(frag);
+    if (b.length > 250) box.insertAdjacentHTML("beforeend", `<div class="none">… ${b.length - 250} more</div>`);
+  }
+}
+function focusSignal(name) {
+  if (!V) return;
+  const n = V.nmap.get("s:" + name);
+  if (!n) { setHud(`<span class="warn">${esc(name)} is not in the current view. Click it again after picking it as the start signal.</span>`); setStartPrompt(name); return; }
+  panTo(n); flash = { key: n.key, t: performance.now() }; draw();
+}
+// Signals outside the view offer a one-click jump.
+function setStartPrompt(name) { $("#hud").style.pointerEvents = "auto"; $("#hud").innerHTML += ` <a href="#" id="jump">Start from ${esc(name)}</a>`; $("#jump").onclick = ev => { ev.preventDefault(); $("#hud").style.pointerEvents = "none"; setStart(name, false); }; }
+
+// ---------------------------------------------------------------- controls
+function setStart(name, keepZoom) {
+  if (!G || !G.signals.has(name)) { $("#start").style.borderColor = "var(--err)"; return; }
+  $("#start").style.borderColor = ""; startSig = name; $("#start").value = name; expanded.clear();
+  try { history.replaceState(null, "", `?slot=${slot}&signal=${encodeURIComponent(name)}`); } catch { }
+  rebuild(!keepZoom);
+  const n = V.nmap.get("s:" + name); if (keepZoom && n) panTo(n);
+  draw();
+}
+async function pulse(name) {
+  try {
+    await api(`/api/slots/${slot}/signals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, pulse: true }) });
+  } catch (e) { setHud(`<span class="bad">${esc(e.message)}</span>`); }
+}
+$("#pulse").onclick = () => { if (startSig) pulse(startSig); };
+$("#fit").onclick = () => fit(true);
+$("#dir").onchange = e => { cfg.dir = e.target.value; store.set("dir", cfg.dir); rebuild(true); };
+$("#depth").oninput = e => { cfg.depth = Number(e.target.value); $("#depthv").textContent = cfg.depth; store.set("depth", cfg.depth); };
+$("#depth").onchange = () => rebuild(true);
+$("#whole").onchange = e => { cfg.whole = e.target.checked; store.set("whole", cfg.whole); rebuild(true); };
+$("#follow").onchange = e => { cfg.follow = e.target.checked; store.set("follow", cfg.follow); };
+document.querySelectorAll(".spd").forEach(b => b.onclick = () => {
+  cfg.speed = Number(b.dataset.s); store.set("speed", cfg.speed);
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", x === b));
+});
+$("#skip").onclick = () => { queue.length = 0; playClock = 0; sched.length = 0; updateHud(); };
+$("#replay").onclick = () => {
+  if (!lastBurst || !lastBurst.length) return;
+  const id = "replay" + (++replaySeq), now = performance.now();
+  // The whole burst is re-injected at once; the hop scheduler spaces it out by cause -> effect.
+  for (const e of lastBurst) play(Object.assign({}, e, { chain: id }), now, true);
+  draw();
+};
+$("#slot").onchange = e => switchSlot(Number(e.target.value));
+
+// start-signal autocomplete
+const inp = $("#start"), sugg = $("#sugg"); let suggIdx = -1, suggList = [];
+function showSugg() {
+  if (!G) return;
+  const q = inp.value.trim().toLowerCase();
+  const all = [...G.signals.values()];
+  const starts = [], inc = [];
+  for (const s of all) { const l = s.name.toLowerCase(); if (!q || l.startsWith(q)) starts.push(s); else if (l.includes(q)) inc.push(s); }
+  suggList = starts.concat(inc).slice(0, 60); suggIdx = suggList.length ? 0 : -1;
+  sugg.replaceChildren(...suggList.map((s, i) => { const d = document.createElement("div"); d.className = i === 0 ? "act" : ""; d.innerHTML = `${esc(s.name)}<i>${s.kind}</i>`; d.onmousedown = ev => { ev.preventDefault(); pick(s.name); }; return d; }));
+  sugg.style.display = suggList.length ? "block" : "none";
+}
+function pick(name) { sugg.style.display = "none"; setStart(name, false); inp.blur(); }
+inp.oninput = showSugg; inp.onfocus = () => { inp.select(); showSugg(); };
+inp.onblur = () => { sugg.style.display = "none"; };
+inp.onkeydown = e => {
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault(); if (!suggList.length) return;
+    suggIdx = (suggIdx + (e.key === "ArrowDown" ? 1 : -1) + suggList.length) % suggList.length;
+    [...sugg.children].forEach((c, i) => c.classList.toggle("act", i === suggIdx)); sugg.children[suggIdx].scrollIntoView({ block: "nearest" });
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    const exact = G && G.signals.has(inp.value.trim()) ? inp.value.trim() : null;
+    pick(exact || (suggList[suggIdx] && suggList[suggIdx].name) || inp.value.trim());
+  } else if (e.key === "Escape") { sugg.style.display = "none"; inp.blur(); }
+};
+
+// ---------------------------------------------------------------- connection, slots
+function connect() {
+  ws?.close();
+  const proto = location.protocol === "https:" ? "wss://" : "ws://";
+  const sock = ws = new WebSocket(`${proto}${location.host}/ws/trace?slot=${slot}`);
+  sock.onopen = () => setConn(true);
+  sock.onclose = () => { if (sock !== ws) return; setConn(false); setTimeout(() => { if (sock === ws) connect(); }, 2000); };
+  sock.onmessage = ev => {
+    const data = JSON.parse(ev.data);   // an array of events (a single object is accepted too)
+    for (const m of Array.isArray(data) ? data : [data]) {
+      if (m.t === "trace") onTrace(m);
+      else if (m.t === "log" && /Loaded|started|stopped|Unload/i.test(m.message || "")) { clearTimeout(reloadT); reloadT = setTimeout(() => { loadSlots(); loadGraph(); }, 400); }
+    }
+  };
+}
+let reloadT = null;
+function setConn(ok) { $("#conn").innerHTML = `<i class="dot ${ok ? "ok" : "bad"}"></i>${ok ? "connected" : "reconnecting…"}`; }
+
+async function loadSlots() {
+  const slots = await api("/api/slots").catch(() => []);
+  const sel = $("#slot");
+  sel.replaceChildren(...slots.map(s => {
+    const o = document.createElement("option"); o.value = s.number;
+    o.textContent = `Slot ${pad(s.number)}${s.program ? " · " + s.program : ""}`; return o;
+  }));
+  sel.value = slot;
+  const s = slots.find(x => x.number === slot);
+  $("#prog").textContent = s?.file ? `${s.file} · ${s.kind}` : "no program";
+  document.title = `Paths · slot ${slot}`;
+  $("#dbglink").href = `debugger.html?slot=${slot}`;
+}
+function switchSlot(n) {
+  slot = n; startSig = ""; expanded.clear(); vals.clear(); queue.length = 0; sched.length = 0;
+  bursts.clear(); lastBurst = null; osc.clear(); loopSeen.clear(); burstDirty = loopsDirty = true;
+  try { history.replaceState(null, "", `?slot=${n}`); } catch { }
+  loadSlots(); loadGraph(); connect();
+}
+
+// restore saved settings
+(() => {
+  cfg.dir = store.get("dir", "fwd") === "back" ? "back" : "fwd"; $("#dir").value = cfg.dir;
+  cfg.depth = Math.min(30, Math.max(1, Number(store.get("depth", 8)) || 8)); $("#depth").value = cfg.depth; $("#depthv").textContent = cfg.depth;
+  cfg.whole = !!store.get("whole", false); $("#whole").checked = cfg.whole;
+  cfg.follow = !!store.get("follow", false); $("#follow").checked = cfg.follow;
+  const sp = store.get("speed", 1); cfg.speed = [1, 0.25, 0.1].includes(sp) ? sp : 1;
+  document.querySelectorAll(".spd").forEach(x => x.classList.toggle("on", Number(x.dataset.s) === cfg.speed));
+})();
+$("#dbglink").href = `debugger.html?slot=${slot}`;
+resize(); loopsDirty = burstDirty = true; renderPanels(performance.now() + 1000); panelAt = 0;
+loadSlots(); loadGraph(); connect();
+// Test hook: lets automated tests read what is on screen.
+window.__paths = { get view() { return V; }, cfg, litN, litE, osc, T };
+</script>
+</body>
+</html>
