@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using OpenVP.Core;
 
@@ -139,10 +140,10 @@ public abstract class HeldRepeatPrim : Primitive
 }
 
 /// <summary>
-/// Types 20 (Analog Ramp: P1 = time for the full 0-65535 range) and 223 (ramp with limits: P1 time,
-/// P2 lower, P3 upper). Input 1 ramps up, input 2 down, while held.
+/// Type 20, Analog Ramp: P1 = time for the full 0-65535 range. Input 1 ramps up, input 2 down, while held.
+/// (The bounded variant, type 223, is <see cref="BoundedRampPrim"/>.)
 /// </summary>
-public sealed class AnalogRampPrim(bool limited) : HeldRepeatPrim
+public sealed class AnalogRampPrim : HeldRepeatPrim
 {
     private const long TickStep = 5; // update every 50 ms
     private int _value = -1;
@@ -159,13 +160,159 @@ public sealed class AnalogRampPrim(bool limited) : HeldRepeatPrim
 
     protected override void Step(IPrimitiveContext c, int dir)
     {
-        long lo = limited ? c.Number(1) : 0, hi = limited ? c.Number(2, 65535) : 65535;
+        var step = Math.Max(1, 65535 * TickStep / Math.Max(1, c.Number(0, 500)));
+        if (_value < 0) _value = c.Output(1) is ushort u ? u : 0;
+        _value = (int)Math.Clamp(_value + dir * step, 0, 65535);
+        c.Set(1, (ushort)_value);
+    }
+}
+
+/// <summary>
+/// Type 223, Analog Ramp (Bounds Limited), SmC 540. Input 1 ramps the output up toward the upper bound while
+/// held, input 2 ramps it down toward the lower bound; with neither held (or both) it holds. The ramp stops
+/// at the bound. The compiler drops trailing unconnected pins, so a record may carry only these two inputs
+/// (the symbol file lists three; the third is never connected in the programs seen, and is ignored).
+/// Parameters (inferred from the Q-SYS Level Control macro, which passes 500, 0, 100, 0 for a 0-100 range
+/// that takes 5 s): P1 = time for the full lower-to-upper span in 1/100 s, P2 = lower bound, P3 = upper
+/// bound, P4 = initial output value (clamped to the bounds; only driven at start when the record has it).
+/// The value is computed from elapsed time every 20 ms rather than by counting steps, and output changes
+/// only when the rounded value does.
+/// </summary>
+public sealed class BoundedRampPrim : Primitive
+{
+    private const long UpdateTicks = 2;
+    private double _value;
+    private bool _known;
+    private int _dir;
+    private long _last;
+    private int _shown = int.MinValue;
+    private IDisposable? _timer;
+
+    public override SigKind? OutputKind(int pin) => SigKind.Analog;
+
+    private static void Bounds(IPrimitiveContext c, out long lo, out long hi)
+    {
+        lo = c.Number(1); hi = c.Number(2, 65535);
         if (hi < lo) (lo, hi) = (hi, lo);
-        var time = Math.Max(1, c.Number(0, 500));
-        var step = Math.Max(1, (hi - lo) * TickStep / time);
-        if (_value < 0) _value = c.Output(1) is ushort u ? u : (int)lo;
-        _value = (int)Math.Clamp(_value + dir * step, lo, hi);
-        c.Set(1, (ushort)(short)_value);
+    }
+
+    public override void Start(IPrimitiveContext c)
+    {
+        if (c.ParamCount < 4) return;
+        Bounds(c, out var lo, out var hi);
+        _value = Math.Clamp(c.Number(3), lo, hi);
+        _known = true;
+        Publish(c);
+    }
+
+    public override void OnDigital(IPrimitiveContext c, int p, bool o, bool n)
+    {
+        if (p > 2) return;
+        Advance(c);
+        var up = c.InputCount >= 1 && c.Digital(1);
+        var down = c.InputCount >= 2 && c.Digital(2);
+        _dir = up == down ? 0 : up ? 1 : -1;
+        _timer?.Dispose();
+        _timer = null;
+        if (_dir != 0) Schedule(c);
+    }
+
+    private void Schedule(IPrimitiveContext c) => _timer = c.AfterTicks(UpdateTicks, () =>
+    {
+        Advance(c);
+        if (_dir != 0) Schedule(c);
+    });
+
+    /// <summary>Move the value for the time since the last call and stop at a bound.</summary>
+    private void Advance(IPrimitiveContext c)
+    {
+        var now = Stopwatch.GetTimestamp();
+        Bounds(c, out var lo, out var hi);
+        if (!_known)
+        {
+            // Pick up wherever the output is (it starts at 0, or at P4), kept inside the bounds.
+            _value = Math.Clamp(c.Output(1) is ushort u ? (lo < 0 ? (short)u : u) : lo, lo, hi);
+            _known = true;
+        }
+        if (_dir != 0)
+        {
+            var ms = Stopwatch.GetElapsedTime(_last, now).TotalMilliseconds;
+            var time = Math.Max(1, c.Number(0, 500)) * 10.0;
+            _value = Math.Clamp(_value + _dir * (hi - lo) * ms / time, lo, hi);
+            if (_value <= lo && _dir < 0 || _value >= hi && _dir > 0) _dir = 0; // arrived: stop until released and pressed again
+            Publish(c);
+        }
+        _last = now;
+    }
+
+    private void Publish(IPrimitiveContext c)
+    {
+        var v = (int)Math.Round(_value);
+        if (v == _shown) return;
+        _shown = v;
+        c.Set(1, (ushort)(short)v);
+    }
+}
+
+/// <summary>
+/// Type 80, Analog Rate Limiter, SmC 66. The output follows input 1 but moves no faster than the rate set by
+/// P1 = time to traverse the full 0-65535 range, in 1/100 s (the Q-SYS Level Control macro feeds it a
+/// 0-65535 level with 500, matching its own 5 s ramp). When the input changes the output slews toward it
+/// at that rate (every 20 ms, computed from elapsed time) and stops on arrival; a new input mid-slew just
+/// changes the target. P1 of 0 means no limit. The output starts at 0 and is not snapped to the input at
+/// program start.
+/// </summary>
+public sealed class RateLimiterPrim : Primitive
+{
+    private const long UpdateTicks = 2;
+    private double _value;
+    private ushort _target;
+    private bool _known;
+    private long _last;
+    private int _shown = -1;
+    private IDisposable? _timer;
+
+    public override SigKind? InputKind(int pin) => SigKind.Analog;
+    public override SigKind? OutputKind(int pin) => SigKind.Analog;
+
+    public override void OnAnalog(IPrimitiveContext c, int p, ushort o, ushort n)
+    {
+        if (p != 1) return;
+        if (_timer != null) Advance(c); // settle the slew so far, against the old target
+        else if (!_known) { _value = c.Output(1) is ushort u ? u : 0; _known = true; _last = Stopwatch.GetTimestamp(); }
+        _target = n;
+        _last = Stopwatch.GetTimestamp();
+        if (c.Number(0) <= 0) { _timer?.Dispose(); _timer = null; _value = n; Publish(c); return; }
+        if (_timer == null && Math.Round(_value) != _target) Schedule(c);
+    }
+
+    private void Schedule(IPrimitiveContext c) => _timer = c.AfterTicks(UpdateTicks, () =>
+    {
+        _timer = null;
+        if (Advance(c)) Schedule(c);
+    });
+
+    /// <summary>Slew for the time since the last call; false once the target is reached.</summary>
+    private bool Advance(IPrimitiveContext c)
+    {
+        var now = Stopwatch.GetTimestamp();
+        var ms = Stopwatch.GetElapsedTime(_last, now).TotalMilliseconds;
+        _last = now;
+        var reach = 65535.0 * ms / (c.Number(0) * 10.0);
+        _value = _value < _target ? Math.Min(_value + reach, _target) : Math.Max(_value - reach, _target);
+        Publish(c);
+        if (_value != _target) return true;
+        _timer?.Dispose();
+        _timer = null;
+        return false;
+    }
+
+    private void Publish(IPrimitiveContext c)
+    {
+        var v = (int)Math.Round(_value);
+        if (v == _shown) return;
+        _shown = v;
+        c.Set(1, (ushort)v);
     }
 }
 
@@ -268,12 +415,6 @@ public sealed class AnalogClampPrim : ReactPrim
         if (hi < lo) (lo, hi) = (hi, lo);
         c.Set(1, (ushort)Math.Clamp((int)c.Analog(3), lo, hi));
     }
-}
-
-/// <summary>Type 80 (inside Q-SYS modules): analog follows its input.</summary>
-public sealed class AnalogFollowPrim : ReactPrim
-{
-    protected override void React(IPrimitiveContext c, int p) => c.Set(1, c.Analog(1));
 }
 
 /// <summary>Type 106, Analog to Digital: output k is bit (outputs − k) of the input.</summary>

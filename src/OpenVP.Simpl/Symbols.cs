@@ -308,6 +308,127 @@ public sealed class SerialSendSymbol : SymbolBehavior
 }
 
 /// <summary>
+/// Analog Ramp (Bounds Limited), SmC 540: input 1 ramps the output up while held, input 2 down; both or
+/// neither hold. Parameters as in the compiled form (LPZ type 223): P1 time for the full lower-to-upper span
+/// in 1/100 s, P2 lower bound, P3 upper bound, P4 initial value. Elapsed-time based, updated every 20 ms.
+/// </summary>
+public sealed class BoundedRampSymbol : SymbolBehavior
+{
+    private double _value;
+    private int _dir, _shown = int.MinValue;
+    private long _last;
+    private IDisposable? _timer;
+
+    public override SigKind OutputKind(int pin) => SigKind.Analog;
+
+    private static (long lo, long hi) Bounds(ISymbolContext c)
+    {
+        long lo = c.ParamNumber(2, 0), hi = c.ParamNumber(3, 65535);
+        return hi < lo ? (hi, lo) : (lo, hi);
+    }
+
+    public override void Start(ISymbolContext c)
+    {
+        var (lo, hi) = Bounds(c);
+        _value = Math.Clamp(c.ParamNumber(4, lo), lo, hi);
+        Publish(c);
+    }
+
+    public override void OnInput(ISymbolContext c, int pin, object o, object n)
+    {
+        if (pin > 2) return;
+        Advance(c);
+        _dir = c.Digital(1) == c.Digital(2) ? 0 : c.Digital(1) ? 1 : -1;
+        _timer?.Dispose();
+        _timer = null;
+        if (_dir != 0) Schedule(c);
+    }
+
+    private void Schedule(ISymbolContext c) => _timer = c.After(20, () =>
+    {
+        Advance(c);
+        if (_dir != 0) Schedule(c);
+    });
+
+    private void Advance(ISymbolContext c)
+    {
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (_dir != 0)
+        {
+            var (lo, hi) = Bounds(c);
+            var ms = System.Diagnostics.Stopwatch.GetElapsedTime(_last, now).TotalMilliseconds;
+            var time = Math.Max(1, c.ParamNumber(1, 500)) * 10.0;
+            _value = Math.Clamp(_value + _dir * (hi - lo) * ms / time, lo, hi);
+            if (_value <= lo && _dir < 0 || _value >= hi && _dir > 0) _dir = 0;
+            Publish(c);
+        }
+        _last = now;
+    }
+
+    private void Publish(ISymbolContext c)
+    {
+        var v = (int)Math.Round(_value);
+        if (v == _shown) return;
+        _shown = v;
+        c.SetOutput(1, (ushort)(short)v);
+    }
+}
+
+/// <summary>
+/// Analog Rate Limiter, SmC 66: the output follows input 1 but moves no faster than P1 = time to traverse
+/// the full 0-65535 range, in 1/100 s (0 = no limit). Same behavior as LPZ type 80.
+/// </summary>
+public sealed class RateLimiterSymbol : SymbolBehavior
+{
+    private double _value;
+    private ushort _target;
+    private long _last;
+    private int _shown = -1;
+    private IDisposable? _timer;
+
+    public override SigKind InputKind(int pin) => SigKind.Analog;
+    public override SigKind OutputKind(int pin) => SigKind.Analog;
+
+    public override void OnInput(ISymbolContext c, int pin, object o, object n)
+    {
+        if (pin != 1) return;
+        if (_timer != null) Advance(c);
+        _target = c.Analog(1);
+        _last = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (c.ParamNumber(1, 500) <= 0) { _timer?.Dispose(); _timer = null; _value = _target; Publish(c); return; }
+        if (_timer == null && Math.Round(_value) != _target) Schedule(c);
+    }
+
+    private void Schedule(ISymbolContext c) => _timer = c.After(20, () =>
+    {
+        _timer = null;
+        if (Advance(c)) Schedule(c);
+    });
+
+    private bool Advance(ISymbolContext c)
+    {
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        var ms = System.Diagnostics.Stopwatch.GetElapsedTime(_last, now).TotalMilliseconds;
+        _last = now;
+        var reach = 65535.0 * ms / (c.ParamNumber(1, 500) * 10.0);
+        _value = _value < _target ? Math.Min(_value + reach, _target) : Math.Max(_value - reach, _target);
+        Publish(c);
+        if (_value != _target) return true;
+        _timer?.Dispose();
+        _timer = null;
+        return false;
+    }
+
+    private void Publish(ISymbolContext c)
+    {
+        var v = (int)Math.Round(_value);
+        if (v == _shown) return;
+        _shown = v;
+        c.SetOutput(1, (ushort)v);
+    }
+}
+
+/// <summary>
 /// Picks a behavior for each symbol. The .smw format identifies symbols by a numeric code (SmC) whose
 /// values are not published, so matching is by code when a mapping is known (symbols.json) and otherwise
 /// by the symbol's default name.
@@ -319,7 +440,7 @@ public sealed class SymbolLibrary
     {
         [1] = "AND", [3] = "OR", [9] = "One Shot", [13] = "Toggle", [16] = "Delay", [19] = "Interlock",
         [20] = "Buffer", [32] = "Analog Initialize", [38] = "Analog Equate", [46] = "Analog Buffer",
-        [56] = "Serial Buffer", [205] = "NOT",
+        [56] = "Serial Buffer", [66] = "Analog Rate Limiter", [205] = "NOT", [540] = "Analog Ramp (Bounds Limited)",
     };
     private readonly Dictionary<string, Func<SymbolBehavior>> _factories = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -342,6 +463,8 @@ public sealed class SymbolLibrary
         ["Equate"] = () => new EquateSymbol(),
         ["Analog Equate"] = () => new EquateSymbol(),
         ["Serial Send"] = () => new SerialSendSymbol(),
+        ["Analog Ramp (Bounds Limited)"] = () => new BoundedRampSymbol(),
+        ["Analog Rate Limiter"] = () => new RateLimiterSymbol(),
     };
 
     public IEnumerable<string> KnownNames => _factories.Keys;

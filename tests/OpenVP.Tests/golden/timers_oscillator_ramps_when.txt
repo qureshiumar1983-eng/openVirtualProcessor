@@ -1,86 +1,65 @@
 -- oscillator on
 slot1 #10 D=1 <- IPID03
-slot1 #16 D=1 <- S-1 Oscillator
-slot1 #16 D=0 <- S-1 Oscillator
-slot1 #16 D=1 <- S-1 Oscillator
+slot1 #14 D=1 <- S-1 Oscillator
+slot1 #14 D=0 <- S-1 Oscillator
+slot1 #14 D=1 <- S-1 Oscillator
 -- oscillator off (while high)
 slot1 #10 D=0 <- IPID03
-slot1 #16 D=0 <- S-1 Oscillator
+slot1 #14 D=0 <- S-1 Oscillator
 -- oscillator on again
 slot1 #10 D=1 <- IPID03
-slot1 #16 D=1 <- S-1 Oscillator
-slot1 #16 D=0 <- S-1 Oscillator
+slot1 #14 D=1 <- S-1 Oscillator
+slot1 #14 D=0 <- S-1 Oscillator
 -- oscillator off (while low)
 slot1 #10 D=0 <- IPID03
 -- oscillator on
 slot1 #10 D=1 <- IPID03
-slot1 #16 D=1 <- S-1 Oscillator
+slot1 #14 D=1 <- S-1 Oscillator
 -- oscillator off and on at once (restarts high)
 slot1 #10 D=0 <- IPID03
-slot1 #16 D=0 <- S-1 Oscillator
+slot1 #14 D=0 <- S-1 Oscillator
 slot1 #10 D=1 <- IPID03
-slot1 #16 D=1 <- S-1 Oscillator
-slot1 #16 D=0 <- S-1 Oscillator
+slot1 #14 D=1 <- S-1 Oscillator
+slot1 #14 D=0 <- S-1 Oscillator
 -- oscillator off
 slot1 #10 D=0 <- IPID03
 -- ramp up held
 slot1 #11 D=1 <- IPID03
-slot1 #17 A=16383 <- S-2 Analog ramp
-slot1 #17 A=32766 <- S-2 Analog ramp
-slot1 #17 A=49149 <- S-2 Analog ramp
-slot1 #17 A=65532 <- S-2 Analog ramp
-slot1 #17 A=65535 <- S-2 Analog ramp
+slot1 #15 A=16383 <- S-2 Analog ramp
+slot1 #15 A=32766 <- S-2 Analog ramp
+slot1 #15 A=49149 <- S-2 Analog ramp
+slot1 #15 A=65532 <- S-2 Analog ramp
+slot1 #15 A=65535 <- S-2 Analog ramp
 -- ramp up released
 slot1 #11 D=0 <- IPID03
 -- ramp down held
 slot1 #12 D=1 <- IPID03
-slot1 #17 A=49152 <- S-2 Analog ramp
-slot1 #17 A=32769 <- S-2 Analog ramp
-slot1 #17 A=16386 <- S-2 Analog ramp
-slot1 #17 A=3 <- S-2 Analog ramp
-slot1 #17 A=0 <- S-2 Analog ramp
+slot1 #15 A=49152 <- S-2 Analog ramp
+slot1 #15 A=32769 <- S-2 Analog ramp
+slot1 #15 A=16386 <- S-2 Analog ramp
+slot1 #15 A=3 <- S-2 Analog ramp
+slot1 #15 A=0 <- S-2 Analog ramp
 -- ramp down released
 slot1 #12 D=0 <- IPID03
 -- ramp up tapped (first step only)
 slot1 #11 D=1 <- IPID03
-slot1 #17 A=16383 <- S-2 Analog ramp
+slot1 #15 A=16383 <- S-2 Analog ramp
 slot1 #11 D=0 <- IPID03
 -- ramp down tapped
 slot1 #12 D=1 <- IPID03
-slot1 #17 A=0 <- S-2 Analog ramp
+slot1 #15 A=0 <- S-2 Analog ramp
 slot1 #12 D=0 <- IPID03
--- limited ramp up held
-slot1 #13 D=1 <- IPID03
-slot1 #18 A=100 <- S-3 Analog ramp with limits
-slot1 #18 A=150 <- S-3 Analog ramp with limits
-slot1 #18 A=200 <- S-3 Analog ramp with limits
-slot1 #18 A=250 <- S-3 Analog ramp with limits
-slot1 #18 A=300 <- S-3 Analog ramp with limits
--- limited ramp up released
-slot1 #13 D=0 <- IPID03
--- limited ramp down held
-slot1 #14 D=1 <- IPID03
-slot1 #18 A=250 <- S-3 Analog ramp with limits
-slot1 #18 A=200 <- S-3 Analog ramp with limits
-slot1 #18 A=150 <- S-3 Analog ramp with limits
-slot1 #18 A=100 <- S-3 Analog ramp with limits
--- limited ramp down released
-slot1 #14 D=0 <- IPID03
--- limited ramp up tapped
-slot1 #13 D=1 <- IPID03
-slot1 #18 A=150 <- S-3 Analog ramp with limits
-slot1 #13 D=0 <- IPID03
 -- clock 00:59:59
-slot1 #15 S="00:59:59" <- IPID03
+slot1 #13 S="00:59:59" <- IPID03
 -- clock 01:00:00
-slot1 #15 S="01:00:00" <- IPID03
-slot1 #19 D=1 <- S-4 When
-slot1 #19 D=0 <- S-4 When
+slot1 #13 S="01:00:00" <- IPID03
+slot1 #16 D=1 <- S-4 When
+slot1 #16 D=0 <- S-4 When
 -- clock 01:00:00 again (serials always fire)
-slot1 #15 S="01:00:00" <- IPID03
-slot1 #19 D=1 <- S-4 When
-slot1 #19 D=0 <- S-4 When
+slot1 #13 S="01:00:00" <- IPID03
+slot1 #16 D=1 <- S-4 When
+slot1 #16 D=0 <- S-4 When
 -- clock text that isn't a time
-slot1 #15 S="noon" <- IPID03
+slot1 #13 S="noon" <- IPID03
 -- clock 01:00:01
-slot1 #15 S="01:00:01" <- IPID03
+slot1 #13 S="01:00:01" <- IPID03

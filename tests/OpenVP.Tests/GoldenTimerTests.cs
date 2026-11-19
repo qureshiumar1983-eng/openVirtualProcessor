@@ -6,7 +6,7 @@ using static OpenVP.Tests.LpzTests;
 namespace OpenVP.Tests;
 
 /// <summary>
-/// Golden traces for the primitives that run on timers (LPZ types 14, 15, 16, 17, 20, 223, 27, 29, 56, 61,
+/// Golden traces for the primitives that run on timers (LPZ types 14, 15, 16, 17, 20, 27, 29, 56, 61,
 /// 114, 139 and 241, and the SIMPL Windows Delay and One Shot). They pin the order of changes, so the timer
 /// service can be replaced without changing what a program does.
 ///
@@ -172,7 +172,7 @@ public static partial class GoldenTests
     public static void Golden_timers_oscillator_ramps_when()
     {
         var r = new Rig();
-        int en = r.PressD(), up = r.PressD(), down = r.PressD(), upL = r.PressD(), downL = r.PressD();   // d1..d5
+        int en = r.PressD(), up = r.PressD(), down = r.PressD();                                          // d1..d3
         int clock = r.PressS();                                                                         // s1
         uint nd = 0, na = 0;
         (int sig, uint join) OutD() => (r.OutD(), ++nd);
@@ -181,8 +181,8 @@ public static partial class GoldenTests
         var osc = OutD(); r.Add(Record(14, "S-1 Oscillator", [en], [osc.sig], Int(15, 2), Int(2, 15), Int(2, 15)));
         // Full range in 200 ms: 16383 per 50 ms step.
         var ramp = OutA(); r.Add(Record(20, "S-2 Analog ramp", [up, down], [ramp.sig], Int(15, 1), Int(2, 20)));
-        // 100..300 in 200 ms: 50 per 50 ms step.
-        var rampL = OutA(); r.Add(Record(223, "S-3 Analog ramp with limits", [upL, downL], [rampL.sig], Int(15, 3), Int(2, 20), Int(2, 100), Int(2, 300)));
+        // (Type 223, the bounded ramp, works from elapsed time, so its in-between values aren't reproducible;
+        // RampLimiterTests covers it.)
         var when = OutD(); r.Add(Record(61, "S-4 When", [clock], [when.sig], Int(15, 2), Int(2, 10), Int(2, 360000)));
 
         var (p, slots, panel, rec) = Start(r.Build("timers_osc"));
@@ -213,13 +213,6 @@ public static partial class GoldenTests
         TStep(rec, slots, panel, "ramp down released", null, (D(3), false));
         TStep(rec, slots, panel, "ramp up tapped (first step only)", null, (D(2), true), (D(2), false));
         TStep(rec, slots, panel, "ramp down tapped", null, (D(3), true), (D(3), false));
-
-        // Analog Ramp with limits.
-        TStep(rec, slots, panel, "limited ramp up held", () => Lvl(panel, rampL.join) == 300, (D(4), true));
-        TStep(rec, slots, panel, "limited ramp up released", null, (D(4), false));
-        TStep(rec, slots, panel, "limited ramp down held", () => Lvl(panel, rampL.join) == 100, (D(5), true));
-        TStep(rec, slots, panel, "limited ramp down released", null, (D(5), false));
-        TStep(rec, slots, panel, "limited ramp up tapped", null, (D(4), true), (D(4), false));
 
         // When: pulses 100 ms when the clock text reaches 01:00:00.
         TStep(rec, slots, panel, "clock 00:59:59", null, (S(1), "00:59:59"));
