@@ -434,6 +434,10 @@ $("#upload").onclick = async () => {
   const files = $("#file").files; if (!files.length) return alert("Choose a .cpz, .dll or .smw first.");
   const fd = new FormData();
   const main = [...files].find(f => /\.(lpz|cpz|dll|zip|smw)$/i.test(f.name)) || files[0];
+  // A compiled program without its .sig runs fine but the debugger can only show signal numbers.
+  if (/\.lpz$/i.test(main.name) && ![...files].some(f => /\.sig$/i.test(f.name)) &&
+      !confirm(`No .sig selected with ${main.name}.\n\nThe program will run, but the debugger will show signal numbers (#123) instead of names. ` +
+               `The .sig is written next to the .smw when you compile; select it together with the .lpz (Ctrl+click).\n\nLoad without names?`)) return;
   fd.append("file", main);
   for (const f of files) if (f !== main) fd.append("extra", f);
   try { await api(`/api/slots/${sel}/program`, { method: "POST", body: fd }); }

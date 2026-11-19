@@ -26,6 +26,8 @@ public sealed class LpzLoader : IProgramLoader
             slot.Log("Warning", $"Signal names inside the archive don't match this compile ({agreement:P0} agree); showing signal numbers. Upload the .sig from the compile folder to get names.");
             pkg.UseSignals(null);
         }
+        else if (pkg.Signals == null)
+            slot.Log("Warning", $"No signal names: the debugger will show signal numbers (#123). Signal names are in {Path.GetFileName(sigPath)}, which the compiler writes next to the .smw. Load it together with the .lpz.");
         var problems = new List<string>();
         var overrides = _primitiveMapPath != null ? LogicSymbolCatalog.LoadMap(_primitiveMapPath, problems) : new();
         foreach (var (k, v) in LogicSymbolCatalog.LoadMap(Path.ChangeExtension(path, ".primitives.json"), problems)) overrides[k] = v;

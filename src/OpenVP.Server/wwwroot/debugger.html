@@ -30,7 +30,7 @@
   /* panes */
   .panes { flex:1 1 auto; min-height:0; display:grid; grid-template-columns: var(--left, 42%) 5px 1fr; grid-template-rows:minmax(0,1fr); }
   .pane { display:grid; grid-template-rows:auto auto 1fr; min-height:0; min-width:0; background:var(--pane); }
-  .pane.sigpane { grid-template-rows:auto auto auto 1fr auto; }
+  .pane.sigpane { grid-template-rows:auto auto auto auto 1fr auto; }   /* h2, tabs, filters, no-names banner, list, related */
   .pane h2 { margin:0; padding:5px 8px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted);
              background:var(--head); border-bottom:1px solid var(--line); display:flex; gap:8px; align-items:center; }
   .pane h2 .count { margin-left:auto; text-transform:none; letter-spacing:0; }
@@ -86,6 +86,8 @@
   #trace .row.flash { animation: flash .6s ease-out; }
   @keyframes flash { from { background:#2a3b22; } to { background:transparent; } }
   .empty { padding:24px; color:var(--muted); text-align:center; }
+  #nonames { padding:7px 10px; border-bottom:1px solid #6b5a2a; background:#1d1a12; color:var(--ana); font-size:12px; }
+  #nonames[hidden] { display:block; height:0; padding:0; border:0; overflow:hidden; }   /* keeps its grid row, takes no space */
 
   /* activity glow: two identical keyframes, swapped per change so the animation restarts without a reflow */
   #sigs .row.g1 { animation: glow1 2s ease-out; } #sigs .row.g2 { animation: glow2 2s ease-out; }
@@ -250,6 +252,7 @@
       <button id="checknone" title="Uncheck every visible signal">✗ all</button>
       <span id="foldbtns" hidden><button id="fold" class="minibtn" title="Collapse every folder">⊟</button> <button id="unfold" class="minibtn" title="Expand every folder">⊞</button></span>
     </div>
+    <div id="nonames" hidden>This compiled program has no signal names, so signals show as numbers (#123). Its names are in the <b>.sig</b> file the compiler writes next to the .smw: in the console, select the .lpz and its .sig together and click Load &amp; start.</div>
     <div class="scroll" id="sigscroll">
       <div id="sigs" class="vlist">
         <div class="vhead"><div class="th" title="Trace this signal">T</div><div class="th b" title="Break: pause on changes to this signal when Break on = marked signals (F9)">⏸</div><div class="th sortable" data-sort="name">Signal name</div><div class="th sortable" data-sort="kind">Type</div><div class="th sortable" data-sort="count" title="Number of changes seen">Chg</div><div class="th">Value</div></div>
@@ -740,6 +743,8 @@ async function loadSignals(full = true) {
     rankDirty = true; tree = null;
     $("#sigempty").textContent = "No program in this slot.";
     $("#sigempty").hidden = signals.size > 0;
+    // Every name a bare number: a compiled program loaded without its .sig.
+    $("#nonames").hidden = !(list.length && list.every(s => /^#\d+$/.test(s.name)));
     reorder(); applyFilter();
     scheduleLanes();
     loadGraph();             // the tree (if shown) is built once the graph has arrived

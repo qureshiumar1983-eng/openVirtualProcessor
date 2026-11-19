@@ -227,9 +227,15 @@ public static class OpenVpServer
                     Directory.CreateDirectory(dir);
                     using (var fs = File.Create(path)) file.CopyTo(fs);
                     // Sidecar files (MyProgram.openvp.json, MyProgram.symbols.json, MyProgram.primitives.json) can ride along.
+                    // A compiled program's signal names are in its .sig, which the loader looks for under the
+                    // program's own name. If exactly one .sig came with it, it is that program's, whatever it's
+                    // called (copies get renamed, e.g. with a date added), so save it under the program's name.
+                    var sigs = form.Files.Where(f => f != file && f.FileName.EndsWith(".sig", StringComparison.OrdinalIgnoreCase)).ToList();
+                    var sigFor = path.EndsWith(".lpz", StringComparison.OrdinalIgnoreCase) && sigs.Count == 1 ? sigs[0] : null;
                     foreach (var extra in form.Files.Where(f => f != file))
                     {
-                        using var fs = File.Create(Path.Combine(dir, Path.GetFileName(extra.FileName)));
+                        var name = extra == sigFor ? Path.ChangeExtension(Path.GetFileName(path), ".sig") : Path.GetFileName(extra.FileName);
+                        using var fs = File.Create(Path.Combine(dir, name));
                         extra.CopyTo(fs);
                     }
                     try { processor.LoadProgram(n, path, start); }
