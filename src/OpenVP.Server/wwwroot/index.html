@@ -28,6 +28,12 @@
   .bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
   .mono { font-family: ui-monospace, Menlo, monospace; font-size:12px; }
   #log, #console-out { height:220px; overflow:auto; background:#0b0e11; border:1px solid var(--line); border-radius:6px; padding:8px; white-space:pre-wrap; }
+  #log { resize:vertical; min-height:120px; }
+  .sec-head { display:flex; align-items:center; gap:6px; margin-bottom:10px; }
+  .sec-head h2 { margin:0; flex:1; }
+  .sec-head button { padding:2px 8px; font-size:12px; }
+  #log-sec.max { position:fixed; inset:16px; z-index:50; display:flex; flex-direction:column; box-shadow:0 10px 40px #000c; }
+  #log-sec.max #log { flex:1; height:auto !important; resize:none; }
   .lv-Error { color:var(--err); } .lv-Warning { color:var(--warn); } .lv-Notice { color:#9ecbff; } .lv-Console { color:#cfd6df; }
   .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
   @media (max-width: 1200px) { .grid2 { grid-template-columns: 1fr; } }
@@ -158,9 +164,14 @@
         <div class="bar"><input id="console-in" class="mono" style="flex:1" placeholder="help, ipt, metrics, taskstat, cpuload, ramfree, or a program command"><button id="console-run">Run</button></div>
         <div id="console-out" class="mono"></div>
       </section>
-      <section>
-        <h2>Log</h2>
-        <div id="log" class="mono"></div>
+      <section id="log-sec">
+        <div class="sec-head">
+          <h2>Log</h2>
+          <button id="log-smaller" title="Make the log shorter">−</button>
+          <button id="log-bigger" title="Make the log taller">+</button>
+          <button id="log-max" title="Fill the window with the log (Esc to restore)">Maximize</button>
+        </div>
+        <div id="log" class="mono" title="Drag the bottom-right corner to resize"></div>
       </section>
     </div>
   </div>
@@ -370,6 +381,24 @@ function connectLog() {
     }
   };
 }
+
+// Log size: drag the corner, use −/+, or Maximize to fill the window. The height is remembered.
+(() => {
+  const log = $("#log"), sec = $("#log-sec"), KEY = "openvp.logHeight";
+  try { const h = +localStorage.getItem(KEY); if (h >= 120) log.style.height = h + "px"; } catch {}
+  const save = () => { if (!sec.classList.contains("max")) try { localStorage.setItem(KEY, log.offsetHeight); } catch {} };
+  new ResizeObserver(save).observe(log);
+  const step = d => { log.style.height = Math.max(120, log.offsetHeight + d) + "px"; };
+  $("#log-bigger").onclick = () => step(150);
+  $("#log-smaller").onclick = () => step(-150);
+  const setMax = on => {
+    sec.classList.toggle("max", on);
+    $("#log-max").textContent = on ? "Restore" : "Maximize";
+    log.scrollTop = log.scrollHeight;
+  };
+  $("#log-max").onclick = () => setMax(!sec.classList.contains("max"));
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && sec.classList.contains("max")) setMax(false); });
+})();
 
 async function loadLog() {
   $("#log").innerHTML = "";
