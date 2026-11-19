@@ -59,6 +59,16 @@ public sealed class CipServer : IDisposable
         if (LogPackets) _processor.Slot(1).Log("Info", "[CIP] " + message);
     }
 
+    private readonly HashSet<byte> _unknownSubs = new();
+
+    /// <summary>A data sub-type OpenVP can't decode is logged once per sub-type, with its bytes, to help compare with captures.</summary>
+    internal void LogUnknownSub(byte frameType, byte sub, byte[] raw)
+    {
+        if (!LogPackets) return;
+        lock (_unknownSubs) if (!_unknownSubs.Add(sub)) return;
+        Log($"unhandled data sub-type {sub:X2} in a {frameType:X2} frame (logged once): {Convert.ToHexString(raw)}");
+    }
+
     /// <summary>Connection events are always logged.</summary>
     internal void Event(int slot, string message) => _processor.Slot(Math.Max(1, slot)).Log("Notice", "[Panel] " + message);
 
@@ -87,6 +97,9 @@ public static class Cip
     public const byte SubUpdateRequest = 0x03;
     public const byte SubAnalog = 0x14;
     public const byte SubSerialMarker = 0x34;
+    public const byte SubSmartObject = 0x38;   // Smart Graphics: [object id:4 BE] then nested sub-packets (digital, analog)
+    public const byte SubSmartObjectExt = 0x39; // same, inside an extended (0x12) frame, where serials travel
+    public const byte SubDateTime = 0x08;
 
     /// <summary>Longest serial string one CIP message can carry (its length byte also counts 4 header bytes).</summary>
     public const int MaxSerialBytes = 255 - 4;
@@ -144,29 +157,146 @@ public static class Cip
         return Frame(SerialData, payload);
     }
 
-    /// <summary>Decode one join message from a panel. Returns null for anything that isn't join data.</summary>
+    // ---- Smart Graphics ----
+    // A smart object's joins travel in the same data packets as the panel's own joins, wrapped in a sub-packet of
+    // type 0x38 (0x05 frames: digital, analog) or 0x39 (0x12 extended frames: serial). Its body is the object ID as
+    // 4 bytes big-endian, followed by the ordinary sub-packets, which now belong to that object:
+    //   digital  05 [00 00] [09] 38 [id:4] [03] 00|27 [join-1 lo] [join-1 hi | 0x80 if low]
+    //   analog   05 [00 00] [0B] 38 [id:4] [05] 14 [join-1:2 BE] [value:2 BE]
+    //   serial   12 [00 00] [len:2] 39 [id:4] [len:2] 34 [join-1:2 BE] [flags] [text]
+    // Sources (public community CIP clients, read for the wire layout; no code copied):
+    //   M4rKDC14/Crestron-CIP-Implementation crestron_cip.py docstring and digital()/analog()/serial(): the layout
+    //     above, 4-byte big-endian IDs, "checked live, ids above 255 worked" (best-supported; the layout used here).
+    //   Antonio112009/pycrestron-cip docs/protocol.md: 0x38/0x39 "00 00 00 <object id> then nested sub-packets";
+    //     a 3-Series packs several joins into one sub-packet, e.g. blocks of 32 digitals for a smart object.
+    //   pdehlke/homeassistant-crestron-controller issue #3: record types 0x38/0x39, 4-byte object number, nested
+    //     [len][type][bytes] records.
+    // Older community clients (klenae/python-cipclient) read only the last ID byte; for IDs up to 255 that is the
+    // same thing. Panels send presses as 0x27 inside 0x38; the processor sends feedback as 0x00. Not tested on
+    // hardware: compare against a capture, and adjust here.
+
+    /// <summary>Encode a join for the panel, or (fromPanel) as a panel would send it. Handles smart objects.</summary>
+    public static byte[] Encode(JoinKey key, object value, bool fromPanel = false) => key.Kind switch
+    {
+        SigKind.Digital => key.SmartObject != 0 ? SmartDigital(key.SmartObject, key.Join, (bool)value, fromPanel) : Digital(key.Join, (bool)value),
+        SigKind.Analog => key.SmartObject != 0 ? SmartAnalog(key.SmartObject, key.Join, (ushort)value) : Analog(key.Join, (ushort)value),
+        _ => key.SmartObject != 0 ? SmartSerial(key.SmartObject, key.Join, (string)value) : Serial(key.Join, (string)value)
+    };
+
+    private static void PutId(byte[] b, int at, uint id)
+    {
+        b[at] = (byte)(id >> 24); b[at + 1] = (byte)(id >> 16); b[at + 2] = (byte)(id >> 8); b[at + 3] = (byte)id;
+    }
+
+    /// <summary>Smart object digital. <paramref name="press"/> uses the button-style sub-type panels send (0x27).</summary>
+    public static byte[] SmartDigital(uint so, uint join, bool value, bool press = false)
+    {
+        var j = join - 1;
+        var p = new byte[2 + 1 + 1 + 4 + 4];
+        p[2] = 9; p[3] = SubSmartObject;
+        PutId(p, 4, so);
+        p[8] = 3; p[9] = press ? SubDigitalAlt : SubDigital;
+        p[10] = (byte)(j & 0xFF);
+        p[11] = (byte)((byte)((j >> 8) & 0x7F) | (byte)(value ? 0x00 : 0x80));
+        return Frame(Data, p);
+    }
+
+    public static byte[] SmartAnalog(uint so, uint join, ushort value)
+    {
+        var j = join - 1;
+        var p = new byte[2 + 1 + 1 + 4 + 6];
+        p[2] = 11; p[3] = SubSmartObject;
+        PutId(p, 4, so);
+        p[8] = 5; p[9] = SubAnalog;
+        p[10] = (byte)(j >> 8); p[11] = (byte)j; p[12] = (byte)(value >> 8); p[13] = (byte)value;
+        return Frame(Data, p);
+    }
+
+    /// <summary>Smart object serial, in an extended frame (two-byte lengths). Cut to <see cref="MaxSerialBytes"/> like <see cref="Serial"/>.</summary>
+    public static byte[] SmartSerial(uint so, uint join, string text)
+    {
+        var j = join - 1;
+        var bytes = Encoding.Latin1.GetBytes(text);
+        if (bytes.Length > MaxSerialBytes) bytes = bytes[..MaxSerialBytes];
+        var inner = 4 + bytes.Length;      // type, join (2), flags, text
+        var outer = 1 + 4 + 2 + inner;     // type 0x39, id, inner length, inner
+        var p = new byte[2 + 2 + outer];
+        p[2] = (byte)(outer >> 8); p[3] = (byte)outer;
+        p[4] = SubSmartObjectExt;
+        PutId(p, 5, so);
+        p[9] = (byte)(inner >> 8); p[10] = (byte)inner;
+        p[11] = SubSerialMarker; p[12] = (byte)(j >> 8); p[13] = (byte)j; p[14] = 0x03;
+        bytes.CopyTo(p, 15);
+        return Frame(SerialData, p);
+    }
+
+    /// <summary>The first join in a message from a panel, or null if it holds none. See <see cref="Decode"/>.</summary>
     public static (JoinKey key, object value)? DecodeJoin(byte type, ReadOnlySpan<byte> p)
     {
-        if (type == Data && p.Length >= 4)
+        var all = Decode(type, p);
+        return all.Count > 0 ? all[0] : null;
+    }
+
+    /// <summary>
+    /// Decode every join in one message from a panel (a sub-packet can pack several joins, and smart-object
+    /// sub-packets nest the ordinary ones). Sub-types that are neither joins nor known housekeeping are added
+    /// to <paramref name="unknown"/> (sub-type and the sub-packet bytes), so the caller can log them.
+    /// </summary>
+    public static List<(JoinKey key, object value)> Decode(byte type, ReadOnlySpan<byte> p, List<(byte sub, byte[] raw)>? unknown = null)
+    {
+        var joins = new List<(JoinKey, object)>();
+        if ((type == Data || type == SerialData) && p.Length > 2)
+            Walk(type == SerialData, p[2..], 0, joins, unknown, 0);
+        return joins;
+    }
+
+    // Sub-packets: [len][type][body], len counting the type byte; one length byte in 0x05 frames, two in 0x12.
+    private static void Walk(bool wide, ReadOnlySpan<byte> d, uint so, List<(JoinKey, object)> joins, List<(byte, byte[])>? unknown, int depth)
+    {
+        var h = wide ? 2 : 1;
+        var i = 0;
+        while (i + h < d.Length)
         {
-            var sub = p[3];
-            if ((sub == SubDigital || sub == SubDigitalAlt) && p.Length >= 6)
+            var n = wide ? (d[i] << 8) | d[i + 1] : d[i];
+            if (n == 0 || i + h + n > d.Length) { unknown?.Add((0xFF, d[i..].ToArray())); return; } // truncated: not a sub-packet
+            var t = d[i + h];
+            var body = d.Slice(i + h + 1, n - 1);
+            var whole = d.Slice(i, h + n);
+            i += h + n;
+            switch (t)
             {
-                var join = (uint)(((p[5] & 0x7F) << 8) | p[4]) + 1;
-                return (new JoinKey(SigKind.Digital, join), (p[5] & 0x80) == 0);
-            }
-            if (sub == SubAnalog && p.Length >= 8)
-            {
-                var join = (uint)((p[4] << 8) | p[5]) + 1;
-                return (new JoinKey(SigKind.Analog, join), (ushort)((p[6] << 8) | p[7]));
+                case SubDigital:
+                case SubDigitalAlt:
+                    for (int k = 0; k + 1 < body.Length; k += 2)
+                        joins.Add((new JoinKey(SigKind.Digital, (uint)(((body[k + 1] & 0x7F) << 8) | body[k]) + 1, so), SigValue.Box((body[k + 1] & 0x80) == 0)));
+                    break;
+                case SubAnalog:
+                    for (int k = 0; k + 3 < body.Length; k += 4)
+                        joins.Add((new JoinKey(SigKind.Analog, (uint)((body[k] << 8) | body[k + 1]) + 1, so), (ushort)((body[k + 2] << 8) | body[k + 3])));
+                    break;
+                case SubSerialMarker when body.Length >= 3:
+                    // Flag 0x04 is UTF-16LE. Text split over several messages (start/end flags) isn't reassembled.
+                    var raw = body[3..];
+                    var text = (body[2] & 0x04) != 0 ? Encoding.Unicode.GetString(raw) : Encoding.Latin1.GetString(raw);
+                    joins.Add((new JoinKey(SigKind.Serial, (uint)((body[0] << 8) | body[1]) + 1, so), text));
+                    break;
+                case SubSmartObject:
+                case SubSmartObjectExt:
+                    if (body.Length >= 4 && depth == 0)
+                    {
+                        var id = ((uint)body[0] << 24) | ((uint)body[1] << 16) | ((uint)body[2] << 8) | body[3];
+                        Walk(wide, body[4..], id, joins, unknown, depth + 1);
+                    }
+                    else unknown?.Add((t, whole.ToArray()));
+                    break;
+                case SubUpdateRequest: // update request and end-of-update markers
+                case SubDateTime:
+                    break;
+                default:
+                    unknown?.Add((t, whole.ToArray()));
+                    break;
             }
         }
-        if (type == SerialData && p.Length >= 8 && p[4] == SubSerialMarker)
-        {
-            var join = (uint)((p[5] << 8) | p[6]) + 1;
-            return (new JoinKey(SigKind.Serial, join), Encoding.Latin1.GetString(p[8..]));
-        }
-        return null;
     }
 
     /// <summary>
@@ -307,26 +437,22 @@ internal sealed class CipSession
             Send(Cip.UpdateComplete());
             return;
         }
-        if (Cip.DecodeJoin(type, payload) is var (key, value) && _device != null)
+        var unknown = new List<(byte sub, byte[] raw)>();
+        foreach (var (key, value) in Cip.Decode(type, payload, unknown))
         {
+            if (_device == null) break;
             Interlocked.Increment(ref _conn.JoinsIn);
             _device.ReceiveInput(key, value);
         }
+        foreach (var (sub, raw) in unknown) _server.LogUnknownSub(type, sub, raw);
     }
 
     private void OnFeedback(JoinDevice dev, JoinKey key, object value)
     {
-        if (key.SmartObject != 0) return; // Smart Graphics over CIP isn't implemented yet (web panels get them)
         if (key.Kind == SigKind.Serial && value is string text && text.Length > Cip.MaxSerialBytes)
             _processor.Slot(dev.Slot).Log("Warning", $"[CIP] IPID {dev.IpId:X2} serial join {key.Join} is {text.Length} chars; sent the first {Cip.MaxSerialBytes} to the panel");
-        var packet = key.Kind switch
-        {
-            SigKind.Digital => Cip.Digital(key.Join, (bool)value),
-            SigKind.Analog => Cip.Analog(key.Join, (ushort)value),
-            _ => Cip.Serial(key.Join, (string)value)
-        };
         Interlocked.Increment(ref _conn.JoinsOut);
-        Send(packet);
+        Send(Cip.Encode(key, value));
     }
 
     private void OnUnregistered(JoinDevice d)

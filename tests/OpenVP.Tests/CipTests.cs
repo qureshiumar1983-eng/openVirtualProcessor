@@ -164,6 +164,113 @@ public static class CipTests
         Assert.Equal(joins, serials, "every join of the snapshot arrived");
     }
 
+    [Test]
+    public static void Smart_object_joins_round_trip_for_all_three_kinds()
+    {
+        foreach (var so in new[] { 1u, 25u, 401u })
+        {
+            var cases = new (JoinKey key, object value)[]
+            {
+                (new JoinKey(SigKind.Digital, 2011, so), true),
+                (new JoinKey(SigKind.Digital, 4017, so), false),
+                (new JoinKey(SigKind.Analog, 14, so), (ushort)54321),
+                (new JoinKey(SigKind.Serial, 12, so), "Row 3"),
+            };
+            foreach (var (key, value) in cases)
+                foreach (var fromPanel in new[] { false, true })
+                {
+                    var f = Cip.Encode(key, value, fromPanel);
+                    var d = Cip.DecodeJoin(f[0], f.AsSpan(3));
+                    Assert.True(d.HasValue, $"decoded {key}");
+                    Assert.Equal(key, d!.Value.key, "key incl. smart object");
+                    Assert.Equal(so, d.Value.key.SmartObject, "smart object id");
+                    Assert.Equal(value, d.Value.value, "value");
+                }
+        }
+    }
+
+    [Test]
+    public static void Smart_object_wire_layout_and_packed_joins()
+    {
+        // 05 | 00 00 | 09 38 | 00 00 01 91 (id 401) | 03 27 | 0A 00 (join 11 high)
+        var press = Cip.SmartDigital(401, 11, true, press: true);
+        Assert.Equal("05 000C 0000 09 38 00000191 03 27 0A00".Replace(" ", ""), Convert.ToHexString(press), "digital press bytes");
+        // A processor can pack several joins into one sub-packet: three digitals of smart object 2.
+        var inner = new byte[] { 0x07, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x80 }; // type 00, three pairs
+        var body = new byte[] { 0, 0, 0, 2 }.Concat(inner).ToArray();
+        var payload = new byte[] { 0x00, 0x00, (byte)(1 + body.Length), 0x38 }.Concat(body).ToArray();
+        var all = Cip.Decode(Cip.Data, payload);
+        Assert.Equal(3, all.Count, "three digitals from one sub-packet");
+        Assert.Equal(new JoinKey(SigKind.Digital, 1, 2), all[0].key, "first");
+        Assert.Equal(new JoinKey(SigKind.Digital, 257, 2), all[1].key, "second");
+        Assert.Equal((object)false, all[2].value, "third is low");
+    }
+
+    [Test]
+    public static void Unknown_data_sub_types_are_reported()
+    {
+        var unknown = new List<(byte sub, byte[] raw)>();
+        var joins = Cip.Decode(Cip.Data, new byte[] { 0x00, 0x00, 0x03, 0x77, 0xAA, 0xBB, 0x03, 0x00, 0x00, 0x00 }, unknown);
+        Assert.Equal(1, joins.Count, "the join after the unknown sub-packet still decodes");
+        Assert.Equal(1, unknown.Count, "one unknown");
+        Assert.Equal((byte)0x77, unknown[0].sub, "sub-type");
+    }
+
+    [Test]
+    public static void Smart_object_feedback_and_presses_travel_over_cip()
+    {
+        using var p = new Processor(Paths.TempData());
+        p.AddLoader(new SimplSharpLoader());
+        p.LoadProgram(1, Paths.SampleDll);
+        using var server = new CipServer(p, 0, IPAddress.Loopback);
+        server.Start();
+        var dev = p.Slot(1).FindDevice(0x03)!;
+        var so = 7u;
+        dev.SetFeedback(new JoinKey(SigKind.Digital, 2011, so), true);   // set before the panel connects: arrives in the snapshot
+        dev.SetFeedback(new JoinKey(SigKind.Analog, 14, so), (ushort)3);
+        dev.SetFeedback(new JoinKey(SigKind.Serial, 12, so), "Item A");
+
+        using var client = new TcpClient();
+        client.Connect(IPAddress.Loopback, server.Port);
+        var s = client.GetStream();
+        s.ReadTimeout = 3000;
+        Read(s); // who are you
+        s.Write(Cip.Frame(Cip.ConnectRequest, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x40, 0xFF, 0xFF, 0xF1, 0x01));
+        Assert.Equal(Cip.ConnectResponse, Read(s).type, "connect response");
+        Assert.Eventually(() => dev.Online, "panel online");
+        s.Write(Cip.Frame(Cip.Data, 0x00, 0x00, 0x02, Cip.SubUpdateRequest, 0x00));
+
+        var seen = new Dictionary<JoinKey, object>();
+        while (true)
+        {
+            var (type, payload) = Read(s);
+            foreach (var (k, v) in Cip.Decode(type, payload)) seen[k] = v;
+            if (type == Cip.Data && payload.Length == 5 && payload[3] == 0x03 && payload[4] == 0x16) break; // update complete
+        }
+        Assert.Equal((object)true, seen[new JoinKey(SigKind.Digital, 2011, so)], "smart digital in snapshot");
+        Assert.Equal((object)(ushort)3, seen[new JoinKey(SigKind.Analog, 14, so)], "smart analog in snapshot");
+        Assert.Equal((object)"Item A", seen[new JoinKey(SigKind.Serial, 12, so)], "smart serial in snapshot");
+
+        // A live change after connect.
+        dev.SetFeedback(new JoinKey(SigKind.Digital, 2012, so), true);
+        var live = false;
+        for (int i = 0; i < 20 && !live; i++)
+        {
+            var (type, payload) = Read(s);
+            live = Cip.Decode(type, payload).Any(j => j.key == new JoinKey(SigKind.Digital, 2012, so) && j.value is true);
+        }
+        Assert.True(live, "live smart object feedback arrived");
+
+        // The panel presses an item, sends an analog and a serial.
+        s.Write(Cip.Encode(new JoinKey(SigKind.Digital, 13, 1), true, fromPanel: true));
+        s.Write(Cip.Encode(new JoinKey(SigKind.Analog, 5, so), (ushort)99, fromPanel: true));
+        s.Write(Cip.Encode(new JoinKey(SigKind.Serial, 6, so), "typed", fromPanel: true));
+        Assert.Eventually(() => dev.GetInput(new JoinKey(SigKind.Digital, 13, 1)) is true, "smart press reached the device");
+        Assert.Eventually(() => dev.GetInput(new JoinKey(SigKind.Analog, 5, so)) is ushort a && a == 99, "smart analog reached the device");
+        Assert.Eventually(() => dev.GetInput(new JoinKey(SigKind.Serial, 6, so)) is "typed", "smart serial reached the device");
+        Assert.Equal((object)false, dev.GetInput(new JoinKey(SigKind.Digital, 13)), "not misread as a plain join");
+    }
+
     private static (byte type, byte[] payload) Read(NetworkStream s)
     {
         var h = new byte[3];
