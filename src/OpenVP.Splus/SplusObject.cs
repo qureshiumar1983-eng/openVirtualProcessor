@@ -54,6 +54,7 @@ namespace Crestron.Logos.SplusObjects
 
         [ThreadStatic] private static SplusObject _current;
         [ThreadStatic] private static int _batonDepth;
+        [ThreadStatic] private static bool _isMainThread;
 
         public SplusObject(string instanceName, string referenceId, CrestronStringEncoding encoding)
         {
@@ -128,8 +129,11 @@ namespace Crestron.Logos.SplusObjects
         }
 
         /// <summary>Give the baton away while waiting, then take it back.</summary>
-        internal void Yield(Action wait)
+        internal void Yield(Action wait, bool releaseEvents = true)
         {
+            // Function Main handing the baton over (Delay, ProcessLogic, a WAIT in progress...) is the point at
+            // which the module's event handlers may start. WaitForInitializationComplete is not: see there.
+            if (releaseEvents && _isMainThread) ReleaseEvents();
             var held = _current == this ? _batonDepth : 0;
             if (held > 0) { _batonDepth = 0; _current = null; _baton.Release(); }
             try { wait(); }
@@ -143,7 +147,11 @@ namespace Crestron.Logos.SplusObjects
         public int WaitForInitializationComplete()
         {
             MarkReady();
-            Yield(() => AllStarted.Wait(TimeSpan.FromSeconds(10)));
+            // Not a release point by itself: the module's handlers are held back until Main has the baton
+            // again, so that the code after this call (usually "copy the parameters into globals") runs before
+            // any input event, not in a race with it for the baton.
+            Yield(() => AllStarted.Wait(TimeSpan.FromSeconds(10)), releaseEvents: false);
+            ReleaseEvents();
             return 0;
         }
 
@@ -375,7 +383,75 @@ namespace Crestron.Logos.SplusObjects
 
         void ISplusModule.Preset(SigKind kind, uint id, object value) => Apply(kind, id, value, fire: false);
 
-        void ISplusModule.Input(SigKind kind, uint id, object value) => Apply(kind, id, value, fire: true);
+        // ------------------------------------------------------------------ input events during start-up
+        //
+        // On a processor a module's event handlers don't run until its Function Main has finished or has
+        // yielded (WaitForInitializationComplete, Delay, Wait, ProcessLogic), and input changes that happen
+        // before then are not delivered one by one against the old value: when the module starts handling
+        // events it sees the inputs' current values. So from StartMain until Main lets go, Input() stores the
+        // new value at once (Main reads inputs and sees the current value) and only remembers *that* the input
+        // changed, with the value it had when the window opened. Releasing delivers one event per such input,
+        // in the order the inputs first changed, carrying the latest value.
+        //
+        // A change in that window is not dropped: a module that was not ready when a signal went high or an
+        // analog level arrived still reacts to it once it is (that is how a level set at program start reaches
+        // a module's CHANGE handler, and a button pressed during start-up is not swallowed). What is dropped
+        // is only what the module could never have observed: a change that ended up back at the value it had
+        // when the window opened (a digital that pulsed 0-1-0, an analog that went 5-7-5) fires nothing. The
+        // module has no way to tell it from no change, and a PUSH for a signal that is already low again would
+        // leave the handler reading a released input. Serial inputs always fire, a string being re-sent is an
+        // event on its own.
+
+        private sealed class PendingInput
+        {
+            public SigKind Kind;
+            public uint Id;
+            public object Baseline; // int (digital), ushort (analog), string (serial)
+        }
+
+        private readonly object _eventGate = new object();
+        private bool _gateEvents;
+        private readonly List<PendingInput> _pendingInputs = new List<PendingInput>();
+
+        void ISplusModule.Input(SigKind kind, uint id, object value)
+        {
+            lock (_eventGate)
+            {
+                if (_gateEvents)
+                {
+                    if (!_pendingInputs.Exists(x => x.Kind == kind && x.Id == id) && Raw(kind, id) is { } before)
+                        _pendingInputs.Add(new PendingInput { Kind = kind, Id = id, Baseline = before });
+                    Apply(kind, id, value, fire: false);
+                    return;
+                }
+            }
+            Apply(kind, id, value, fire: true);
+        }
+
+        private object Raw(SigKind kind, uint id) => kind switch
+        {
+            SigKind.Digital when m_DigitalInputList.TryGetValue(id, out var d) => d.RawValue,
+            SigKind.Analog when m_AnalogInputList.TryGetValue(id, out var a) => a.RawValue,
+            SigKind.Serial when m_StringInputList.TryGetValue(id, out var s) => s.Str ?? "",
+            _ => null
+        };
+
+        /// <summary>Main has finished or yielded (or two seconds went by): deliver what changed meanwhile, then deliver live.</summary>
+        private void ReleaseEvents()
+        {
+            lock (_eventGate)
+            {
+                if (!_gateEvents) return;
+                _gateEvents = false;
+                var pending = _pendingInputs.ToArray();
+                _pendingInputs.Clear();
+                foreach (var p in pending)
+                {
+                    if (p.Kind != SigKind.Serial && Equals(Raw(p.Kind, p.Id), p.Baseline)) continue;
+                    FireInput(p.Kind, p.Id);
+                }
+            }
+        }
 
         private static readonly bool TraceOn = Environment.GetEnvironmentVariable("OPENVP_SPLUS_TRACE") == "1";
 
@@ -388,19 +464,35 @@ namespace Crestron.Logos.SplusObjects
                     var nv = value is true ? 1 : 0;
                     if (d.RawValue == nv && fire) return;
                     d.RawValue = nv;
-                    if (!fire) return;
+                    break;
+                case SigKind.Analog when m_AnalogInputList.TryGetValue(id, out var a):
+                    a.RawValue = value is ushort u ? u : (ushort)0;
+                    break;
+                case SigKind.Serial when m_StringInputList.TryGetValue(id, out var s):
+                    s.Receive(value as string ?? "");
+                    break;
+                default:
+                    return;
+            }
+            if (fire) FireInput(kind, id);
+        }
+
+        /// <summary>Run the handlers for an input's current value.</summary>
+        private void FireInput(SigKind kind, uint id)
+        {
+            switch (kind)
+            {
+                case SigKind.Digital when m_DigitalInputList.TryGetValue(id, out var d):
                     var args = new SignalEventArgs(d, d.Id, d.ArrayStart);
-                    if (nv == 1) Fire(d.OnDigitalPush, ref d.PushSnap, args);
+                    if (d.RawValue == 1) Fire(d.OnDigitalPush, ref d.PushSnap, args);
                     else Fire(d.OnDigitalRelease, ref d.ReleaseSnap, args);
                     Fire(d.OnDigitalChange, ref d.ChangeSnap, args);
                     break;
                 case SigKind.Analog when m_AnalogInputList.TryGetValue(id, out var a):
-                    a.RawValue = value is ushort u ? u : (ushort)0;
-                    if (fire) Fire(a.OnAnalogChange, ref a.ChangeSnap, new SignalEventArgs(a, a.Id, a.ArrayStart));
+                    Fire(a.OnAnalogChange, ref a.ChangeSnap, new SignalEventArgs(a, a.Id, a.ArrayStart));
                     break;
                 case SigKind.Serial when m_StringInputList.TryGetValue(id, out var s):
-                    s.Receive(value as string ?? "");
-                    if (fire) Fire(s.OnSerialChange, ref s.ChangeSnap, new SignalEventArgs(s, s.Id, s.ArrayStart));
+                    Fire(s.OnSerialChange, ref s.ChangeSnap, new SignalEventArgs(s, s.Id, s.ArrayStart));
                     break;
             }
         }
@@ -421,12 +513,14 @@ namespace Crestron.Logos.SplusObjects
 
         void ISplusModule.StartMain()
         {
+            lock (_eventGate) _gateEvents = true;
             var t = new Thread(() =>
             {
+                _isMainThread = true;
                 using var tracked = _host?.Slot.Metrics.TrackThread("S+ Function Main");
                 try { FunctionMain(null); }
                 catch (Exception e) { ObjectCatchHandler(e); }
-                finally { _initialized.Set(); MarkReady(); }
+                finally { ReleaseEvents(); _initialized.Set(); MarkReady(); }
             }) { IsBackground = true, Name = "S+ " + InstanceName };
             t.Start();
             // Initialization is complete once Main has had a moment to set up (Main may never return): after
@@ -457,12 +551,15 @@ namespace Crestron.Logos.SplusObjects
                 _readyTimer.Dispose();
                 _readyTimer = null;
             }
+            // Main has not yielded in two seconds: stop holding events back. They queue on the baton behind it.
+            ReleaseEvents();
             MarkReady();
         }
 
         void ISplusModule.Stop()
         {
             _stopped = true;
+            lock (_eventGate) { _gateEvents = false; _pendingInputs.Clear(); }
             lock (_readyGate) { _readyTimer?.Dispose(); _readyTimer = null; }
             lock (_waits) { foreach (var w in _waits) { w.Timer?.Dispose(); w.Done.Set(); } _waits.Clear(); }
             lock (_files) { foreach (var f in _files.Values) f.Dispose(); _files.Clear(); }

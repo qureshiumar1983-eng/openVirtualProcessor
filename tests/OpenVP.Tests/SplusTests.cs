@@ -141,4 +141,130 @@ public static class SplusTests
         st.Run();
         Assert.Eventually(() => panel.GetFeedback(A(1)) is ushort u && u == 42, "logic carried on after Run");
     }
+
+    // ---------------- start-up ordering, with a module driven directly (no program, no host)
+
+    /// <summary>A module shaped like compiler output: LEVEL (analog 0), PRESS and PULSE (digital 0, 1); Main runs <see cref="MainBody"/>.</summary>
+    private sealed class OrderModule : Crestron.Logos.SplusObjects.SplusObject
+    {
+        public readonly List<string> Events = new();
+        public Action<OrderModule>? MainBody;
+        public readonly Crestron.Logos.SplusObjects.AnalogInput Level;
+        public readonly Crestron.Logos.SplusObjects.DigitalInput PressIn, PulseIn;
+
+        public OrderModule() : base("order", "order", Crestron.Logos.SplusObjects.CrestronStringEncoding.eEncodingASCII)
+        {
+            Level = new(0, this); m_AnalogInputList.Add(0, Level);
+            PressIn = new(0, this); m_DigitalInputList.Add(0, PressIn);
+            PulseIn = new(1, this); m_DigitalInputList.Add(1, PulseIn);
+            Level.OnAnalogChange.Add(new(e => Handler(() => $"level {Level.UshortValue}", e), false));
+            PressIn.OnDigitalPush.Add(new(e => Handler(() => "press push", e), false));
+            PulseIn.OnDigitalPush.Add(new(e => Handler(() => "pulse push", e), false));
+            PulseIn.OnDigitalRelease.Add(new(e => Handler(() => "pulse release", e), false));
+        }
+
+        public void Log(string text) { lock (Events) Events.Add(text); }
+        public string[] Seen() { lock (Events) return Events.ToArray(); }
+
+        private object Handler(Func<string> text, object eventInfo)
+        {
+            var args = (Crestron.Logos.SplusObjects.SignalEventArgs)eventInfo;
+            try { SplusThreadStartCode(args); Log(text()); }
+            catch (Exception e) { ObjectCatchHandler(e); }
+            finally { ObjectFinallyHandler(args); }
+            return this;
+        }
+
+        public override object FunctionMain(object obj)
+        {
+            try { SplusFunctionMainStartCode(); MainBody?.Invoke(this); }
+            catch (Exception e) { ObjectCatchHandler(e); }
+            finally { ObjectFinallyHandler(); }
+            return obj;
+        }
+    }
+
+    [Test]
+    public static void Splus_input_changes_before_Main_yields_are_coalesced_and_delivered_after()
+    {
+        var m = new OrderModule();
+        var started = new ManualResetEventSlim();
+        var go = new ManualResetEventSlim();
+        m.MainBody = o =>
+        {
+            started.Set();
+            go.Wait();   // Main busy, holding the module: no yield
+            o.Log($"main level={o.Level.UshortValue} press={o.PressIn.Value} pulse={o.PulseIn.Value}");
+            Crestron.Logos.SplusLibrary.Functions.Delay(1);
+            o.Log("main done");
+        };
+        var host = (ISplusModule)m;
+        try
+        {
+            host.Initialize();
+            host.Preset(SigKind.Analog, 0, (ushort)3);
+            host.StartMain();
+            Assert.True(started.Wait(3000), "Main started");
+
+            host.Input(SigKind.Analog, 0, (ushort)5);
+            host.Input(SigKind.Analog, 0, (ushort)7);
+            host.Input(SigKind.Digital, 0, true);
+            host.Input(SigKind.Digital, 1, true);
+            host.Input(SigKind.Digital, 1, false);  // pulsed and back to what Main started with
+            Thread.Sleep(300);
+            Assert.Equal(0, m.Seen().Length, "no handler runs while Main is busy");
+
+            go.Set();
+            Assert.Eventually(() => m.Seen().Length == 4, "queued events delivered once Main is through");
+            var seen = m.Seen();
+            Assert.Equal("main level=7 press=1 pulse=0", seen[0], "Main reads the current input values");
+            Assert.Equal("main done", seen[1], "Main finishes before any handler");
+            Assert.Equal("level 7|press push", string.Join("|", seen.Skip(2).OrderBy(x => x)), "one event per changed input, latest value; the pulse that ended where it began is not an event");
+
+            host.Input(SigKind.Analog, 0, (ushort)9);
+            Assert.Eventually(() => m.Seen().Contains("level 9"), "later changes are delivered straight away");
+            Assert.Equal(5, m.Seen().Length, "and nothing else fired");
+        }
+        finally { host.Stop(); }
+    }
+
+    [Test]
+    public static void Splus_handlers_wait_for_Main_to_resume_after_WaitForInitializationComplete()
+    {
+        // Main parks in WaitForInitializationComplete until the other module has started. An input that changes
+        // meanwhile must not run before the code after that call, which the module relies on (globals set up there).
+        for (int round = 0; round < 5; round++)
+        {
+            var a = new OrderModule();
+            var b = new OrderModule();
+            var inWait = new ManualResetEventSlim();
+            var bGo = new ManualResetEventSlim();
+            a.MainBody = o =>
+            {
+                inWait.Set();
+                o.WaitForInitializationComplete();
+                o.Log("after wfic");
+                Thread.Sleep(100);   // still in Main, no yield
+                o.Log("main done");
+            };
+            b.MainBody = _ => bGo.Wait();
+            var ha = (ISplusModule)a;
+            var hb = (ISplusModule)b;
+            try
+            {
+                ha.Initialize(); hb.Initialize();
+                ha.StartMain(); hb.StartMain();
+                Assert.True(inWait.Wait(3000), "Main reached WaitForInitializationComplete");
+                Thread.Sleep(50);
+                ha.Input(SigKind.Analog, 0, (ushort)5);
+                Thread.Sleep(100);
+                Assert.Equal(0, a.Seen().Length, "nothing ran while Main waits for the other modules");
+
+                bGo.Set();   // the other module's Main returns: everyone has started
+                Assert.Eventually(() => a.Seen().Length == 3, "Main and the queued event finished, no deadlock");
+                Assert.Equal("after wfic|main done|level 5", string.Join("|", a.Seen()), "Main's code after the wait runs before the event");
+            }
+            finally { ha.Stop(); hb.Stop(); }
+        }
+    }
 }
