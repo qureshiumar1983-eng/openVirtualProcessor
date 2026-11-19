@@ -451,14 +451,17 @@ public sealed class InitPrim : EdgePrim
     }
 }
 
-/// <summary>Type 51, Analog Equate: output k is high while the analog input equals parameter k.</summary>
+/// <summary>Type 51, Analog Equate: output k is high while the analog input (input 1) equals parameter k
+/// and the digital enable (input 2) is high. With the enable low every output is low. An equate compiled
+/// without an enable (one input) is always enabled.</summary>
 public sealed class EquatePrim : EvalPrim
 {
-    public override SigKind? InputKind(int pin) => SigKind.Analog;
+    public override SigKind? InputKind(int pin) => pin == 2 ? SigKind.Digital : SigKind.Analog;
     protected override void Eval(IPrimitiveContext c)
     {
+        var enabled = c.InputCount < 2 || c.Digital(2);
         var v = c.Analog(1);
-        for (int k = 1; k <= c.OutputCount; k++) c.Set(k, c.Number(k - 1, -1) == v);
+        for (int k = 1; k <= c.OutputCount; k++) c.Set(k, enabled && c.Number(k - 1, -1) == v);
     }
 }
 

@@ -190,4 +190,46 @@ public static class LpzRuntimeTests
         panel.ReceiveInput(D(4), true); panel.ReceiveInput(D(5), true);
         Assert.Eventually(() => rt.GetSignals().Any(s => s.Name == "#24" && s.Value is true), "delay output high after 50 ms");
     }
+
+    [Test]
+    public static void Analog_equate_honors_its_enable()
+    {
+        // Panel IPID 03: outputs d1 = enable, a1 = level; inputs (feedback) d1..d3.
+        const int En = 10, Lvl = 11, Eq1 = 12, Eq2 = 13, NoEn = 14;
+        var bin = new List<byte>();
+        bin.AddRange(Record(-12, "IP-ID-03", [Eq1, Eq2, NoEn], [En, Lvl], Int(6, 3), Int(10, 3), Int(11, 1), Int(12, 3), Int(13, 2)));
+        bin.AddRange(Record(51, "S-1", [Lvl, En], [Eq1, Eq2], Int(15, 2), Int(2, 1), Int(2, 2)));  // input 2 is the enable
+        bin.AddRange(Record(51, "S-2", [Lvl], [NoEn], Int(15, 1), Int(2, 1)));                     // no enable: always on
+
+        var path = Path.Combine(Paths.TempData(), "equate.lpz");
+        using (var zip = ZipFile.Open(path, ZipArchiveMode.Create))
+        {
+            void Put(string name, byte[] content) { using var s = zip.CreateEntry(name).Open(); s.Write(content); }
+            Put("boot.bt", Encoding.ASCII.GetBytes("[LG_BOOT_DATA]\r\nBinFileName=equate.bin\r\nSMWFileName=equate.smw\r\nRackType=CP4\r\n"));
+            Put("equate.bin", bin.ToArray());
+            Put("equate.dip", Encoding.ASCII.GetBytes("[IPTable]\r\nid0=03\r\naddr0=127.0.0.1\r\n"));
+        }
+        using var p = new Processor(Paths.TempData());
+        p.AddLoader(new LpzLoader());
+        p.LoadProgram(1, path);
+        Assert.Equal(SlotState.Running, p.Slot(1).State, "running: " + p.Slot(1).LastError);
+        var panel = p.Slot(1).FindDevice(3) ?? throw new AssertException("panel 03 registered");
+        bool Fb(uint j) => (bool)panel.GetFeedback(D(j));
+
+        panel.ReceiveInput(A(1), (ushort)1);
+        Assert.Eventually(() => Fb(3), "equate without an enable follows the analog");
+        Thread.Sleep(30);
+        Assert.True(!Fb(1) && !Fb(2), "enable low: all outputs low");
+
+        panel.ReceiveInput(D(1), true);
+        Assert.Eventually(() => Fb(1) && !Fb(2), "enable high: output for value 1");
+        panel.ReceiveInput(A(1), (ushort)2);
+        Assert.Eventually(() => !Fb(1) && Fb(2) && !Fb(3), "value 2");
+
+        panel.ReceiveInput(D(1), false);
+        Assert.Eventually(() => !Fb(1) && !Fb(2), "enable low again: all outputs drop");
+        panel.ReceiveInput(A(1), (ushort)1);
+        Thread.Sleep(30);
+        Assert.True(!Fb(1) && !Fb(2) && Fb(3), "analog changes while disabled are ignored");
+    }
 }

@@ -267,16 +267,19 @@ public sealed class AnalogInitSymbol : SymbolBehavior
     }
 }
 
-/// <summary>Equate: digital output k is high while the analog input equals parameter k.</summary>
+/// <summary>Equate: digital output k is high while the analog input (input 1) equals parameter k and the
+/// digital enable (input 2) is high. With the enable low every output is low; an unconnected enable is
+/// treated as enabled.</summary>
 public sealed class EquateSymbol : SymbolBehavior
 {
-    public override SigKind InputKind(int pin) => SigKind.Analog;
+    public override SigKind InputKind(int pin) => pin == 2 ? SigKind.Digital : SigKind.Analog;
     public override void Start(ISymbolContext c) => Eval(c);
     public override void OnInput(ISymbolContext c, int pin, object o, object n) => Eval(c);
     private static void Eval(ISymbolContext c)
     {
+        var enabled = !c.IsConnected(2) || c.Digital(2);
         var v = c.Analog(1);
-        for (int k = 1; k <= c.OutputCount; k++) c.SetOutput(k, c.ParamNumber(k, -1) == v);
+        for (int k = 1; k <= c.OutputCount; k++) c.SetOutput(k, enabled && c.ParamNumber(k, -1) == v);
     }
 }
 
