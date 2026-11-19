@@ -37,6 +37,10 @@ public sealed class SmwSymbol
 
     public SmwBlock Raw { get; init; } = new();
 
+    /// <summary>Disabled in SIMPL Windows (<c>OpF=0</c>): the compiler leaves it out, and its children carry the flag
+    /// too. In the sample programs no symbol marked so has a compiled record, and every compiled one is unmarked.</summary>
+    public bool Disabled => Raw.Get("OpF") == "0";
+
     public override string ToString() => $"#{Handle} {Name} (SmC={Code})";
 }
 

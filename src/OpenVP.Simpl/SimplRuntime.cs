@@ -221,6 +221,7 @@ public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
         var otherHardware = new List<SmwSymbol>();
         foreach (var sym in _file.Symbols.Values.OrderBy(s => s.Handle))
         {
+            if (sym.Disabled) continue; // switched off in SIMPL Windows: not part of the program
             if (BuildPort(sym)) continue;
             if (IsDevice(sym))
             {
@@ -467,7 +468,7 @@ public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
         string Pin(int h) => h > 0 ? _file.SignalName(h) : "";
         foreach (var sym in _file.Symbols.Values.OrderBy(s => s.Handle))
         {
-            if (!sym.Inputs.Concat(sym.Outputs).Any(h => h > 0)) continue; // structural symbols with nothing wired
+            if (sym.Disabled || !sym.Inputs.Concat(sym.Outputs).Any(h => h > 0)) continue; // disabled, or structural with nothing wired
             foreach (var h in sym.Inputs.Concat(sym.Outputs))
                 if (h > 0) seen.TryAdd(_file.SignalName(h), KindOf(h));
             var parent = _file.Symbols.GetValueOrDefault(sym.Parent);

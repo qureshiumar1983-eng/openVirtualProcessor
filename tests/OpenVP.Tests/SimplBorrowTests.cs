@@ -102,4 +102,25 @@ public static class SimplBorrowTests
         var panel = p.Slot(1).FindDevice(3) ?? throw new AssertException("panel 03");
         Assert.Eventually(() => (ushort)panel.GetFeedback(new JoinKey(SigKind.Analog, 1)) == 42, "handle 2 is the constant 1: the initialize fired at start");
     }
+
+    [Test]
+    public static void Disabled_symbols_are_left_out()
+    {
+        // OpF=0: switched off in SIMPL Windows. The macro isn't reported, and the disabled NOT doesn't drive "fb".
+        const string text = "[\nObjTp=Hd\nPgmNm=Disabled\n]\n[\nObjTp=Sg\nH=10\nNm=press\n]\n[\nObjTp=Sg\nH=11\nNm=fb\n]\n" +
+            "[\nObjTp=Sm\nH=5\nSmC=6840\nNm=XPanel\nDvH=589\nn1I=1\nn1O=1\nmI=1\nmO=1\nI1=11\nO1=10\n]\n" +
+            "[\nObjTp=Sm\nH=20\nSmC=155\nNm=Off.umc\nOpF=0\nn1I=1\nn1O=1\nmI=1\nmO=1\nI1=10\nO1=11\n]\n" +
+            "[\nObjTp=Sm\nH=21\nSmC=205\nNm=NOT\nOpF=0\nmI=1\nmO=1\nI1=10\nO1=11\n]\n";
+        var path = Path.Combine(Paths.TempData(), "disabled.smw");
+        File.WriteAllText(path, text);
+        File.WriteAllText(Path.ChangeExtension(path, ".openvp.json"), "{ \"ipids\": { \"5\": \"03\" } }");
+        using var p = new Processor(Paths.TempData());
+        p.AddLoader(new SimplLoader());
+        p.LoadProgram(1, path);
+        var rt = (SimplRuntime)p.Slot(1).Runtime!;
+        Assert.Equal(0, rt.Unsupported.Count, "a disabled macro isn't unsupported");
+        var panel = p.Slot(1).FindDevice(3) ?? throw new AssertException("panel 03");
+        Thread.Sleep(100);
+        Assert.True(!(bool)panel.GetFeedback(new JoinKey(SigKind.Digital, 1)), "the disabled NOT doesn't run (it would drive fb high)");
+    }
 }

@@ -75,6 +75,7 @@ public sealed class SymbolSurvey
         SourceFiles++;
         foreach (var s in smw.Symbols.Values)
         {
+            if (s.Disabled) continue; // switched off in SIMPL Windows: never compiled
             if (!s.Inputs.Any(h => h > 0) && !s.Outputs.Any(h => h > 0)) continue; // folders, processor, empty slots
             var key = (s.Code, s.Name.Trim());
             if (!Source.TryGetValue(key, out var info)) Source[key] = info = new SourceSymbol { Code = s.Code, Name = s.Name.Trim() };

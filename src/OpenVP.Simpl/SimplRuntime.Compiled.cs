@@ -38,7 +38,27 @@ public sealed partial class SimplRuntime
         s.Raw.Get("CedH") != null || (s.DeviceHandle > 0 && (IsComPort(s) || IsIrPort(s))) ||
         (s.HasGroups && ExtenderJoins.For(s.Code, s.Name) != null);
 
-    private bool CanRun(BinSymbol r) => r.Type == -48 || r.Type >= 0 && PrimitiveLibrary.Create(r.Type, _primitiveOverrides) != null;
+    private bool CanRun(BinSymbol r) => r.Type is -48 or 213 or 214 or 215 || r.Type >= 0 && PrimitiveLibrary.Create(r.Type, _primitiveOverrides) != null;
+
+    /// <summary>Compiled crosspoint records (inside macros) run as the .smw crosspoint symbols: pin groups from fields
+    /// 10-13, the crosspoint ID from the first numeric parameter. False for any other record.</summary>
+    private bool BuildCompiledCrosspoint(SmwSymbol shadow, BinSymbol r)
+    {
+        if (r.Type is not (213 or 214 or 215)) return false;
+        int inD = Math.Min(r.FieldInt(10) ?? r.Inputs.Length, r.Inputs.Length), inA = Math.Clamp(r.FieldInt(12) ?? inD, inD, r.Inputs.Length);
+        int outD = Math.Min(r.FieldInt(11) ?? r.Outputs.Length, r.Outputs.Length), outA = Math.Clamp(r.FieldInt(13) ?? outD, outD, r.Outputs.Length);
+        shadow.InputGroups[0] = inD; shadow.InputGroups[1] = inA - inD; shadow.InputGroups[2] = r.Inputs.Length - inA;
+        shadow.OutputGroups[0] = outD; shadow.OutputGroups[1] = outA - outD; shadow.OutputGroups[2] = r.Outputs.Length - outA;
+        var id = r.Params.Where(p => p.Number != null).Select(p => p.Number!.Value).FirstOrDefault();
+        shadow.Parameters.Add($"{id}d");
+        switch (r.Type)
+        {
+            case 213: var eq = new XEquipmentNode(this, shadow); _xEquipment[eq.Id] = eq; Register(eq); break;
+            case 214: var ctl = new XControlNode(this, shadow); _xControls[ctl.Id] = ctl; Register(ctl); break;
+            default: Register(new XConnectNode(this, shadow)); break;
+        }
+        return true;
+    }
 
     /// <summary>Works out which symbols come from the compiled program and gives the signals inside them handles
     /// after <paramref name="max"/>. Runs before the signal arrays exist.</summary>
@@ -97,7 +117,7 @@ public sealed partial class SimplRuntime
         int rejected = 0;
         foreach (var s in _file.Symbols.Values)
         {
-            if (!s.Inputs.Any(h => h > 0) && !s.Outputs.Any(h => h > 0)) continue;
+            if (s.Disabled || !s.Inputs.Any(h => h > 0) && !s.Outputs.Any(h => h > 0)) continue;
             if (RunsNatively(s) || !paths.TryGetValue(s.Handle, out var path) || !scopes.TryGetValue(path, out var records)) continue;
             // Every program-level signal the scope touches must be wired to this symbol.
             var wired = new HashSet<string>(s.Inputs.Concat(s.Outputs).Where(h => h > 0 && _file.Signals.ContainsKey(h))
@@ -181,6 +201,7 @@ public sealed partial class SimplRuntime
                 Register(node);
                 continue;
             }
+            if (BuildCompiledCrosspoint(shadow, r)) continue;
             var prim = r.Type >= 0 ? PrimitiveLibrary.Create(r.Type, _primitiveOverrides) : null;
             if (prim == null)
             {
