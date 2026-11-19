@@ -191,6 +191,8 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
                 if (sym.Inputs.Any(h => h > 0) || sym.Outputs.Any(h => h > 0))
                 {
                     Unsupported.Add(sym);
+                    _slot.ReportUnsupported("SIMPL symbol", $"{sym.Name} (SmC {sym.Code})",
+                        $"pins in={sym.Inputs.Count} out={sym.Outputs.Count}", ProgramName);
                     _slot.Log("Warning", $"No behavior for symbol {sym} yet; its outputs stay at their defaults.");
                 }
                 continue;
@@ -202,6 +204,10 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
             if (sg.Handle > 0) SetKind(sg.Handle, SigKind.Digital);
 
         // Their pins keep their signals, but nothing drives or reads them: OpenVP only models the join space of an IP-ID device.
+        foreach (var s in subDevices)
+            _slot.ReportUnsupported("SIMPL sub-device", $"{s.Name} (SmC {s.Code})", "slot, port or extender inside an IP-ID device: not mapped to joins", ProgramName);
+        foreach (var s in otherHardware)
+            _slot.ReportUnsupported("SIMPL hardware", $"{s.Name} (SmC {s.Code})", "processor hardware (Cresnet, COM, IR, relays...)", ProgramName);
         if (subDevices.Count > 0)
             _slot.Log("Warning", $"{subDevices.Count} sub-device symbol(s) inside IP-ID devices (slots, ports, extenders) are not mapped to joins yet: " +
                 string.Join(", ", subDevices.Select(s => s.Name).Distinct().Take(10)));

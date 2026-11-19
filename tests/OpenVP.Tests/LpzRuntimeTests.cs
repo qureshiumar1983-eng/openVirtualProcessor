@@ -179,6 +179,7 @@ public static class LpzRuntimeTests
         var rt = (LpzRuntime)p.Slot(1).Runtime!;
         Assert.Equal(1, rt.Unsupported.GetValueOrDefault(-48), "SIMPL+ counted as unsupported");
         Assert.True(p.RecentLog(1).Any(l => l.Message.Contains("SIMPL+")), "warning logged");
+        Assert.True(p.Unsupported.Items.Any(i => i.Kind == "SIMPL+ module"), "added to the shared unsupported list");
     }
 
     [Test]

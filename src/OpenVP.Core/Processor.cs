@@ -38,6 +38,10 @@ public sealed class Processor : IDisposable
     public IReadOnlyList<ProgramSlot> Slots { get; }
     public IntersystemBus Bus { get; }
 
+    /// <summary>Symbols, types and APIs programs used that OpenVP doesn't support yet, kept across runs
+    /// (see <see cref="UnsupportedLog"/>). In memory only until someone calls <see cref="UnsupportedLog.UseFile"/>.</summary>
+    public UnsupportedLog Unsupported { get; } = new();
+
     public event Action<LogEntry>? LogWritten;
     /// <summary>A slot's step debugger changed mode, break list, or paused/resumed.</summary>
     public event Action<ProgramSlot>? StepChanged;
@@ -113,5 +117,6 @@ public sealed class Processor : IDisposable
     {
         Metrics.Dispose();
         foreach (var s in Slots) s.Dispose();
+        Unsupported.Dispose();
     }
 }

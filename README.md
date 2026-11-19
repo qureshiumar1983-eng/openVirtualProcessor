@@ -181,6 +181,16 @@ Click **Metrics ↗** in the console header (or go to `/metrics.html`) for a liv
 
 The same numbers are available from the slot console: `cpuload`, `ramfree`, `taskstat` (threads and what the slot thread is doing) and `metrics` (all of it). From scripts, use `GET /api/metrics` or the `/ws/metrics` WebSocket.
 
+## Compatibility
+
+Every time a program loads, anything in it OpenVP doesn't support yet goes into **[`docs/unsupported.md`](docs/unsupported.md)**: SIMPL symbols, sub-devices and hardware, compiled primitive types, SIMPL+ modules that can't run, and SIMPL# types, members and assemblies. Each row counts how many programs needed it, so the top of each kind is what to build next. Only symbol names are written, never program names.
+
+- **Running from a source checkout** (`dotnet run`, `Start OpenVP.bat`): the server writes straight to `docs/unsupported.md` in the repo. Run your programs, then commit and push the file so everyone gets the list.
+- **Running `OpenVP.exe` or Docker**: it's `unsupported.md` in the data folder (`%APPDATA%\OpenVP` for the desktop app), also downloadable from `GET /api/unsupported`. Paste its table rows at the end of `docs/unsupported.md` in the repo (or replace the file if the repo's is empty) and commit; the next run from source merges duplicate rows and re-sorts the table.
+- **When you implement something**, delete its row. If a program still needs it, it comes back on the next run.
+
+The per-slot view is still there: the log lists what each program is missing, and **Compatibility** in the console (`GET /api/slots/{n}/compat`) shows it for the loaded program.
+
 ## Security
 
 A SIMPL# program is .NET code that runs inside the OpenVP process, so anyone who can upload a program can run code on the machine. The web console and API are protected by an **access key**:
@@ -209,6 +219,7 @@ Traffic is plain HTTP. To use OpenVP across an untrusted network, put it behind 
 | `OpenVP:ApiKey` | (generated) | Access key for the console and API; `off` disables it. See [Security](#security) |
 | `OpenVP:LocalRequiresKey` | `false` | Require the key from localhost too |
 | `OpenVP:PanelsRequireKey` | `false` | Require the key for browser panels (`/ws/panel`) |
+| `OpenVP:UnsupportedLog` | `docs/unsupported.md` in a source checkout, else `unsupported.md` in the data folder | Where the list of unsupported symbols is kept (see [Compatibility](#compatibility)); `off` keeps it in memory only |
 | `OpenVP:Autoload:slot1` | | Program file to load into slot 1 at startup |
 | `Urls` | `http://0.0.0.0:8080` | Web console address |
 
@@ -236,6 +247,7 @@ Every endpoint except `/api/info` and `/api/login` needs the access key (see [Se
 | POST | `/api/slots/{n}/files/folder` · `files/rename` | `{"root":"user","path":"config","name":"rooms"}` creates `config/rooms` · renames `path` to `name` |
 | GET | `/api/slots/{n}/files/download?root=user&path=config/rooms.json` | Download a file |
 | DELETE | `/api/slots/{n}/files?root=user&path=config` | Delete a file, or a folder and everything in it |
+| GET | `/api/unsupported` | Everything programs used that isn't supported yet, as the Markdown file (`?format=json` for JSON). See [Compatibility](#compatibility) |
 | GET | `/api/log?slot=n` · `/api/devices` | |
 | GET | `/api/metrics` | CPU, memory, threads and per-slot activity; `?history=false` leaves out the five-minute history. `/ws/metrics` sends the same once a second |
 | GET | `/api/info` | Version, slot count, and whether you're logged in |

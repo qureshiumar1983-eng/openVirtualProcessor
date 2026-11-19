@@ -193,7 +193,11 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
     private SplusNode? CreateModule(BinSymbol sym)
     {
         var dll = sym.Params.Count > 1 ? sym.Params[1].Text : null;
-        if (string.IsNullOrEmpty(dll)) return null;
+        if (string.IsNullOrEmpty(dll))
+        {
+            _slot.ReportUnsupported("SIMPL+ module", "(record names no compiled .dll)", "type -48 record without a module file name", ProgramName);
+            return null;
+        }
         try
         {
             if (_alc == null)
@@ -227,7 +231,10 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
             var inner = e is System.Reflection.TargetInvocationException t && t.InnerException != null ? t.InnerException : e;
             var unresolved = _alc?.Unresolved.Count > 0 ? $" (missing: {string.Join(", ", _alc.Unresolved.Distinct())})" : "";
             if (_moduleErrors.Add(dll!))
+            {
                 _slot.Log("Warning", $"SIMPL+ module {dll} can't run yet: {inner.GetType().Name}: {inner.Message}{unresolved}");
+                _slot.ReportUnsupported("SIMPL+ module", Path.GetFileName(dll!), $"{inner.GetType().Name}: {inner.Message}{unresolved}", ProgramName);
+            }
             return null;
         }
     }
@@ -584,6 +591,9 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
         var total = _pkg.Logic.Symbols.Count;
         _slot.Log("Notice", $"Compiled program: {_nodes.Count - _devices.Count - _modules.Count} logic symbols, {_modules.Count} SIMPL+ modules and {_devices.Count} devices running" +
                              (_pkg.Signals == null ? " (no .sig: signals shown by number)" : ""));
+        foreach (var t in Unsupported.Keys.Where(t => t != -48))
+            _slot.ReportUnsupported("Compiled primitive", $"type {t}",
+                PrimitiveCatalog.Known.TryGetValue(t, out var info) ? $"{info.Name} {info.Notes}".Trim() : "unidentified", ProgramName);
         if (Unsupported.Count > 0)
             _slot.Log("Warning", $"Not supported yet: " + string.Join(", ",
                 Unsupported.OrderByDescending(p => p.Value).Select(p => $"type {p.Key}{(p.Key == -48 ? " (SIMPL+)" : "")} ×{p.Value}")));
