@@ -28,7 +28,7 @@ public sealed class LpzLoader : IProgramLoader
 /// changes, every node reading it runs, and its outputs drive further signals until the logic settles.
 /// Everything happens on the slot thread, one change at a time.
 /// </summary>
-public sealed partial class LpzRuntime : IProgramRuntime
+public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
 {
     private const int MaxStepsPerSolve = 500_000;
 
@@ -55,6 +55,16 @@ public sealed partial class LpzRuntime : IProgramRuntime
     private readonly NvramStore _store;
     private bool _solving;
     private volatile bool _running;
+    // Causality (docs/debugger-paths.md section 2). Only touched while a debugger is listening (_slot.TraceWanted).
+    // While Solve hands signal s to an edge's node, _dispOn is set and _disp* say who is acting and why, so an
+    // Enqueue made by that node is stamped with the node's symbol id, s, depth + 1 and the chain.
+    private bool _dispOn;
+    private string? _dispSym;
+    private int _dispCause;
+    private int _dispDepth;
+    private long _dispChain;
+    private long _chainSeq;
+    private readonly Dictionary<BinSymbol, string> _symIds = new();
 
     public LpzRuntime(ProgramSlot slot, LpzPackage pkg)
     {
@@ -81,6 +91,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
                     _kindKnown[e.Index] = true;
                 }
 
+        AssignSymbolIds();
         Build();
         Array.Fill(_ser, string.Empty);
         _dig[1] = true; // constant "1"
@@ -91,7 +102,21 @@ public sealed partial class LpzRuntime : IProgramRuntime
     private readonly record struct Edge(Node Node, int Pin);
 
     /// <summary>A queued change. Digital and analog keep their value in Num, serial in Str.</summary>
-    private readonly record struct Pending(int Sig, uint Num, string? Str, string Source);
+    /// <remarks>Digital and analog values fit in 16 bits, so while tracing the high 16 bits of Num hold 1 + an index
+    /// into _meta (causality); 0 means none. That keeps this struct at 24 bytes, which matters on the hot path.</remarks>
+    private readonly record struct Pending(int Sig, uint Num, string? Str, string Source)
+    {
+        public uint Value => Num & 0xFFFF;
+        public int Meta => (int)(Num >> 16) - 1;
+    }
+
+    private readonly record struct CauseInfo(string? Sym, int CauseSig, int Depth, long Chain);
+    private CauseInfo[] _meta = new CauseInfo[16];
+    private int _metaCount;
+    // The change being processed (set by ReadMeta while tracing).
+    private string? _chSym;
+    private int _chCause, _chDepth;
+    private long _chChain;
 
     private void Flatten()
     {
@@ -209,6 +234,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
 
     private void Register(Node node)
     {
+        node.SymId = _symIds.TryGetValue(node.Symbol, out var id) ? id : node.Symbol.Path;
         _nodes.Add(node);
         for (int pin = 1; pin <= node.Symbol.Inputs.Length; pin++)
         {
@@ -265,6 +291,42 @@ public sealed partial class LpzRuntime : IProgramRuntime
     internal string SerialAt(int sig) => (uint)sig < (uint)_ser.Length ? _ser[sig] : string.Empty;
 
     internal SigKind KindOf(int sig) => sig >= 0 && sig < _kinds.Length ? _kinds[sig] : SigKind.Digital;
+
+    // ------------------------------------------------------------------ graph
+
+    /// <summary>Unique symbol ids: the record's path, or "#offset" when it has none; repeats get ".2", ".3"...</summary>
+    private void AssignSymbolIds()
+    {
+        var used = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var sym in _pkg.Logic.Symbols)
+        {
+            var id = sym.Path.Length > 0 ? sym.Path : $"#{sym.Offset}";
+            var unique = id;
+            for (int n = 2; !used.Add(unique); n++) unique = $"{id}.{n}";
+            _symIds[sym] = unique;
+        }
+    }
+
+    private string PinName(int sig) => sig == 0 ? "0" : sig == 1 ? "1" : NameOf(sig);
+
+    public ProgramGraph GetGraph()
+    {
+        var symbols = new List<GraphSymbol>();
+        var seen = new Dictionary<string, SigKind>(StringComparer.Ordinal);
+        foreach (var sym in _pkg.Logic.Symbols)
+        {
+            if (!sym.Inputs.Concat(sym.Outputs).Any(x => x > 1)) continue; // structural records with nothing wired
+            var id = _symIds[sym];
+            var colon = sym.Path.IndexOf(':');
+            var name = PrimitiveCatalog.Known.TryGetValue(sym.Type, out var info) ? info.Name : $"type {sym.Type}";
+            var ins = sym.Inputs.Select(PinName).ToList();
+            var outs = sym.Outputs.Select(PinName).ToList();
+            foreach (var x in sym.Inputs.Concat(sym.Outputs)) seen.TryAdd(PinName(x), KindOf(x));
+            symbols.Add(new GraphSymbol(id, name, sym.Path.Length > 0 ? sym.Path : id, colon > 0 ? sym.Path[..colon] : "", sym.IsDevice, ins, outs));
+        }
+        var signals = seen.Select(kv => new GraphSignal(kv.Key, kv.Value.ToString())).ToList();
+        return new ProgramGraph(Kind, symbols, signals);
+    }
 
     internal string NameOf(int sig) =>
         _pkg.Signals?.NameOf(sig) is string n ? (n.StartsWith("::") ? n[2..] : n) : $"#{sig}";
@@ -328,13 +390,41 @@ public sealed partial class LpzRuntime : IProgramRuntime
         if (!_solving) Solve();
     }
 
-    private void Enqueue(int sig, uint num, string? str, string source) => _pending.Enqueue(new Pending(sig, num, str, source));
+    private void Enqueue(int sig, uint num, string? str, string source)
+    {
+        // _dispOn is only set while tracing; everything else is queued plain and treated as external if traced.
+        if (_dispOn) EnqueueTraced(sig, num, str, source);
+        else _pending.Enqueue(new Pending(sig, num, str, source));
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private void EnqueueTraced(int sig, uint num, string? str, string source)
+    {
+        if (_metaCount >= 0xFFFF) { _pending.Enqueue(new Pending(sig, num, str, source)); return; } // too many to number: counts as external
+        if (_metaCount == _meta.Length) Array.Resize(ref _meta, _meta.Length * 2);
+        _meta[_metaCount] = new CauseInfo(_dispSym, _dispCause, _dispDepth + 1, _dispChain);
+        _pending.Enqueue(new Pending(sig, num | ((uint)(++_metaCount) << 16), str, source));
+    }
+
+    private interface ITraceMode { static abstract bool On { get; } }
+    private struct Plain : ITraceMode { public static bool On => false; }
+    private struct Traced : ITraceMode { public static bool On => true; }
 
     private void Solve()
     {
         if (_solving) return;
         _solving = true;
         try
+        {
+            // Two copies of the loop, picked once per solve: the plain one has no tracing code in it at all,
+            // so having a debugger feature costs nothing when none is open.
+            if (_slot.TraceWanted) SolveLoop<Traced>(); else SolveLoop<Plain>();
+        }
+        finally { _solving = false; _dispOn = false; if (_pending.Count == 0) _metaCount = 0; }
+    }
+
+    private void SolveLoop<TMode>() where TMode : struct, ITraceMode
+    {
         {
             var steps = 0;
             while (_pending.Count > 0 || _nextWave.Count > 0)
@@ -359,11 +449,11 @@ public sealed partial class LpzRuntime : IProgramRuntime
                 {
                     case SigKind.Digital:
                     {
-                        var v = change.Num != 0;
+                        var v = change.Value != 0;
                         var old = _dig[s];
                         if (old == v) continue;
                         _dig[s] = v;
-                        if (_slot.TraceWanted) _slot.Trace(NameOf(s), SigKind.Digital, SigValue.Box(v), change.Source);
+                        if (TMode.On) { DispatchTraced(s, change, first, end, SigKind.Digital, od: old, nd: v); break; }
                         for (int e = first; e < end; e++)
                         {
                             var edge = _edges[e];
@@ -374,11 +464,11 @@ public sealed partial class LpzRuntime : IProgramRuntime
                     }
                     case SigKind.Analog:
                     {
-                        var v = (ushort)change.Num;
+                        var v = (ushort)change.Value;
                         var old = _ana[s];
                         if (old == v) continue;
                         _ana[s] = v;
-                        if (_slot.TraceWanted) _slot.Trace(NameOf(s), SigKind.Analog, v, change.Source);
+                        if (TMode.On) { DispatchTraced(s, change, first, end, SigKind.Analog, oa: old, na: v); break; }
                         for (int e = first; e < end; e++)
                         {
                             var edge = _edges[e];
@@ -393,7 +483,7 @@ public sealed partial class LpzRuntime : IProgramRuntime
                         var v = change.Str ?? string.Empty;
                         var old = _ser[s];
                         _ser[s] = v;
-                        if (_slot.TraceWanted) _slot.Trace(NameOf(s), SigKind.Serial, v, change.Source);
+                        if (TMode.On) { DispatchTraced(s, change, first, end, SigKind.Serial, os: old, ns: v); break; }
                         for (int e = first; e < end; e++)
                         {
                             var edge = _edges[e];
@@ -405,7 +495,56 @@ public sealed partial class LpzRuntime : IProgramRuntime
                 }
             }
         }
-        finally { _solving = false; }
+    }
+
+    private void ReadMeta(in Pending change)
+    {
+        if (change.Meta >= 0)
+        {
+            var m = _meta[change.Meta];
+            _chSym = m.Sym; _chCause = m.CauseSig; _chDepth = m.Depth; _chChain = m.Chain;
+        }
+        else { _chSym = null; _chCause = -1; _chDepth = 0; _chChain = ++_chainSeq; } // outside the logic: a new chain
+    }
+
+    private void TraceChange(int s, SigKind kind, object value, in Pending change)
+    {
+        ReadMeta(change);
+        _slot.Trace(NameOf(s), kind, value, change.Source, _chSym,
+            _chSym != null && _chCause >= 0 ? NameOf(_chCause) : null, _chDepth, _chChain);
+    }
+
+    /// <summary>The dispatch loop while a debugger listens: same as Solve's, plus causality bookkeeping. Kept out of
+    /// Solve so the plain path stays small.</summary>
+    private void DispatchTraced(int s, in Pending change, int first, int end, SigKind kind,
+        bool od = false, bool nd = false, ushort oa = 0, ushort na = 0, string? os = null, string? ns = null)
+    {
+        TraceChange(s, kind, kind == SigKind.Digital ? SigValue.Box(nd) : kind == SigKind.Analog ? na : ns!, change);
+        for (int e = first; e < end; e++)
+        {
+            var edge = _edges[e];
+            Dispatching(edge.Node, s, change);
+            try
+            {
+                switch (kind)
+                {
+                    case SigKind.Digital: edge.Node.OnDigital(edge.Pin, od, nd); break;
+                    case SigKind.Analog: edge.Node.OnAnalog(edge.Pin, oa, na); break;
+                    default: edge.Node.OnSerial(edge.Pin, os!, ns!); break;
+                }
+            }
+            catch (Exception ex) { _slot.Log("Error", $"{edge.Node.Symbol}: {ex.Message}"); }
+        }
+        _dispOn = false;
+    }
+
+    private void Dispatching(Node node, int sig, in Pending change)
+    {
+        _dispOn = true;
+        _dispSym = node.SymId;
+        _dispCause = sig;
+        _dispDepth = _chDepth;
+        _dispChain = _chChain;
     }
 
     internal void Defer(Action a)
@@ -527,6 +666,8 @@ public sealed partial class LpzRuntime : IProgramRuntime
     {
         public LpzRuntime Runtime { get; } = rt;
         public BinSymbol Symbol { get; } = sym;
+        /// <summary>Graph symbol id (see <see cref="LpzRuntime.GetGraph"/>); set when the node is registered.</summary>
+        public string SymId { get; set; } = string.Empty;
         public abstract SigKind? InputKind(int pin);
         public abstract SigKind? OutputKind(int pin);
         public virtual bool WatchesOutputs => false;

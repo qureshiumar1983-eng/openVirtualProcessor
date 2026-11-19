@@ -28,6 +28,8 @@ has no program or its runtime cannot describe its wiring (SIMPL# programs).
 
 Signal names are exactly the names used by `GET /api/slots/{n}/signals` and by trace events.
 Unnamed internal signals keep whatever name the runtime already shows for them (e.g. `#123`).
+`inputs`/`outputs` keep pin order, so an unwired pin is an empty string `""`: skip those. Symbols with
+nothing wired are left out. SIMPL Windows symbol ids are `S<handle>`; compiled programs use the record path.
 
 ## 2. Causality on trace events
 
@@ -44,7 +46,7 @@ Unnamed internal signals keep whatever name the runtime already shows for them (
 How the runtimes fill them: while `Solve()` dispatches signal `s` to an edge's node, the runtime
 remembers `(node, s, depth(s), chain(s))`. Any `Enqueue` made during that call records the node's
 symbol id, `s`, `depth+1` and the chain. An `Enqueue` made with no node being dispatched (inputs,
-timers, deferred actions, start-up) starts a new chain at depth 0 with `symbol = null`.
+timers, deferred actions, start-up) starts a new chain at depth 0 with `symbol = null` (the chain id is assigned when the change is processed).
 
 Work deferred to a later wave or a timer counts as external (new chain). That's a known limit.
 

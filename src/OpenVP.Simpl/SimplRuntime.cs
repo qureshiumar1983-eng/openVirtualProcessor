@@ -45,7 +45,7 @@ public sealed class SimplOptions
 /// every symbol with that signal on an input is told, and their outputs drive further signals. All of it
 /// happens on the slot thread, one change at a time, in the order changes were made.
 /// </summary>
-public sealed class SimplRuntime : IProgramRuntime
+public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
 {
     private const int MaxStepsPerSolve = 200_000;
 
@@ -74,6 +74,15 @@ public sealed class SimplRuntime : IProgramRuntime
     private readonly TimerSet _timers;
     private bool _solving;
     private volatile bool _running;
+    // Causality (docs/debugger-paths.md section 2); only touched while a debugger is listening. While Solve hands
+    // handle h to an edge's node, _dispOn is set and _disp* say who is acting and why, so an Enqueue made by
+    // that node is stamped with its symbol id, h, depth + 1 and the chain.
+    private bool _dispOn;
+    private string? _dispSym;
+    private int _dispCause;
+    private int _dispDepth;
+    private long _dispChain;
+    private long _chainSeq;
 
     public SimplRuntime(ProgramSlot slot, SmwFile file, SymbolLibrary library, SimplOptions options)
     {
@@ -115,7 +124,21 @@ public sealed class SimplRuntime : IProgramRuntime
     private readonly record struct Edge(Node Node, int Pin);
 
     /// <summary>A queued change. Digital and analog keep their value in Num, serial in Str.</summary>
-    private readonly record struct Pending(int Handle, uint Num, string? Str, string Source);
+    /// <remarks>Digital and analog values fit in 16 bits, so while tracing the high 16 bits of Num hold 1 + an index
+    /// into _meta (causality); 0 means none. That keeps this struct at 24 bytes, which matters on the hot path.</remarks>
+    private readonly record struct Pending(int Handle, uint Num, string? Str, string Source)
+    {
+        public uint Value => Num & 0xFFFF;
+        public int Meta => (int)(Num >> 16) - 1;
+    }
+
+    private readonly record struct CauseInfo(string? Sym, int CauseHandle, int Depth, long Chain);
+    private CauseInfo[] _meta = new CauseInfo[16];
+    private int _metaCount;
+    // The change being processed (set by ReadMeta while tracing).
+    private string? _chSym;
+    private int _chCause, _chDepth;
+    private long _chChain;
 
     private void Flatten()
     {
@@ -298,13 +321,112 @@ public sealed class SimplRuntime : IProgramRuntime
         Solve();
     }
 
-    private void Enqueue(int handle, uint num, string? str, string source) => _pending.Enqueue(new Pending(handle, num, str, source));
+    private void Enqueue(int handle, uint num, string? str, string source)
+    {
+        // _dispOn is only set while tracing; everything else is queued plain and treated as external if traced.
+        if (_dispOn) EnqueueTraced(handle, num, str, source);
+        else _pending.Enqueue(new Pending(handle, num, str, source));
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private void EnqueueTraced(int handle, uint num, string? str, string source)
+    {
+        if (_metaCount >= 0xFFFF) { _pending.Enqueue(new Pending(handle, num, str, source)); return; } // too many to number: counts as external
+        if (_metaCount == _meta.Length) Array.Resize(ref _meta, _meta.Length * 2);
+        _meta[_metaCount] = new CauseInfo(_dispSym, _dispCause, _dispDepth + 1, _dispChain);
+        _pending.Enqueue(new Pending(handle, num | ((uint)(++_metaCount) << 16), str, source));
+    }
+
+    /// <summary>Graph symbol id: "S" + the symbol's handle.</summary>
+    internal static string SymbolId(SmwSymbol sym) => "S" + sym.Handle;
+
+    private void ReadMeta(in Pending change)
+    {
+        if (change.Meta >= 0)
+        {
+            var m = _meta[change.Meta];
+            _chSym = m.Sym; _chCause = m.CauseHandle; _chDepth = m.Depth; _chChain = m.Chain;
+        }
+        else { _chSym = null; _chCause = -1; _chDepth = 0; _chChain = ++_chainSeq; } // outside the logic: a new chain
+    }
+
+    private void TraceChange(int h, SigKind kind, object value, in Pending change)
+    {
+        ReadMeta(change);
+        _slot.Trace(_file.SignalName(h), kind, value, change.Source, _chSym,
+            _chSym != null && _chCause > 0 ? _file.SignalName(_chCause) : null, _chDepth, _chChain);
+    }
+
+    /// <summary>The dispatch loop while a debugger listens: same as Solve's, plus causality bookkeeping. Kept out of
+    /// Solve so the plain path stays small.</summary>
+    private void DispatchTraced(int h, in Pending change, int first, int end, SigKind kind,
+        bool od = false, bool nd = false, ushort oa = 0, ushort na = 0, string? os = null, string? ns = null)
+    {
+        TraceChange(h, kind, kind == SigKind.Digital ? SigValue.Box(nd) : kind == SigKind.Analog ? na : ns!, change);
+        for (int e = first; e < end; e++)
+        {
+            var edge = _edges[e];
+            Dispatching(edge.Node, h, change);
+            try
+            {
+                switch (kind)
+                {
+                    case SigKind.Digital: edge.Node.OnDigital(edge.Pin, od, nd); break;
+                    case SigKind.Analog: edge.Node.OnAnalog(edge.Pin, oa, na); break;
+                    default: edge.Node.OnSerial(edge.Pin, os!, ns!); break;
+                }
+            }
+            catch (Exception ex) { _slot.Log("Error", $"{edge.Node.Symbol}: {ex.Message}"); }
+        }
+        _dispOn = false;
+    }
+
+    private void Dispatching(Node node, int handle, in Pending change)
+    {
+        _dispOn = true;
+        _dispSym = SymbolId(node.Symbol);
+        _dispCause = handle;
+        _dispDepth = _chDepth;
+        _dispChain = _chChain;
+    }
+
+    public ProgramGraph GetGraph()
+    {
+        var symbols = new List<GraphSymbol>();
+        var seen = new Dictionary<string, SigKind>(StringComparer.Ordinal);
+        string Pin(int h) => h > 0 ? _file.SignalName(h) : "";
+        foreach (var sym in _file.Symbols.Values.OrderBy(s => s.Handle))
+        {
+            if (!sym.Inputs.Concat(sym.Outputs).Any(h => h > 0)) continue; // structural symbols with nothing wired
+            foreach (var h in sym.Inputs.Concat(sym.Outputs))
+                if (h > 0) seen.TryAdd(_file.SignalName(h), KindOf(h));
+            var parent = _file.Symbols.GetValueOrDefault(sym.Parent);
+            var id = SymbolId(sym);
+            symbols.Add(new GraphSymbol(id, sym.Name, id, parent?.Name ?? "", IsDevice(sym),
+                sym.Inputs.Select(Pin).ToList(), sym.Outputs.Select(Pin).ToList()));
+        }
+        return new ProgramGraph(Kind, symbols, seen.Select(kv => new GraphSignal(kv.Key, kv.Value.ToString())).ToList());
+    }
+
+    private interface ITraceMode { static abstract bool On { get; } }
+    private struct Plain : ITraceMode { public static bool On => false; }
+    private struct Traced : ITraceMode { public static bool On => true; }
 
     private void Solve()
     {
         if (_solving) return;
         _solving = true;
         try
+        {
+            // Two copies of the loop, picked once per solve: the plain one has no tracing code in it at all,
+            // so having a debugger feature costs nothing when none is open.
+            if (_slot.TraceWanted) SolveLoop<Traced>(); else SolveLoop<Plain>();
+        }
+        finally { _solving = false; _dispOn = false; if (_pending.Count == 0) _metaCount = 0; }
+    }
+
+    private void SolveLoop<TMode>() where TMode : struct, ITraceMode
+    {
         {
             var steps = 0;
             while (_pending.Count > 0)
@@ -322,11 +444,11 @@ public sealed class SimplRuntime : IProgramRuntime
                 {
                     case SigKind.Digital:
                     {
-                        var v = change.Num != 0;
+                        var v = change.Value != 0;
                         var old = _dig[h];
                         if (old == v) continue;
                         _dig[h] = v;
-                        if (_slot.TraceWanted) _slot.Trace(_file.SignalName(h), SigKind.Digital, SigValue.Box(v), change.Source);
+                        if (TMode.On) { DispatchTraced(h, change, first, end, SigKind.Digital, od: old, nd: v); break; }
                         for (int e = first; e < end; e++)
                         {
                             var edge = _edges[e];
@@ -337,11 +459,11 @@ public sealed class SimplRuntime : IProgramRuntime
                     }
                     case SigKind.Analog:
                     {
-                        var v = (ushort)change.Num;
+                        var v = (ushort)change.Value;
                         var old = _ana[h];
                         if (old == v) continue;
                         _ana[h] = v;
-                        if (_slot.TraceWanted) _slot.Trace(_file.SignalName(h), SigKind.Analog, v, change.Source);
+                        if (TMode.On) { DispatchTraced(h, change, first, end, SigKind.Analog, oa: old, na: v); break; }
                         for (int e = first; e < end; e++)
                         {
                             var edge = _edges[e];
@@ -356,7 +478,7 @@ public sealed class SimplRuntime : IProgramRuntime
                         var v = change.Str ?? string.Empty;
                         var old = _ser[h];
                         _ser[h] = v;
-                        if (_slot.TraceWanted) _slot.Trace(_file.SignalName(h), SigKind.Serial, v, change.Source);
+                        if (TMode.On) { DispatchTraced(h, change, first, end, SigKind.Serial, os: old, ns: v); break; }
                         for (int e = first; e < end; e++)
                         {
                             var edge = _edges[e];
@@ -368,7 +490,6 @@ public sealed class SimplRuntime : IProgramRuntime
                 }
             }
         }
-        finally { _solving = false; }
     }
 
     internal IDisposable After(long ms, Action action)

@@ -302,10 +302,13 @@ function buildView() {
   }
   function addEdge(a, b) { const k = a + ">" + b; if (!emap.has(k)) { const e = { key: k, a, b, back: false }; emap.set(k, e); edges.push(e); } }
   // Edges between everything that made it into the view.
+  // A device (panel, EISC...) is an end of the maze, not a hop: in a cone, don't wire its far side back in,
+  // or every button whose feedback returns to the same panel would show up as a loop.
   for (const n of nodes) {
     if (n.type !== "sym") continue;
-    for (const i of n.sym.inputs) if (nmap.has("s:" + i)) addEdge("s:" + i, n.key);
-    for (const o of n.sym.outputs) if (nmap.has("s:" + o)) addEdge(n.key, "s:" + o);
+    const cutIn = n.dev && !cfg.whole && back, cutOut = n.dev && !cfg.whole && !back;
+    if (!cutIn) for (const i of n.sym.inputs) if (nmap.has("s:" + i)) addEdge("s:" + i, n.key);
+    if (!cutOut) for (const o of n.sym.outputs) if (nmap.has("s:" + o)) addEdge(n.key, "s:" + o);
   }
   // "more" nodes were wired above before the later nodes existed; make sure their edges point at real nodes.
   for (const e of edges) { e.na = nmap.get(e.a); e.nb = nmap.get(e.b); }

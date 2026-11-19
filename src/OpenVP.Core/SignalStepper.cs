@@ -1,7 +1,8 @@
 namespace OpenVP.Core;
 
 /// <summary>Where a stepping slot is stopped: the change that just happened, before anything reacts to it.</summary>
-public sealed record StepPause(long Step, DateTimeOffset Time, string Signal, SigKind Kind, object Value, string Source);
+public sealed record StepPause(long Step, DateTimeOffset Time, string Signal, SigKind Kind, object Value, string Source,
+    string? Symbol = null, string? Cause = null, int Depth = 0, long Chain = 0);
 
 /// <summary>A consistent copy of the stepper's state. Version goes up on every change, so clients can drop stale copies.</summary>
 public sealed record StepState(long Version, bool Enabled, bool OnlyBreakSignals, IReadOnlyList<string> BreakSignals, StepPause? Paused);
@@ -83,7 +84,7 @@ public sealed class SignalStepper
             // Another change is already being held (e.g. from a device thread): wait our turn.
             while (_paused != null && _enabled) Monitor.Wait(_gate);
             if (!Matches(e.Signal)) return;
-            mine = _paused = new StepPause(++_step, e.Time, e.Signal, e.Kind, e.Value, e.Source);
+            mine = _paused = new StepPause(++_step, e.Time, e.Signal, e.Kind, e.Value, e.Source, e.Symbol, e.Cause, e.Depth, e.Chain);
             _version++;
         }
         Changed?.Invoke(this);

@@ -115,11 +115,11 @@ public sealed class ProgramSlot : IDisposable
     /// </summary>
     public bool TraceWanted => _traced != null || Stepper.Enabled;
 
-    public void Trace(string signal, SigKind kind, object value, string source)
+    public void Trace(string signal, SigKind kind, object value, string source, string? symbol = null, string? cause = null, int depth = 0, long chain = 0)
     {
         var handlers = _traced;
         if (handlers == null && !Stepper.Enabled) return; // nobody listening: skip the record and the clock read
-        var e = new TraceEvent(DateTimeOffset.Now, Number, signal, kind, value, source);
+        var e = new TraceEvent(DateTimeOffset.Now, Number, signal, kind, value, source, symbol, cause, depth, chain);
         handlers?.Invoke(e);
         Stepper.OnChange(e); // blocks here while the debugger is stepping
     }
