@@ -58,44 +58,54 @@
   .tab small { color:var(--muted); margin-left:4px; }
   .tab.plus { color:var(--accent); font-weight:600; }
 
-  table { width:100%; border-collapse:collapse; table-layout:fixed; }
-  thead th { position:sticky; top:0; z-index:1; background:var(--head); color:var(--muted); font-weight:500; font-size:11px;
-             text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); border-right:1px solid var(--line); user-select:none; }
-  th.sortable { cursor:pointer; } th.sortable:hover { color:var(--text); }
-  td { padding:2px 6px; border-bottom:1px solid #1e242c; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  tbody tr:hover { background:#1a2029; }
-  tbody tr.sel { background:var(--sel); }
-  #sigs td:first-child, #sigs th:first-child { text-align:center; padding:2px 0; }
+  /* virtual lists: header + a body whose height is rows x row height; only the visible rows exist as elements */
+  .vlist { position:relative; --rh:26px; --hh:25px; }
+  #trace { --rh:22px; }
+  .vhead { position:sticky; top:0; z-index:2; display:grid; grid-template-columns:var(--cols); height:var(--hh); background:var(--head); }
+  .vhead .th { background:var(--head); color:var(--muted); font-weight:500; font-size:11px; text-align:left; padding:0 6px; line-height:calc(var(--hh) - 1px);
+               border-bottom:1px solid var(--line); border-right:1px solid var(--line); user-select:none; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; min-width:0; }
+  .th.sortable { cursor:pointer; } .th.sortable:hover { color:var(--text); }
+  .vbody { position:relative; contain:layout style; }
+  .row { position:absolute; left:0; right:0; top:0; height:var(--rh); display:grid; grid-template-columns:var(--cols); contain:layout style; }
+  .row > .c { padding:0 6px; line-height:calc(var(--rh) - 1px); border-bottom:1px solid #1e242c; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  .row:hover { background:#1a2029; }
+  .row.sel { background:var(--sel); }
+  #sigs { --cols:28px 28px minmax(0,1fr) 62px 40px 34%; }
+  #sigs .th:first-child, #sigs .row > .c:first-child { text-align:center; padding:0; }
+  #sigs input[type=checkbox] { margin:0; vertical-align:middle; }
+  #trace { --cols:52px 104px 76px minmax(0,1fr) 84px 24% 64px; }
   .k-Digital { color:var(--lo); } .k-Digital.high { color:var(--hi); font-weight:600; }
   .k-Analog { color:var(--ana); } .k-Serial { color:var(--ser); }
   .type { color:var(--muted); }
-  #sigs td.chg { color:var(--muted); text-align:right; font-size:11px; }
-  #trace td.n { color:var(--muted); text-align:right; }
-  #trace td.dt { color:var(--muted); text-align:right; }
-  #trace td.via { color:var(--muted); font-size:11px; }
-  #trace.nocause .via, #trace.nocause col.via { display:none; }
-  #trace tr.flash { animation: flash .6s ease-out; }
+  #sigs .c.chg { color:var(--muted); text-align:right; font-size:11px; }
+  #trace .c.n { color:var(--muted); text-align:right; }
+  #trace .c.dt { color:var(--muted); text-align:right; }
+  #trace .c.via { color:var(--muted); font-size:11px; }
+  #trace.nocause { --cols:52px 104px 76px minmax(0,1fr) 24% 64px; }
+  #trace.nocause .via { display:none; }
+  #trace .row.flash { animation: flash .6s ease-out; }
   @keyframes flash { from { background:#2a3b22; } to { background:transparent; } }
   .empty { padding:24px; color:var(--muted); text-align:center; }
 
   /* activity glow: two identical keyframes, swapped per change so the animation restarts without a reflow */
-  #sigs tr.g1 { animation: glow1 2s ease-out; } #sigs tr.g2 { animation: glow2 2s ease-out; }
+  #sigs .row.g1 { animation: glow1 2s ease-out; } #sigs .row.g2 { animation: glow2 2s ease-out; }
   @keyframes glow1 { from { background:rgba(127,224,177,.38); } to { background:transparent; } }
   @keyframes glow2 { from { background:rgba(127,224,177,.38); } to { background:transparent; } }
 
   /* tree view */
-  #sigs tr.folder td { background:#181e26; color:var(--text); cursor:pointer; user-select:none; font-weight:500; border-bottom:1px solid var(--line); }
-  #sigs tr.folder:hover td { background:#1d2531; }
-  #sigs tr.folder td { text-align:left; }
-  #sigs tr.folder .tw { display:inline-block; width:14px; color:var(--muted); }
-  #sigs tr.folder .fc { color:var(--muted); font-weight:400; margin-left:6px; font-size:11px; }
-  #sigs tr.folder .adot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-left:8px; background:transparent; vertical-align:middle; transition:background 1s; }
-  #sigs tr.folder.act .adot { background:var(--hi); transition:none; }
+  #sigs .row.folder { background:#181e26; cursor:pointer; user-select:none; font-weight:500; border-bottom:1px solid var(--line); }
+  #sigs .row.folder:hover { background:#1d2531; }
+  #sigs .row > .fcell { display:none; }
+  #sigs .row.folder > .c { display:none; }
+  #sigs .row.folder > .fcell { display:block; grid-column:1 / -1; line-height:calc(var(--rh) - 1px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-bottom:1px solid var(--line); }
+  #sigs .fcell .tw { display:inline-block; width:14px; color:var(--muted); }
+  #sigs .fcell .fc { color:var(--muted); font-weight:400; margin-left:6px; font-size:11px; }
+  #sigs .fcell .adot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-left:8px; background:transparent; vertical-align:middle; transition:background 1s; }
+  #sigs .row.folder.act .adot { background:var(--hi); transition:none; }
 
   /* causality bands in the trace (alternate per burst) */
-  #trace tbody tr.b1 { background:rgba(76,141,255,.07); }
-  #trace tbody tr.b1:hover { background:#1a2029; }
-  #trace td.cause-name .arrow { color:var(--muted); }
+  #trace .row.b1 { background:rgba(76,141,255,.07); }
+  #trace .row.b1:hover { background:#1a2029; }
 
   /* inline "drives / driven by" panel */
   .rel { border-top:1px solid var(--accent); background:#121820; max-height:min(240px, 40vh); overflow:auto; min-height:0; }
@@ -135,12 +145,20 @@
   .stepbar .what { flex:1; min-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .stepbar .what b { color:#fff; }
   .stepbar .hint { color:var(--muted); font-size:12px; }
-  #sigs td.b, #sigs th.b { text-align:center; padding:2px 0; }
+  #sigs .c.b, #sigs .th.b { text-align:center; padding:0; }
   #sigs input.brk { accent-color:var(--brk); }
-  tbody tr.hist, tbody tr.hist:hover { background:#182a40; box-shadow: inset 3px 0 0 var(--accent); }
+  .row.hist, .row.hist:hover { background:#182a40; box-shadow: inset 3px 0 0 var(--accent); }
   .stepbar.history { background:#15243a; color:#cfe0ff; }
-  td.past { font-style:italic; text-decoration: underline dotted var(--accent); }
-  tbody tr.paused, tbody tr.paused:hover { background:var(--pause); box-shadow: inset 3px 0 0 var(--brk); }
+  .past { font-style:italic; text-decoration: underline dotted var(--accent); }
+  .row.paused, .row.paused:hover { background:var(--pause); box-shadow: inset 3px 0 0 var(--brk); }
+
+  /* signal-name suggestions for the force box (replaces a 20k-entry datalist) */
+  .force { position:relative; }
+  #sugg { position:absolute; bottom:100%; z-index:11; max-height:280px; overflow:auto; background:#1b2129; border:1px solid var(--line); border-radius:6px 6px 0 0;
+          box-shadow:0 -8px 24px rgba(0,0,0,.45); padding:3px 0; }
+  #sugg div { padding:2px 10px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #sugg div:hover, #sugg div.on { background:var(--sel); }
+  #sugg .more { color:var(--muted); cursor:default; font-size:11px; } #sugg .more:hover { background:none; }
 
   /* context menu */
   #menu { position:fixed; z-index:10; min-width:170px; max-height:90vh; overflow:auto; background:#1b2129; border:1px solid var(--line); border-radius:6px; padding:4px 0;
@@ -157,8 +175,9 @@
     .title select, .toolbar select { max-width:100%; }
     #prog { flex-basis:100%; order:5; }
     #wavewrap { height:200px; }
-    #sigs col:nth-child(4), #sigs col:nth-child(5), #trace col.via { width:0 !important; }
-    #sigs tbody tr:not(.folder) td:nth-child(4), #sigs tbody tr:not(.folder) td:nth-child(5), #sigs th:nth-child(4), #sigs th:nth-child(5), #trace .via { padding:0; border:0; font-size:0; overflow:hidden; }
+    #sigs { --cols:28px 28px minmax(0,1fr) 0 0 34%; }
+    #trace, #trace.nocause { --cols:52px 104px 76px minmax(0,1fr) 0 24% 64px; }
+    #sigs .row:not(.folder) > .c:nth-child(4), #sigs .row:not(.folder) > .c:nth-child(5), #sigs .th:nth-child(4), #sigs .th:nth-child(5), #trace .via { padding:0; border:0; font-size:0; overflow:hidden; }
   }
 </style>
 </head>
@@ -232,12 +251,11 @@
       <span id="foldbtns" hidden><button id="fold" class="minibtn" title="Collapse every folder">⊟</button> <button id="unfold" class="minibtn" title="Expand every folder">⊞</button></span>
     </div>
     <div class="scroll" id="sigscroll">
-      <table id="sigs">
-        <colgroup><col style="width:28px"><col style="width:28px"><col><col style="width:62px"><col style="width:40px"><col style="width:34%"></colgroup>
-        <thead><tr><th title="Trace this signal">T</th><th class="b" title="Break: pause on changes to this signal when Break on = marked signals (F9)">⏸</th><th class="sortable" data-sort="name">Signal name</th><th class="sortable" data-sort="kind">Type</th><th class="sortable" data-sort="count" title="Number of changes seen">Chg</th><th>Value</th></tr></thead>
-        <tbody></tbody>
-      </table>
-      <div class="empty" id="sigempty" hidden>No program in this slot.</div>
+      <div id="sigs" class="vlist">
+        <div class="vhead"><div class="th" title="Trace this signal">T</div><div class="th b" title="Break: pause on changes to this signal when Break on = marked signals (F9)">⏸</div><div class="th sortable" data-sort="name">Signal name</div><div class="th sortable" data-sort="kind">Type</div><div class="th sortable" data-sort="count" title="Number of changes seen">Chg</div><div class="th">Value</div></div>
+        <div class="vbody" id="sigbody"></div>
+      </div>
+      <div class="empty" id="sigempty">Loading signals…</div>
       <div class="empty" id="signone" hidden>No signal matches.</div>
     </div>
     <div class="rel" id="rel" hidden>
@@ -257,11 +275,10 @@
       <label title="Show only the rows of the same burst (chain) as the clicked trace row"><input type="checkbox" id="burst"> this burst only</label>
     </div>
     <div class="scroll" id="tracescroll">
-      <table id="trace" class="nocause">
-        <colgroup><col style="width:52px"><col style="width:104px"><col style="width:76px"><col><col class="via" style="width:84px"><col style="width:24%"><col style="width:64px"></colgroup>
-        <thead><tr><th>#</th><th>Time</th><th title="Time since the row above it (among the rows the filter shows)">Δ</th><th>Signal name</th><th class="via" title="The program symbol whose output produced this change (hover a row for the signal that triggered it)">via</th><th>Value</th><th>Source</th></tr></thead>
-        <tbody></tbody>
-      </table>
+      <div id="trace" class="vlist nocause">
+        <div class="vhead"><div class="th">#</div><div class="th">Time</div><div class="th" title="Time since the row above it (among the rows the filter shows)">Δ</div><div class="th">Signal name</div><div class="th via" title="The program symbol whose output produced this change (hover a row for the signal that triggered it)">via</div><div class="th">Value</div><div class="th">Source</div></div>
+        <div class="vbody" id="tracebody"></div>
+      </div>
       <div class="empty" id="traceempty">Waiting for signal changes…</div>
     </div>
   </section>
@@ -274,8 +291,8 @@
 
 <div class="force">
   <b style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em">Force</b>
-  <input id="fname" class="name mono" placeholder="signal name (pick one in the list)" list="siglist">
-  <datalist id="siglist"></datalist>
+  <input id="fname" class="name mono" placeholder="signal name (pick one in the list)" autocomplete="off">
+  <div id="sugg" hidden></div>
   <input id="fval" class="val mono" placeholder="value: 1 · 500 · 1F4h · 50% · text\x0D">
   <button id="fset">Set</button><button id="fclear">Clear</button><button id="fpulse">Pulse</button>
   <span id="fmsg" class="muted"></span>
@@ -297,25 +314,44 @@
 openvpAuth.init();
 const $ = s => document.querySelector(s);
 const MAX_TRACE = 5000;
+const SIG_H = 26, TRACE_H = 22, HEAD_H = 25;      // fixed row heights (match --rh / --hh in the CSS)
 const store = {
   get(k, d) { try { const v = localStorage.getItem("openvp.dbg." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem("openvp.dbg." + k, JSON.stringify(v)); } catch { } }
 };
 const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+const coll = new Intl.Collator(undefined, { numeric: true });   // one shared collator: natural ("a2" < "a10") name order
+
+// A queue with O(1) push/shift/index, used for the trace, its filtered view and the change history.
+class Deque {
+  constructor() { this.a = []; this.h = 0; }
+  get length() { return this.a.length - this.h; }
+  get(i) { return this.a[this.h + i]; }
+  push(x) { this.a.push(x); }
+  shift() {
+    const x = this.a[this.h]; this.a[this.h++] = undefined;
+    if (this.h >= 2048 && this.h * 2 >= this.a.length) { this.a = this.a.slice(this.h); this.h = 0; }
+    return x;
+  }
+  clear() { this.a = []; this.h = 0; }
+  // index of the first element with cn >= target (elements are in ascending cn order)
+  lowerCn(cn) { let lo = 0, hi = this.length; while (lo < hi) { const m = (lo + hi) >> 1; if (this.get(m).cn < cn) lo = m + 1; else hi = m; } return lo; }
+}
 
 let slot = Number(new URLSearchParams(location.search).get("slot")) || 1;
 let ws = null, streaming = true, sortBy = store.get("sort", "name"), sortDir = store.get("sortdir", 1), selected = null;
 if (!["name", "kind", "recent", "count"].includes(sortBy)) sortBy = "name";
 if (sortBy === "recent" || sortBy === "count") sortDir = -1; else if (sortDir !== -1) sortDir = 1;
-let signals = new Map();      // name -> { name, lname, kind, value, watch, brk, lastChange, changeCount, tr, valTd, chk, ... }
-let trace = [];               // { n, time, signal, kind, value, source, symbol, cause, depth, chain, tr }
-let seq = 0, firstTime = null, pending = [], rafQueued = false, refreshTimer = null;
+let signals = new Map();      // name -> { name, lname, kind, value, watch, brk, lastChange, changeCount, ... } (plain model; rows are drawn on demand)
+const trace = new Deque();    // { cn, n, time, signal, name, lname, kind, value, source, symbol, cause, depth, chain, band }, oldest first, at most MAX_TRACE
+const tview = new Deque();    // the events of `trace` that pass the trace filter (same order)
+let seq = 0, firstTime = null, refreshTimer = null, reloadFull = false;
 // Step-through state, mirrored from the server (which owns it: the pause happens in the logic engine).
 let currentState = "—", stepVersion = -1;
 // Step-back history (page-side). Every change is logged with the value it replaced, and every pause
 // remembers which change it stopped on, so values at any earlier step can be rebuilt by undoing later changes.
 const MAX_CHANGES = 50000;
-let changes = [], cseq = 0;   // { cn, time, signal, prev, value }
+const changes = new Deque(); let cseq = 0;   // { cn, time, signal, prev, value }
 let stepLog = [];             // { step, signal, kind, value, source, cn }
 let view = null, viewVals = null; // index into stepLog while looking back; null = live
 let step = { enabled: false, onlyBreakSignals: false, breakSignals: new Set(), paused: null }, stepSynced = false;
@@ -437,30 +473,91 @@ function compileQuery(text) {
   return { usesValue, test: o => { for (let i = 0; i < terms.length; i++) if (!terms[i](o)) return false; return true; } };
 }
 
-// ---------------------------------------------------------------- program graph
+// ---------------------------------------------------------------- program graph (lives in a worker)
+// The graph is megabytes of JSON. It is fetched here as raw bytes, handed to a worker that parses it and answers the few
+// questions the page has about it (which folder a signal belongs to, what drives it, its neighbours), so the page never
+// stalls on it. If workers are unavailable the same code runs on the page, on a timer.
 
-let graph = null;   // { symbols, bySig: Map name -> {out:[sym], in:[sym]} } or null when the server can't describe the program
-const CONST_SIGS = new Set(["0", "1"]);
-function setGraph(g) {
-  if (!g || !Array.isArray(g.symbols)) { graph = null; return; }
-  const bySig = new Map(), slotFor = n => { let e = bySig.get(n); if (!e) bySig.set(n, e = { out: [], in: [] }); return e; };
-  for (const sym of g.symbols) {
-    for (const n of sym.outputs || []) if (!CONST_SIGS.has(n)) slotFor(n).out.push(sym);
-    for (const n of sym.inputs || []) if (!CONST_SIGS.has(n)) slotFor(n).in.push(sym);
-  }
-  graph = { symbols: g.symbols, bySig };
+function graphWorkerMain(self) {
+  let bySig = null;
+  const SKIP = new Set(["", "0", "1"]);     // unwired pins and constants carry no wiring
+  const slotFor = n => { let e = bySig.get(n); if (!e) bySig.set(n, e = { out: [], in: [] }); return e; };
+  const sym = s => ({ name: s.name, path: s.path, device: !!s.device });
+  const pins = (s, k) => (s[k] || []).filter(n => n !== "");
+  self.onmessage = ev => {
+    const { id, type, a } = ev.data; let r = null;
+    try {
+      if (type === "load") {
+        bySig = null;
+        if (a) {
+          const g = JSON.parse(new TextDecoder().decode(a));
+          if (g && Array.isArray(g.symbols)) {
+            bySig = new Map();
+            for (const s of g.symbols) {
+              for (const n of s.outputs || []) if (!SKIP.has(n)) slotFor(n).out.push(s);
+              for (const n of s.inputs || []) if (!SKIP.has(n)) slotFor(n).in.push(s);
+            }
+            r = { symbols: g.symbols.length };
+          }
+        }
+      } else if (type === "clear") { bySig = null; }
+      else if (type === "place") {
+        // the symbol a signal "belongs" to for the tree: a device it is attached to, else any symbol that has a module path
+        r = a.map(name => {
+          const e = bySig && bySig.get(name); if (!e) return null;
+          const all = e.out.concat(e.in);
+          const d = all.find(s => s.device); if (d) return [1, d.path, d.name];
+          const g = all.find(s => s.group); return g ? [2, g.group] : null;
+        });
+      } else if (type === "near") {
+        const set = new Set([a]), e = bySig && bySig.get(a);
+        if (e) for (const s of e.out.concat(e.in)) { for (const n of pins(s, "inputs")) set.add(n); for (const n of pins(s, "outputs")) set.add(n); }
+        r = [...set];
+      } else if (type === "related") {
+        const e = bySig && bySig.get(a.name), syms = e ? (a.dir === "drivers" ? e.out : e.in) : [];
+        r = { count: syms.length, syms: syms.slice(0, 200).map(s => { const o = pins(s, a.dir === "drivers" ? "inputs" : "outputs"); return { ...sym(s), others: o.slice(0, 60), total: o.length }; }) };
+      }
+    } catch (err) { self.postMessage({ id, error: String(err && err.message || err) }); return; }
+    self.postMessage({ id, result: r });
+  };
 }
-// The symbol a signal "belongs" to for the tree: a device it is attached to, else any symbol that has a module path.
-function symOf(name) {
-  const e = graph && graph.bySig.get(name); if (!e) return null;
-  const all = e.out.concat(e.in);
-  return all.find(s => s.device) || all.find(s => s.group) || null;
+const gw = (() => {
+  let nextId = 0; const waiting = new Map();
+  const done = m => { const w = waiting.get(m.id); if (!w) return; waiting.delete(m.id); if (m.error) w.reject(new Error(m.error)); else w.resolve(m.result); };
+  let worker = null, inline = null;
+  try {
+    worker = new Worker(URL.createObjectURL(new Blob(["(" + graphWorkerMain.toString() + ")(self)"], { type: "text/javascript" })));
+    worker.onmessage = ev => done(ev.data);
+    worker.onerror = () => { for (const [, w] of waiting) w.reject(new Error("graph worker failed")); waiting.clear(); };
+  } catch { worker = null; inline = { onmessage: null, postMessage: done }; graphWorkerMain(inline); }
+  return (type, a, transfer) => new Promise((resolve, reject) => {
+    const id = ++nextId; waiting.set(id, { resolve, reject });
+    if (worker) worker.postMessage({ id, type, a }, transfer || []);
+    else setTimeout(() => inline.onmessage({ data: { id, type, a } }), 0);
+  });
+})();
+let graphReady = false, graphGen = 0, nearSet = null, nearFor = null;
+
+let graphLoading = false;
+async function loadGraph() {
+  const my = ++graphGen; graphReady = false; graphLoading = true; nearSet = null;
+  let buf = null, res = null;
+  try {
+    const r = await fetch(`/api/slots/${slot}/graph?compact=1`);   // an older server ignores ?compact and sends the full form
+    if (openvpAuth.check(r)) { graphLoading = false; return; }
+    if (r.ok) buf = await r.arrayBuffer();
+  } catch { }
+  if (my !== graphGen) return;
+  try { res = await gw("load", buf, buf ? [buf] : []); } catch { }
+  if (my !== graphGen) return;
+  graphReady = !!res; graphLoading = false;
+  if (viewMode === "tree") buildTreeThen(); else tree = null;   // folders now come from the program structure
+  if (graphReady && followMode === "near") refreshNear();
 }
-// Signals one symbol away from `name`: every pin of every symbol it connects to.
-function neighbours(name) {
-  const set = new Set([name]); const e = graph && graph.bySig.get(name); if (!e) return set;
-  for (const sym of e.out.concat(e.in)) { for (const n of sym.inputs || []) set.add(n); for (const n of sym.outputs || []) set.add(n); }
-  return set;
+function refreshNear() {
+  const name = selected;
+  if (followMode !== "near" || !name || !graphReady) { nearSet = null; return; }
+  gw("near", name).then(arr => { if (selected === name && followMode === "near") { nearSet = new Set(arr); nearFor = name; applyTraceFilter(); } }, () => { });
 }
 
 // ---------------------------------------------------------------- watch groups (tabs)
@@ -510,132 +607,232 @@ function tabMenu(x, y, name) {
       groups = new Map([...groups].map(([k, v]) => [k === name ? n : k, v]));
       if (activeTab === name) activeTab = n; saveGroups(); renderTabs();
     }],
-    ["Add checked signals", () => { for (const s of signals.values()) if (s.watch) groups.get(name).add(s.name); saveGroups(); renderTabs(); applyFilter(); }],
+    ["Add checked signals", () => { for (const s of watched) groups.get(name).add(s.name); saveGroups(); renderTabs(); applyFilter(); }],
     ["Add shown signals", () => { for (const s of signals.values()) if (s.vis) groups.get(name).add(s.name); saveGroups(); renderTabs(); applyFilter(); }],
     ["Empty group", () => { groups.get(name).clear(); saveGroups(); renderTabs(); applyFilter(); }],
     ["-"],
     ["Delete group", () => { groups.delete(name); if (activeTab === name) activeTab = null; saveGroups(); renderTabs(); applyFilter(); }]]);
 }
 
-// ---------------------------------------------------------------- signal list
+// ---------------------------------------------------------------- virtual list
+// Only the rows in (and just around) the viewport exist as elements. They are recycled as the list scrolls: row i always
+// lives in pool slot i % P, so scrolling by one row rebinds one element. `get(i)` yields the item for row i; `bind(el, item, i)`
+// paints it. Items remember their element in `_el` so a single changed row can be repainted without touching the others.
 
+class VList {
+  constructor(scroll, body, rowH, makeRow, bind, get) {
+    this.scroll = scroll; this.body = body; this.rowH = rowH; this.makeRow = makeRow; this.bind = bind; this.get = get;
+    this.pool = []; this.n = 0; this.P = 0; this.force = true; this.vh = scroll.clientHeight || 600; this.over = 8; this.st = 0;
+    if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => { this.vh = scroll.clientHeight; requestFrame(); }).observe(scroll);
+    scroll.addEventListener("scroll", requestFrame, { passive: true });
+  }
+  setCount(n) { if (n !== this.n) { this.n = n; this.body.style.height = n * this.rowH + "px"; } }
+  invalidate() { this.force = true; }
+  maxScroll() { return Math.max(0, HEAD_H + this.n * this.rowH - this.vh); }
+  readScroll() { this.st = this.scroll.scrollTop; }
+  hide(el) {
+    if (el._h) return; el._h = true; el.style.display = "none";
+    const old = el._item; if (old && old._el === el) old._el = null; el._item = null; el._i = -1;
+  }
+  render() {
+    const { rowH, over, n, pool } = this, st = this.st;
+    const P = Math.ceil(this.vh / rowH) + 2 + over * 2;
+    if (P !== this.P) { this.P = P; this.force = true; }
+    while (pool.length < P) { const el = this.makeRow(); el._i = -1; el._h = true; el.style.display = "none"; this.body.appendChild(el); pool.push(el); }
+    const first = Math.max(0, Math.min(Math.floor((st - HEAD_H) / rowH) - over, n - P)), last = Math.min(n, first + P);
+    for (let i = first; i < last; i++) {
+      const el = pool[i % P], it = this.get(i);
+      if (el._i === i && el._item === it && !this.force) continue;
+      const old = el._item; if (old && old !== it && old._el === el) old._el = null;
+      el._item = it; it._el = el; el._i = i;
+      if (el._y !== i) { el.style.transform = `translateY(${i * rowH}px)`; el._y = i; }
+      if (el._h) { el.style.display = ""; el._h = false; }
+      this.bind(el, it, i);
+    }
+    for (let j = Math.max(0, last - first); j < pool.length; j++) this.hide(pool[j]);   // unused slots (short list) or beyond the pool size
+    this.force = false;
+  }
+  repaint(it) { const el = it._el; if (el && el._item === it) this.bind(el, it, el._i); }
+  // Scroll so row i is visible: "nearest" moves as little as possible, "center" puts it in the middle.
+  reveal(i, how) {
+    if (i < 0) return;
+    const top = HEAD_H + i * this.rowH, st = this.scroll.scrollTop, vh = this.scroll.clientHeight;
+    let t = st;
+    if (how === "center") t = top - HEAD_H - ((vh - HEAD_H) - this.rowH) / 2;
+    else if (top < st + HEAD_H) t = top - HEAD_H;
+    else if (top + this.rowH > st + vh) t = top + this.rowH - vh;
+    t = Math.max(0, Math.round(t));
+    if (t !== st) { this.scroll.scrollTop = t; requestFrame(); }
+  }
+}
+
+// One animation frame does all the DOM work; everything else only updates the model and calls requestFrame().
+let frameQueued = false, frameNo = 0, structDirty = false, lastStruct = 0;
+function requestFrame() { if (!frameQueued) { frameQueued = true; requestAnimationFrame(frame); } }
+function frame() {
+  frameQueued = false; frameNo++;
+  sigList.readScroll(); traceList.readScroll();          // reads first, then writes
+  if (structDirty && performance.now() - lastStruct > 250) restructure();
+  flushActivity();
+  flushTraceModel();
+  sigList.render(); traceList.render();
+  for (const e of fresh) e.fresh = false;                 // a new row flashes once, and only when few rows arrive at a time
+  fresh = []; newCount = 0;
+}
+// Does `value` text/format matter? Repaint everything that is on screen.
+function repaintAll() { sigList.invalidate(); traceList.invalidate(); requestFrame(); }
+
+// ---------------------------------------------------------------- signal list (model)
+
+let watched = new Set();     // signals checked for tracing
+let watchNames = new Set();  // their names (persisted; also covers signals not in the list right now)
+let marked = new Set();      // signals marked to break on
 function watchKey() { return "watch." + slot; }
-function saveWatch() { store.set(watchKey(), [...signals.values()].filter(s => s.watch).map(s => s.name)); }
+const saveWatchSoon = debounce(() => store.set(watchKey(), [...watchNames]), 300);
+addEventListener("pagehide", () => store.set(watchKey(), [...watchNames]));
+function setWatch(s, v) { s.watch = v; if (v) { watched.add(s); watchNames.add(s.name); } else { watched.delete(s); watchNames.delete(s.name); } }
+function setBrk(s, v) { s.brk = v; if (v) marked.add(s); else marked.delete(s); }
 // Anything that changes which signals are checked for tracing lands here.
-function watchChanged() { saveWatch(); applyFilter(); renderTabs(); scheduleLanes(); }
+function watchChanged() {
+  saveWatchSoon();
+  if ($("#onlychecked").checked) applyFilter(); else { updateCounts(); sigList.invalidate(); requestFrame(); }
+  renderTabs(); scheduleLanes();
+}
 
-async function loadSignals() {
-  const [list, g] = await Promise.all([api(`/api/slots/${slot}/signals`).catch(() => []), api(`/api/slots/${slot}/graph`).catch(() => null)]);
-  setGraph(g);
-  const watched = new Set(store.get(watchKey(), []));
-  const old = signals;
-  signals = new Map();
-  for (const s of list) {
-    const prev = old.get(s.name);
-    signals.set(s.name, { name: s.name, lname: s.name.toLowerCase(), kind: s.kind, value: s.value, watch: prev ? prev.watch : watched.has(s.name), brk: step.breakSignals.has(s.name),
-                          lastChange: prev ? prev.lastChange : 0, changeCount: prev ? prev.changeCount : 0 });
+let sigIdx = 0, rankDirty = true, byNameArr = [];
+function newSignal(name, kind, value, prev) {
+  return { name, lname: name.toLowerCase(), kind, value, watch: false, brk: false, lastChange: prev ? prev.lastChange : 0, changeCount: prev ? prev.changeCount : 0,
+           idx: sigIdx++, nr: 0, vis: true, ri: -1, folder: null, label: name, depth: 0, g: false, glowT: 0, _el: null };
+}
+// A signal the list does not contain (the server's /signals hides internal module signals but traces them): add it to the
+// model on the spot; it is never a reason to reload anything.
+function addLazy(name, kind, value) {
+  const s = newSignal(name, kind, value);
+  if (watchNames.has(name)) { s.watch = true; watched.add(s); }
+  if (step.breakSignals.has(name)) { s.brk = true; marked.add(s); }
+  signals.set(name, s); rankDirty = true; structDirty = true; lazyQ.push(s);
+  return s;
+}
+let lazyQ = [];
+
+let loadGen = 0, loadedFile;
+async function loadSignals(full = true) {
+  const my = ++loadGen, mySlot = slot;
+  if (full && !signals.size) { $("#sigempty").textContent = "Loading signals…"; $("#sigempty").hidden = false; }
+  let list;
+  try { list = await api(`/api/slots/${slot}/signals`); } catch { list = []; }
+  if (my !== loadGen || mySlot !== slot) return;
+  if (!Array.isArray(list)) list = [];
+  if (full) {
+    if (list.length > 3000) {   // let the "loading" state paint before the (short) model build
+      $("#sigempty").textContent = `Loading ${list.length.toLocaleString()} signals…`; $("#sigempty").hidden = false;
+      await new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+      if (my !== loadGen || mySlot !== slot) return;
+    }
+    const old = signals; signals = new Map(); watched = new Set(); marked = new Set(); sigIdx = 0; lazyQ = [];
+    for (const s of list) {
+      const n = newSignal(s.name, s.kind, s.value, old.get(s.name));
+      const prev = old.get(s.name);
+      if (prev ? prev.watch : watchNames.has(s.name)) setWatch(n, true);
+      if (step.breakSignals.has(s.name)) setBrk(n, true);
+      signals.set(s.name, n);
+    }
+    rankDirty = true; tree = null;
+    $("#sigempty").textContent = "No program in this slot.";
+    $("#sigempty").hidden = signals.size > 0;
+    reorder(); applyFilter();
+    scheduleLanes();
+    loadGraph();             // the tree (if shown) is built once the graph has arrived
+  } else {
+    // start/stop: same program, refresh the values (and pick up signals we have not met yet)
+    for (const s of list) { const o = signals.get(s.name); if (o) o.value = s.value; else addLazy(s.name, s.kind, s.value); }
+    repaintAll();
+    if (curQuery?.usesValue) applyFilter();
   }
-  buildSignalTable();
-  scheduleLanes();
+  updateCounts();
 }
 
-function sortedSignals() {
-  const arr = [...signals.values()], nm = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true });
-  let cmp;
-  if (sortBy === "kind") cmp = (a, b) => a.kind.localeCompare(b.kind) || nm(a, b);
-  else if (sortBy === "recent") cmp = (a, b) => (a.lastChange - b.lastChange) || nm(b, a);   // dir -1 => newest first, then by name
-  else if (sortBy === "count") cmp = (a, b) => (a.changeCount - b.changeCount) || nm(b, a);
-  else cmp = nm;
-  return arr.sort((a, b) => cmp(a, b) * sortDir);
+// ---- ordering. Ranks are computed once with the collator, so every later sort compares plain numbers.
+function ensureRanks() {
+  if (!rankDirty) return;
+  rankDirty = false;
+  byNameArr = [...signals.values()].sort((a, b) => coll.compare(a.name, b.name));
+  for (let i = 0; i < byNameArr.length; i++) byNameArr[i].nr = i;
 }
-
-function buildSignalTable() {
-  const dl = document.createDocumentFragment();
-  tree = null;
-  for (const s of signals.values()) {
-    const tr = document.createElement("tr");
-    const chk = document.createElement("input"); chk.type = "checkbox"; chk.checked = s.watch;
-    chk.onclick = e => { e.stopPropagation(); s.watch = chk.checked; watchChanged(); };
-    const c0 = document.createElement("td"); c0.appendChild(chk);
-    const bchk = document.createElement("input"); bchk.type = "checkbox"; bchk.className = "brk"; bchk.checked = s.brk; bchk.title = "Break on this signal";
-    bchk.onclick = e => { e.stopPropagation(); setBreak(s, bchk.checked); };
-    const cb = document.createElement("td"); cb.className = "b"; cb.appendChild(bchk);
-    const c1 = document.createElement("td"); c1.className = "mono"; c1.textContent = s.name; c1.title = s.name;
-    const c2 = document.createElement("td"); c2.className = "type"; c2.textContent = s.kind;
-    const cc = document.createElement("td"); cc.className = "chg mono"; cc.textContent = s.changeCount || "";
-    const c3 = document.createElement("td");
-    tr.append(c0, cb, c1, c2, cc, c3);
-    tr.onclick = () => selectSignal(s.name);
-    tr.ondblclick = () => { if (s.kind === "Digital") force(s.name, isHigh(s.value) ? 0 : 1); else { selectSignal(s.name); $("#fval").focus(); } };
-    tr.oncontextmenu = e => { e.preventDefault(); selectSignal(s.name); showMenu(e.clientX, e.clientY, s); };
-    Object.assign(s, { tr, valTd: c3, chk, bchk, nameTd: c1, chgTd: cc, folder: null, label: s.name, vis: true, g: false });
-    paintValue(s);
-    const o = document.createElement("option"); o.value = s.name; dl.appendChild(o);
+let order = [];        // every signal in the chosen order
+let seqItems = [];     // tree: signals and folders in display order (before filtering)
+let lastLayout = 0;
+function reorder() {
+  lastLayout = performance.now();
+  ensureRanks();
+  if (sortBy === "name") order = sortDir > 0 ? byNameArr.slice() : byNameArr.slice().reverse();
+  else if (sortBy === "kind") order = byNameArr.slice().sort((a, b) => (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0) * sortDir || (a.nr - b.nr) * sortDir);
+  else if (sortBy === "recent") order = byNameArr.slice().sort((a, b) => (b.lastChange - a.lastChange) || (a.nr - b.nr));   // newest first, then by name
+  else order = byNameArr.slice().sort((a, b) => (b.changeCount - a.changeCount) || (a.nr - b.nr));
+  seqItems = [];
+  if (viewMode === "tree" && tree) {
+    const t = tree;
+    for (const f of t.folders) { f.items = []; f.agg = 0; }
+    for (const s of order) {
+      if (!s.folder) continue;
+      s.folder.items.push(s);
+      for (let f = s.folder; f && f !== t.root; f = f.parent) f.agg = sortBy === "recent" ? Math.max(f.agg, s.lastChange) : f.agg + s.changeCount;
+    }
+    const fcmp = sortBy === "recent" || sortBy === "count" ? (a, b) => (b.agg - a.agg) || coll.compare(a.label, b.label) : (a, b) => coll.compare(a.label, b.label);
+    const emit = f => {
+      if (f !== t.root) seqItems.push(f);
+      if (f.kids.length > 1) f.kids.sort(fcmp);
+      for (const k of f.kids) emit(k);
+      for (const s of f.items) seqItems.push(s);
+    };
+    emit(t.root);
   }
-  $("#siglist").replaceChildren(dl);
-  layout();
-  if (selected && signals.has(selected)) signals.get(selected).tr.classList.add("sel");
-  if (step.paused && signals.has(step.paused.signal)) signals.get(step.paused.signal).tr.classList.add("paused");
-  syncSortUi();
-  $("#sigempty").hidden = signals.size > 0;
-  applyFilter();
-}
-
-function syncSortUi() {
-  document.querySelectorAll("#sigs th.sortable").forEach(th =>
-    th.textContent = th.textContent.replace(/ [▲▼]$/, "") + (th.dataset.sort === sortBy ? (sortDir > 0 ? " ▲" : " ▼") : ""));
-  $("#sortsel").value = sortBy;
-}
-
-function paintValue(s) {
-  if (!s.valTd) return;
-  const past = viewVals && viewVals.has(s.name) && viewVals.get(s.name) !== undefined;
-  const v = past ? viewVals.get(s.name) : s.value;
-  s.valTd.className = valClass(s.kind, v) + (past && fmt(s.kind, v) !== fmt(s.kind, s.value) ? " past" : "");
-  s.valTd.textContent = fmt(s.kind, v);
-  s.valTd.title = past ? `At this step: ${fmt(s.kind, v)} · now: ${fmt(s.kind, s.value)}` : s.kind === "Serial" ? fmt(s.kind, v) : "";
 }
 
 // ---- tree: folders are built once per signal list / graph, then only shown, hidden and re-ordered.
 let viewMode = store.get("view", "flat") === "tree" ? "tree" : "flat";
-let tree = null;                        // { root, folders[] }
+let tree = null, treeBuilding = null;   // tree = { root, folders[], byKey, child() }
 let collapsedMap = {};                  // folder key -> bool (explicit choices)
 const collapsedKey = () => "collapsed." + slot;
 const litFolders = new Set();
 
-function ensureTree() { return tree || (tree = buildTree()); }
+function buildTreeThen() {
+  if (treeBuilding) return treeBuilding;
+  const gen = loadGen;
+  return treeBuilding = buildTree(gen).then(() => {
+    treeBuilding = null;
+    if (gen !== loadGen || !tree) return;
+    reorder(); applyFilter();
+    const miss = [...signals.values()].filter(s => !s.folder);      // signals that appeared while the tree was being built
+    if (miss.length) placeLazy(miss);
+    if (graphReady && !tree.usedGraph) buildTreeThen();               // the graph arrived meanwhile: rebuild with it
+  }, () => { treeBuilding = null; });
+}
 
-function buildTree() {
+async function buildTree(gen) {
+  const names = [...signals.keys()];
+  let pl = null;
+  if (graphReady && names.length) { try { pl = await gw("place", names); } catch { } }
+  const place = new Map();
+  if (pl) for (let i = 0; i < names.length; i++) if (pl[i]) place.set(names[i], pl[i]);
   const folders = [], byKey = new Map();
   const bigDefault = signals.size > 300;   // big programs start collapsed
   const mk = (key, label, parent, title) => {
-    const f = { key, label, parent, depth: parent ? parent.depth + 1 : 0, kids: [], items: [], total: 0, vis: 0, last: 0, lit: false, agg: 0, closed: false,
+    const f = { isFolder: true, key, label, title: title || "", parent, depth: parent ? parent.depth + 1 : 0, kids: [], items: [], total: 0, vis: 0, last: 0, lit: false, agg: 0, closed: false, ri: -1, _el: null,
                 collapsed: key in collapsedMap ? collapsedMap[key] : bigDefault };
-    if (parent) {
-      parent.kids.push(f);
-      const tr = document.createElement("tr"); tr.className = "folder";
-      const td = document.createElement("td"); td.colSpan = 6; td.style.paddingLeft = (6 + (f.depth - 1) * 14) + "px";
-      td.innerHTML = '<span class="tw"></span><span class="fl"></span><span class="fc mono"></span><i class="adot"></i>';
-      td.querySelector(".fl").textContent = label; if (title) td.title = title;
-      tr.appendChild(td); tr.onclick = () => toggleFolder(f);
-      f.tr = tr; f.tw = td.querySelector(".tw"); f.fc = td.querySelector(".fc");
-      folders.push(f);
-    }
+    if (parent) { parent.kids.push(f); folders.push(f); }
     byKey.set(key, f); return f;
   };
   const root = mk("", "", null);
   const child = (parent, key, label, title) => byKey.get(key) || mk(key, label, parent, title);
   const put = (f, s, label) => { s.folder = f; s.label = label; s.depth = f.depth; for (let p = f; p; p = p.parent) p.total++; };
+  for (const s of signals.values()) s.folder = null;
   const loose = [];
   for (const s of signals.values()) {
-    const sym = graph ? symOf(s.name) : null;
-    if (sym && sym.device) {
-      const top = child(root, "Devices", "Devices");
-      put(child(top, "Devices/" + sym.path, sym.name + " · " + sym.path, sym.path), s, s.name);
-    } else if (sym && sym.group) {
-      const top = child(root, "Modules", "Modules");
-      put(child(top, "Modules/" + sym.group, sym.group), s, s.name);
-    } else loose.push(s);
+    const p = place.get(s.name);
+    if (p && p[0] === 1) put(child(child(root, "Devices", "Devices"), "Devices/" + p[1], p[2] + " · " + p[1], p[1]), s, s.name);
+    else if (p && p[0] === 2) put(child(child(root, "Modules", "Modules"), "Modules/" + p[1], p[1]), s, s.name);
+    else loose.push(s);
   }
   // Fallback structure: prefix folders from the names (split on _ . : [ and space) when >= 3 signals share a prefix.
   const items = loose.map(s => {
@@ -657,8 +854,34 @@ function buildTree() {
     for (const it of direct) put(parent, it.s, i > 0 ? it.s.name.slice(it.offs[i]) : it.s.name);
   };
   fill(items, root, 0, 0);
-  const t = { root, folders, byKey };
-  return t;
+  if (gen === loadGen) tree = { root, folders, byKey, child, put, usedGraph: !!pl };
+}
+
+// New signals met after the tree was built: put them in the same kind of folder the graph says, else an "Other" folder.
+async function placeLazy(list) {
+  const t = tree; if (!t || !list.length) return;
+  let pl = null;
+  if (graphReady) { try { pl = await gw("place", list.map(s => s.name)); } catch { } }
+  if (t !== tree) return;
+  list.forEach((s, i) => {
+    if (s.folder || signals.get(s.name) !== s) return;
+    const p = pl && pl[i];
+    let f;
+    if (p && p[0] === 1) f = t.child(t.child(t.root, "Devices", "Devices"), "Devices/" + p[1], p[2] + " · " + p[1], p[1]);
+    else if (p && p[0] === 2) f = t.child(t.child(t.root, "Modules", "Modules"), "Modules/" + p[1], p[1]);
+    else f = t.child(t.root, "Other", "Other");
+    t.put(f, s, s.name);
+  });
+  structDirty = true; requestFrame();
+}
+
+// Throttled structural refresh (new signals appeared): re-sort and re-filter, at most a few times a second.
+function restructure() {
+  structDirty = false; lastStruct = performance.now();
+  const L = lazyQ; lazyQ = [];
+  if (L.length && tree) { placeLazy(L); structDirty = false; }
+  reorder(); applyFilter();
+  $("#sigempty").hidden = signals.size > 0;
 }
 
 function toggleFolder(f) {
@@ -666,86 +889,131 @@ function toggleFolder(f) {
 }
 function setAllFolders(c) { if (!tree) return; for (const f of tree.folders) { f.collapsed = c; collapsedMap[f.key] = c; } store.set(collapsedKey(), collapsedMap); applyFilter(); }
 
-let lastLayout = 0;
-// (Re)order the table body: flat sorted list, or folders with their signals under them.
-function layout() {
-  lastLayout = performance.now();
-  const tb = $("#sigs tbody"), frag = document.createDocumentFragment(), arr = sortedSignals();
-  if (viewMode === "tree") {
-    const t = ensureTree();
-    for (const f of t.folders) { f.items = []; f.agg = 0; }
-    for (const s of arr) {
-      s.folder.items.push(s);
-      for (let f = s.folder; f && f !== t.root; f = f.parent) f.agg = sortBy === "recent" ? Math.max(f.agg, s.lastChange) : f.agg + s.changeCount;
-    }
-    const fcmp = sortBy === "recent" || sortBy === "count" ? (a, b) => (b.agg - a.agg) || a.label.localeCompare(b.label, undefined, { numeric: true })
-                                                            : (a, b) => a.label.localeCompare(b.label, undefined, { numeric: true });
-    const emit = f => {
-      if (f !== t.root) frag.appendChild(f.tr);
-      f.kids.sort(fcmp).forEach(emit);
-      for (const s of f.items) {
-        if (s.nameTd.textContent !== s.label) s.nameTd.textContent = s.label;
-        s.nameTd.style.paddingLeft = (6 + s.depth * 14 + 14) + "px";
-        frag.appendChild(s.tr);
-      }
-    };
-    emit(t.root);
-  } else {
-    for (const s of arr) {
-      if (s.nameTd.textContent !== s.name) s.nameTd.textContent = s.name;
-      s.nameTd.style.paddingLeft = "";
-      frag.appendChild(s.tr);
-    }
-  }
-  tb.replaceChildren(frag);
-}
-
 function setViewMode(v) {
   viewMode = v; store.set("view", v);
   document.querySelectorAll("#viewseg button").forEach(b => b.classList.toggle("on", b.dataset.v === v));
   $("#foldbtns").hidden = v !== "tree";
-  layout(); applyFilter();
+  if (v === "tree" && !tree && !graphLoading) buildTreeThen();
+  reorder(); applyFilter();
 }
 
-let curQuery = null;
+// ---- filter: decides which signals (and folders) are shown, then lists them in `rows`
+let curQuery = null, rows = [], rowsTree = false, shownCount = 0, forceOpen = false;
 function applyFilter() {
   const q = compileQuery($("#search").value), k = $("#kfilter").value, only = $("#onlychecked").checked, onlyB = $("#onlybreak").checked, act = $("#activeonly").checked;
   curQuery = q;
   const grp = activeTab ? groups.get(activeTab) : null;
-  const isTree = viewMode === "tree" && tree;
-  const forceOpen = !!q;                    // a search overrides collapsed folders so matches are never hidden
-  if (isTree) {
-    for (const f of tree.folders) { f.vis = 0; f.closed = !forceOpen && (f.collapsed || (f.parent !== tree.root && f.parent.closed)); }
-  }
-  let shown = 0, watched = 0, marked = 0;
+  const isTree = viewMode === "tree" && !!tree;
+  forceOpen = !!q;                    // a search overrides collapsed folders so matches are never hidden
+  if (isTree) for (const f of tree.folders) { f.vis = 0; f.ri = -1; f.closed = !forceOpen && (f.collapsed || (f.parent !== tree.root && f.parent.closed)); }
+  let shown = 0;
   for (const s of signals.values()) {
-    if (s.watch) watched++;
-    if (s.brk) marked++;
     const vis = (!q || q.test(s)) && (!k || s.kind === k) && (!only || s.watch) && (!onlyB || s.brk) && (!act || s.changeCount > 0) && (!grp || grp.has(s.name));
-    s.vis = vis;
+    s.vis = vis; s.ri = -1;
     if (vis) { shown++; if (isTree) for (let f = s.folder; f && f !== tree.root; f = f.parent) f.vis++; }
-    if (s.tr) s.tr.hidden = !vis || (isTree && s.folder.closed);
   }
-  if (isTree) for (const f of tree.folders) {
-    f.tr.hidden = f.vis === 0 || (f.parent !== tree.root && f.parent.closed);
-    f.tw.textContent = forceOpen || !f.collapsed ? "▾" : "▸";
-    f.fc.textContent = f.vis === f.total ? `(${f.total})` : `(${f.vis}/${f.total})`;
-  }
-  $("#sigcount").textContent = `${shown} shown · ${watched} checked · ${marked} ⏸`;
-  $("#st-sigs").textContent = `${signals.size} signals`;
+  shownCount = shown; rowsTree = isTree;
+  const out = [];
+  if (isTree) {
+    for (const it of seqItems) {
+      if (it.isFolder) { if (it.vis > 0 && !(it.parent !== tree.root && it.parent.closed)) out.push(it); }
+      else if (it.vis && !it.folder.closed) out.push(it);
+    }
+  } else for (const s of order) if (s.vis) out.push(s);
+  for (let i = 0; i < out.length; i++) out[i].ri = i;
+  rows = out;
+  sigList.setCount(out.length); sigList.invalidate();
+  updateCounts();
   $("#signone").hidden = shown > 0 || signals.size === 0;
   $("#signone").textContent = activeTab && groups.get(activeTab)?.size === 0 ? "This group is empty: right-click a signal and choose Add to group." : "No signal matches.";
+  requestFrame();
+}
+function updateCounts() {
+  $("#sigcount").textContent = `${shownCount} shown · ${watched.size} checked · ${marked.size} ⏸`;
+  $("#st-sigs").textContent = `${signals.size} signals`;
+}
+
+// ---- rows
+function makeSigRow() {
+  const el = document.createElement("div"); el.className = "row";
+  el.innerHTML = '<div class="c"><input type="checkbox" class="chk"></div><div class="c b"><input type="checkbox" class="brk" title="Break on this signal"></div><div class="c mono nm"></div><div class="c type"></div><div class="c chg mono"></div><div class="c val"></div>' +
+                 '<div class="fcell"><span class="tw"></span><span class="fl"></span><span class="fc mono"></span><i class="adot"></i></div>';
+  const k = el.children;
+  el._c = { chk: k[0].firstChild, brk: k[1].firstChild, nm: k[2], type: k[3], chg: k[4], val: k[5], fcell: k[6], tw: k[6].children[0], fl: k[6].children[1], fc: k[6].children[2] };
+  return el;
+}
+const put = (el, key, node, v) => { if (el[key] !== v) { node.textContent = v; el[key] = v; } };
+let hlPaused = null, hlHist = null;      // signal names highlighted by the step bar
+function bindSig(el, it) {
+  const c = el._c;
+  if (it.isFolder) {
+    const cls = "row folder" + (it.lit ? " act" : "");
+    if (el._cls !== cls) { el.className = cls; el._cls = cls; }
+    put(el, "_tw", c.tw, forceOpen || !it.collapsed ? "▾" : "▸");
+    put(el, "_fl", c.fl, it.label);
+    put(el, "_fc", c.fc, it.vis === it.total ? `(${it.total})` : `(${it.vis}/${it.total})`);
+    const pl = (6 + (it.depth - 1) * 14) + "px"; if (el._pl !== pl) { c.fcell.style.paddingLeft = pl; el._pl = pl; }
+    if (el._ti !== it.title) { c.fcell.title = it.title; el._ti = it.title; }
+    return;
+  }
+  const now = performance.now(), glowing = it.glowT && now - it.glowT < 2000;
+  const cls = "row" + (it.name === selected ? " sel" : "") + (it.name === hlPaused ? " paused" : "") + (it.name === hlHist ? " hist" : "") + (glowing ? (it.g ? " g1" : " g2") : "");
+  if (el._cls !== cls) { el.className = cls; el._cls = cls; }
+  const gk = glowing ? it.glowT : 0;
+  if (el._gk !== gk) { el.style.animationDelay = glowing ? -(now - it.glowT) + "ms" : ""; el._gk = gk; }
+  if (c.chk.checked !== it.watch) c.chk.checked = it.watch;
+  if (c.brk.checked !== it.brk) c.brk.checked = it.brk;
+  const lab = rowsTree ? it.label : it.name;
+  put(el, "_nm", c.nm, lab);
+  const pl = rowsTree ? (6 + it.depth * 14 + 14) + "px" : ""; if (el._pl !== pl) { c.nm.style.paddingLeft = pl; el._pl = pl; }
+  if (el._ti !== it.name) { c.nm.title = it.name; el._ti = it.name; }
+  put(el, "_ty", c.type, it.kind);
+  put(el, "_ch", c.chg, it.changeCount ? String(it.changeCount) : "");
+  const past = viewVals && viewVals.has(it.name) && viewVals.get(it.name) !== undefined;
+  const v = past ? viewVals.get(it.name) : it.value, txt = fmt(it.kind, v);
+  const vc = "c val " + valClass(it.kind, v) + (past && txt !== fmt(it.kind, it.value) ? " past" : "");
+  if (el._vc !== vc) { c.val.className = vc; el._vc = vc; }
+  put(el, "_vt", c.val, txt);
+  const vt = past ? `At this step: ${txt} · now: ${fmt(it.kind, it.value)}` : it.kind === "Serial" ? txt : "";
+  if (el._vti !== vt) { c.val.title = vt; el._vti = vt; }
+}
+const sigList = new VList($("#sigscroll"), $("#sigbody"), SIG_H, makeSigRow, bindSig, i => rows[i]);
+const repaintSig = s => { sigList.repaint(s); };
+
+// events on rows are handled once, on the container
+const rowOf = e => { const el = e.target.closest(".row"); return el && el._item ? el._item : null; };
+$("#sigbody").addEventListener("click", e => {
+  const it = rowOf(e); if (!it) return;
+  if (it.isFolder) return toggleFolder(it);
+  if (e.target.classList.contains("chk")) { setWatch(it, e.target.checked); watchChanged(); return; }
+  if (e.target.classList.contains("brk")) { setBrk(it, e.target.checked); setBreakDone(); return; }
+  selectSignal(it.name);
+});
+$("#sigbody").addEventListener("dblclick", e => {
+  const it = rowOf(e); if (!it || it.isFolder || e.target.tagName === "INPUT") return;
+  if (it.kind === "Digital") force(it.name, isHigh(it.value) ? 0 : 1); else { selectSignal(it.name); $("#fval").focus(); }
+});
+$("#sigbody").addEventListener("contextmenu", e => {
+  const it = rowOf(e); if (!it || it.isFolder) return;
+  e.preventDefault(); selectSignal(it.name); showMenu(e.clientX, e.clientY, it);
+});
+
+function syncSortUi() {
+  document.querySelectorAll("#sigs .th.sortable").forEach(th =>
+    th.textContent = th.textContent.replace(/ [▲▼]$/, "") + (th.dataset.sort === sortBy ? (sortDir > 0 ? " ▲" : " ▼") : ""));
+  $("#sortsel").value = sortBy;
 }
 
 function selectSignal(name) {
-  if (selected && signals.has(selected)) signals.get(selected).tr?.classList.remove("sel");
+  const prev = selected && signals.get(selected);
   selected = name;
   const s = signals.get(name);
-  s?.tr?.classList.add("sel");
+  if (prev) repaintSig(prev);
+  if (s) repaintSig(s);
   $("#fname").value = name;
   if (s && s.kind !== "Digital") $("#fval").value = fmt(s.kind, s.value);
   $("#pathslink").href = pathsUrl(name);
-  if (followMode !== "off") applyTraceFilter();
+  if (followMode !== "off") { nearSet = null; applyTraceFilter(); refreshNear(); }
 }
 const pathsUrl = name => `paths.html?slot=${slot}` + (name ? `&signal=${encodeURIComponent(name)}` : "");
 
@@ -753,7 +1021,7 @@ const pathsUrl = name => `paths.html?slot=${slot}` + (name ? `&signal=${encodeUR
 function revealSignal(name) {
   const s = signals.get(name); if (!s) return;
   selectSignal(name);
-  if (!s.vis || s.tr.hidden) {
+  if (s.ri < 0) {
     if (!s.vis) {
       $("#search").value = ""; $("#kfilter").value = ""; $("#onlychecked").checked = $("#onlybreak").checked = $("#activeonly").checked = false;
       if (activeTab) { activeTab = null; saveGroups(); renderTabs(); }
@@ -761,171 +1029,176 @@ function revealSignal(name) {
     if (viewMode === "tree" && tree) { for (let f = s.folder; f && f !== tree.root; f = f.parent) { f.collapsed = false; collapsedMap[f.key] = false; } store.set(collapsedKey(), collapsedMap); }
     applyFilter();
   }
-  s.tr.scrollIntoView({ block: "center" });
+  sigList.reveal(s.ri, "center");
 }
 
 // ---- activity: glow on change, dots on folders, periodic re-sort
-const glowQ = new Set();
-let glowQueued = false, actDirty = false;
+const dirtySigs = new Set();      // signals whose row may need repainting at the next frame
+let actDirty = false;
 function noteChange(s) {
-  s.lastChange = Date.now(); s.changeCount++;
-  glowQ.add(s); actDirty = true;
-  if (!glowQueued) { glowQueued = true; requestAnimationFrame(flushGlow); }
+  s.lastChange = Date.now(); s.changeCount++; s.glowT = performance.now(); s.g = !s.g;
+  dirtySigs.add(s); actDirty = true;
+  requestFrame();
 }
-function flushGlow() {
-  glowQueued = false;
+function flushActivity() {
+  if (!dirtySigs.size) return;
   const now = Date.now();
-  for (const s of glowQ) {
-    if (!s.tr) continue;
-    s.g = !s.g; s.tr.classList.remove(s.g ? "g2" : "g1"); s.tr.classList.add(s.g ? "g1" : "g2");
-    s.chgTd.textContent = s.changeCount;
+  for (const s of dirtySigs) {
+    if (s._el) repaintSig(s);
     if (tree) for (let f = s.folder; f && f !== tree.root; f = f.parent) {
       f.last = now;
-      if (!f.lit) { f.lit = true; f.tr.classList.add("act"); litFolders.add(f); }
+      if (!f.lit) { f.lit = true; litFolders.add(f); if (f._el) sigList.repaint(f); }
     }
   }
-  glowQ.clear();
+  dirtySigs.clear();
 }
 function resetActivity() {
-  for (const s of signals.values()) { s.lastChange = 0; s.changeCount = 0; if (s.tr) { s.tr.classList.remove("g1", "g2"); s.chgTd.textContent = ""; } }
-  for (const f of litFolders) { f.lit = false; f.tr.classList.remove("act"); } litFolders.clear();
-  if (sortBy === "recent" || sortBy === "count") layout();
+  for (const s of signals.values()) { s.lastChange = 0; s.changeCount = 0; s.glowT = 0; }
+  for (const f of litFolders) f.lit = false; litFolders.clear();
+  if (sortBy === "recent" || sortBy === "count") reorder();
   applyFilter();
 }
 setInterval(() => {
   const now = Date.now();
-  for (const f of litFolders) if (now - f.last > 2000) { f.lit = false; f.tr.classList.remove("act"); litFolders.delete(f); }
-  if (actDirty && glowQ.size === 0) {
+  for (const f of litFolders) if (now - f.last > 2000) { f.lit = false; litFolders.delete(f); sigList.repaint(f); }
+  if (structDirty) requestFrame();
+  if (actDirty) {
     if (curQuery?.usesValue || $("#activeonly").checked) applyFilter();
     if (sortBy === "recent" || sortBy === "count") {
       // re-sort at most every ~1.4 s, and not under an open context menu
-      if (performance.now() - lastLayout > 1400 && $("#menu").style.display !== "block") { actDirty = false; layout(); applyFilter(); }
+      if (performance.now() - lastLayout > 1400 && $("#menu").style.display !== "block") { actDirty = false; reorder(); applyFilter(); }
     } else actDirty = false;
   }
 }, 400);
 
 // ---------------------------------------------------------------- trace
 
-let followMode = store.get("follow", "off"), followSet = null, selChain = null, selTraceE = null, hasCause = false, lastChain = undefined, band = 0;
+let followMode = store.get("follow", "off"), selChain = null, selTraceE = null, hasCause = false, lastChain = undefined, band = 0, bandFlip = false;
+let tfilter = { q: null, fset: null, burst: null };
+let pausedE = null, histE = null, fresh = [], newCount = 0, traceDirty = false, shownTraceCount = -1;
 $("#follow").value = followMode;
 
 // Δ column: time since the previous row that is shown (so it follows the filter).
 function fmtDelta(e, prev) { return prev ? "+" + ((e.time - prev.time) / 1000).toFixed(3) + "s" : ""; }
-function traceVisible(e, q, fset, burst) {
-  if (q && !q.test({ name: e.signal, lname: e.lname, kind: e.kind, value: e.value })) return false;
-  if (fset && !fset.has(e.signal)) return false;
-  if (burst != null && e.chain !== burst) return false;
+function traceVisible(e, f) {
+  if (f.q && !f.q.test(e)) return false;
+  if (f.fset && !f.fset.has(e.signal)) return false;
+  if (f.burst != null && e.chain !== f.burst) return false;
   return true;
 }
 function traceFilterState() {
   const q = compileQuery($("#tsearch").value);
   let fset = null;
-  if (followMode !== "off") fset = selected ? (followMode === "near" && graph ? neighbours(selected) : new Set([selected])) : new Set();
-  followSet = fset;
+  if (followMode !== "off") fset = selected ? (followMode === "near" && graphReady && nearSet && nearFor === selected ? nearSet : new Set([selected])) : new Set();
   const burst = $("#burst").checked && selChain != null ? selChain : null;
   return { q, fset, burst };
 }
-function lastShown() { for (let i = trace.length - 1; i >= 0; i--) if (!trace[i].tr.hidden) return trace[i]; return null; }
 function applyTraceFilter() {
-  const { q, fset, burst } = traceFilterState();
-  let prev = null;
-  for (const e of trace) {
-    const show = traceVisible(e, q, fset, burst);
-    e.tr.hidden = !show;
-    if (show) { e.tr.children[2].textContent = fmtDelta(e, prev); prev = e; }
-  }
+  tfilter = traceFilterState();
+  tview.clear();
+  for (let i = 0, n = trace.length; i < n; i++) { const e = trace.get(i); if (traceVisible(e, tfilter)) tview.push(e); }
+  traceDirty = true; requestFrame();
 }
 
+// Model update for one trace message: cheap, no DOM. (The page paints at most once per frame.)
 function onTrace(m) {
   let s = signals.get(m.signal);
-  const cn = ++cseq, time = Date.parse(m.time);
-  changes.push({ cn, time, signal: m.signal, prev: s ? s.value : undefined, value: m.value });
-  if (changes.length > MAX_CHANGES) changes.splice(0, changes.length - MAX_CHANGES);
+  const time = Date.parse(m.time), cn = ++cseq, prev = s ? s.value : undefined;
+  if (!s) s = addLazy(m.signal, m.kind, m.value);
+  changes.push({ cn, time, signal: m.signal, prev, value: m.value });
+  if (changes.length > MAX_CHANGES) changes.shift();
   const h = stepLog[stepLog.length - 1];
   if (h && h.cn == null && h.signal === m.signal) h.cn = cn; // pause notice beat its trace event here
-  if (s) { s.value = m.value; paintValue(s); noteChange(s); }
-  else scheduleRefresh();
-  waveFeed({ time, signal: m.signal, kind: m.kind, value: m.value }, s);
+  s.value = m.value; noteChange(s);
+  if (wave || s.watch) waveFeed({ time, signal: m.signal, kind: m.kind, value: m.value }, s);
   if (!streaming) return;
-  if (opts.tmode === "watch" && !(s && s.watch)) return;
+  if (opts.tmode === "watch" && !s.watch) return;
   const chain = m.chain ?? null;
   if (chain == null) band = 0; else { if (chain !== lastChain) bandFlip = !bandFlip; band = bandFlip ? 1 : 0; }
   lastChain = chain;
-  const e = { cn, n: ++seq, time, signal: m.signal, lname: m.signal.toLowerCase(), kind: m.kind, value: m.value, source: m.source || "",
-              symbol: m.symbol ?? null, cause: m.cause ?? null, depth: m.depth | 0, chain, band };
+  const e = { cn, n: ++seq, time, signal: m.signal, name: m.signal, lname: s.lname, kind: m.kind, value: m.value, source: m.source || "",
+              symbol: m.symbol ?? null, cause: m.cause ?? null, depth: m.depth | 0, chain, band, fresh: false, _el: null };
   if (!hasCause && (m.symbol != null || m.chain != null)) { hasCause = true; $("#trace").classList.remove("nocause"); }
   if (firstTime == null) firstTime = e.time;
-  pending.push(e);
-  if (!rafQueued) { rafQueued = true; requestAnimationFrame(flushTrace); }
-}
-let bandFlip = false;
-
-function traceRow(e) {
-  const tr = document.createElement("tr");
-  tr.innerHTML = `<td class="n mono"></td><td class="mono"></td><td class="dt mono"></td><td class="mono cause-name"></td><td class="via mono"></td><td></td><td class="type"></td>`;
-  if (e.band) tr.classList.add("b1");
-  e.tr = tr; paintTraceRow(e);
-  tr.onclick = () => {
-    selTraceE?.tr.classList.remove("sel"); selTraceE = e; selChain = e.chain; tr.classList.add("sel");
-    const s = signals.get(e.signal);
-    if (s) { selectSignal(e.signal); if (!s.tr.hidden) s.tr.scrollIntoView({ block: "nearest" }); }
-    if ($("#burst").checked) applyTraceFilter();
-  };
-  return tr;
-}
-
-function paintTraceRow(e) {
-  const c = e.tr.children;
-  c[0].textContent = e.n; c[1].textContent = fmtTime(e);
-  c[3].textContent = (e.depth > 0 ? "↳ " : "") + e.signal;
-  c[3].style.paddingLeft = e.depth > 0 ? (6 + Math.min(e.depth, 8) * 10) + "px" : "";
-  c[3].title = e.signal + (e.chain != null ? `\nburst ${e.chain} · depth ${e.depth}` : "");
-  c[4].textContent = e.symbol || ""; c[4].title = e.symbol ? (e.cause ? `${e.symbol}\ntriggered by ${e.cause}` : e.symbol) : "";
-  c[5].className = valClass(e.kind, e.value); c[5].textContent = fmt(e.kind, e.value); c[6].textContent = e.source;
-}
-
-function flushTrace() {
-  rafQueued = false;
-  if (!pending.length) return;
-  const tb = $("#trace tbody"), frag = document.createDocumentFragment(), { q, fset, burst } = traceFilterState();
-  let prev = lastShown();
-  for (const e of pending) {
-    const tr = traceRow(e);
-    if (traceVisible(e, q, fset, burst)) { tr.children[2].textContent = fmtDelta(e, prev); prev = e; }
-    else tr.hidden = true;
-    if (pending.length < 20) tr.classList.add("flash");
-    trace.push(e); frag.appendChild(tr);
+  newCount++; if (fresh.length < 20) { e.fresh = true; fresh.push(e); }
+  trace.push(e);
+  if (traceVisible(e, tfilter)) tview.push(e);
+  if (trace.length > MAX_TRACE) {
+    const o = trace.shift(); o.fresh = false;
+    if (tview.length && tview.get(0) === o) tview.shift();
+    if (o === selTraceE) selTraceE = null;
+    if (o === pausedE) pausedE = null; if (o === histE) histE = null;
   }
-  pending = [];
-  tb.appendChild(frag);
-  while (trace.length > MAX_TRACE) { const o = trace.shift(); o.tr.remove(); if (o === selTraceE) selTraceE = null; }
+  traceDirty = true; requestFrame();
+}
+
+function makeTraceRow() {
+  const el = document.createElement("div"); el.className = "row";
+  el.innerHTML = '<div class="c n mono"></div><div class="c mono"></div><div class="c dt mono"></div><div class="c mono cause-name"></div><div class="c via mono"></div><div class="c"></div><div class="c type"></div>';
+  el._k = el.children;
+  return el;
+}
+function bindTrace(el, e, i) {
+  const k = el._k, prev = i > 0 ? tview.get(i - 1) : null;
+  const cls = "row" + (e.band ? " b1" : "") + (e === selTraceE ? " sel" : "") + (e === histE ? " hist" : "") + (e === pausedE ? " paused" : "") + (e.fresh ? " flash" : "");
+  if (e.fresh) { e.fresh = false; el._cls = null; }   // a flash is shown once
+  if (el._cls !== cls) { el.className = cls; el._cls = cls; }
+  put(el, "_n", k[0], String(e.n)); put(el, "_t", k[1], fmtTime(e)); put(el, "_d", k[2], fmtDelta(e, prev));
+  put(el, "_s", k[3], (e.depth > 0 ? "↳ " : "") + e.signal);
+  const pl = e.depth > 0 ? (6 + Math.min(e.depth, 8) * 10) + "px" : ""; if (el._pl !== pl) { k[3].style.paddingLeft = pl; el._pl = pl; }
+  const t3 = e.signal + (e.chain != null ? `\nburst ${e.chain} · depth ${e.depth}` : ""); if (el._t3 !== t3) { k[3].title = t3; el._t3 = t3; }
+  put(el, "_v", k[4], e.symbol || "");
+  const t4 = e.symbol ? (e.cause ? `${e.symbol}\ntriggered by ${e.cause}` : e.symbol) : ""; if (el._t4 !== t4) { k[4].title = t4; el._t4 = t4; }
+  const vc = "c val " + valClass(e.kind, e.value); if (el._vc !== vc) { k[5].className = vc; el._vc = vc; }
+  put(el, "_x", k[5], fmt(e.kind, e.value)); put(el, "_o", k[6], e.source);
+}
+const traceList = new VList($("#tracescroll"), $("#tracebody"), TRACE_H, makeTraceRow, bindTrace, i => tview.get(i));
+
+$("#tracebody").addEventListener("click", e => {
+  const ev = rowOf(e); if (!ev) return;
+  const was = selTraceE; selTraceE = ev; selChain = ev.chain;
+  if (was) traceList.repaint(was); traceList.repaint(ev);
+  const s = signals.get(ev.signal);
+  if (s) { selectSignal(ev.signal); if (s.ri >= 0) sigList.reveal(s.ri, "nearest"); }
+  if ($("#burst").checked) applyTraceFilter();
+});
+
+// Frame step for the trace: counts, scroll position, and the list size.
+function flushTraceModel() {
+  if (newCount > 20) for (const e of fresh) e.fresh = false;
+  if (!traceDirty) return;
+  traceDirty = false;
+  traceList.setCount(tview.length);
   $("#traceempty").hidden = trace.length > 0;
   updateTraceCount();
-  if ($("#autoscroll").checked) { const sc = $("#tracescroll"); sc.scrollTop = sc.scrollHeight; }
+  if ($("#autoscroll").checked) { const m = traceList.maxScroll(); traceList.scroll.scrollTop = m; traceList.st = m; }
 }
 
 function updateTraceCount() {
+  if (shownTraceCount === trace.length) return;
+  shownTraceCount = trace.length;
   $("#tracecount").textContent = `${trace.length}${trace.length >= MAX_TRACE ? " (oldest dropped)" : ""}`;
   $("#st-trace").textContent = `${trace.length} in trace`;
 }
 
-function rerenderValues() {
-  for (const s of signals.values()) paintValue(s);
-  trace.forEach(e => paintTraceRow(e));
-}
+function rerenderValues() { if (curQuery?.usesValue) applyFilter(); repaintAll(); }
 
 function clearTrace() {
-  trace = []; seq = 0; firstTime = null; pending = []; selTraceE = null; selChain = null; lastChain = undefined;
-  $("#trace tbody").replaceChildren(); $("#traceempty").hidden = false; updateTraceCount();
+  trace.clear(); tview.clear(); seq = 0; firstTime = null; selTraceE = null; selChain = null; lastChain = undefined; pausedE = histE = null; fresh = [];
+  traceDirty = true; shownTraceCount = -1; newCount = 0; flushTraceModel(); traceList.invalidate(); requestFrame();
   wave?.clear(); waveBuf = [];
 }
 
 function saveTrace() {
   const head = `OpenVP trace · slot ${slot} · ${$("#prog").textContent}\n#\tTime\tDelta\tSignal\tType\tValue\tSource\tVia\tCause\tDepth\tChain\n`;
-  const body = trace.map((e, i) => [e.n, fmtTime(e), fmtDelta(e, trace[i - 1]), e.signal, e.kind, fmt(e.kind, e.value), e.source,
-                                    e.symbol ?? "", e.cause ?? "", e.chain != null ? e.depth : "", e.chain ?? ""].join("\t")).join("\n");
+  const lines = [];
+  for (let i = 0; i < trace.length; i++) {
+    const e = trace.get(i);
+    lines.push([e.n, fmtTime(e), fmtDelta(e, i ? trace.get(i - 1) : null), e.signal, e.kind, fmt(e.kind, e.value), e.source,
+                e.symbol ?? "", e.cause ?? "", e.chain != null ? e.depth : "", e.chain ?? ""].join("\t"));
+  }
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([head + body + "\n"], { type: "text/plain" }));
+  a.href = URL.createObjectURL(new Blob([head + lines.join("\n") + "\n"], { type: "text/plain" }));
   const d = new Date();
   a.download = `slot${pad(slot)}-trace-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.txt`;
   a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
@@ -943,18 +1216,19 @@ async function stepPost(path, body) {
 }
 
 function pushBreaks() {
-  const names = [...signals.values()].filter(s => s.brk).map(s => s.name);
+  const names = [...marked].map(s => s.name);
   store.set(stepKey(), names);
   stepPost("", { breakSignals: names });
 }
 
 function setBreak(s, on) {
-  s.brk = on; if (s.bchk) s.bchk.checked = on;
-  applyFilter(); pushBreaks();
+  setBrk(s, on); repaintSig(s);
+  setBreakDone();
 }
+function setBreakDone() { if ($("#onlybreak").checked) applyFilter(); else { updateCounts(); requestFrame(); } pushBreaks(); }
 
 function toggleStepMode() {
-  if (!step.enabled && step.onlyBreakSignals && ![...signals.values()].some(s => s.brk))
+  if (!step.enabled && step.onlyBreakSignals && marked.size === 0)
     msg("Break on is set to marked signals but none are marked: tick ⏸ next to a signal, or press F9 on it.", true);
   stepPost("", { enabled: !step.enabled });
 }
@@ -978,21 +1252,19 @@ function onStep(st) {
     }
   }
   store.set(stepKey(), [...step.breakSignals]);
-  for (const s of signals.values()) {
-    const b = step.breakSignals.has(s.name);
-    if (b !== s.brk) { s.brk = b; if (s.bchk) s.bchk.checked = b; }
-  }
+  for (const s of [...marked]) if (!step.breakSignals.has(s.name)) { setBrk(s, false); repaintSig(s); }
+  for (const n of step.breakSignals) { const s = signals.get(n); if (s && !s.brk) { setBrk(s, true); repaintSig(s); } }
   const p = step.paused;
   if (p && !stepLog.some(h => h.step === p.step)) {
     let cn = null;
     for (let i = changes.length - 1; i >= 0 && i >= changes.length - 500; i--)
-      if (changes[i].signal === p.signal) { cn = changes[i].cn; break; }
+      if (changes.get(i).signal === p.signal) { cn = changes.get(i).cn; break; }
     if (cn != null && stepLog.length && stepLog[stepLog.length - 1].cn >= cn) cn = null; // that change belongs to an earlier step
     stepLog.push({ step: p.step, signal: p.signal, kind: p.kind, value: p.value, source: p.source, cn });
     if (stepLog.length > 5000) { stepLog.shift(); if (view != null) view = Math.max(0, view - 1); }
   }
   if (!step.enabled && view != null) setView(null);
-  applyFilter();
+  if ($("#onlybreak").checked) applyFilter(); else updateCounts();
   $("#bmode").value = step.onlyBreakSignals ? "marked" : "all";
   renderStep(wasPausedOn !== (step.paused && step.paused.step));
 }
@@ -1038,24 +1310,26 @@ function renderStep(newPause) {
   }
 
   // Highlight the paused signal in both lists.
-  document.querySelectorAll("tr.paused, tr.hist").forEach(tr => tr.classList.remove("paused", "hist"));
+  const oldP = hlPaused, oldH = hlHist, oldPE = pausedE, oldHE = histE;
+  hlPaused = hlHist = pausedE = histE = null;
+  let sigTarget = null;
   if (view != null) {
     const h = stepLog[view];
-    const s = signals.get(h.signal);
-    if (s?.tr) { s.tr.classList.add("hist"); s.tr.scrollIntoView({ block: "nearest" }); }
-    flushTrace();
-    const e = trace.find(t => t.cn === h.cn);
-    if (e) { e.tr.classList.add("hist"); e.tr.scrollIntoView({ block: "nearest" }); }
+    hlHist = h.signal; sigTarget = signals.get(h.signal);
+    if (h.cn != null) { const i = trace.lowerCn(h.cn); if (i < trace.length && trace.get(i).cn === h.cn) histE = trace.get(i); }
   } else if (p) {
-    const s = signals.get(p.signal);
-    if (s?.tr) { s.tr.classList.add("paused"); if (newPause) s.tr.scrollIntoView({ block: "nearest" }); }
-    else scheduleRefresh();
-    flushTrace(); // the trace row for this change arrived just before the pause
+    hlPaused = p.signal;
+    sigTarget = signals.get(p.signal) || addLazy(p.signal, p.kind, p.value);
     for (let i = trace.length - 1; i >= Math.max(0, trace.length - 200); i--)
-      if (trace[i].signal === p.signal) { trace[i].tr.classList.add("paused"); break; }
+      if (trace.get(i).signal === p.signal) { pausedE = trace.get(i); break; }
   }
+  for (const n of [oldP, oldH, hlPaused, hlHist]) { const s = n && signals.get(n); if (s) repaintSig(s); }
+  for (const e of [oldPE, oldHE, pausedE, histE]) if (e) traceList.repaint(e);
+  if (sigTarget && sigTarget.ri >= 0 && (view != null || newPause)) sigList.reveal(sigTarget.ri, "nearest");
+  if (histE) { const i = tview.lowerCn(histE.cn); if (i < tview.length && tview.get(i) === histE) traceList.reveal(i, "nearest"); }
   $("#st-state").textContent = view != null ? "Paused (looking back)" : p ? "Paused (step)" : step.enabled ? "Stepping" : currentState;
   updateWaveCursor();
+  requestFrame();
 }
 
 // The stepLog entry that counts as "now": the live pause if there is one, else just past the end.
@@ -1068,7 +1342,7 @@ function backIndex() {
   const i = (view ?? liveIndex()) - 1;
   if (i < 0) return -1;
   const h = stepLog[i];
-  return h.cn != null && changes.length && h.cn >= changes[0].cn ? i : -1;
+  return h.cn != null && changes.length && h.cn >= changes.get(0).cn ? i : -1;
 }
 // Rebuild every signal's value at an earlier step by undoing the changes logged after it.
 function setView(i) {
@@ -1077,9 +1351,9 @@ function setView(i) {
   else {
     const cn = stepLog[i].cn;
     viewVals = new Map();
-    for (let k = changes.length - 1; k >= 0 && changes[k].cn > cn; k--) viewVals.set(changes[k].signal, changes[k].prev);
+    for (let k = changes.length - 1; k >= 0 && changes.get(k).cn > cn; k--) viewVals.set(changes.get(k).signal, changes.get(k).prev);
   }
-  for (const s of signals.values()) paintValue(s);
+  sigList.invalidate();
   renderStep(false);
 }
 function stepBack() { const i = backIndex(); if (i >= 0) setView(i); }
@@ -1100,12 +1374,12 @@ $("#onlybreak").onchange = applyFilter;
 
 let wave = null, waveBuf = [], laneTimer = null;
 const waveOk = !!(window.WaveView && typeof window.WaveView.create === "function");
-function waveLanes() { return [...signals.values()].filter(s => s.watch).map(s => ({ name: s.name, kind: s.kind, value: s.value })); }
+function waveLanes() { return [...watched].sort((a, b) => a.idx - b.idx).map(s => ({ name: s.name, kind: s.kind, value: s.value })); }
 function scheduleLanes() { if (!wave) return; clearTimeout(laneTimer); laneTimer = setTimeout(() => wave && wave.setSignals(waveLanes()), 30); }
 function waveFeed(ev, s) {
   if (!waveOk) return;
   if (wave) wave.push(ev);
-  else if (s && s.watch) { waveBuf.push(ev); if (waveBuf.length > 20000) waveBuf.splice(0, waveBuf.length - 20000); }
+  else if (s && s.watch) { waveBuf.push(ev); if (waveBuf.length > 40000) waveBuf = waveBuf.slice(-20000); }
 }
 function setWaveOpen(on) {
   if (!waveOk) return;
@@ -1113,7 +1387,7 @@ function setWaveOpen(on) {
   if (on && !wave) {
     wave = window.WaveView.create($("#wavebody"), {
       format: fmt,
-      onRemove: name => { const s = signals.get(name); if (s) { s.watch = false; if (s.chk) s.chk.checked = false; watchChanged(); } }
+      onRemove: name => { const s = signals.get(name); if (s) { setWatch(s, false); repaintSig(s); watchChanged(); } }
     });
     wave.setSignals(waveLanes());
     for (const ev of waveBuf) wave.push(ev); waveBuf = [];
@@ -1123,7 +1397,7 @@ function setWaveOpen(on) {
 function updateWaveCursor() {
   if (!wave) return;
   let t = null;
-  if (view != null) { const cn = stepLog[view]?.cn; if (cn != null) { const c = changes.find(x => x.cn === cn); if (c) t = c.time; } }
+  if (view != null) { const cn = stepLog[view]?.cn; if (cn != null) { const i = changes.lowerCn(cn); if (i < changes.length && changes.get(i).cn === cn) t = changes.get(i).time; } }
   wave.setCursor(t);
 }
 if (!waveOk) $("#wavebtn").hidden = true;
@@ -1178,29 +1452,63 @@ $("#fpulse").onclick = () => { const s = forceTarget(); if (!s) return; if (s.ki
 $("#fval").onkeydown = e => { if (e.key === "Enter") $("#fset").click(); };
 $("#fname").onchange = () => { if (signals.has($("#fname").value)) selectSignal($("#fname").value); };
 
+// Suggestions for the signal-name box: at most 50 matches (names that start with the text first), computed on demand.
+(() => {
+  const inp = $("#fname"), box = $("#sugg"); let items = [], active = -1;
+  const hide = () => { box.hidden = true; active = -1; };
+  const choose = name => { inp.value = name; hide(); selectSignal(name); };
+  function show() {
+    const t = inp.value.trim().toLowerCase(), pre = [], inc = []; let more = false;
+    for (const s of signals.values()) {
+      if (!t || s.lname.startsWith(t)) { if (pre.length < 50) pre.push(s); else if (!more) more = true; }
+      else if (inc.length < 50 && s.lname.includes(t)) inc.push(s);
+      if (pre.length >= 50 && more) break;
+    }
+    items = pre.concat(inc).slice(0, 50);
+    if (!items.length) return hide();
+    const frag = document.createDocumentFragment();
+    items.forEach((s, i) => { const d = document.createElement("div"); d.className = "mono"; d.textContent = s.name; d.title = s.kind; d.onmousedown = e => { e.preventDefault(); choose(s.name); }; frag.appendChild(d); });
+    if (more || inc.length >= 50) { const d = document.createElement("div"); d.className = "more"; d.textContent = "keep typing to narrow the list…"; frag.appendChild(d); }
+    box.replaceChildren(frag);
+    box.style.left = inp.offsetLeft + "px"; box.style.width = Math.max(inp.offsetWidth, 280) + "px";
+    box.hidden = false; active = -1;
+  }
+  const mark = () => { [...box.children].forEach((d, i) => d.classList.toggle("on", i === active)); box.children[active]?.scrollIntoView({ block: "nearest" }); };
+  inp.addEventListener("input", show);
+  inp.addEventListener("focus", show);
+  inp.addEventListener("blur", hide);
+  inp.addEventListener("keydown", e => {
+    if (box.hidden) { if (e.key === "ArrowDown") show(); return; }
+    if (e.key === "ArrowDown") { e.preventDefault(); active = Math.min(items.length - 1, active + 1); mark(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); active = Math.max(0, active - 1); mark(); }
+    else if (e.key === "Enter" && active >= 0) { e.preventDefault(); e.stopPropagation(); choose(items[active].name); }
+    else if (e.key === "Escape") { hide(); }
+  });
+})();
+
 // ---------------------------------------------------------------- drives / driven by
 
-function showRelated(name, dir) {
-  const e = graph && graph.bySig.get(name);
-  const syms = e ? (dir === "drivers" ? e.out : e.in) : [];
-  $("#reltitle").textContent = (dir === "drivers" ? "Driven by" : "Drives") + " · " + name + ` (${syms.length} symbol${syms.length === 1 ? "" : "s"})`;
+async function showRelated(name, dir) {
+  let r = { count: 0, syms: [] };
+  if (graphReady) { try { r = await gw("related", { name, dir }); } catch { } }
+  const syms = r.syms;
+  $("#reltitle").textContent = (dir === "drivers" ? "Driven by" : "Drives") + " · " + name + ` (${r.count} symbol${r.count === 1 ? "" : "s"})`;
   const body = $("#relbody"), frag = document.createDocumentFragment();
   if (!syms.length) { const d = document.createElement("div"); d.className = "sym"; d.style.color = "var(--muted)"; d.textContent = dir === "drivers" ? "Nothing in the program drives this signal (it is an input or a constant)." : "This signal doesn't feed anything."; frag.appendChild(d); }
-  for (const sym of syms.slice(0, 200)) {
+  for (const sym of syms) {
     const d = document.createElement("div"); d.className = "sym";
     const head = document.createElement("div");
     head.innerHTML = '<b></b><span class="path mono"></span>'; head.firstChild.textContent = sym.name; head.querySelector(".path").textContent = sym.path;
     if (sym.device) { const t = document.createElement("span"); t.className = "dev"; t.textContent = "device"; head.appendChild(t); }
     const chips = document.createElement("div"); chips.className = "chips";
     // what feeds the symbol (when listing drivers) or what it produces (when listing loads)
-    const others = dir === "drivers" ? sym.inputs || [] : sym.outputs || [];
     const lab = document.createElement("span"); lab.style.color = "var(--muted)"; lab.textContent = dir === "drivers" ? "inputs:" : "outputs:"; chips.appendChild(lab);
-    for (const n of others.slice(0, 60)) {
+    for (const n of sym.others) {
       const c = document.createElement("span"); c.className = "chip mono" + (n === name ? " me" : ""); c.textContent = n;
-      const s = signals.get(n); if (s) c.title = `${s.kind} = ${fmt(s.kind, s.value)}`; else if (CONST_SIGS.has(n)) c.title = "constant";
+      const s = signals.get(n); if (s) c.title = `${s.kind} = ${fmt(s.kind, s.value)}`; else if (n === "0" || n === "1") c.title = "constant";
       c.onclick = () => { if (signals.has(n)) revealSignal(n); }; chips.appendChild(c);
     }
-    if (others.length > 60) { const more = document.createElement("span"); more.style.color = "var(--muted)"; more.textContent = `+${others.length - 60} more`; chips.appendChild(more); }
+    if (sym.total > sym.others.length) { const more = document.createElement("span"); more.style.color = "var(--muted)"; more.textContent = `+${sym.total - sym.others.length} more`; chips.appendChild(more); }
     d.append(head, chips); frag.appendChild(d);
   }
   body.replaceChildren(frag); $("#rel").hidden = false;
@@ -1229,7 +1537,7 @@ function showMenu(x, y, s) {
   else if (s.kind === "Analog") items.push(["Set value…", () => { $("#fval").focus(); $("#fval").select(); }], ["Set to 0", () => force(s.name, 0)], ["Set to 65535", () => force(s.name, 65535)]);
   else items.push(["Send string…", () => { $("#fval").value = ""; $("#fval").focus(); }], ["Clear string", () => force(s.name, "")]);
   items.push(["-"], [s.brk ? "Don't break on this signal" : "Break on this signal ⏸", () => setBreak(s, !s.brk)],
-             [s.watch ? "Uncheck for trace" : "Check for trace", () => { s.watch = !s.watch; s.chk.checked = s.watch; watchChanged(); }]);
+             [s.watch ? "Uncheck for trace" : "Check for trace", () => { setWatch(s, !s.watch); repaintSig(s); watchChanged(); }]);
   // watch groups
   items.push(["-"], ["Add to group ▸", () => { popMenu(x, y, [["Add " + s.name + " to…", null, "hd"],
       ...[...groups.keys()].map(g => [(groups.get(g).has(s.name) ? "✓ " : "") + g, () => addToGroup(g, s)]),
@@ -1237,7 +1545,7 @@ function showMenu(x, y, s) {
   const mine = [...groups].filter(([, set]) => set.has(s.name)).map(([g]) => g);
   if (mine.length) items.push(["Remove from group" + (mine.length > 1 ? " ▸" : ` “${mine[0]}”`), mine.length === 1 ? () => removeFromGroup(mine[0], s)
     : () => { popMenu(x, y, [["Remove " + s.name + " from…", null, "hd"], ...mine.map(g => [g, () => removeFromGroup(g, s)])]); return KEEP; }]);
-  if (graph) items.push(["-"], ["Show what drives this", () => showRelated(s.name, "drivers")], ["Show what this drives", () => showRelated(s.name, "loads")],
+  if (graphReady) items.push(["-"], ["Show what drives this", () => showRelated(s.name, "drivers")], ["Show what this drives", () => showRelated(s.name, "loads")],
                         ["Show paths from here ▸", () => window.open(pathsUrl(s.name), "_blank", "noopener")]);
   items.push(["-"], ["Copy name", () => navigator.clipboard?.writeText(s.name)]);
   popMenu(x, y, items);
@@ -1256,6 +1564,34 @@ addEventListener("keydown", e => {
 
 // ---------------------------------------------------------------- connection, slots, status
 
+// Messages are queued and applied in order, a few milliseconds at a time, so a burst of thousands of events never
+// freezes the page. Applying a message only updates the model; painting happens once per frame (requestFrame).
+const inbox = []; let inboxHead = 0, draining = false;
+const drainChannel = new MessageChannel(); drainChannel.port1.onmessage = () => drain();
+function handleFrame(data) {   // one WebSocket frame: an array of events (a single object is accepted too)
+  if (Array.isArray(data)) for (let i = 0; i < data.length; i++) inbox.push(data[i]); else inbox.push(data);
+  if (!draining) { draining = true; drain(); }
+}
+function drain() {
+  const t0 = performance.now(); let n = 0;
+  while (inboxHead < inbox.length) {
+    const m = inbox[inboxHead]; inbox[inboxHead++] = undefined;
+    if (m.t === "trace") onTrace(m);
+    else if (m.t === "step") onStep(m);
+    else if (m.t === "log") onLog(m);
+    if ((++n & 63) === 0 && performance.now() - t0 > 8) break;
+  }
+  if (inboxHead >= inbox.length) { inbox.length = 0; inboxHead = 0; draining = false; }
+  else drainChannel.port2.postMessage(0);
+}
+// Only the slot's own lifecycle messages (see ProgramSlot) reload the list; any other log line that happens to contain
+// "started" or "stopped" must not.
+const LIFECYCLE = /^\s*(?:Loaded .* program '.*'|Program (?:started|stopped))\s*$/;
+function onLog(m) {
+  if (LIFECYCLE.test(m.message || "")) { loadSlots(); scheduleReload(/^\s*Loaded /.test(m.message)); }
+  if (m.level === "Error") $("#st-msg").textContent = m.message;
+}
+
 function connect() {
   ws?.close();
   const proto = location.protocol === "https:" ? "wss://" : "ws://";
@@ -1263,21 +1599,11 @@ function connect() {
   const sock = ws = new WebSocket(`${proto}${location.host}/ws/trace?slot=${slot}`);
   sock.onopen = () => setConn(true);
   sock.onclose = () => { if (sock !== ws) return; setConn(false); setTimeout(() => { if (sock === ws) connect(); }, 2000); };
-  sock.onmessage = ev => {
-    // Each frame is a JSON array of events (a single object is accepted too).
-    const data = JSON.parse(ev.data);
-    for (const m of Array.isArray(data) ? data : [data]) {
-      if (m.t === "trace") onTrace(m);
-      else if (m.t === "step") onStep(m);
-      else if (m.t === "log") {
-        if (/Loaded|started|stopped|Unload/i.test(m.message)) { loadSlots(); scheduleRefresh(); }
-        if (m.level === "Error") $("#st-msg").textContent = m.message;
-      }
-    }
-  };
+  sock.onmessage = ev => handleFrame(JSON.parse(ev.data));
 }
 function setConn(ok) { $("#st-conn").innerHTML = `<i class="dot ${ok ? "ok" : "bad"}"></i>${ok ? "connected" : "reconnecting…"}`; }
-function scheduleRefresh() { clearTimeout(refreshTimer); refreshTimer = setTimeout(loadSignals, 300); }
+// A new program was loaded: full reload (signals, then graph). Start/stop: just refresh values.
+function scheduleReload(full) { reloadFull = reloadFull || !!full; clearTimeout(refreshTimer); refreshTimer = setTimeout(() => { const f = reloadFull; reloadFull = false; loadSignals(f); }, 300); }
 
 async function loadSlots() {
   const slots = await api("/api/slots").catch(() => []);
@@ -1293,17 +1619,24 @@ async function loadSlots() {
   currentState = s ? s.state : "—";
   $("#st-state").textContent = step.paused ? "Paused (step)" : step.enabled ? "Stepping" : currentState;
   document.title = `Debugger · slot ${slot}`;
+  // a different program in this slot (loaded or unloaded from elsewhere): the lists are stale
+  const file = s?.file || "";
+  if (loadedFile === undefined) loadedFile = file;
+  else if (file !== loadedFile) { loadedFile = file; scheduleReload(true); }
 }
 
 function switchSlot(n) {
   slot = n; history.replaceState(null, "", `?slot=${n}`);
   selected = null; $("#fname").value = ""; $("#fval").value = "";
   step = { enabled: false, onlyBreakSignals: false, breakSignals: new Set(), paused: null };
-  changes = []; stepLog = []; view = null; viewVals = null; renderStep(false);
-  graph = null; tree = null; litFolders.clear(); glowQ.clear(); $("#rel").hidden = true; $("#pathslink").href = pathsUrl();
+  changes.clear(); stepLog = []; view = null; viewVals = null; hlPaused = hlHist = null; renderStep(false);
+  tree = null; graphGen++; graphReady = false; nearSet = null; gw("clear").catch(() => { });
+  litFolders.clear(); dirtySigs.clear(); $("#rel").hidden = true; $("#pathslink").href = pathsUrl();
+  signals = new Map(); watched = new Set(); marked = new Set(); rows = []; order = []; seqItems = []; lazyQ = []; loadedFile = undefined;
+  watchNames = new Set(store.get(watchKey(), []));
   collapsedMap = store.get(collapsedKey(), {}) || {};
   loadGroups();
-  clearTrace(); loadSlots(); loadSignals(); connect();
+  clearTrace(); applyFilter(); loadSlots(); loadSignals(true); connect();
   if (wave) wave.setSignals([]);
 }
 
@@ -1311,23 +1644,23 @@ $("#slot").onchange = e => switchSlot(Number(e.target.value));
 $("#stream").onclick = () => { streaming = !streaming; $("#stream").classList.toggle("on", streaming); $("#stream").textContent = streaming ? "● Stream" : "○ Stream"; };
 $("#clear").onclick = clearTrace;
 $("#save").onclick = saveTrace;
-$("#search").oninput = debounce(applyFilter, 80); $("#kfilter").onchange = applyFilter; $("#onlychecked").onchange = applyFilter; $("#activeonly").onchange = applyFilter;
-$("#tsearch").oninput = debounce(applyTraceFilter, 80);
+$("#search").oninput = applyFilter; $("#kfilter").onchange = applyFilter; $("#onlychecked").onchange = applyFilter; $("#activeonly").onchange = applyFilter;
+$("#tsearch").oninput = applyTraceFilter;
 $("#burst").onchange = applyTraceFilter;
-$("#follow").onchange = e => { followMode = e.target.value; store.set("follow", followMode); applyTraceFilter(); };
+$("#follow").onchange = e => { followMode = e.target.value; store.set("follow", followMode); nearSet = null; applyTraceFilter(); refreshNear(); };
 $("#resetact").onclick = resetActivity;
 $("#fold").onclick = () => setAllFolders(true); $("#unfold").onclick = () => setAllFolders(false);
 document.querySelectorAll("#viewseg button").forEach(b => b.onclick = () => setViewMode(b.dataset.v));
-function checkVisible(v) { for (const s of signals.values()) if (s.tr && !s.tr.hidden) { s.watch = v; s.chk.checked = v; } watchChanged(); }
+function checkVisible(v) { for (const it of rows) if (!it.isFolder) setWatch(it, v); watchChanged(); }
 $("#checkall").onclick = () => checkVisible(true); $("#checknone").onclick = () => checkVisible(false);
 function setSort(by) {
   if (sortBy === by && (by === "name" || by === "kind")) sortDir = -sortDir;
   else { sortBy = by; sortDir = by === "recent" || by === "count" ? -1 : 1; }
   store.set("sort", sortBy); store.set("sortdir", sortDir);
-  layout(); syncSortUi(); applyFilter();
+  reorder(); syncSortUi(); applyFilter();
 }
-document.querySelectorAll("#sigs th.sortable").forEach(th => th.onclick = () => setSort(th.dataset.sort));
-$("#sortsel").onchange = e => { const v = e.target.value; if (v !== sortBy) { sortBy = v; sortDir = v === "recent" || v === "count" ? -1 : 1; store.set("sort", sortBy); store.set("sortdir", sortDir); layout(); syncSortUi(); applyFilter(); } };
+document.querySelectorAll("#sigs .th.sortable").forEach(th => th.onclick = () => setSort(th.dataset.sort));
+$("#sortsel").onchange = e => { const v = e.target.value; if (v !== sortBy) { sortBy = v; sortDir = v === "recent" || v === "count" ? -1 : 1; store.set("sort", sortBy); store.set("sortdir", sortDir); reorder(); syncSortUi(); applyFilter(); } };
 
 // splitter
 (() => {
@@ -1347,6 +1680,7 @@ $("#sortsel").onchange = e => { const v = e.target.value; if (v !== sortBy) { so
 document.querySelectorAll("#viewseg button").forEach(b => b.classList.toggle("on", b.dataset.v === viewMode));
 $("#foldbtns").hidden = viewMode !== "tree";
 syncSortUi();
+tfilter = traceFilterState();
 switchSlot(slot);
 if (store.get("waveopen", false)) setWaveOpen(true);
 setInterval(loadSlots, 3000);

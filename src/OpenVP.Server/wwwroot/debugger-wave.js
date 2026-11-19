@@ -45,6 +45,8 @@
     ".wv-inner{display:flex;align-items:stretch;width:100%}",
     ".wv-gutter{flex:none;width:" + GUTTER + "px;position:relative;background:var(--wv-head);border-right:1px solid var(--wv-line);z-index:2}",
     ".wv-gh{position:sticky;top:0;z-index:3;height:" + AX + "px;background:var(--wv-head);border-bottom:1px solid var(--wv-line);color:var(--wv-muted);padding:0 6px;line-height:" + (AX - 1) + "px}",
+    ".wv-lanes{position:relative}",
+    ".wv-lanes>.wv-lane{position:absolute;left:0;right:0}",
     ".wv-lane{position:relative;display:flex;align-items:center;gap:4px;height:" + LH + "px;padding:0 4px 0 7px;border-bottom:1px solid var(--wv-line);border-left:3px solid var(--wv-lo);cursor:grab}",
     ".wv-lane.wv-k-Digital{border-left-color:var(--wv-hi)}.wv-lane.wv-k-Analog{border-left-color:var(--wv-ana)}.wv-lane.wv-k-Serial{border-left-color:var(--wv-ser)}",
     ".wv-lane.wv-drag{opacity:.4}",
@@ -186,6 +188,8 @@
     var gutter = document.createElement("div"); gutter.className = "wv-gutter";
     var gh = document.createElement("div"); gh.className = "wv-gh"; gh.textContent = "signals";
     gutter.appendChild(gh);
+    var lanesBox = document.createElement("div"); lanesBox.className = "wv-lanes";   // lane labels are created only for the lanes in view
+    gutter.appendChild(lanesBox);
     var plot = document.createElement("div"); plot.className = "wv-plot";
     var stick = document.createElement("div"); stick.className = "wv-stick";
     var cv = document.createElement("canvas"); cv.className = "wv-cv";
@@ -253,11 +257,28 @@
       return { name: String(sig.name), kind: kind, t: [], v: [], init: sig.value === undefined ? undefined : normValue(kind, sig.value), el: null };
     }
 
+    var gwin = { a: -1, b: -1 };
     function buildGutter() {
-      while (gutter.children.length > 1) gutter.removeChild(gutter.lastChild);
-      lanes.forEach(function (l, i) {
+      lanesBox.style.height = lanes.length * LH + "px";
+      gwin.a = gwin.b = -1;      // lanes may have changed: rebuild the visible labels
+      renderGutter();
+    }
+    // Only the labels in (and just around) the viewport exist, so thousands of lanes cost the same as a few.
+    function renderGutter() {
+      if (dragName != null) return;
+      var st = scroller.scrollTop, h = scroller.clientHeight || 300;
+      var a = Math.max(0, Math.floor(st / LH) - 2), b = Math.min(lanes.length, Math.ceil((st + h) / LH) + 2);
+      if (a === gwin.a && b === gwin.b) return;
+      gwin.a = a; gwin.b = b;
+      while (lanesBox.firstChild) lanesBox.removeChild(lanesBox.firstChild);
+      var frag = document.createDocumentFragment();
+      for (var i = a; i < b; i++) frag.appendChild(makeLaneEl(lanes[i], i));
+      lanesBox.appendChild(frag);
+    }
+    function makeLaneEl(l, i) {
         var el = document.createElement("div");
         el.className = "wv-lane wv-k-" + l.kind;
+        el.style.top = i * LH + "px";
         el.draggable = true;
         el.dataset.i = i;
         var nm = document.createElement("span"); nm.className = "wv-name"; nm.textContent = l.name; nm.title = l.name + " (" + l.kind + ")";
@@ -298,12 +319,11 @@
           if (opts.onReorder) { try { opts.onReorder(lanes.map(function (q) { return q.name; })); } catch (_) { } }
         });
         l.el = el;
-        gutter.appendChild(el);
-      });
+        return el;
     }
     var dragName = null;
     function clearOver() {
-      var o = gutter.querySelectorAll(".wv-ovt,.wv-ovb");
+      var o = lanesBox.querySelectorAll(".wv-ovt,.wv-ovb");
       for (var i = 0; i < o.length; i++) o[i].classList.remove("wv-ovt", "wv-ovb");
     }
 
@@ -417,6 +437,7 @@
       if (cv.width !== pw) cv.width = pw;
       if (cv.height !== ph) cv.height = ph;
       readColors();
+      renderGutter();
       schedule();
     }
 
@@ -432,7 +453,7 @@
         lastDraw = ts;
         draw();
       }
-      if (following) rafId = requestAnimationFrame(frame);
+      if (following && plotW) rafId = requestAnimationFrame(frame);   // a hidden panel (no size) stops animating; resize restarts it
     }
 
     function valueAt(l, t) {
@@ -460,7 +481,8 @@
       // lane stripes + separators
       ctx.save();
       ctx.beginPath(); ctx.rect(0, AX, W, H - AX); ctx.clip();
-      for (var i = 0; i < lanes.length; i++) {
+      var i0 = Math.max(0, Math.floor(sy / LH) - 1), i1 = Math.min(lanes.length, Math.ceil((sy + H) / LH) + 1);   // lanes in view
+      for (var i = i0; i < i1; i++) {
         var y0 = AX + i * LH - sy;
         if (y0 > H || y0 + LH < AX) continue;
         if (i & 1) { ctx.fillStyle = "rgba(255,255,255,0.025)"; ctx.fillRect(0, y0, W, LH); }
@@ -476,7 +498,7 @@
       for (i = 0; i < ticks.length; i++) ctx.fillRect(Math.round(X(ticks[i])), AX, 1, H - AX);
 
       // lanes
-      for (i = 0; i < lanes.length; i++) {
+      for (i = i0; i < i1; i++) {
         var ly = AX + i * LH - sy;
         if (ly > H || ly + LH < AX) continue;
         var l = lanes[i];
@@ -508,7 +530,7 @@
         var ht = tAtX(hoverX);
         vline(hoverX, "rgba(230,233,238,0.55)", false);
         // per-lane values
-        for (i = 0; i < lanes.length; i++) {
+        for (i = i0; i < i1; i++) {
           var hy = AX + i * LH - sy;
           if (hy > H || hy + LH < AX) continue;
           var r = valueAt(lanes[i], ht);
@@ -765,7 +787,7 @@
       var x = localX(e);
       zoomAt(Math.exp(dy * 0.0015), x / plotW, tAtX(x));
     }, { passive: false });
-    scroller.addEventListener("scroll", schedule);
+    scroller.addEventListener("scroll", function () { renderGutter(); schedule(); });
 
     // ---- resize
     var ro = null;
