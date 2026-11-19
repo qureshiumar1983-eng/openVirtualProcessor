@@ -232,4 +232,113 @@ public static class LpzRuntimeTests
         Thread.Sleep(30);
         Assert.True(!Fb(1) && !Fb(2) && Fb(3), "analog changes while disabled are ignored");
     }
+
+    /// <summary>A one-panel (IPID 03) program from a list of records, written to its own .lpz.</summary>
+    private static string BuildPanelProgram(string name, IEnumerable<byte[]> records)
+    {
+        var path = Path.Combine(Paths.TempData(), name + ".lpz");
+        using var zip = ZipFile.Open(path, ZipArchiveMode.Create);
+        void Put(string entry, byte[] content) { using var s = zip.CreateEntry(entry).Open(); s.Write(content); }
+        Put("boot.bt", Encoding.ASCII.GetBytes($"[LG_BOOT_DATA]\r\nBinFileName={name}.bin\r\nSMWFileName={name}.smw\r\nRackType=CP4\r\n"));
+        Put(name + ".bin", records.SelectMany(r => r).ToArray());
+        Put(name + ".dip", Encoding.ASCII.GetBytes("[IPTable]\r\nid0=03\r\naddr0=127.0.0.1\r\n"));
+        return path;
+    }
+
+    private static JoinDevice LoadPanel(Processor p, string path)
+    {
+        p.LoadProgram(1, path);
+        Assert.Equal(SlotState.Running, p.Slot(1).State, "running: " + p.Slot(1).LastError);
+        return p.Slot(1).FindDevice(3) ?? throw new AssertException("panel 03 registered");
+    }
+
+    [Test]
+    public static void Analog_initialize_with_one_trigger_per_value_sets_one_output()
+    {
+        // Panel IPID 03: outputs d1..d3 = triggers; inputs (feedback) a1, a2, s1.
+        const int T1 = 10, T2 = 11, T3 = 12, Out = 13, AtStart = 14, Ser = 15;
+        var path = BuildPanelProgram("initmulti",
+        [
+            Record(-12, "IP-ID-03", [Out, AtStart, Ser], [T1, T2, T3], Int(6, 3), Int(10, 0), Int(11, 3), Int(12, 2), Int(13, 3)),
+            Record(38, "S-1", [T1, T2, T3], [Out], Int(15, 3), Int(2, 5), Int(2, 6), Int(2, 7)),
+            // input 1 is the constant 1, so parameter 1 loads at start; input 2 then replaces it on a rising edge
+            Record(38, "S-2", [1, T2], [AtStart], Int(15, 2), Int(2, 9), Int(2, 8)),
+            // string parameters make it a serial initialize
+            Record(38, "S-3", [T1, T3], [Ser], Int(15, 2), Str(3, "one"), Str(3, "three")),
+        ]);
+        using var p = new Processor(Paths.TempData());
+        p.AddLoader(new LpzLoader());
+        var panel = LoadPanel(p, path);
+        Assert.Eventually(() => (ushort)panel.GetFeedback(A(2)) == 9, "constant-1 trigger loads parameter 1 at start");
+        Assert.Equal((ushort)0, (ushort)panel.GetFeedback(A(1)), "no trigger yet, output untouched");
+
+        panel.ReceiveInput(D(2), true);
+        Assert.Eventually(() => (ushort)panel.GetFeedback(A(1)) == 6 && (ushort)panel.GetFeedback(A(2)) == 8, "trigger 2 sets 6 (and the other symbol's 8)");
+        panel.ReceiveInput(D(2), false);
+        panel.ReceiveInput(D(3), true);
+        Assert.Eventually(() => (ushort)panel.GetFeedback(A(1)) == 7, "trigger 3 sets 7");
+        Assert.Equal("three", (string)panel.GetFeedback(S(1)), "serial form");
+        panel.ReceiveInput(D(3), false);
+        panel.ReceiveInput(D(1), true);
+        Assert.Eventually(() => (ushort)panel.GetFeedback(A(1)) == 5 && (string)panel.GetFeedback(S(1)) == "one", "trigger 1 sets 5 / one");
+        panel.ReceiveInput(D(1), false);
+        Thread.Sleep(30);
+        Assert.Equal((ushort)5, (ushort)panel.GetFeedback(A(1)), "a falling edge does nothing");
+    }
+
+    [Test]
+    public static void Analog_initialize_single_trigger_still_loads_every_output()
+    {
+        const int T = 10, O1 = 11, O2 = 12;
+        var path = BuildPanelProgram("initsingle",
+        [
+            Record(-12, "IP-ID-03", [O1, O2], [T], Int(6, 3), Int(10, 0), Int(11, 1), Int(12, 2), Int(13, 1)),
+            Record(38, "S-1", [T], [O1, O2], Int(15, 2), Int(2, 3), Int(2, 4)),
+        ]);
+        using var p = new Processor(Paths.TempData());
+        p.AddLoader(new LpzLoader());
+        var panel = LoadPanel(p, path);
+        panel.ReceiveInput(D(1), true);
+        Assert.Eventually(() => (ushort)panel.GetFeedback(A(1)) == 3 && (ushort)panel.GetFeedback(A(2)) == 4, "outputs 1 and 2 = parameters 1 and 2");
+    }
+
+    [Test]
+    public static void Make_string_permanent_restores_its_inputs_after_a_restart()
+    {
+        // Panel IPID 03: outputs s1, s2 (the strings the program changes); inputs (feedback) s1, s2.
+        const int S1 = 10, S2 = 11;
+        var path = BuildPanelProgram("permanent",
+        [
+            Record(-12, "IP-ID-03", [S1, S2], [S1, S2], Int(6, 3), Int(10, 0), Int(11, 0), Int(12, 0), Int(13, 0)),
+            Record(205, "S-1", [S1, S2], [], Int(15, 1), Int(2, 5)),   // keeps at most 5 characters
+        ]);
+        var data = Paths.TempData();
+        using (var p = new Processor(data))
+        {
+            p.AddLoader(new LpzLoader());
+            var panel = LoadPanel(p, path);
+            Thread.Sleep(30);
+            Assert.Equal("", (string)panel.GetFeedback(S(1)), "nothing saved yet");
+            panel.ReceiveInput(S(1), "hello world");
+            panel.ReceiveInput(S(2), "ab");
+            Assert.Eventually(() => (string)panel.GetFeedback(S(2)) == "ab", "value reached the panel");
+            p.Slot(1).Unload();   // flushes the store
+        }
+        using (var p = new Processor(data))
+        {
+            p.AddLoader(new LpzLoader());
+            var panel = LoadPanel(p, path);
+            Assert.Eventually(() => (string)panel.GetFeedback(S(1)) == "hello" && (string)panel.GetFeedback(S(2)) == "ab",
+                "both strings restored, the first cut to the parameter's length");
+            panel.ReceiveInput(S(2), "changed");
+            p.Slot(1).Unload();
+        }
+        using (var p = new Processor(data))
+        {
+            p.AddLoader(new LpzLoader());
+            var panel = LoadPanel(p, path);
+            Assert.Eventually(() => (string)panel.GetFeedback(S(2)) == "chang", "a later change is the one restored");
+        }
+        Assert.True(PrimitiveCatalog.Known[205].Implemented, "listed as running in the compatibility report");
+    }
 }

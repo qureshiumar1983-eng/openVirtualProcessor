@@ -604,6 +604,12 @@ public sealed partial class LpzRuntime : IProgramRuntime
             }
         }
 
+        public void SetInput(int pin, string value)
+        {
+            var sig = In(pin);
+            if (sig > 1) Runtime.Drive(sig, value, Symbol.Path);
+        }
+
         public object Output(int pin) => pin >= 1 && pin <= Symbol.Outputs.Length ? Runtime.Value(Symbol.Outputs[pin - 1]) : false;
         public SigKind OutputSignalKind(int pin) => pin >= 1 && pin <= Symbol.Outputs.Length ? Runtime.KindOf(Symbol.Outputs[pin - 1]) : SigKind.Digital;
 

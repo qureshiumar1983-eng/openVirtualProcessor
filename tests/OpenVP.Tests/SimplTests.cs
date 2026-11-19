@@ -91,6 +91,34 @@ public static class SimplTests
     }
 
     [Test]
+    public static void Analog_initialize_with_one_trigger_per_value_sets_one_output()
+    {
+        // Panel 03: presses d1, d2 (handles 10, 11), feedback a1 (12) and a2 (13). Symbol 20 has a trigger per
+        // value and one output; symbol 21 has its first trigger on the constant "1" and one on d2.
+        const string text = "[\nObjTp=Hd\nPgmNm=InitMulti\n]\n[\nObjTp=Sg\nH=1\nNm=0\n]\n[\nObjTp=Sg\nH=2\nNm=1\n]\n" +
+            "[\nObjTp=Sm\nH=5\nSmC=6840\nNm=XPanel\nDvH=589\nn1I=0\nn2I=2\nn1O=2\nmI=2\nmO=2\nI1=12\nI2=13\nO1=10\nO2=11\n]\n" +
+            "[\nObjTp=Sm\nH=20\nSmC=32\nNm=Analog Initialize\nmI=2\nmO=1\nI1=10\nI2=11\nO1=12\nmP=2\nP1=5\nP2=6\n]\n" +
+            "[\nObjTp=Sm\nH=21\nSmC=32\nNm=Analog Initialize\nmI=2\nmO=1\nI1=2\nI2=11\nO1=13\nmP=2\nP1=9\nP2=8\n]\n";
+        var path = Path.Combine(Paths.TempData(), "initmulti.smw");
+        File.WriteAllText(path, text);
+        File.WriteAllText(Path.ChangeExtension(path, ".openvp.json"), "{ \"ipids\": { \"5\": \"03\" } }");
+        using var p = NewProcessor();
+        p.LoadProgram(1, path);
+        var slot = p.Slot(1);
+        Assert.Equal(SlotState.Running, slot.State, "running: " + slot.LastError);
+        var panel = slot.FindDevice(3) ?? throw new AssertException("panel IPID 03");
+        var a1 = new JoinKey(SigKind.Analog, 1);
+        var a2 = new JoinKey(SigKind.Analog, 2);
+        Assert.Eventually(() => (ushort)panel.GetFeedback(a2) == 9, "trigger on the constant 1 loads parameter 1 at start");
+        Assert.Equal((ushort)0, (ushort)panel.GetFeedback(a1), "no trigger yet");
+        panel.ReceiveInput(new JoinKey(SigKind.Digital, 2), true);
+        Assert.Eventually(() => (ushort)panel.GetFeedback(a1) == 6 && (ushort)panel.GetFeedback(a2) == 8, "trigger 2 loads parameter 2");
+        panel.ReceiveInput(new JoinKey(SigKind.Digital, 2), false);
+        panel.ReceiveInput(new JoinKey(SigKind.Digital, 1), true);
+        Assert.Eventually(() => (ushort)panel.GetFeedback(a1) == 5, "trigger 1 loads parameter 1");
+    }
+
+    [Test]
     public static void Debugger_can_watch_and_drive_named_signals()
     {
         using var p = NewProcessor();

@@ -70,6 +70,7 @@ public static class PrimitiveCatalog
         new PrimitiveInfo(156, "Ethernet Offline Manager", "SmC 511/633", PrimitiveLibrary.Supports(156)),
         new PrimitiveInfo(203, "Logic Wave Delay", "SmC 408", PrimitiveLibrary.Supports(203)),
         new PrimitiveInfo(204, "Logic Wave Pulse", "SmC 409/1309", PrimitiveLibrary.Supports(204)),
+        new PrimitiveInfo(205, "Make String Permanent", "SmC 858", PrimitiveLibrary.Supports(205)),
         new PrimitiveInfo(206, "Multiple NOT", "SmC 418", PrimitiveLibrary.Supports(206)),
         new PrimitiveInfo(207, "Interlock-Toggle", "SmC 419", PrimitiveLibrary.Supports(207)),
         new PrimitiveInfo(213, "Equipment Crosspoint Routing", "SmC 446", PrimitiveLibrary.Supports(213)),
