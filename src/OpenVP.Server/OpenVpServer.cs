@@ -365,8 +365,18 @@ public static class OpenVpServer
             // The folder SIMPL+ MakeProgramFilename uses: \NVRAM\{Program Name}\.
             var programName = processor.Slot(n).Runtime?.ProgramName;
             var programFolder = programName is null ? null : SlotFiles.FolderName(programName);
-            return Results.Ok(new { root = r, path = Rel(path), programPath = ProgramPathOf(r, Rel(path)), programFolder, entries });
+            return Results.Ok(new { root = r, path = Rel(path), programPath = ProgramPathOf(r, Rel(path)), programFolder, entries, missing = Missing(n) });
         }));
+
+        // Files and folders the program looked for and didn't find (config files not put in place yet),
+        // with the folder each one belongs in, so the console can offer to create it.
+        object[] Missing(int n) => processor.Slot(n).MissingFiles.Items.Select(m => (object)new
+        {
+            root = m.Root, folder = m.Folder, name = m.Name, isFolder = m.IsFolder,
+            programPath = m.ProgramPath, folderPath = m.FolderPath, diskFolder = m.DiskFolder, folderExists = m.FolderExists,
+        }).ToArray();
+
+        slotApi.MapGet("/files/missing", (int n) => Results.Ok(Missing(n)));
 
         slotApi.MapPost("/files/folder", (int n, JsonElement body) => Files(() =>
         {

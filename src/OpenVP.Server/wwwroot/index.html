@@ -28,6 +28,12 @@
   .bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
   .mono { font-family: ui-monospace, Menlo, monospace; font-size:12px; }
   #log, #console-out { height:220px; overflow:auto; background:#0b0e11; border:1px solid var(--line); border-radius:6px; padding:8px; white-space:pre-wrap; }
+  #log, #console-out { resize:vertical; min-height:120px; }
+  .sec-head { display:flex; align-items:center; gap:6px; margin-bottom:10px; }
+  .sec-head h2 { margin:0; flex:1; }
+  .sec-head button { padding:2px 8px; font-size:12px; }
+  section.max { position:fixed; inset:16px; z-index:50; display:flex; flex-direction:column; box-shadow:0 10px 40px #000c; }
+  section.max #log, section.max #console-out { flex:1; height:auto !important; resize:none; }
   .lv-Error { color:var(--err); } .lv-Warning { color:var(--warn); } .lv-Notice { color:#9ecbff; } .lv-Console { color:#cfd6df; }
   .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
   @media (max-width: 1200px) { .grid2 { grid-template-columns: 1fr; } }
@@ -66,6 +72,12 @@
   dialog form { display:flex; flex-direction:column; gap:10px; margin:0; }
   dialog .row { display:flex; gap:8px; justify-content:flex-end; }
   #files-hint { margin:0 0 10px; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:#141a21; }
+  #files-missing { margin:0 0 10px; padding:8px 10px; border:1px solid #6b5a2a; border-radius:6px; background:#1d1a12; }
+  #files-missing ul { margin:6px 0 0; padding:0; list-style:none; }
+  #files-missing li { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:4px 0; border-top:1px solid var(--line); }
+  #files-missing li:first-child { border-top:none; }
+  #files-missing .path { flex:1 1 220px; overflow-wrap:anywhere; }
+  #files-missing .disk { flex-basis:100%; font-size:12px; overflow-wrap:anywhere; }
 </style>
 </head>
 <body>
@@ -145,6 +157,7 @@
         <input type="file" id="files-pick" multiple hidden>
         <input type="file" id="files-pickdir" webkitdirectory multiple hidden>
       </div>
+      <div id="files-missing" hidden></div>
       <div id="files-hint" class="muted" hidden></div>
       <div class="bar mono"><span id="crumbs"></span><span style="flex:1"></span><span class="muted" id="files-ppath" title="The path the program uses for this folder"></span></div>
       <div id="files-drop">
@@ -153,14 +166,24 @@
       </div>
     </section>
     <div class="grid2" style="margin-top:16px">
-      <section>
-        <h2>Console</h2>
+      <section id="console-sec">
+        <div class="sec-head">
+          <h2>Console</h2>
+          <button id="console-smaller" title="Make the console shorter">−</button>
+          <button id="console-bigger" title="Make the console taller">+</button>
+          <button id="console-max" title="Fill the window with the console (Esc to restore)">Maximize</button>
+        </div>
         <div class="bar"><input id="console-in" class="mono" style="flex:1" placeholder="help, ipt, metrics, taskstat, cpuload, ramfree, or a program command"><button id="console-run">Run</button></div>
-        <div id="console-out" class="mono"></div>
+        <div id="console-out" class="mono" title="Drag the bottom-right corner to resize"></div>
       </section>
-      <section>
-        <h2>Log</h2>
-        <div id="log" class="mono"></div>
+      <section id="log-sec">
+        <div class="sec-head">
+          <h2>Log</h2>
+          <button id="log-smaller" title="Make the log shorter">−</button>
+          <button id="log-bigger" title="Make the log taller">+</button>
+          <button id="log-max" title="Fill the window with the log (Esc to restore)">Maximize</button>
+        </div>
+        <div id="log" class="mono" title="Drag the bottom-right corner to resize"></div>
       </section>
     </div>
   </div>
@@ -366,10 +389,33 @@ function connectLog() {
       if (m.t === "log") {
         line($("#log"), `${t}  ${m.level}  ${m.message}`, "lv-" + m.level);
         if (/Loaded|started|stopped/.test(m.message)) refreshSlots();
+        if (/^The program looked for /.test(m.message)) refreshFilesSoon();
       }
     }
   };
 }
+
+// Log / Console size: drag the corner, use −/+, or Maximize to fill the window. Heights are remembered.
+function resizable(name, box) {
+  const el = $(box), sec = $(`#${name}-sec`), KEY = `openvp.${name}Height`;
+  try { const h = +localStorage.getItem(KEY); if (h >= 120) el.style.height = h + "px"; } catch {}
+  const save = () => { if (!sec.classList.contains("max")) try { localStorage.setItem(KEY, el.offsetHeight); } catch {} };
+  new ResizeObserver(save).observe(el);
+  const step = d => { el.style.height = Math.max(120, el.offsetHeight + d) + "px"; };
+  $(`#${name}-bigger`).onclick = () => step(150);
+  $(`#${name}-smaller`).onclick = () => step(-150);
+  const setMax = on => {
+    document.querySelectorAll("section.max").forEach(x => x !== sec && x.unmax?.());
+    sec.classList.toggle("max", on);
+    $(`#${name}-max`).textContent = on ? "Restore" : "Maximize";
+    el.scrollTop = el.scrollHeight;
+  };
+  sec.unmax = () => setMax(false);
+  $(`#${name}-max`).onclick = () => setMax(!sec.classList.contains("max"));
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && sec.classList.contains("max")) setMax(false); });
+}
+resizable("log", "#log");
+resizable("console", "#console-out");
 
 async function loadLog() {
   $("#log").innerHTML = "";
@@ -458,6 +504,7 @@ async function refreshFiles() {
   document.querySelectorAll("[data-root]").forEach(b => b.classList.toggle("active", b.dataset.root === fRoot));
   $("#files-ppath").textContent = d.programPath;
   renderHint(d);
+  renderMissing(d.missing || []);
   // Breadcrumbs: NVRAM / config / rooms
   const parts = d.path ? d.path.split("/") : [];
   const crumbs = $("#crumbs"); crumbs.innerHTML = "";
@@ -509,6 +556,43 @@ function renderHint(d) {
     fPath = name; refreshFiles();
   };
   h.appendChild(b);
+}
+
+// Config files the program looked for and didn't find: show where each belongs and offer to make the folder.
+let filesTimer;
+function refreshFilesSoon() { clearTimeout(filesTimer); filesTimer = setTimeout(refreshFiles, 300); }
+
+function renderMissing(list) {
+  const box = $("#files-missing");
+  box.hidden = list.length === 0;
+  if (!list.length) return;
+  box.innerHTML = `<b>The program looked for ${list.length === 1 ? "this" : "these"} and didn't find ${list.length === 1 ? "it" : "them"}.</b> <span class="muted">Create the folder, then upload the file into it.</span><ul></ul>`;
+  const ul = box.querySelector("ul");
+  for (const m of list) {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="path mono"></span><span class="disk muted mono"></span>`;
+    li.querySelector(".path").textContent = m.programPath;
+    li.querySelector(".disk").textContent = `On disk: ${m.diskFolder}`;
+    const b = document.createElement("button");
+    const go = () => { fRoot = m.root; fPath = m.folder; refreshFiles(); };
+    if (m.folderExists) {
+      b.textContent = `Open ${m.folderPath}`;
+      b.title = `Go to the folder, then upload ${m.name}`;
+      b.onclick = go;
+    } else {
+      b.textContent = `Create ${m.folderPath}`;
+      b.title = "Create this folder (and any folders above it that are missing)";
+      b.onclick = async () => {
+        const parts = m.folder.split("/").filter(Boolean);
+        if (!parts.length) return go(); // the top folder; opening it creates it
+        try { await api(`/api/slots/${sel}/files/folder`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ root: m.root, path: parts.slice(0, -1).join("/"), name: parts[parts.length - 1] }) }); }
+        catch (e) { return alert(e.message); }
+        go();
+      };
+    }
+    li.insertBefore(b, li.querySelector(".disk"));
+    ul.appendChild(li);
+  }
 }
 
 async function uploadFiles(list) {

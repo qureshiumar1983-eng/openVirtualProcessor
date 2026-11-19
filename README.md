@@ -148,6 +148,14 @@ Programs see the folders under their usual processor paths:
 
 **Program folders.** On a processor, SIMPL+ `MakeProgramFilename("\NVRAM\config.txt")` gives each program its own folder: `\NVRAM\{Program Name}\config.txt`, using the Program Name from the SIMPL Windows program header. OpenVP does the same. For a `.lpz` it reads the name from the compile header or the archived `.smw`, and falls back to the `.smw` file name. When a program is loaded, the Files section shows that folder's name with a button to create or open it, so your config file goes in the right place.
 
+**Missing config files.** When a program looks for a file or folder in NVRAM or User that isn't there (it checks `File.Exists`, opens a file to read, lists a folder, or SIMPL+ `FileOpen`s without creating), OpenVP tells you where it belongs. The slot log says once which folder to create and where to put the file, both as the program sees it and on disk:
+
+```
+The program looked for \USER\config\rooms.json but it isn't there. Create the folder \USER\config\ and put rooms.json in it, in the web console (Files, User tab) or on disk at data/program01/user/config.
+```
+
+The Files section lists everything still missing, each with a button to create its folder (and any folders above it) or open it, ready for you to upload the file. An entry goes away once the file is there. Opening a file to read no longer creates an empty folder along the way; writing still creates whatever folders it needs.
+
 The folder names match whatever case the program uses (`\USER`, `/user` and `\User` are the same folder, on Linux too). This works for SIMPL# (`Crestron.SimplSharp.CrestronIO`) and SIMPL+ file functions. A program can't reach outside its slot's folder. The files stay when you load a new program into the slot.
 
 ### Debugger
@@ -230,6 +238,7 @@ Every endpoint except `/api/info` and `/api/login` needs the access key (see [Se
 | POST | `/api/slots/{n}/iptable/{ipid}/clients/{id}/login` | `{"username":"...","password":"...","port":22}`; SSH in and run read-only commands (credentials not stored) |
 | GET | `/api/slots/{n}/compat` | Compatibility report |
 | GET | `/api/slots/{n}/files?root=user&path=config` | List a folder in the slot's NVRAM (`root=nvram`) or User (`root=user`) folder |
+| GET | `/api/slots/{n}/files/missing` | Files and folders the program looked for and didn't find, with the folder each belongs in (also in the `missing` field of the folder listing) |
 | POST | `/api/slots/{n}/files?root=user&path=config` | Multipart upload into that folder; a file name can include sub-folders (`rooms/r1.xml`) |
 | POST | `/api/slots/{n}/files/folder` · `files/rename` | `{"root":"user","path":"config","name":"rooms"}` creates `config/rooms` · renames `path` to `name` |
 | GET | `/api/slots/{n}/files/download?root=user&path=config/rooms.json` | Download a file |
