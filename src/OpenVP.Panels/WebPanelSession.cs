@@ -76,7 +76,7 @@ public sealed class WebPanelSession
 
     private void Attach()
     {
-        _device = DeviceDirectory.Resolve(_processor, _ipId, _slot);
+        _device = DeviceDirectory.Resolve(_processor, _ipId, _slot)!;
         _device.FeedbackChanged += OnFeedback;
         _device.AttachConnection(_conn);
         Queue(new JsonObject { ["t"] = "hello", ["ipid"] = _ipId, ["slot"] = _device.Slot, ["type"] = _device.Type, ["connection"] = _conn.Id });

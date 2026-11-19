@@ -108,7 +108,7 @@ namespace Crestron.SimplSharp
 
         public static string ProgramIDTag => OpenVPBridge.Slot?.Runtime?.ProgramName ?? string.Empty;
 
-        public static string RoomId => $"SLOT{ApplicationNumber:00}";
+        public static string RoomId => OpenVPBridge.Slot?.RoomId ?? $"SLOT{ApplicationNumber:00}";
 
         public static string RoomName => RoomId;
 

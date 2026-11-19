@@ -108,6 +108,10 @@ To reach a real serial device through a serial device server, add `comports.json
 
 A panel can connect before its program loads. It binds to the IP ID and comes online when the program registers it.
 
+### Room ID
+
+Each slot has a **Room ID**, like the Virtual Control Room ID of a VC-4 program. It defaults to `SLOT01`, `SLOT02`, and so on; change it with `PUT /api/slots/{n}/room` (1-64 letters, digits, `_`, `-` or `.`; unique across slots, not case-sensitive). It is saved in `slot.json` in the slot's folder and is what a program reads from `InitialParametersClass.RoomId` and `RoomName`. Browser panels can connect with `/ws/panel?ipid=03&room=ROOM2` and are routed to the slot with that Room ID (an unknown Room ID gets a 404). Panels connecting over CIP still route by IP ID only for now, binding to the lowest slot that has it; the log warns when two slots register the same IP ID.
+
 ### IP table
 
 The **IP table** on the console's main page shows the selected slot's IP IDs, one row for each connected client. Each row starts with who the client is, then its address, IP ID, type, status, how long it has been connected, and how many joins went each way. An IP ID with nobody connected shows when it was last seen. Click a row to see everything known about that client and IP ID. The table refreshes every 2 seconds. The `ipt` console command prints the same list.
@@ -205,6 +209,7 @@ Every endpoint except `/api/info` and `/api/login` needs the access key (see [Se
 | GET | `/api/slots` | All slots with state and devices |
 | POST | `/api/slots/{n}/program` | Multipart `file` (+ sidecar files); loads and starts |
 | POST | `/api/slots/{n}/start` · `stop` · `unload` | |
+| PUT | `/api/slots/{n}/room` | `{"roomId":"ROOM2"}` sets the slot's Room ID (saved in `slot.json`); returns the slot, or 400 if the ID is invalid or another slot has it |
 | GET / POST | `/api/slots/{n}/signals` | List; set with `{"name":"...","value":1}` |
 | GET / POST | `/api/slots/{n}/step` | Step-through state; change with `{"enabled":true,"onlyBreakSignals":true,"breakSignals":["sig"]}` |
 | POST | `/api/slots/{n}/step/next` · `step/run` | Release the paused change · turn stepping off |

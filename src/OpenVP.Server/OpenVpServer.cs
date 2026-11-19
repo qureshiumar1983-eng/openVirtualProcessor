@@ -66,6 +66,7 @@ public static class OpenVpServer
         object SlotDto(ProgramSlot s) => new
         {
             number = s.Number,
+            roomId = s.RoomId,
             state = s.State.ToString(),
             kind = s.Runtime?.Kind,
             program = s.Runtime?.ProgramName,
@@ -213,6 +214,19 @@ public static class OpenVpServer
                 });
             }
             finally { uploadLocks[n - 1].Release(); }
+        });
+
+        // Virtual Control Room ID: panels can be routed to the slot by it (/ws/panel?room=).
+        slotApi.MapPut("/room", (int n, JsonElement body) =>
+        {
+            try
+            {
+                var id = body.ValueKind == JsonValueKind.Object && body.TryGetProperty("roomId", out var r) && r.ValueKind == JsonValueKind.String ? r.GetString() : null;
+                processor.Slot(n).SetRoomId(id);
+                return Results.Ok(SlotDto(processor.Slot(n)));
+            }
+            catch (ArgumentException e) { return Results.BadRequest(new { error = e.Message }); }
+            catch (InvalidOperationException e) { return Results.Json(new { error = e.Message }, statusCode: 500); }
         });
 
         slotApi.MapPost("/start", (int n) =>
@@ -525,7 +539,7 @@ public static class OpenVpServer
             catch (Exception e) when (e is WebSocketException or OperationCanceledException) { }
         });
 
-        // Browser panels: /ws/panel?ipid=03[&slot=1]
+        // Browser panels: /ws/panel?ipid=03[&slot=1 | &room=ROOMID]
         app.Map("/ws/panel", async (HttpContext ctx) =>
         {
             if (!ctx.WebSockets.IsWebSocketRequest) { ctx.Response.StatusCode = 400; return; }
@@ -536,6 +550,25 @@ public static class OpenVpServer
                 return;
             }
             int? slot = int.TryParse(ctx.Request.Query["slot"], out var s) ? s : null;
+            string? room = ctx.Request.Query["room"].ToString();
+            if (string.IsNullOrWhiteSpace(room)) room = null;
+            if (room != null)
+            {
+                var bySlot = processor.FindSlotByRoomId(room);
+                if (bySlot == null)
+                {
+                    ctx.Response.StatusCode = 404;
+                    await ctx.Response.WriteAsync($"No slot has Room ID '{room}'");
+                    return;
+                }
+                if (slot != null && slot != bySlot.Number)
+                {
+                    ctx.Response.StatusCode = 400;
+                    await ctx.Response.WriteAsync($"Room ID '{room}' belongs to slot {bySlot.Number}, not slot {slot}");
+                    return;
+                }
+                slot = bySlot.Number;
+            }
             var remote = ctx.Connection.RemoteIpAddress;
             if (remote is { IsIPv4MappedToIPv6: true }) remote = remote.MapToIPv4();
             var client = new DeviceConnection("Web panel", remote?.ToString(), ctx.Connection.RemotePort);

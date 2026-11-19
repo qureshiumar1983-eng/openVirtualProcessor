@@ -400,7 +400,7 @@ internal sealed class CipSession
         {
             Detach();
             var known = _processor.FindDevice(ipId) != null;
-            _device = DeviceDirectory.Resolve(_processor, ipId, null);
+            _device = DeviceDirectory.Resolve(_processor, ipId, null)!;
             var who = _conn.Hostname ?? _conn.Model;
             _server.Event(_device.Slot, $"panel registered as IP ID {ipId:X2}" + (who != null ? $" from {who}" : "") + (known ? $" (slot {_device.Slot}, {_device.Type})" : " — no loaded program has this IP ID; check the panel's IP ID"));
             // The connect request is the only thing a CIP client says about itself; keep it for identifying client types.

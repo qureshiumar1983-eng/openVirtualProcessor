@@ -28,6 +28,83 @@ public sealed class ProgramSlot : IDisposable
         Stepper.Changed += _ => Processor.NotifyStepChanged(this);
         Metrics = new SlotMetrics(() => Volatile.Read(ref _generation));
         _dispatcher = NewDispatcher();
+        LoadSettings();
+    }
+
+    /// <summary>The Room ID a slot has until someone sets one: <c>SLOT01</c>, <c>SLOT02</c>, ...</summary>
+    public string DefaultRoomId => $"SLOT{Number:00}";
+
+    /// <summary>
+    /// The slot's Virtual Control Room ID, like the Room ID of a VC-4 program. Panels can be routed to
+    /// the slot by it (<c>/ws/panel?room=</c>), and programs read it from <c>InitialParametersClass.RoomId</c>.
+    /// Unique across slots, compared without regard to case, and saved in <c>slot.json</c>.
+    /// </summary>
+    public string RoomId => Volatile.Read(ref _roomId);
+
+    private string _roomId = "";
+    private string SettingsPath => Path.Combine(Directory, "slot.json");
+
+    /// <summary>Check and normalize a Room ID: trimmed, 1-64 characters of letters, digits, <c>_ - .</c>. Throws ArgumentException.</summary>
+    public static string ValidateRoomId(string? roomId)
+    {
+        var id = roomId?.Trim() ?? "";
+        if (id.Length == 0) throw new ArgumentException("Room ID can't be empty.");
+        if (id.Length > 64) throw new ArgumentException("Room ID can be at most 64 characters.");
+        if (!id.All(c => c is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or (>= '0' and <= '9') or '_' or '-' or '.'))
+            throw new ArgumentException("Room ID can only contain letters, digits, '_', '-' and '.'.");
+        return id;
+    }
+
+    /// <summary>Change the Room ID and save it. Throws ArgumentException if it is invalid or another slot has it.</summary>
+    public void SetRoomId(string? roomId)
+    {
+        var id = ValidateRoomId(roomId);
+        lock (Processor.RoomIdGate)
+        {
+            var other = Processor.FindSlotByRoomId(id);
+            if (other != null && other != this)
+                throw new ArgumentException($"Room ID '{id}' is already used by slot {other.Number}.");
+            if (string.Equals(RoomId, id, StringComparison.Ordinal)) return;
+            try
+            {
+                System.IO.Directory.CreateDirectory(Directory);
+                File.WriteAllText(SettingsPath, System.Text.Json.JsonSerializer.Serialize(new { roomId = id }));
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                throw new InvalidOperationException($"Couldn't save the Room ID: {e.Message}", e);
+            }
+            Volatile.Write(ref _roomId, id);
+        }
+        Log("Notice", $"Room ID set to '{id}'");
+        StateChanged?.Invoke(this);
+    }
+
+    /// <summary>After all slots exist: if an earlier slot holds this slot's saved Room ID (a hand-edited file), use the default.</summary>
+    internal void DropDuplicateRoomId()
+    {
+        var holder = Processor.Slots.FirstOrDefault(s => s.Number < Number && string.Equals(s.RoomId, RoomId, StringComparison.OrdinalIgnoreCase));
+        if (holder == null) return;
+        Log("Warning", $"Room ID '{RoomId}' in {SettingsPath} is already used by slot {holder.Number}; using {DefaultRoomId} instead.");
+        _roomId = DefaultRoomId;
+    }
+
+    private void LoadSettings()
+    {
+        _roomId = DefaultRoomId;
+        try
+        {
+            if (!File.Exists(SettingsPath)) return;
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(SettingsPath));
+            if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object
+                && doc.RootElement.TryGetProperty("roomId", out var r) && r.ValueKind == System.Text.Json.JsonValueKind.String)
+                _roomId = ValidateRoomId(r.GetString());
+        }
+        catch (Exception e) when (e is System.Text.Json.JsonException or ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            _roomId = DefaultRoomId;
+            Log("Warning", $"Ignoring unreadable {SettingsPath}: {e.Message}");
+        }
     }
 
     public Processor Processor { get; }
@@ -64,7 +141,14 @@ public sealed class ProgramSlot : IDisposable
     /// <summary>Get or create the device for an IP ID. Called when a program registers a panel.</summary>
     public JoinDevice RegisterDevice(uint ipId, string type, string description)
     {
-        var dev = _ipTable.GetOrAdd(ipId, id => new JoinDevice(Number, id, type, description));
+        var created = false;
+        var dev = _ipTable.GetOrAdd(ipId, id => { created = true; return new JoinDevice(Number, id, type, description); });
+        if (created)
+        {
+            var other = Processor.Slots.FirstOrDefault(s => s != this && s.FindDevice(ipId) != null);
+            if (other != null)
+                Log("Warning", $"IP ID {ipId:X2} is also registered in slot {other.Number}. CIP panels can't tell slots apart yet and will bind to the lowest slot ({Math.Min(Number, other.Number)}); give each slot its own IP IDs, or use Room IDs with browser panels (?room=).");
+        }
         dev.Type = type;
         dev.Description = description;
         Processor.NotifyDeviceRegistered(dev);
@@ -83,13 +167,14 @@ public sealed class ProgramSlot : IDisposable
     private string IpTableReport()
     {
         var sb = new System.Text.StringBuilder();
+        sb.Append($"Slot {Number}  Room ID {RoomId}\n");
         foreach (var d in _ipTable.Values.OrderBy(d => d.IpId))
         {
             sb.Append($"IPID {d.IpId:X2}  {d.Type,-28} {(d.Online ? "ONLINE" : "OFFLINE")}  {d.Description}\n");
             foreach (var c in d.Connections)
                 sb.Append($"         {c.Transport,-9} {c.Endpoint,-22} {c.Hostname ?? c.Peer ?? "-",-24} {c.ClientKind ?? ""}\n");
         }
-        return sb.Length == 0 ? "IP table is empty." : sb.ToString().TrimEnd('\n');
+        return _ipTable.IsEmpty ? sb.Append("IP table is empty.").ToString() : sb.ToString().TrimEnd('\n');
     }
 
     // ---------- logging, tracing, console ----------

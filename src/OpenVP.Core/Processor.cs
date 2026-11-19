@@ -22,6 +22,7 @@ public sealed class Processor : IDisposable
         DataDirectory = Path.GetFullPath(dataDirectory);
         System.IO.Directory.CreateDirectory(DataDirectory);
         Slots = Enumerable.Range(1, slotCount).Select(n => new ProgramSlot(this, n)).ToArray();
+        foreach (var slot in Slots) slot.DropDuplicateRoomId();
         Bus = new IntersystemBus
         {
             DescribeSlot = n => n >= 1 && n <= Slots.Count && Slots[n - 1].Runtime is { } rt ? $"slot {n} · {rt.ProgramName}" : $"slot {n}"
@@ -85,6 +86,12 @@ public sealed class Processor : IDisposable
         if (slot is int s) return Slot(s).FindDevice(ipId);
         return Slots.Select(x => x.FindDevice(ipId)).FirstOrDefault(d => d != null);
     }
+
+    internal readonly object RoomIdGate = new();
+
+    /// <summary>The slot with this Room ID (case-insensitive), or null.</summary>
+    public ProgramSlot? FindSlotByRoomId(string roomId) =>
+        Slots.FirstOrDefault(s => string.Equals(s.RoomId, roomId?.Trim(), StringComparison.OrdinalIgnoreCase));
 
     public IEnumerable<JoinDevice> AllDevices => Slots.SelectMany(s => s.Devices);
 
