@@ -130,6 +130,12 @@ public sealed class ProgramSlot : IDisposable
     /// Logged once with the folder to create; see <see cref="MissingFiles"/>.</summary>
     public void ReportMissing(string? processorPath, bool isFolder = false) => MissingFiles.Report(processorPath, isFolder);
 
+    /// <summary>The program uses something OpenVP doesn't support yet: add it to the shared list
+    /// (<see cref="Processor.Unsupported"/>), which is what tells us what to build next.</summary>
+    /// <param name="program">The program's name, so loading it twice doesn't count twice. Never written to the file.</param>
+    public void ReportUnsupported(string kind, string name, string? detail = null, string? program = null) =>
+        Processor.Unsupported.Report(kind, name, detail?.Replace(Directory, "<slot folder>"), program ?? Runtime?.ProgramName ?? ProgramPath);
+
     public SlotDispatcher Dispatcher => _dispatcher;
 
     /// <summary>Step-through debugging: pause the slot's logic on each signal change.</summary>

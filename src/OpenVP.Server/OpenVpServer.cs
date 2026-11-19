@@ -29,6 +29,12 @@ public static class OpenVpServer
         processor.AddLoader(new SimplSharpLoader());
         processor.AddLoader(new SimplLoader(Path.Combine(processor.DataDirectory, "symbols.json")));
         processor.AddLoader(new LpzLoader(Path.Combine(processor.DataDirectory, "primitives.json")));
+        var unsupportedPath = UnsupportedLogPath(cfg["UnsupportedLog"], processor.DataDirectory);
+        if (unsupportedPath != null)
+        {
+            processor.Unsupported.UseFile(unsupportedPath);
+            Console.WriteLine($"Unsupported symbols are listed in {unsupportedPath}");
+        }
         processor.LogWritten += e => Console.WriteLine($"{e.Time:HH:mm:ss} [slot {e.Slot:00}] {e.Level,-7} {e.Message}");
         builder.Services.AddSingleton(processor);
         builder.Services.AddResponseCompression(o =>
@@ -486,6 +492,11 @@ public static class OpenVpServer
         // Live metrics: CPU, memory, threads, and per-slot activity (stuck handlers, orphaned threads).
         app.MapGet("/api/metrics", (bool? history) => processor.Metrics.Snapshot(history ?? true));
 
+        // The list of unsupported symbols/APIs (docs/unsupported.md in a source checkout), to download and commit.
+        app.MapGet("/api/unsupported", (string? format) => format == "json"
+            ? Results.Ok(new { file = processor.Unsupported.FilePath, items = processor.Unsupported.Items })
+            : Results.File(System.Text.Encoding.UTF8.GetBytes(processor.Unsupported.Render()), "text/markdown; charset=utf-8", "unsupported.md"));
+
         app.MapGet("/api/log", (int? slot, int? max) => processor.RecentLog(slot, max ?? 500));
 
         app.MapGet("/api/devices", () => processor.AllDevices.OrderBy(d => d.Slot).ThenBy(d => d.IpId).Select(DeviceDto));
@@ -674,5 +685,21 @@ public static class OpenVpServer
                 JsonSerializer.Serialize(w, item, json);
                 break;
         }
+    }
+
+    /// <summary>
+    /// Where to keep the list of unsupported symbols: <c>OpenVP:UnsupportedLog</c> if set ("off" to keep it in
+    /// memory only); else <c>docs/unsupported.md</c> in the source checkout the server runs from, so it gets
+    /// committed and shared; else <c>unsupported.md</c> in the data folder.
+    /// </summary>
+    internal static string? UnsupportedLogPath(string? configured, string dataDirectory)
+    {
+        if (string.Equals(configured, "off", StringComparison.OrdinalIgnoreCase)) return null;
+        if (!string.IsNullOrWhiteSpace(configured)) return Path.GetFullPath(configured);
+        foreach (var start in new[] { AppContext.BaseDirectory, Directory.GetCurrentDirectory() })
+            for (var dir = new DirectoryInfo(start); dir != null; dir = dir.Parent)
+                if (File.Exists(Path.Combine(dir.FullName, "OpenVP.sln")) && Directory.Exists(Path.Combine(dir.FullName, "docs")))
+                    return Path.Combine(dir.FullName, "docs", "unsupported.md");
+        return Path.Combine(dataDirectory, "unsupported.md");
     }
 }

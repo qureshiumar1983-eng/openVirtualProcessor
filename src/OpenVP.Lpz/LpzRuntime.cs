@@ -207,7 +207,11 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
     private SplusNode? CreateModule(BinSymbol sym)
     {
         var dll = sym.Params.Count > 1 ? sym.Params[1].Text : null;
-        if (string.IsNullOrEmpty(dll)) return null;
+        if (string.IsNullOrEmpty(dll))
+        {
+            _slot.ReportUnsupported("SIMPL+ module", "(record names no compiled .dll)", "type -48 record without a module file name", ProgramName);
+            return null;
+        }
         object? instance = null;
         try
         {
@@ -245,7 +249,10 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
             var inner = e is System.Reflection.TargetInvocationException t && t.InnerException != null ? t.InnerException : e;
             var unresolved = _alc?.Unresolved.Count > 0 ? $" (missing: {string.Join(", ", _alc.Unresolved.Distinct())})" : "";
             if (_moduleErrors.Add(dll!))
+            {
                 _slot.Log("Warning", $"SIMPL+ module {dll} can't run yet: {inner.GetType().Name}: {inner.Message}{unresolved}");
+                _slot.ReportUnsupported("SIMPL+ module", Path.GetFileName(dll!), $"{inner.GetType().Name}: {inner.Message}{unresolved}", ProgramName);
+            }
             return null;
         }
     }
@@ -602,6 +609,9 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
         var total = _pkg.Logic.Symbols.Count;
         _slot.Log("Notice", $"Compiled program: {_nodes.Count - _devices.Count - _modules.Count} logic symbols, {_modules.Count} SIMPL+ modules and {_devices.Count} devices running" +
                              (_pkg.Signals == null ? " (no .sig: signals shown by number)" : ""));
+        foreach (var t in Unsupported.Keys.Where(t => t != -48))
+            _slot.ReportUnsupported("Compiled primitive", $"type {t}",
+                PrimitiveCatalog.Known.TryGetValue(t, out var info) ? $"{info.Name} {info.Notes}".Trim() : "unidentified", ProgramName);
         if (Unsupported.Count > 0)
             _slot.Log("Warning", $"Not supported yet: " + string.Join(", ",
                 Unsupported.OrderByDescending(p => p.Value).Select(p => $"type {p.Key}{(p.Key == -48 ? " (SIMPL+)" : "")} ×{p.Value}")));
@@ -815,6 +825,7 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
         private readonly string _source; // trace source for presses, built once instead of per event
         public JoinDevice? Device => _device;
         public Dictionary<uint, SmartObjectNode> SmartObjects { get; } = new();
+        public List<ExtenderNode> Extenders { get; } = new();
 
         public DeviceNode(LpzRuntime rt, BinSymbol sym, uint ipId) : base(rt, sym)
         {
@@ -856,6 +867,7 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
             for (int pin = 1; pin <= Symbol.Inputs.Length; pin++)
                 if (HasFeedback(Symbol.Inputs[pin - 1], InJoin(pin).Kind)) Feedback(pin, Runtime.Value(Symbol.Inputs[pin - 1]));
             foreach (var so in SmartObjects.Values) so.PushAll();
+            foreach (var ext in Extenders) ext.PushAll();
         }
 
         public void Detach()
@@ -878,7 +890,12 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
                 return;
             }
             var pin = OutPin(key);
-            if (pin < 1) return;
+            if (pin < 1)
+            {
+                foreach (var ext in Extenders)
+                    if (ext.FromPanel(key, value)) return;
+                return;
+            }
             var sig = Symbol.Outputs[pin - 1];
             if (sig > 1) Runtime._slot.Dispatcher.Post(static (n, v, s) => { var d = (DeviceNode)n!; d.Runtime.Drive(s, v!, d._source); }, this, value, sig);
         }

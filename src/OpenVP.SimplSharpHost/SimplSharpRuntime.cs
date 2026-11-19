@@ -66,8 +66,16 @@ public sealed class SimplSharpRuntime : IProgramRuntime
         // Check compatibility up front against a reference copy of the shim.
         var shim = Assembly.LoadFrom(Path.Combine(shimDir, "OpenVP.SimplSharp.dll"));
         Compat = CompatScanner.Scan(programDll, shim);
-        foreach (var t in Compat.MissingTypes) slot.Log("Warning", $"Not implemented in OpenVP yet: type {t}");
-        foreach (var m in Compat.MissingMembers) slot.Log("Warning", $"Not implemented in OpenVP yet: {m}");
+        foreach (var t in Compat.MissingTypes)
+        {
+            slot.Log("Warning", $"Not implemented in OpenVP yet: type {t}");
+            slot.ReportUnsupported("SIMPL# type", t, program: ProgramName);
+        }
+        foreach (var m in Compat.MissingMembers)
+        {
+            slot.Log("Warning", $"Not implemented in OpenVP yet: {m}");
+            slot.ReportUnsupported("SIMPL# member", m, program: ProgramName);
+        }
     }
 
     public string Kind => "SIMPL#";
@@ -108,11 +116,18 @@ public sealed class SimplSharpRuntime : IProgramRuntime
     private Exception Explain(Exception e)
     {
         if (_alc?.Unresolved.Count > 0)
+        {
+            foreach (var a in _alc.Unresolved.Distinct())
+                _slot.ReportUnsupported("SIMPL# assembly", a, "No facade: add it to tools/facade-names.txt and run tools/regen-facades.sh", ProgramName);
             return new InvalidOperationException(
                 $"Program needs Crestron assemblies OpenVP has no facade for: {string.Join(", ", _alc.Unresolved.Distinct())}. " +
                 "Add them to tools/facade-names.txt and run tools/regen-facades.sh.", e);
+        }
         if (e is MissingMethodException or MissingFieldException or TypeLoadException)
+        {
+            _slot.ReportUnsupported("SIMPL# runtime error", e.Message, e.GetType().Name, ProgramName);
             return new InvalidOperationException($"Program uses a Crestron API OpenVP doesn't implement yet: {e.Message}", e);
+        }
         return e;
     }
 

@@ -47,7 +47,7 @@ public sealed class SimplOptions
 /// every symbol with that signal on an input is told, and their outputs drive further signals. All of it
 /// happens on the slot thread, one change at a time, in the order changes were made.
 /// </summary>
-public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
+public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
 {
     private const int MaxStepsPerSolve = 200_000;
 
@@ -180,16 +180,20 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
         var otherHardware = new List<SmwSymbol>();
         foreach (var sym in _file.Symbols.Values.OrderBy(s => s.Handle))
         {
+            if (BuildPort(sym)) continue;
             if (IsDevice(sym))
             {
                 var dev = new DeviceNode(this, sym);
                 dev.Classify();
                 _devices.Add(dev);
                 Register(dev);
-                if (!dev.Registered) (dev.Role == DeviceRole.SubDevice ? subDevices : otherHardware).Add(sym);
+                // Hardware with nothing wired does nothing in the program: only the rest is worth reporting.
+                if (!dev.Registered && (sym.Inputs.Any(h => h > 0) || sym.Outputs.Any(h => h > 0)))
+                    (dev.Role == DeviceRole.SubDevice ? subDevices : otherHardware).Add(sym);
                 continue;
             }
 
+            if (BuildSpecial(sym)) continue;
             var logic = _library.Resolve(sym);
             if (logic == null)
             {
@@ -197,6 +201,8 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
                 if (sym.Inputs.Any(h => h > 0) || sym.Outputs.Any(h => h > 0))
                 {
                     Unsupported.Add(sym);
+                    _slot.ReportUnsupported("SIMPL symbol", $"{sym.Name} (SmC {sym.Code})",
+                        $"pins in={sym.Inputs.Count} out={sym.Outputs.Count}", ProgramName);
                     _slot.Log("Warning", $"No behavior for symbol {sym} yet; its outputs stay at their defaults.");
                 }
                 continue;
@@ -204,6 +210,8 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
             if (!sym.Inputs.Any(h => h > 0) && !sym.Outputs.Any(h => h > 0)) continue; // nothing wired: nothing to run
             Register(new PrimNode(this, sym, logic));
         }
+
+        LinkPanelChildren();
 
         // Signals no pin gave a kind to are digital.
         foreach (var node in _nodes)
@@ -213,6 +221,10 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
             if (sg.Handle > 0) SetKind(sg.Handle, SigKind.Digital);
 
         // Their pins keep their signals, but nothing drives or reads them: OpenVP only models the join space of an IP-ID device.
+        foreach (var s in subDevices)
+            _slot.ReportUnsupported("SIMPL sub-device", $"{s.Name} (SmC {s.Code})", "slot, port or extender inside an IP-ID device: not mapped to joins", ProgramName);
+        foreach (var s in otherHardware)
+            _slot.ReportUnsupported("SIMPL hardware", $"{s.Name} (SmC {s.Code})", "processor hardware (Cresnet, COM, IR, relays...)", ProgramName);
         if (subDevices.Count > 0)
             _slot.Log("Warning", $"{subDevices.Count} sub-device symbol(s) inside IP-ID devices (slots, ports, extenders) are not mapped to joins yet: " +
                 string.Join(", ", subDevices.Select(s => s.Name).Distinct().Take(10)));
@@ -857,6 +869,12 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
 
         public DeviceNode(SimplRuntime rt, SmwSymbol sym) : base(rt, sym) { }
 
+        public JoinDevice? Device => _device;
+        /// <summary>Smart Graphics objects on this panel, by object ID.</summary>
+        public Dictionary<uint, SmartObjectNode> SmartObjects { get; } = new();
+        /// <summary>Reserved joins, toolbars and app control: joins at fixed bases on this device.</summary>
+        public List<ExtenderNode> Extenders { get; } = new();
+
         public override SigKind? InputKind(int pin) => FromGroups(Symbol.InputGroups, pin);
         public override SigKind? OutputKind(int pin) => FromGroups(Symbol.OutputGroups, pin);
 
@@ -910,6 +928,8 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
             // Push current feedback values so a panel that connects later sees them.
             for (int pin = 1; pin <= Symbol.Inputs.Count; pin++)
                 if (Symbol.Inputs[pin - 1] > 0) Feedback(pin, Runtime.Value(Symbol.Inputs[pin - 1]));
+            foreach (var so in SmartObjects.Values) so.PushAll();
+            foreach (var ext in Extenders) ext.PushAll();
         }
 
         public void Detach()
@@ -940,6 +960,13 @@ public sealed class SimplRuntime : IProgramRuntime, IProgramGraphSource
 
         private void OnDeviceInput(JoinDevice dev, JoinKey key, object value)
         {
+            if (key.SmartObject != 0)
+            {
+                if (SmartObjects.TryGetValue(key.SmartObject, out var so)) so.FromPanel(key, value);
+                return;
+            }
+            foreach (var ext in Extenders)
+                if (ext.FromPanel(key, value)) return;
             var g = Symbol.OutputGroups;
             var offset = key.Kind switch { SigKind.Digital => 0, SigKind.Analog => g[0], _ => g[0] + g[1] };
             var size = g[(int)key.Kind];

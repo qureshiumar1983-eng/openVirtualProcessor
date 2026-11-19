@@ -87,7 +87,7 @@ Implemented so far: `CrestronControlSystem`, `InitializeSystem`, program status 
 
 OpenVP reads the `.smw` source, not the compiled `.lpz`, so nothing of Crestron's runtime is decompiled. The file is a list of blocks: `Sm` symbols point at `Sg` signals by handle (`I1=4` = input pin 1 is wired to signal 4), and pins are grouped digital, analog, serial (`n1I`, `n2I`, `n3I`). When a signal changes, every symbol listening to it runs and its outputs drive further signals until the logic settles. The `1` signal goes high at start, as it does on a processor.
 
-**Logic symbols** come from one library shared with compiled programs, so a symbol behaves the same whether you load the `.smw` or the `.lpz`. [docs/symbols.md](docs/symbols.md) lists all of them with their SmC code, compiled type and how sure we are of each: *compiled* symbols were checked against real compiled programs and their source; *inferred* ones were seen compiled in real programs, with behavior worked out from how those programs wire them (mostly inside macros whose source isn't available); *documented* ones were written from the SIMPL symbol descriptions and still need a real program to confirm their pins. All 96 compiled programs in `Sample Programs/` load and run; only three compiled types in them (107, 113, 261, 37 records in all) are still unidentified. From `.smw` source, user macros (`.umc`/`.cmc`), SIMPL+ and crosspoints aren't run yet, so load the compiled `.lpz` for real programs. In a `.smw`, parameters are converted the way the compiler does: times to 1/100 s, `\x0D`-style escapes in strings decoded. Device symbols (panels, XPanels, EISC) map their pins to joins. Only devices on the processor's Ethernet slot get an IP ID (taken from the hardware tree in the file); their slots, ports and extenders, and Cresnet/COM/IR hardware, are not mapped yet and are listed once in the log.
+**Logic symbols** come from one library shared with compiled programs, so a symbol behaves the same whether you load the `.smw` or the `.lpz`. [docs/symbols.md](docs/symbols.md) lists all of them with their SmC code, compiled type and how sure we are of each: *compiled* symbols were checked against real compiled programs and their source; *inferred* ones were seen compiled in real programs, with behavior worked out from how those programs wire them (mostly inside macros whose source isn't available); *documented* ones were written from the SIMPL symbol descriptions and still need a real program to confirm their pins. All 96 compiled programs in `Sample Programs/` load and run; only three compiled types in them (107, 113, 261, 37 records in all) are still unidentified. From `.smw` source, user macros (`.umc`/`.cmc`) and SIMPL+ modules aren't run yet (their source files aren't part of the `.smw`), so load the compiled `.lpz` for real programs. In a `.smw`, parameters are converted the way the compiler does: times to 1/100 s, `\x0D`-style escapes in strings decoded. Device symbols (panels, XPanels, EISC) map their pins to joins. Only devices on the processor's Ethernet slot get an IP ID (taken from the hardware tree in the file). What hangs off a panel is mapped too: Smart Graphics objects and Contract Editor components (their joins travel with the object ID, `P1`), and reserved-join extenders such as button toolbars, app control and hard buttons, at the join bases read off the compiled sample programs (`src/OpenVP.Simpl/ExtenderJoins.cs`). Crosspoint routing (Equipment, Control and Connect) runs as in compiled programs, and COM and IR port symbols are logged and handed to the port bridge like compiled ports (below). Other sub-devices (DM/NVX inputs and outputs, card slots) and processor hardware (relays, I/O, system control) aren't mapped yet; any that are wired are listed once in the log and in [docs/unsupported.md](docs/unsupported.md).
 
 **Two things the format doesn't make clear, so you may need to help:**
 
@@ -102,9 +102,9 @@ dotnet run --project tools/SymbolSurvey -- path/to/programs --out survey
 
 It lists every symbol the programs use and whether OpenVP runs it. For each compiled `.lpz` that comes with its source (archived inside, or a `.smw` of the same name next to it) and its `.sig`, it pairs each compiled record with the source symbol that drives the same signal. That identifies the symbol's SmC code and compiled type in one go, and it flags any conflict with what OpenVP already believes. With `--out` it writes `symbols.json` and `primitives.json`, ready to drop into `data/`. The quickest test program: one of each symbol from the SIMPL Windows logic library, each output on a named signal, compiled with the source archived.
 
-### IR and COM ports (compiled programs)
+### IR and COM ports
 
-A virtual processor has no IR emitters or serial ports, so compiled programs' IR ports and COM ports (including those of DM-NVX encoders and decoders) don't talk to hardware. They still run honestly: every IR command (a rising trigger on an IR driver symbol) and every COM transmission is written once to the slot log, e.g. `IR IPID 31 port 1: DRV.CBL.1.KEYPAD.1 (cmd 0)` or `COM IPID 11 port 1 TX (7): "PWR ON\x0D"`, and the signals involved show in the debugger trace. To feed a program a COM reply, force the port's receive signal in the debugger; it is logged as `RX`. IR ports on the control processor itself read `IR processor slot 6 port 1`.
+A virtual processor has no IR emitters or serial ports, so compiled programs' IR ports and COM ports (including those of DM-NVX encoders and decoders) don't talk to hardware. They still run honestly: every IR command (a rising trigger on an IR driver symbol) and every COM transmission is written once to the slot log, e.g. `IR IPID 31 port 1: DRV.CBL.1.KEYPAD.1 (cmd 0)` or `COM IPID 11 port 1 TX (7): "PWR ON\x0D"`, and the signals involved show in the debugger trace. To feed a program a COM reply, force the port's receive signal in the debugger; it is logged as `RX`. IR ports on the control processor itself read `IR processor slot 6 port 1`. Programs loaded from `.smw` source behave the same; their ports are named after the parent symbol and port number (`CP4 COM/COM-01`), and an IR command is identified by its position in the driver and its name (`IR processor port 2: MUTE (cmd 1)`). `comports.json` applies to compiled programs only.
 
 To reach a real serial device through a serial device server, add `comports.json` to the program folder (or `data/`) mapping a port to `host:port`, e.g. `{ "IP-ID-11/Slot-08/COM-01": "192.168.1.50:4999" }`. Code that can reach real ports (say, NVX endpoints) can implement `IPortBridge` and set `LpzRuntime.PortBridgeFactory`; nothing ships that speaks to NVX hardware yet.
 
@@ -188,6 +188,16 @@ Click **Metrics ↗** in the console header (or go to `/metrics.html`) for a liv
 
 The same numbers are available from the slot console: `cpuload`, `ramfree`, `taskstat` (threads and what the slot thread is doing) and `metrics` (all of it). From scripts, use `GET /api/metrics` or the `/ws/metrics` WebSocket.
 
+## Compatibility
+
+Every time a program loads, anything in it OpenVP doesn't support yet goes into **[`docs/unsupported.md`](docs/unsupported.md)**: SIMPL symbols, sub-devices and hardware, compiled primitive types, SIMPL+ modules that can't run, and SIMPL# types, members and assemblies. Each row counts how many programs needed it, so the top of each kind is what to build next. Only symbol names are written, never program names.
+
+- **Running from a source checkout** (`dotnet run`, `Start OpenVP.bat`): the server writes straight to `docs/unsupported.md` in the repo. Run your programs, then commit and push the file so everyone gets the list.
+- **Running `OpenVP.exe` or Docker**: it's `unsupported.md` in the data folder (`%APPDATA%\OpenVP` for the desktop app), also downloadable from `GET /api/unsupported`. Paste its table rows at the end of `docs/unsupported.md` in the repo (or replace the file if the repo's is empty) and commit; the next run from source merges duplicate rows and re-sorts the table.
+- **When you implement something**, delete its row. If a program still needs it, it comes back on the next run.
+
+The per-slot view is still there: the log lists what each program is missing, and **Compatibility** in the console (`GET /api/slots/{n}/compat`) shows it for the loaded program.
+
 ## Security
 
 A SIMPL# program is .NET code that runs inside the OpenVP process, so anyone who can upload a program can run code on the machine. The web console and API are protected by an **access key**:
@@ -216,6 +226,7 @@ Traffic is plain HTTP. To use OpenVP across an untrusted network, put it behind 
 | `OpenVP:ApiKey` | (generated) | Access key for the console and API; `off` disables it. See [Security](#security) |
 | `OpenVP:LocalRequiresKey` | `false` | Require the key from localhost too |
 | `OpenVP:PanelsRequireKey` | `false` | Require the key for browser panels (`/ws/panel`) |
+| `OpenVP:UnsupportedLog` | `docs/unsupported.md` in a source checkout, else `unsupported.md` in the data folder | Where the list of unsupported symbols is kept (see [Compatibility](#compatibility)); `off` keeps it in memory only |
 | `OpenVP:Autoload:slot1` | | Program file to load into slot 1 at startup |
 | `Urls` | `http://0.0.0.0:8080` | Web console address |
 
@@ -243,6 +254,7 @@ Every endpoint except `/api/info` and `/api/login` needs the access key (see [Se
 | POST | `/api/slots/{n}/files/folder` · `files/rename` | `{"root":"user","path":"config","name":"rooms"}` creates `config/rooms` · renames `path` to `name` |
 | GET | `/api/slots/{n}/files/download?root=user&path=config/rooms.json` | Download a file |
 | DELETE | `/api/slots/{n}/files?root=user&path=config` | Delete a file, or a folder and everything in it |
+| GET | `/api/unsupported` | Everything programs used that isn't supported yet, as the Markdown file (`?format=json` for JSON). See [Compatibility](#compatibility) |
 | GET | `/api/log?slot=n` · `/api/devices` | |
 | GET | `/api/metrics` | CPU, memory, threads and per-slot activity; `?history=false` leaves out the five-minute history. `/ws/metrics` sends the same once a second |
 | GET | `/api/info` | Version, slot count, and whether you're logged in |
