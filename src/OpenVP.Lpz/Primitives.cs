@@ -27,6 +27,8 @@ public interface IPrimitiveContext
     void SetInput(int inputPin, string value);
     object Output(int outputPin);
     SigKind OutputSignalKind(int outputPin);
+    /// <summary>Identifies the signal wired to an output pin, to tell when two outputs drive the same one.</summary>
+    int OutputSignal(int outputPin);
     int ParamCount { get; }
     long Number(int index, long fallback = 0);
     string? Text(int index);
@@ -474,15 +476,40 @@ public sealed class InitPrim : EdgePrim
 
 /// <summary>Type 51, Analog Equate: output k is high while the analog input (input 1) equals parameter k
 /// and the digital enable (input 2) is high. With the enable low every output is low. An equate compiled
-/// without an enable (one input) is always enabled.</summary>
+/// without an enable (one input) is always enabled. Outputs wired to the same signal act as an OR, as on
+/// a processor: that signal is high while the input equals any of their parameters.</summary>
 public sealed class EquatePrim : EvalPrim
 {
+    /// <summary>The signal behind each output when at least two outputs share one; empty when none do.</summary>
+    private int[]? _shared;
+
     public override SigKind? InputKind(int pin) => pin == 2 ? SigKind.Digital : SigKind.Analog;
     protected override void Eval(IPrimitiveContext c)
     {
         var enabled = c.InputCount < 2 || c.Digital(2);
         var v = c.Analog(1);
-        for (int k = 1; k <= c.OutputCount; k++) c.Set(k, enabled && c.Number(k - 1, -1) == v);
+        var sigs = _shared ??= SharedOutputs(c);
+        if (sigs.Length == 0)
+        {
+            for (int k = 1; k <= c.OutputCount; k++) c.Set(k, enabled && c.Number(k - 1, -1) == v);
+            return;
+        }
+        for (int k = 0; k < sigs.Length; k++)
+        {
+            var on = false;
+            if (enabled)
+                for (int j = 0; j < sigs.Length && !on; j++) on = sigs[j] == sigs[k] && c.Number(j, -1) == v;
+            c.Set(k + 1, on);
+        }
+    }
+
+    private static int[] SharedOutputs(IPrimitiveContext c)
+    {
+        var sigs = new int[c.OutputCount];
+        var seen = new HashSet<int>();
+        var shared = false;
+        for (int k = 0; k < sigs.Length; k++) shared |= !seen.Add(sigs[k] = c.OutputSignal(k + 1));
+        return shared ? sigs : [];
     }
 }
 

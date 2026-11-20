@@ -844,6 +844,7 @@ public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
 
         public object Output(int pin) => pin >= 1 && pin <= Symbol.Outputs.Count ? Runtime.Value(Symbol.Outputs[pin - 1]) : SigValue.False;
         public SigKind OutputSignalKind(int pin) => pin >= 1 && pin <= Symbol.Outputs.Count ? Runtime.KindOf(Symbol.Outputs[pin - 1]) : SigKind.Digital;
+        public int OutputSignal(int pin) => pin >= 1 && pin <= Symbol.Outputs.Count ? Symbol.Outputs[pin - 1] : 0;
 
         public int ParamCount => _params.Length;
         public long Number(int index, long fallback = 0) =>
