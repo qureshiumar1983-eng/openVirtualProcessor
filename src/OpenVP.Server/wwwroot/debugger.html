@@ -190,7 +190,8 @@
   <span id="prog" class="muted mono"></span>
   <span style="flex:1"></span>
   <a id="pathslink" href="paths.html" target="_blank" rel="noopener" title="Open the signal paths view (follows the selected signal)">Paths</a>
-  <a href="/">Console</a>
+  <a href="/" title="Back to the main page">Console</a>
+  <a href="help.html#debugger" target="openvp-help" title="What every button on this page does">Help</a>
 </div>
 
 <div class="toolbar">
@@ -209,23 +210,23 @@
   </div>
   <div class="sep"></div>
   <div class="group">
-    <label>Trace <select id="tmode"><option value="all">all signals</option><option value="watch">checked signals only</option></select></label>
+    <label title="Record every signal in the trace, or only the ones ticked in the T column">Trace <select id="tmode"><option value="all">all signals</option><option value="watch">checked signals only</option></select></label>
     <button id="wavebtn" title="Show a waveform (logic analyzer) of the signals checked for trace">Waveform</button>
   </div>
   <div class="sep"></div>
   <div class="group">
-    <label>Time <select id="tfmt"><option value="abs">absolute</option><option value="rel">relative</option></select></label>
-    <label>Analog <select id="afmt"><option value="dec">decimal</option><option value="hex">hex</option><option value="pct">percent</option></select></label>
-    <label>Serial <select id="sfmt"><option value="ascii">ASCII</option><option value="hex">hex</option></select></label>
-    <label><input type="checkbox" id="autoscroll" checked> auto-scroll</label>
+    <label title="Trace times as clock time (absolute) or as time since the first row (relative)">Time <select id="tfmt"><option value="abs">absolute</option><option value="rel">relative</option></select></label>
+    <label title="How analog values are shown: decimal (0-65535), hex or percent">Analog <select id="afmt"><option value="dec">decimal</option><option value="hex">hex</option><option value="pct">percent</option></select></label>
+    <label title="How serial strings are shown: text or hex bytes">Serial <select id="sfmt"><option value="ascii">ASCII</option><option value="hex">hex</option></select></label>
+    <label title="Keep the trace scrolled to the newest row"><input type="checkbox" id="autoscroll" checked> auto-scroll</label>
   </div>
 </div>
 
 <div class="stepbar off" id="stepbar">
   <span class="what" id="stepwhat"></span>
-  <button id="stepback2" title="F7">◀| Back</button>
-  <button id="stepnext2" title="F10">Next ▶|</button>
-  <button id="steprun2" title="F8">Run ▶▶</button>
+  <button id="stepback2" title="Look at the step before this one (F7). The program stays where it is.">◀| Back</button>
+  <button id="stepnext2" title="Let the paused change through and stop at the next one (F10)">Next ▶|</button>
+  <button id="steprun2" title="Turn step mode off and let the program run (F8)">Run ▶▶</button>
   <span class="hint">F7 back · F10 next · F8 run · F9 mark/unmark selected signal</span>
 </div>
 
@@ -298,7 +299,7 @@
   <input id="fname" class="name mono" placeholder="signal name (pick one in the list)" autocomplete="off">
   <div id="sugg" hidden></div>
   <input id="fval" class="val mono" placeholder="value: 1 · 500 · 1F4h · 50% · text\x0D">
-  <button id="fset">Set</button><button id="fclear">Clear</button><button id="fpulse">Pulse</button>
+  <button id="fset" title="Set the signal to the value in the box (Enter). With no value, a digital signal is set to 1.">Set</button><button id="fclear" title="Set the signal to 0, or a serial signal to an empty string">Clear</button><button id="fpulse" title="Digital only: set the signal high for a moment, then low, like a quick button press">Pulse</button>
   <span id="fmsg" class="muted"></span>
 </div>
 
@@ -582,7 +583,7 @@ function renderTabs() {
     if (count != null) { const sm = document.createElement("small"); sm.textContent = count; b.appendChild(sm); }
     frag.appendChild(b); return b;
   };
-  mk("All", activeTab == null).onclick = () => setTab(null);
+  { const all = mk("All", activeTab == null); all.title = "Show every signal, not just one watch group"; all.onclick = () => setTab(null); }
   for (const [name, set] of groups) {
     const b = mk(name, name === activeTab, set.size);
     b.title = "Right-click: rename, delete, add checked signals";

@@ -57,8 +57,9 @@
   <h1>OpenVP metrics</h1>
   <span id="live" class="live"><span class="dot"></span><span id="live-text">connecting…</span></span>
   <span style="flex:1"></span>
-  <button id="pause">Pause</button>
-  <a href="/">Console</a>
+  <button id="pause" title="Freeze the numbers on screen so you can read them. The programs keep running.">Pause</button>
+  <a href="/" title="Back to the main page">Console</a>
+  <a href="help.html#metrics" target="openvp-help" title="What every button on this page does">Help</a>
 </header>
 <main>
   <div id="alerts" class="alerts ok">Waiting for the first sample…</div>
@@ -72,7 +73,7 @@
   </div>
 
   <section>
-    <h2>Slots <span style="flex:1"></span><label class="chk"><input type="checkbox" id="show-empty"> show empty slots</label></h2>
+    <h2>Slots <span style="flex:1"></span><label class="chk" title="Also list slots with no program loaded"><input type="checkbox" id="show-empty"> show empty slots</label></h2>
     <div class="scroll"><table id="slots">
       <thead><tr>
         <th>#</th><th>Program</th><th>Status</th>

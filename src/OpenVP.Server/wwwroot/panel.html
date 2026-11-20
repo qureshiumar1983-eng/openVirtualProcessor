@@ -30,11 +30,12 @@
 <header>
   <h1>OpenVP test panel</h1>
   <span class="dot" id="dot"></span><span id="status">connecting…</span>
-  <label>IP ID <input id="ipid" size="3"></label>
-  <label>Slot <input id="slot" size="2" placeholder="any"></label>
-  <label>Room <input id="room" size="8" placeholder="any"></label>
-  <button id="go">Connect</button>
+  <label title="The IP ID to connect as, in hex. It must be one the program registered.">IP ID <input id="ipid" size="3"></label>
+  <label title="Program slot to connect to. Empty = any slot with that IP ID.">Slot <input id="slot" size="2" placeholder="any"></label>
+  <label title="Connect by the slot's Room ID instead of its number. Usually left empty.">Room <input id="room" size="8" placeholder="any"></label>
+  <button id="go" title="Reconnect using the IP ID, Slot and Room typed here">Connect</button>
   <small>Hold a button to keep the join high. Green = feedback from the program.</small>
+  <span style="flex:1"></span><a href="help.html#panel" target="openvp-help" title="What every control on this page does" style="color:var(--accent)">Help</a>
 </header>
 <main>
   <section><h2>Digital joins 1–20</h2><div class="grid" id="digitals"></div></section>

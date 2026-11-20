@@ -96,14 +96,15 @@
   <span id="prog" class="muted mono"></span>
   <span style="flex:1"></span>
   <span id="conn" class="muted"><i class="dot"></i>…</span>
-  <a id="dbglink" href="debugger.html">&larr; Debugger</a>
-  <a href="/">Console</a>
+  <a id="dbglink" href="debugger.html" title="Open the debugger for this slot">&larr; Debugger</a>
+  <a href="/" title="Back to the main page">Console</a>
+  <a href="help.html#paths" target="openvp-help" title="What every button on this page does">Help</a>
 </div>
 
 <div class="toolbar">
   <div class="group">
     <span class="pick">
-      <input id="start" class="mono" placeholder="start signal (search)…" autocomplete="off" spellcheck="false">
+      <input id="start" class="mono" placeholder="start signal (search)…" title="Type part of a signal name and pick one. The map is drawn outwards from it." autocomplete="off" spellcheck="false">
       <div id="sugg"></div>
     </span>
     <select id="dir" title="Direction of the search">
@@ -123,7 +124,7 @@
   <span class="sep"></span>
   <div class="group" title="Slow motion: queue incoming events and replay them slower">
     <span class="muted">Speed</span>
-    <button class="spd on" data-s="1">1&times;</button><button class="spd" data-s="0.25">0.25&times;</button><button class="spd" data-s="0.1">0.1&times;</button>
+    <button class="spd on" data-s="1" title="Show changes at normal speed">1&times;</button><button class="spd" data-s="0.25" title="Slow motion: play changes back 4 times slower">0.25&times;</button><button class="spd" data-s="0.1" title="Slow motion: play changes back 10 times slower">0.1&times;</button>
     <button id="replay" title="Play the last burst again" disabled>&#8635; Replay last burst</button>
     <button id="skip" title="Drop the queued events and jump to live" style="display:none">Skip queue</button>
   </div>
@@ -133,7 +134,7 @@
   <div class="stage" id="stage">
     <canvas id="cv"></canvas>
     <div id="empty"></div>
-    <div id="status" class="card" role="status"><div id="stMsg">Loading wiring…</div><div class="bar"><i id="stBar"></i></div><button id="stRetry" style="display:none">Retry</button></div>
+    <div id="status" class="card" role="status"><div id="stMsg">Loading wiring…</div><div class="bar"><i id="stBar"></i></div><button id="stRetry" title="Try loading the wiring again" style="display:none">Retry</button></div>
     <div id="legend"><i style="border-color:#4a5360"></i>wire<i style="border-color:#19e6ff"></i>signal path<i style="border-color:#ff3dcb"></i>loop</div>
     <div id="hud"></div>
     <div id="tip"></div>

@@ -21,7 +21,7 @@ cd openVirtualProcessor
 dotnet run --project src/OpenVP.Server
 ```
 
-Open **http://localhost:8080**. From another machine you'll be asked for the access key, which the server prints when it starts (see [Security](#security)). Pick a slot, choose a `.cpz`, `.dll` or `.smw` file, and click **Load & start**. Click **open test panel** next to a device to get a browser panel at that IP ID.
+Open **http://localhost:8080**. From another machine you'll be asked for the access key, which the server prints when it starts (see [Security](#security)). Pick a slot, choose a `.cpz`, `.dll` or `.smw` file, and click **Load & start**. Click **open test panel** next to a device to get a browser panel at that IP ID. Every page has a **Help** link that explains what each button on it does.
 
 ### Desktop app (Windows)
 

@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenVP help</title>
+<style>
+  :root { --bg:#0f1216; --card:#181d23; --line:#29303a; --text:#e6e9ee; --muted:#8b95a3; --accent:#4c8dff; --hi:#7fe0b1; }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; scroll-padding-top:104px; }
+  body { margin:0; font:14px/1.55 system-ui, sans-serif; background:var(--bg); color:var(--text); }
+  a { color:var(--accent); }
+  .top { position:sticky; top:0; z-index:5; background:var(--bg); border-bottom:1px solid var(--line); }
+  header { padding:12px 20px 6px; display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+  header h1 { margin:0; font-size:18px; }
+  header small, .muted { color:var(--muted); }
+  nav { display:flex; gap:6px; flex-wrap:wrap; align-items:center; padding:0 20px 10px; }
+  nav a { text-decoration:none; padding:3px 10px; border:1px solid var(--line); border-radius:20px; color:var(--text); white-space:nowrap; }
+  nav a:hover, nav a.on { border-color:var(--accent); background:#1f2a3a; }
+  #find { font:inherit; color:var(--text); background:#111519; border:1px solid var(--line); border-radius:6px; padding:4px 9px; flex:1; min-width:150px; max-width:300px; margin-left:auto; }
+  main { max-width:980px; margin:0 auto; padding:16px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin-bottom:16px; }
+  h2 { margin:0 0 4px; font-size:17px; }
+  h3 { margin:20px 0 6px; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+  p { margin:6px 0; }
+  ol { margin:6px 0; padding-left:22px; }
+  dl { margin:0; display:grid; grid-template-columns:minmax(130px, 220px) 1fr; }
+  dt, dd { margin:0; padding:7px 0; border-top:1px solid var(--line); min-width:0; }
+  dt { padding-right:14px; }
+  dl > dt:first-of-type, dl > dt:first-of-type + dd { border-top:none; }
+  .b { display:inline-block; font-size:13px; background:#111519; border:1px solid var(--line); border-radius:6px; padding:1px 8px; white-space:nowrap; }
+  kbd { font:12px ui-monospace, Menlo, Consolas, monospace; background:#111519; border:1px solid var(--line); border-bottom-width:2px; border-radius:4px; padding:0 5px; white-space:nowrap; }
+  code { font:12px ui-monospace, Menlo, Consolas, monospace; background:#111519; border-radius:4px; padding:1px 5px; overflow-wrap:anywhere; }
+  .tip { border-left:3px solid var(--accent); background:#141b25; border-radius:0 6px 6px 0; padding:8px 12px; margin:10px 0; }
+  #none { color:var(--muted); padding:20px; text-align:center; }
+  [hidden] { display:none !important; }
+  @media (max-width: 640px) {
+    html { scroll-padding-top:150px; }
+    dl { grid-template-columns:1fr; }
+    dd { border-top:none; padding-top:0; }
+    dl > dt:first-of-type + dd { padding-top:0; }
+    #find { max-width:none; flex-basis:100%; margin-left:0; }
+  }
+</style>
+</head>
+<body>
+<div class="top">
+  <header>
+    <h1>OpenVP help</h1><small>what every button and control does</small>
+    <span style="flex:1"></span><a href="/">Console</a>
+  </header>
+  <nav>
+    <a href="#start">Getting started</a>
+    <a href="#console">Console</a>
+    <a href="#debugger">Debugger</a>
+    <a href="#paths">Paths</a>
+    <a href="#metrics">Metrics</a>
+    <a href="#panel">Test panel</a>
+    <input type="search" id="find" placeholder="Find a button…" autocomplete="off">
+  </nav>
+</div>
+<main>
+
+<section id="start">
+  <h2>Getting started</h2>
+  <p class="muted">Run a program in five steps. Everything below starts from the main page, the <a href="/">Console</a>.</p>
+  <ol>
+    <li>Click a row in <b>Program slots</b> to pick the slot (1–10) you want to use.</li>
+    <li>Click the file chooser and pick your program: a <code>.cpz</code> or <code>.dll</code> (SIMPL# Pro), a <code>.lpz</code> (compiled SIMPL Windows) or a <code>.smw</code>. For a <code>.lpz</code>, select its <code>.sig</code> too (Ctrl+click) so signals have names.</li>
+    <li>Click <span class="b">Load &amp; start</span>. The slot's state turns to <b>Running</b>, and messages from the program appear in the <b>Log</b>.</li>
+    <li>In the <b>IP table</b>, click a row and then <b>open test panel</b> to press buttons on that IP ID from your browser.</li>
+    <li>Click <span class="b">Open debugger ↗</span> to watch the program's signals change live.</li>
+  </ol>
+  <div class="tip">Most buttons also show a short description when you hold the mouse over them. Every page has a <b>Help</b> link at the top that opens this page at the right section.</div>
+</section>
+
+<section id="console">
+  <h2>Console (main page)</h2>
+  <p class="muted">Load programs, see who is connected, manage the program's files, and read its log. Everything on the page is about the slot selected in <b>Program slots</b>.</p>
+
+  <h3>Top bar</h3>
+  <dl>
+    <dt><span class="b">Metrics ↗</span></dt><dd>Opens the <a href="#metrics">Metrics</a> page: CPU, memory and how busy each slot is.</dd>
+    <dt><span class="b">Test panel ↗</span></dt><dd>Opens a blank <a href="#panel">test panel</a>. Type the IP ID you want and click Connect.</dd>
+    <dt><span class="b">Help</span></dt><dd>Opens this page.</dd>
+  </dl>
+
+  <h3>Program slots</h3>
+  <dl>
+    <dt>A row in the table</dt><dd>Click it to select that slot. The rest of the page (IP table, files, console, log) switches to it. The <b>State</b> column shows <b>Running</b>, <b>Stopped</b>, <b>Error</b> or empty.</dd>
+  </dl>
+
+  <h3>Slot</h3>
+  <dl>
+    <dt><span class="b">Choose files</span></dt><dd>Picks the program file(s) from your computer. Nothing is loaded until you click Load &amp; start. You can select several files at once, for example a <code>.lpz</code> with its <code>.sig</code>.</dd>
+    <dt><span class="b">Load &amp; start</span></dt><dd>Uploads the chosen file(s) into the selected slot and starts the program. It replaces whatever was in the slot before.</dd>
+    <dt><span class="b">Inspect .lpz</span></dt><dd>Reads the chosen <code>.lpz</code> without running it and prints a report in the Console box: what's in it and which parts OpenVP can and can't run. Add the <code>.sig</code> to see signal names.</dd>
+    <dt><span class="b">Start</span></dt><dd>Starts the program loaded in this slot, after it was stopped.</dd>
+    <dt><span class="b">Stop</span></dt><dd>Stops the program but keeps it loaded, so Start runs it again.</dd>
+    <dt><span class="b">Unload</span></dt><dd>Stops the program and removes it from the slot. The slot becomes empty. Files in NVRAM and User are kept.</dd>
+    <dt><span class="b">Compatibility</span></dt><dd>Prints a report in the Console box listing anything the loaded program uses that OpenVP doesn't support yet. Check this first if a program misbehaves.</dd>
+    <dt>Room ID <span class="b">Edit…</span></dt><dd>Changes the slot's Room ID (the Virtual Control "room" name). Panels can connect to the slot by this name instead of its number. Shown only when the slot has a Room ID.</dd>
+  </dl>
+
+  <h3>IP table</h3>
+  <p class="muted">Every IP ID the program registered (touch panels, EISCs and other devices) and who is connected to each.</p>
+  <dl>
+    <dt>A row in the table</dt><dd>Click it to open the details below the table: who the client is, how long it has been connected, and traffic counts.</dd>
+    <dt><span class="b">Re-identify</span></dt><dd>Tries again to work out what the connected device is (its hostname and model), using reverse DNS and Crestron autodiscovery. Takes a few seconds.</dd>
+    <dt><span class="b">Log in &amp; read…</span></dt><dd>Shows a small login form. Enter the device's SSH username and password, then click <span class="b">Log in &amp; read</span>: OpenVP logs in to the device and reads its hostname, firmware, uptime, network settings and IP table. It only reads; it changes nothing on the device. The password is used once and never saved.</dd>
+    <dt><b>open test panel</b></dt><dd>Opens a browser <a href="#panel">test panel</a> already connected to this IP ID and slot.</dd>
+    <dt><span class="b">✕</span></dt><dd>Closes the details.</dd>
+  </dl>
+
+  <h3>Debugger</h3>
+  <dl>
+    <dt><span class="b">Open debugger ↗</span></dt><dd>Opens the <a href="#debugger">Debugger</a> for the selected slot in its own window. Open one per slot to debug several programs side by side.</dd>
+  </dl>
+
+  <h3>Files</h3>
+  <p class="muted">The folders the program reads and writes, in place of a real processor's storage.</p>
+  <dl>
+    <dt><span class="b">NVRAM</span> <span class="b">User</span></dt><dd>Switch between the slot's two storage areas: <code>\NVRAM</code> and <code>\USER</code>. The program's own path for the folder you're in is shown on the right.</dd>
+    <dt><span class="b">New folder</span></dt><dd>Creates a folder inside the one you're looking at.</dd>
+    <dt><span class="b">Upload files</span></dt><dd>Uploads one or more files into the current folder. You can also drag files or folders onto the list.</dd>
+    <dt><span class="b">Upload folder</span></dt><dd>Uploads a whole folder with everything inside it.</dd>
+    <dt>Folder path (<b>NVRAM / config</b>)</dt><dd>Click any part of the path to go back up to that folder.</dd>
+    <dt>📁 A folder name</dt><dd>Click it to open the folder.</dd>
+    <dt><span class="b">⤓</span></dt><dd>Downloads that file to your computer.</dd>
+    <dt><span class="b">Rename</span></dt><dd>Gives the file or folder a new name.</dd>
+    <dt><span class="b">✕</span></dt><dd>Deletes the file, or the folder and everything in it. It asks you to confirm first.</dd>
+    <dt><span class="b">Create … folder</span> / <span class="b">Open …</span></dt><dd>Appear in a yellow box when the program looked for a file and didn't find it. They create (or open) the exact folder the program expects, so you can upload the missing file into it.</dd>
+  </dl>
+
+  <h3>Console</h3>
+  <dl>
+    <dt>Command box and <span class="b">Run</span></dt><dd>Sends a console command to the slot, like the text console on a real processor. Type <code>help</code> to list the commands. Pressing <kbd>Enter</kbd> does the same as Run.</dd>
+    <dt><span class="b">−</span> <span class="b">+</span></dt><dd>Make the box shorter or taller. You can also drag its bottom-right corner.</dd>
+    <dt><span class="b">Maximize</span></dt><dd>Fills the window with the console. Click <span class="b">Restore</span> or press <kbd>Esc</kbd> to shrink it back.</dd>
+  </dl>
+
+  <h3>Log</h3>
+  <dl>
+    <dt>The log box</dt><dd>Messages from OpenVP and the program in this slot. Errors are red, warnings yellow, notices blue.</dd>
+    <dt><span class="b">−</span> <span class="b">+</span> <span class="b">Maximize</span></dt><dd>Same as for the Console box: shorter, taller, fill the window.</dd>
+  </dl>
+</section>
+
+<section id="debugger">
+  <h2>Debugger</h2>
+  <p class="muted">Shows every signal in the program and its current value on the left, and a running list of changes (the trace) on the right. It works like SIMPL Debugger.</p>
+
+  <h3>Title bar</h3>
+  <dl>
+    <dt>Slot list</dt><dd>Switches the debugger to another program slot.</dd>
+    <dt><span class="b">Paths</span></dt><dd>Opens the <a href="#paths">Paths</a> view, starting from the signal you have selected.</dd>
+    <dt><span class="b">Console</span></dt><dd>Goes back to the main page.</dd>
+  </dl>
+
+  <h3>Toolbar: recording</h3>
+  <dl>
+    <dt><span class="b">● Stream</span> <kbd>F5</kbd></dt><dd>Starts or stops recording signal changes in the trace. Green means recording. The program keeps running either way.</dd>
+    <dt><span class="b">Clear</span></dt><dd>Empties the trace. Signal values are not affected.</dd>
+    <dt><span class="b">Save…</span></dt><dd>Saves the trace to a text file on your computer.</dd>
+    <dt><b>Trace</b>: all signals / checked signals only</dt><dd>Chooses what gets recorded: every signal, or only the ones ticked in the <b>T</b> column.</dd>
+    <dt><span class="b">Waveform</span></dt><dd>Shows or hides a logic-analyzer style chart at the bottom, with one lane for each ticked signal.</dd>
+  </dl>
+
+  <h3>Toolbar: stepping</h3>
+  <p class="muted">Step mode freezes the program at each signal change so you can see cause and effect one step at a time.</p>
+  <dl>
+    <dt><span class="b">⏸ Step</span> <kbd>Ctrl</kbd>+<kbd>F5</kbd></dt><dd>Turns step mode on or off. While it's on, the program pauses at each change until you press Next.</dd>
+    <dt><span class="b">Next ▶|</span> <kbd>F10</kbd></dt><dd>Lets the paused change through and stops at the next one.</dd>
+    <dt><span class="b">◀| Back</span> <kbd>F7</kbd></dt><dd>Shows the step before this one, with values as they were then. It only looks back; the program stays where it is.</dd>
+    <dt><span class="b">Run ▶▶</span> <kbd>F8</kbd></dt><dd>Turns step mode off and lets the program run normally.</dd>
+    <dt><b>Break on</b>: every change / marked signals ⏸</dt><dd>Chooses what pauses the program: any signal change, or only changes to signals ticked in the <b>⏸</b> column.</dd>
+  </dl>
+
+  <h3>Toolbar: display</h3>
+  <dl>
+    <dt><b>Time</b></dt><dd>Show trace times as clock time (absolute) or as time since the first row (relative).</dd>
+    <dt><b>Analog</b></dt><dd>Show analog values as decimal (0–65535), hex or percent.</dd>
+    <dt><b>Serial</b></dt><dd>Show serial strings as text (ASCII) or as hex bytes.</dd>
+    <dt><b>auto-scroll</b></dt><dd>Keeps the trace scrolled to the newest row. Untick it to read older rows while new ones arrive.</dd>
+  </dl>
+
+  <h3>Signals list (left)</h3>
+  <dl>
+    <dt><span class="b">flat</span> <span class="b">tree</span></dt><dd>Show the signals as one list, or grouped into folders by program structure or name prefix.</dd>
+    <dt>Watch-group tabs and <span class="b">+</span></dt><dd>A watch group is a saved set of signals. Click a tab to show only its signals, or <span class="b">All</span> to show every signal again; click <span class="b">+</span> to make a new group. Right-click a tab to rename it, delete it, empty it, or add the checked or shown signals to it.</dd>
+    <dt><b>Find signal</b> box</dt><dd>Filters the list as you type. Hold the mouse over the <span class="b">?</span> next to it for the full search syntax (wildcards, by type, by value, exclude).</dd>
+    <dt>Type list</dt><dd>Show only Digital, Analog or Serial signals.</dd>
+    <dt>Sort list</dt><dd>Sort by name, type, most recently changed or most changes. Clicking a column header sorts too.</dd>
+    <dt><b>checked</b></dt><dd>Show only signals ticked for tracing.</dd>
+    <dt><b>⏸ marked</b></dt><dd>Show only signals marked to break on.</dd>
+    <dt><b>active only</b></dt><dd>Show only signals that have changed since the page loaded or since you last reset activity.</dd>
+    <dt><span class="b">reset activity</span></dt><dd>Forgets which signals have changed and how often, so "active only" and the <b>Chg</b> counts start again from zero.</dd>
+    <dt><span class="b">✓ all</span> <span class="b">✗ all</span></dt><dd>Tick or untick the <b>T</b> box of every signal currently shown.</dd>
+    <dt><span class="b">⊟</span> <span class="b">⊞</span></dt><dd>Collapse or expand every folder (tree view only).</dd>
+    <dt><b>T</b> column</dt><dd>Tick to trace this signal. It's used by "checked signals only" and by the waveform.</dd>
+    <dt><b>⏸</b> column <kbd>F9</kbd></dt><dd>Tick to pause the program when this signal changes (when Break on is set to marked signals).</dd>
+    <dt>Click a signal</dt><dd>Selects it and puts its name in the Force bar.</dd>
+    <dt>Double-click a signal</dt><dd>A digital signal toggles between 0 and 1. For an analog or serial signal, the cursor jumps to the Force value box.</dd>
+    <dt>Right-click a signal</dt><dd>Opens a menu: set, clear, pulse or toggle it; break on it; check it for trace; add it to a watch group; show what drives it or what it drives; open it in Paths; copy its name.</dd>
+    <dt>Drag the bar between the panes</dt><dd>Makes the signals list wider or narrower.</dd>
+  </dl>
+
+  <h3>Trace (right)</h3>
+  <dl>
+    <dt><b>Filter trace</b> box</dt><dd>Shows only trace rows that match. Same search syntax as Find signal.</dd>
+    <dt><b>follow</b> list</dt><dd>Limits the trace to the signal selected on the left (<b>only selected</b>) or to it and the signals wired to it (<b>selected + neighbours</b>).</dd>
+    <dt><b>this burst only</b></dt><dd>Click a trace row, then tick this to see only the changes from the same chain reaction (burst).</dd>
+    <dt><b>↳ caused</b></dt><dd>Shows changes made by program logic in reaction to another change. Untick it to see only outside events: panel presses, device inputs and timers.</dd>
+  </dl>
+
+  <h3>Waveform</h3>
+  <dl>
+    <dt><span class="b">100 ms</span> <span class="b">1 s</span> <span class="b">10 s</span> <span class="b">1 min</span></dt><dd>Set how much time the chart shows across its width.</dd>
+    <dt><span class="b">⟳ live</span></dt><dd>Jumps back to now and follows new changes again, after you scrolled or zoomed.</dd>
+    <dt><b>×</b> next to a signal name</dt><dd>Removes that lane from the chart.</dd>
+    <dt>Mouse</dt><dd>Wheel zooms. Drag (or <kbd>Shift</kbd>+wheel) moves through time. Click places a marker; double-click removes it. Drag the top edge of the chart to resize it.</dd>
+  </dl>
+
+  <h3>Force bar (bottom)</h3>
+  <p class="muted">Change a signal by hand, as if the program or a device had done it.</p>
+  <dl>
+    <dt>Signal name box</dt><dd>The signal to change. Click one in the list, or type to search.</dd>
+    <dt>Value box</dt><dd>The value to set: <code>1</code> or <code>0</code> for digital; <code>500</code>, <code>1F4h</code> or <code>50%</code> for analog; text for serial (<code>\x0D</code> for a special byte). Pressing <kbd>Enter</kbd> does the same as Set.</dd>
+    <dt><span class="b">Set</span></dt><dd>Sets the signal to the value in the box. With an empty box, a digital signal is set to 1.</dd>
+    <dt><span class="b">Clear</span></dt><dd>Sets a digital or analog signal to 0, or a serial signal to an empty string.</dd>
+    <dt><span class="b">Pulse</span></dt><dd>Sets a digital signal high for a moment and then low again, like a quick button press.</dd>
+  </dl>
+</section>
+
+<section id="paths">
+  <h2>Paths</h2>
+  <p class="muted">Draws the program's wiring as a map: signals, the symbols between them, and live pulses travelling along the wires as signals change. Use it to answer "what happens when this goes high?" and "why did this change?".</p>
+
+  <h3>Title bar</h3>
+  <dl>
+    <dt>Slot list</dt><dd>Switches to another program slot.</dd>
+    <dt><span class="b">← Debugger</span></dt><dd>Opens the <a href="#debugger">Debugger</a> for the same slot.</dd>
+    <dt><span class="b">Console</span></dt><dd>Goes back to the main page.</dd>
+  </dl>
+
+  <h3>Toolbar</h3>
+  <dl>
+    <dt><b>start signal</b> box</dt><dd>Type part of a signal name and pick one. The map is drawn outwards from this signal.</dd>
+    <dt>Direction list</dt><dd><b>What does it drive? →</b> follows the wiring forwards from the start signal. <b>← What drives it?</b> follows it backwards to find the cause.</dd>
+    <dt><b>Depth</b> slider</dt><dd>How many steps away from the start signal to draw. Lower it if the map is too crowded.</dd>
+    <dt><b>whole program</b></dt><dd>Draws all of the program's wiring instead of only the part around the start signal.</dd>
+    <dt><b>follow live changes</b></dt><dd>When something changes outside the part you're looking at, the map moves there automatically.</dd>
+    <dt><span class="b">Fit</span></dt><dd>Zooms and centres so the whole map fits the window.</dd>
+    <dt><span class="b">Pulse start</span></dt><dd>Pulses the start signal (like pressing a button) so you can watch the effect travel through the map.</dd>
+    <dt><b>Speed</b> <span class="b">1×</span> <span class="b">0.25×</span> <span class="b">0.1×</span></dt><dd>Slow motion. At 0.25× or 0.1×, changes are queued and played back slower so you can follow them.</dd>
+    <dt><span class="b">↻ Replay last burst</span></dt><dd>Plays the most recent chain of changes again.</dd>
+    <dt><span class="b">Skip queue</span></dt><dd>Drops the changes waiting to be played in slow motion and jumps to what's happening now. Shown only while changes are queued.</dd>
+    <dt><span class="b">Retry</span></dt><dd>Appears if the wiring could not be loaded. Tries again.</dd>
+  </dl>
+
+  <h3>The map</h3>
+  <dl>
+    <dt>Drag / mouse wheel</dt><dd>Drag to move the map; the wheel (or a two-finger pinch) zooms.</dd>
+    <dt>Hover a box</dt><dd>Shows its full name and current value.</dd>
+    <dt>Click a signal</dt><dd>Makes it the new start signal.</dd>
+    <dt>Double-click a digital signal</dt><dd>Pulses it.</dd>
+    <dt>Click <b>+N more</b></dt><dd>Opens the connections that were folded away to keep the map readable.</dd>
+    <dt>Line colours</dt><dd>Grey is a wire, cyan is a signal travelling along it, pink is a loop.</dd>
+  </dl>
+
+  <h3>Side lists</h3>
+  <dl>
+    <dt><b>Loops &amp; oscillations</b></dt><dd>Signals that changed more than once in the same chain reaction. Red means it's changing so often it's probably stuck in a loop. Click one to centre the map on it.</dd>
+    <dt><b>Last burst</b></dt><dd>Every change in the most recent chain reaction, in order. Click one to centre the map on it.</dd>
+  </dl>
+</section>
+
+<section id="metrics">
+  <h2>Metrics</h2>
+  <p class="muted">A live health check of OpenVP itself: is anything slow, stuck or using too much?</p>
+  <dl>
+    <dt><span class="b">Pause</span> / <span class="b">Resume</span></dt><dd>Freezes the numbers on screen so you can read them. Resume shows live values again. Nothing in the program is paused.</dd>
+    <dt><span class="b">Console</span></dt><dd>Goes back to the main page.</dd>
+    <dt><b>show empty slots</b></dt><dd>Also lists slots that have no program loaded.</dd>
+    <dt>The banner at the top</dt><dd>Green when everything is fine. Red with a list when something needs attention, for example a slot that's stuck.</dd>
+    <dt>Tiles</dt><dd>CPU, memory, threads, thread pool and uptime of the OpenVP process, each with a small chart of the last few minutes.</dd>
+    <dt><b>Slots</b> table</dt><dd>One row per program: events per second, how busy it is, how many events are waiting, and what it's running right now. Hold the mouse over a column heading for what it measures.</dd>
+    <dt><b>Program threads and background work</b></dt><dd>Threads and background jobs that programs started, and how long each has been running.</dd>
+  </dl>
+</section>
+
+<section id="panel">
+  <h2>Test panel</h2>
+  <p class="muted">A simple touch panel in your browser, for pressing joins and seeing feedback without real hardware.</p>
+  <dl>
+    <dt><b>IP ID</b></dt><dd>The IP ID to connect as, in hex (for example <code>03</code>). It must be one the program registered; see the IP table on the main page.</dd>
+    <dt><b>Slot</b></dt><dd>The program slot to connect to. Leave empty to use whichever slot has that IP ID.</dd>
+    <dt><b>Room</b></dt><dd>Connect by the slot's Room ID instead of its number. Leave empty if you don't use Room IDs.</dd>
+    <dt><span class="b">Connect</span></dt><dd>Reconnects using the IP ID, Slot and Room you typed. The dot turns green when connected.</dd>
+    <dt>Digital joins <span class="b">1</span>–<span class="b">20</span></dt><dd>Press and hold to send that digital join high; let go to send it low. A button turns green when the program sends feedback on that join.</dd>
+    <dt>Analog sliders</dt><dd>Drag to send an analog value (0–65535) on that join. The feedback value from the program is shown underneath.</dd>
+    <dt>Serial boxes</dt><dd>Type text and press <kbd>Enter</kbd> to send it on that serial join. The feedback text from the program is shown underneath.</dd>
+  </dl>
+</section>
+
+<div id="none" hidden>Nothing matches. Try a shorter word.</div>
+</main>
+<script>
+// Find box: hide every entry (and then every heading and section) that doesn't contain the typed words.
+const find = document.getElementById("find");
+const rows = [...document.querySelectorAll("dl > dt")].map(dt => ({ dt, dd: dt.nextElementSibling }));
+find.oninput = () => {
+  const words = find.value.toLowerCase().split(/\s+/).filter(Boolean);
+  for (const { dt, dd } of rows) {
+    const text = (dt.textContent + " " + dd.textContent).toLowerCase();
+    dt.hidden = dd.hidden = !words.every(w => text.includes(w));
+  }
+  for (const dl of document.querySelectorAll("dl")) {
+    dl.hidden = ![...dl.children].some(c => !c.hidden);
+    // the heading (and its intro line) just above the list go with it
+    for (let p = dl.previousElementSibling; p && (p.tagName === "P" || p.tagName === "H3"); p = p.previousElementSibling) {
+      p.hidden = dl.hidden && words.length > 0;
+      if (p.tagName === "H3") break;
+    }
+  }
+  let any = false;
+  for (const s of document.querySelectorAll("main > section")) {
+    const has = !!s.querySelector("dl:not([hidden])");
+    s.hidden = words.length > 0 && !has;
+    any ||= !s.hidden;
+  }
+  document.getElementById("none").hidden = any;
+};
+// Highlight the section being read in the nav.
+const links = [...document.querySelectorAll("nav a")];
+const mark = id => links.forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#" + id));
+const io = new IntersectionObserver(es => { for (const e of es) if (e.isIntersecting) mark(e.target.id); }, { rootMargin: "-110px 0px -65% 0px" });
+document.querySelectorAll("main > section").forEach(s => io.observe(s));
+</script>
+</body>
+</html>

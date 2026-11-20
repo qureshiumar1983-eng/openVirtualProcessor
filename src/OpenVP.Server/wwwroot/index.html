@@ -83,7 +83,7 @@
 <body>
 <header>
   <h1>OpenVP</h1><small>open-source virtual control processor</small>
-  <span style="flex:1"></span><a href="metrics.html" target="openvp-metrics">Metrics ↗</a><a href="panel.html" target="_blank">Test panel ↗</a>
+  <span style="flex:1"></span><a href="metrics.html" target="openvp-metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="panel.html" target="_blank" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a>
 </header>
 <main>
   <div>
@@ -94,13 +94,13 @@
     <section style="margin-top:16px">
       <h2>Slot <span id="sel-num">1</span></h2>
       <div class="bar">
-        <input type="file" id="file" accept=".cpz,.dll,.zip,.smw,.json,.lpz,.sig" multiple>
-        <button id="upload">Load &amp; start</button>
+        <input type="file" id="file" accept=".cpz,.dll,.zip,.smw,.json,.lpz,.sig" multiple title="Pick the program: .cpz or .dll (SIMPL# Pro), .lpz (add its .sig for signal names) or .smw">
+        <button id="upload" title="Upload the chosen file(s) into this slot and start the program. Replaces what was in the slot.">Load &amp; start</button>
         <button id="inspect" title="Report what OpenVP can run in a compiled .lpz (add its .sig for names)">Inspect .lpz</button>
       </div>
       <div class="bar">
-        <button data-act="start">Start</button><button data-act="stop">Stop</button><button data-act="unload">Unload</button>
-        <button id="compat">Compatibility</button>
+        <button data-act="start" title="Start the program loaded in this slot">Start</button><button data-act="stop" title="Stop the program but keep it loaded">Stop</button><button data-act="unload" title="Stop the program and remove it from this slot. NVRAM and User files are kept.">Unload</button>
+        <button id="compat" title="List what the loaded program uses that OpenVP does not support yet (shown in the Console box)">Compatibility</button>
       </div>
       <div class="bar" id="room-bar" style="display:none">
         <span class="muted">Room ID</span> <b id="room-id" class="mono"></b>
@@ -125,7 +125,7 @@
           <b id="d-title"></b><span style="flex:1"></span>
           <button id="d-identify" title="Run reverse DNS and Crestron autodiscovery again">Re-identify</button>
           <button id="d-login-toggle" title="Log in over SSH and read hostname, firmware, uptime, network and IP table (read-only commands)">Log in &amp; read…</button>
-          <a id="d-panel" target="_blank">open test panel</a>
+          <a id="d-panel" target="_blank" title="Open a browser touch panel connected to this IP ID">open test panel</a>
           <button id="d-close" title="Close">✕</button>
         </div>
         <form id="login-form" autocomplete="off">
@@ -142,17 +142,17 @@
     <section style="margin-top:16px">
       <h2>Debugger · slot <span class="sel-num2">1</span></h2>
       <div class="bar">
-        <button id="open-debugger">Open debugger ↗</button>
+        <button id="open-debugger" title="Watch and change this slot's signals live, in its own window">Open debugger ↗</button>
         <span class="muted">Signal list and trace window for this slot, in its own window. Open one per slot to debug several programs at once.</span>
       </div>
     </section>
     <section style="margin-top:16px">
       <h2>Files · slot <span class="sel-num2">1</span></h2>
       <div class="bar">
-        <div class="tabs"><button data-root="nvram" class="active">NVRAM</button><button data-root="user">User</button></div>
+        <div class="tabs"><button data-root="nvram" class="active" title="The slot's \NVRAM folder">NVRAM</button><button data-root="user" title="The slot's \USER folder">User</button></div>
         <span style="flex:1"></span>
-        <button id="files-mkdir">New folder</button>
-        <button id="files-up">Upload files</button>
+        <button id="files-mkdir" title="Create a folder inside the one shown">New folder</button>
+        <button id="files-up" title="Upload files into the folder shown (or drag them onto the list)">Upload files</button>
         <button id="files-updir" title="Upload a folder and everything in it">Upload folder</button>
         <input type="file" id="files-pick" multiple hidden>
         <input type="file" id="files-pickdir" webkitdirectory multiple hidden>
@@ -173,7 +173,7 @@
           <button id="console-bigger" title="Make the console taller">+</button>
           <button id="console-max" title="Fill the window with the console (Esc to restore)">Maximize</button>
         </div>
-        <div class="bar"><input id="console-in" class="mono" style="flex:1" placeholder="help, ipt, metrics, taskstat, cpuload, ramfree, or a program command"><button id="console-run">Run</button></div>
+        <div class="bar"><input id="console-in" class="mono" style="flex:1" placeholder="help, ipt, metrics, taskstat, cpuload, ramfree, or a program command"><button id="console-run" title="Send the command to this slot (Enter does the same). Type help for the list of commands.">Run</button></div>
         <div id="console-out" class="mono" title="Drag the bottom-right corner to resize"></div>
       </section>
       <section id="log-sec">
@@ -527,14 +527,14 @@ async function refreshFiles() {
     else nameCell.textContent = e.name;
     const act = tr.querySelector(".act");
     const btn = (label, title, fn) => { const b = document.createElement("button"); b.textContent = label; b.title = title; b.onclick = fn; act.appendChild(b); act.append(" "); };
-    if (!e.folder) btn("⤓", "Download", () => { location.href = `/api/slots/${sel}/files/download?${q({ root: fRoot, path })}`; });
-    btn("Rename", "Rename", async () => {
+    if (!e.folder) btn("⤓", "Download this file", () => { location.href = `/api/slots/${sel}/files/download?${q({ root: fRoot, path })}`; });
+    btn("Rename", "Rename this file or folder", async () => {
       const name = await askName(`Rename '${e.name}' to:`, e.name); if (!name || name === e.name) return;
       try { await api(`/api/slots/${sel}/files/rename`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ root: fRoot, path, name }) }); }
       catch (err) { alert(err.message); }
       refreshFiles();
     });
-    btn("✕", "Delete", async () => {
+    btn("✕", e.folder ? "Delete this folder and everything in it" : "Delete this file", async () => {
       if (!confirm(e.folder ? `Delete folder '${e.name}' and everything in it?` : `Delete '${e.name}'?`)) return;
       try { await api(`/api/slots/${sel}/files?${q({ root: fRoot, path })}`, { method: "DELETE" }); }
       catch (err) { alert(err.message); }
