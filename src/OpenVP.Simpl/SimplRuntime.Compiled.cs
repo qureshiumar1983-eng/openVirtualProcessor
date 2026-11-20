@@ -293,6 +293,7 @@ public sealed partial class SimplRuntime
 
         public object Output(int pin) => Out(pin) is var h and > 0 ? Runtime.Value(h) : SigValue.False;
         public SigKind OutputSignalKind(int pin) => Runtime.KindOf(Out(pin));
+        public int OutputSignal(int pin) => Out(pin);
 
         public int ParamCount => _bin.Params.Count;
         public long Number(int index, long fallback = 0) =>
