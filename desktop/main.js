@@ -7,12 +7,13 @@
 //   - Dev (`npm start`): runs the server from source with `dotnet watch`, serves the web pages straight from
 //     src/OpenVP.Server/wwwroot, and reloads the windows when a page changes or the server restarts after a
 //     C# change. Needs the .NET 8 SDK.
-const { app, BrowserWindow, dialog, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, shell } = require('electron');
 const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const http = require('http');
 const net = require('net');
 const path = require('path');
+const updater = require('./updater');
 
 const PORT = 8080;
 const BASE = `http://localhost:${PORT}/`;
@@ -182,6 +183,7 @@ function createWindow(width, height) {
 }
 
 async function start() {
+  setMenu();
   mainWindow = createWindow(1280, 860);
   mainWindow.on('closed', () => { mainWindow = null; app.quit(); });
   mainWindow.loadFile(path.join(__dirname, 'loading.html'));
@@ -199,6 +201,32 @@ async function start() {
   if (!mainWindow) return;
   mainWindow.loadURL(BASE);
   if (DEV) watchForChanges();
+  else updater.start({ getWindow: () => mainWindow, beforeRestart: restartInto });
+}
+
+/** After an update: stop the server, wait for the port to free up, start the new OpenVP.exe and quit. */
+async function restartInto(exe) {
+  stopServer();
+  for (let i = 0; i < 40 && await isPortTaken(); i++) await new Promise(r => setTimeout(r, 250));
+  app.releaseSingleInstanceLock();
+  spawn(exe, [], { detached: true, stdio: 'ignore', cwd: path.dirname(exe) }).unref();
+  app.exit(0);
+}
+
+/** The menu bar (hidden until Alt is pressed): the usual items plus Help > Check for updates. */
+function setMenu() {
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { role: 'fileMenu' },
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    { role: 'windowMenu' },
+    { label: 'Help', submenu: [
+      { label: 'Check for updates…', click: () => updater.check(true) },
+      { label: 'Releases page', click: () => shell.openExternal('https://github.com/qureshiumar1983-eng/openVirtualProcessor/releases') },
+      { type: 'separator' },
+      { label: `OpenVP v${app.getVersion()}`, enabled: false },
+    ] },
+  ]));
 }
 
 function stopServer() {

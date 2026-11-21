@@ -1,0 +1,201 @@
+// Update check for the packaged desktop app (OpenVP.exe).
+//
+// Every push to main publishes a GitHub release with a new OpenVP.exe (see .github/workflows/windows-app.yml).
+// This asks GitHub's public API for the latest release, a few seconds after start and then every few hours. If
+// it's newer than this app, a pop-up offers to update. "Update now" downloads the new OpenVP.exe, checks its
+// size (and SHA-256, when GitHub lists one), puts it in place of the current file and restarts the app.
+//
+// Free: the releases API needs no account or token (GitHub allows 60 unauthenticated requests an hour per IP;
+// this makes a few a day). Nothing runs in dev mode (`npm start`).
+//
+// Swapping the file: Windows won't let a running .exe be overwritten, but it can be renamed. So the running
+// OpenVP.exe becomes OpenVP.exe.old, the download takes its name, and the .old file is deleted on the next
+// start. If the folder can't be written (say, OpenVP.exe sits in Program Files), the new version is saved to
+// Downloads instead and shown in Explorer.
+const { app, dialog, net, shell } = require('electron');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const { Readable } = require('stream');
+const { pipeline } = require('stream/promises');
+
+const REPO = 'qureshiumar1983-eng/openVirtualProcessor';
+const LATEST_API = `https://api.github.com/repos/${REPO}/releases/latest`;
+const RELEASES_PAGE = `https://github.com/${REPO}/releases/latest`;
+const ASSET_NAME = 'OpenVP.exe';
+const FIRST_CHECK_MS = 15 * 1000;
+const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
+
+let opts = null;          // { getWindow, beforeRestart }
+let busy = false;         // a check, prompt or download is in progress
+let timer = null;
+
+const settingsPath = () => path.join(app.getPath('userData'), 'update.json');
+function loadSettings() {
+  try { return JSON.parse(fs.readFileSync(settingsPath(), 'utf8')); } catch { return {}; }
+}
+function saveSettings(s) {
+  try { fs.writeFileSync(settingsPath(), JSON.stringify(s, null, 2)); } catch { }
+}
+
+/** "v0.1.15" -> [0, 1, 15]. Returns null if it isn't a version number. */
+function parseVersion(v) {
+  const m = /^v?(\d+)\.(\d+)\.(\d+)/.exec(String(v || '').trim());
+  return m ? m.slice(1).map(Number) : null;
+}
+function isNewer(latest, current) {
+  const a = parseVersion(latest), b = parseVersion(current);
+  if (!a || !b) return false;
+  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] > b[i];
+  return false;
+}
+
+/** The portable OpenVP.exe the user launched (electron-builder's portable launcher sets this). */
+const portableExe = () => process.env.PORTABLE_EXECUTABLE_FILE || null;
+
+async function fetchLatest() {
+  const res = await net.fetch(LATEST_API, {
+    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'OpenVP-desktop-updater' },
+  });
+  if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
+  const rel = await res.json();
+  const asset = (rel.assets || []).find(a => a.name === ASSET_NAME);
+  return { tag: rel.tag_name, name: rel.name || rel.tag_name, notes: rel.body || '', url: rel.html_url, asset };
+}
+
+/**
+ * Checks for a newer release. `manual` (a user asked) also reports "you're up to date" and errors, and shows a
+ * version the user chose to skip.
+ */
+async function check(manual = false) {
+  if (!app.isPackaged) {
+    if (manual) dialog.showMessageBox(win(), { type: 'info', title: 'OpenVP', message: 'Updates are checked only in the packaged OpenVP.exe, not in dev mode.' });
+    return;
+  }
+  if (busy) return;
+  busy = true;
+  try {
+    let latest;
+    try { latest = await fetchLatest(); }
+    catch (e) {
+      if (manual) dialog.showMessageBox(win(), { type: 'warning', title: 'OpenVP', message: "Couldn't check for updates.", detail: e.message });
+      return;
+    }
+    const current = app.getVersion();
+    if (!isNewer(latest.tag, current)) {
+      if (manual) dialog.showMessageBox(win(), { type: 'info', title: 'OpenVP', message: `You have the latest version (v${current}).` });
+      return;
+    }
+    const settings = loadSettings();
+    if (!manual && settings.skipVersion === latest.tag) return;
+    await prompt(latest, current, settings);
+  } finally {
+    busy = false;
+  }
+}
+
+function win() {
+  const w = opts && opts.getWindow();
+  return w && !w.isDestroyed() ? w : undefined;
+}
+
+async function prompt(latest, current, settings) {
+  const canSwap = !!(portableExe() && latest.asset);
+  const notes = latest.notes.replace(/\*\*/g, '').trim();
+  const { response } = await dialog.showMessageBox(win(), {
+    type: 'info',
+    title: 'OpenVP update',
+    message: `A new version of OpenVP is available: ${latest.tag}`,
+    detail: `You have v${current}.\n\n${notes}\n\n` +
+      (canSwap ? 'Updating downloads it and restarts OpenVP, which stops the programs that are running for a few seconds.'
+               : 'This opens the download page.'),
+    buttons: [canSwap ? 'Update now' : 'Download', 'Later', 'Skip this version'],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true,
+  });
+  if (response === 2) { saveSettings({ ...settings, skipVersion: latest.tag }); return; }
+  if (response !== 0) return;
+  if (!canSwap) { shell.openExternal(latest.url || RELEASES_PAGE); return; }
+  await downloadAndInstall(latest);
+}
+
+async function download(asset, dest, onProgress) {
+  const res = await net.fetch(asset.browser_download_url, { headers: { 'User-Agent': 'OpenVP-desktop-updater' } });
+  if (!res.ok || !res.body) throw new Error(`Download failed (${res.status})`);
+  const total = asset.size || Number(res.headers.get('content-length')) || 0;
+  const hash = crypto.createHash('sha256');
+  let got = 0;
+  const body = Readable.fromWeb(res.body);
+  body.on('data', chunk => { got += chunk.length; hash.update(chunk); if (total) onProgress(got / total); });
+  await pipeline(body, fs.createWriteStream(dest));
+  if (asset.size && got !== asset.size) throw new Error(`The download is incomplete (${got} of ${asset.size} bytes).`);
+  const digest = typeof asset.digest === 'string' && asset.digest.startsWith('sha256:') ? asset.digest.slice(7) : null;
+  if (digest && hash.digest('hex') !== digest.toLowerCase()) throw new Error("The download doesn't match the release (SHA-256 differs).");
+}
+
+async function downloadAndInstall(latest) {
+  const exe = portableExe();
+  const dir = path.dirname(exe);
+  const w = win();
+  const progress = p => { if (w && !w.isDestroyed()) w.setProgressBar(p); };
+  const tmp = path.join(dir, `${ASSET_NAME}.download`);
+  let dest = tmp, inPlace = true;
+  try {
+    try { fs.accessSync(dir, fs.constants.W_OK); } catch { inPlace = false; }
+    if (!inPlace) dest = path.join(app.getPath('downloads'), `OpenVP-${latest.tag}.exe`);
+    progress(0.01);
+    await download(latest.asset, dest, progress);
+  } catch (e) {
+    try { fs.rmSync(dest, { force: true }); } catch { }
+    progress(-1);
+    dialog.showMessageBox(win(), { type: 'error', title: 'OpenVP update', message: "The update couldn't be downloaded.", detail: e.message });
+    return;
+  }
+  progress(-1);
+
+  if (!inPlace) {
+    shell.showItemInFolder(dest);
+    dialog.showMessageBox(win(), { type: 'info', title: 'OpenVP update',
+      message: `OpenVP ${latest.tag} was saved to your Downloads folder.`,
+      detail: `OpenVP can't replace itself in ${dir}. Close OpenVP and run the new file instead.` });
+    return;
+  }
+
+  // Swap: running exe -> .old, download -> OpenVP.exe. Put the old one back if the second step fails.
+  const old = exe + '.old';
+  try {
+    fs.rmSync(old, { force: true });
+    fs.renameSync(exe, old);
+    try { fs.renameSync(tmp, exe); }
+    catch (e) { fs.renameSync(old, exe); throw e; }
+  } catch (e) {
+    try { fs.rmSync(tmp, { force: true }); } catch { }
+    dialog.showMessageBox(win(), { type: 'error', title: 'OpenVP update', message: "The update couldn't be installed.", detail: e.message });
+    return;
+  }
+  await opts.beforeRestart(exe);
+}
+
+/** Deletes the OpenVP.exe.old an earlier update left behind (it was still running then). */
+function cleanUp() {
+  const exe = portableExe();
+  if (!exe) return;
+  for (const f of [exe + '.old', path.join(path.dirname(exe), `${ASSET_NAME}.download`)]) {
+    try { fs.rmSync(f, { force: true }); } catch { }
+  }
+}
+
+/**
+ * Starts checking. `getWindow` returns the window to attach pop-ups to; `beforeRestart(exe)` stops the server,
+ * starts `exe` and quits.
+ */
+function start(options) {
+  if (!app.isPackaged || timer) return;
+  opts = options;
+  cleanUp();
+  setTimeout(() => check(false), FIRST_CHECK_MS);
+  timer = setInterval(() => check(false), CHECK_EVERY_MS);
+}
+
+module.exports = { start, check, isNewer, parseVersion };

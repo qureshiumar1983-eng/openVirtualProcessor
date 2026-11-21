@@ -26,6 +26,7 @@
     },
     "files": [
       "main.js",
+      "updater.js",
       "loading.html",
       "package.json"
     ],
