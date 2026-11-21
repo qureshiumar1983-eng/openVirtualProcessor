@@ -194,7 +194,7 @@ public static class LogicSymbolCatalog
         sb.Append("- **compiled**: checked against compiled programs that ship their source: primitive type, pin order and parameters.\n");
         sb.Append("- **documented**: written from the SIMPL Windows symbol descriptions. It runs from `.smw` (matched by name). Pin order and parameter units are best guesses, ");
         sb.Append("and the compiled type is unknown until a real program shows it. To run one in a compiled program, name its type in `primitives.json`.\n");
-        sb.Append("- **inferred**: the compiled type and pins were seen in real programs (`Sample Programs/`), but the behavior is inferred from how those programs wire and name the pins, usually because the symbol sits inside a macro whose source isn't available. ");
+        sb.Append("- **inferred**: the compiled type and pins were seen in real programs (a private test set, not in this repo), but the behavior is inferred from how those programs wire and name the pins, usually because the symbol sits inside a macro whose source isn't available. ");
         sb.Append("Each one's code comment (`src/OpenVP.Lpz/Primitives4.cs`) says what the inference rests on.\n\n");
         int Count(SymbolEvidence e) => All.Count(x => x.Evidence == e);
         sb.Append($"{All.Count} symbols: {Count(SymbolEvidence.Compiled)} compiled, {Count(SymbolEvidence.Inferred)} inferred, {Count(SymbolEvidence.Documented)} documented.\n");

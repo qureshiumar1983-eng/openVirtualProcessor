@@ -6,7 +6,7 @@ Every symbol has one implementation, used both for `.smw` source and compiled `.
 
 - **compiled**: checked against compiled programs that ship their source: primitive type, pin order and parameters.
 - **documented**: written from the SIMPL Windows symbol descriptions. It runs from `.smw` (matched by name). Pin order and parameter units are best guesses, and the compiled type is unknown until a real program shows it. To run one in a compiled program, name its type in `primitives.json`.
-- **inferred**: the compiled type and pins were seen in real programs (`Sample Programs/`), but the behavior is inferred from how those programs wire and name the pins, usually because the symbol sits inside a macro whose source isn't available. Each one's code comment (`src/OpenVP.Lpz/Primitives4.cs`) says what the inference rests on.
+- **inferred**: the compiled type and pins were seen in real programs (a private test set, not in this repo), but the behavior is inferred from how those programs wire and name the pins, usually because the symbol sits inside a macro whose source isn't available. Each one's code comment (`src/OpenVP.Lpz/Primitives4.cs`) says what the inference rests on.
 
 86 symbols: 67 compiled, 9 inferred, 10 documented.
 

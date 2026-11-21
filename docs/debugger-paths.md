@@ -42,7 +42,7 @@ nothing wired are left out. SIMPL Windows symbol ids are `S<handle>`; compiled p
 - `signals` is unchanged.
 
 Without `compact=1` the response is as described above. For a large program most pins are empty, so the
-compact form is much smaller (the biggest sample, `Sunlife - Toronto - York 1 - 22nd - BES - Main.smw`,
+compact form is much smaller (the biggest real program tested, a large office-floor program,
 goes from 10.5 MB to 4.7 MB; with gzip 0.5 MB).
 
 The wiring of a loaded program does not change while it is loaded. The server serializes each form once,

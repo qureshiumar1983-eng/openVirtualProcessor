@@ -6,7 +6,7 @@ namespace OpenVP.Simpl;
 /// Where a device extender's joins sit on its device: panel reserved joins, button toolbars, app control. In a
 /// .smw an extender is a symbol under the device (PrH) whose pins carry no join numbers; pin k of a kind is
 /// join base + k. The compiler writes the bases into the extender's record (fields 27-32, see
-/// <c>LpzRuntime.ExtenderNode</c>), so these were read off the compiled programs in <c>Sample Programs/</c> by
+/// <c>LpzRuntime.ExtenderNode</c>), so these were read off real compiled programs (a private test set, not in this repo) by
 /// pairing each extender with its record through signal names. Bases are the same for inputs (feedback) and
 /// outputs (presses) in every program surveyed. A kind no program showed has no entry, and its pins stay unmapped.
 /// </summary>

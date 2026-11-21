@@ -3,7 +3,7 @@ using OpenVP.Core;
 
 namespace OpenVP.Lpz;
 
-// Compiled types found in the sample programs (Sample Programs/) whose source symbol couldn't be checked pin by
+// Compiled types found in real compiled programs (a private test set, not in this repo) whose source symbol couldn't be checked pin by
 // pin, because they sit inside macros whose source isn't in the program's .smw, or because the source names alone
 // identify them. Behavior is inferred from how real programs wire them (SymbolEvidence.Inferred); each says what
 // that rests on.

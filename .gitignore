@@ -7,3 +7,7 @@ data/
 .vs/
 .idea/
 dist/
+
+# Real customer programs used for local testing. Never commit these.
+Sample Programs/
+private-samples/
