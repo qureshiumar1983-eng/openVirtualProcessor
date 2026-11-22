@@ -13,7 +13,8 @@
   header small, .muted { color:var(--muted); }
   a { color:var(--accent); }
   main { display:grid; grid-template-columns: 420px 1fr; gap:16px; padding:16px; align-items:start; }
-  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  @media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
+  main > div { min-width:0; }
   section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; }
   h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 10px; }
   table { width:100%; border-collapse:collapse; }
@@ -29,7 +30,7 @@
   [hidden] { display:none !important; }
   .mono { font-family: ui-monospace, Menlo, monospace; font-size:12px; }
   #log, #console-out { height:220px; overflow:auto; background:#0b0e11; border:1px solid var(--line); border-radius:6px; padding:8px; white-space:pre-wrap; }
-  #log, #console-out { resize:vertical; min-height:120px; }
+  #log, #console-out { resize:vertical; min-height:120px; overflow-wrap:anywhere; }
   .sec-head { display:flex; align-items:center; gap:6px; margin-bottom:10px; }
   .sec-head h2 { margin:0; flex:1; }
   .sec-head button { padding:2px 8px; font-size:12px; }
@@ -40,6 +41,25 @@
   @media (max-width: 1200px) { .grid2 { grid-template-columns: 1fr; } }
   .dev { font-size:12px; color:var(--muted); }
   .on { color:var(--ok); }
+  /* Status board */
+  #board { margin:16px 16px 0; }
+  #board-tiles { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px; }
+  .btile { position:relative; background:#12161b; border:1px solid var(--line); border-left:4px solid var(--line); border-radius:8px; padding:8px 10px; cursor:pointer; min-width:0; }
+  .btile:hover { border-color:var(--accent); }
+  .btile:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+  .btile.sel { background:#1f2a3a; border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+  .btile.st-Running { border-left-color:var(--ok); } .btile.st-Stopped { border-left-color:var(--warn); } .btile.st-Error { border-left-color:var(--err); }
+  .btile.st-Empty { border-left-color:#3a4350; } .btile.st-Empty .bprog { color:var(--muted); }
+  .btile .btop { display:flex; align-items:center; gap:2px 6px; flex-wrap:wrap; }
+  .btile .bdot { width:9px; height:9px; border-radius:50%; background:#3a4350; flex:none; }
+  .btile.st-Running .bdot { background:var(--ok); box-shadow:0 0 0 3px #2f9e6e33; } .btile.st-Stopped .bdot { background:var(--warn); } .btile.st-Error .bdot { background:var(--err); }
+  .btile .bnum { font-weight:600; }
+  .btile .broom { flex:none; font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+  .btile .bflags { margin-left:auto; display:flex; gap:4px; flex:none; }
+  .btile .bprog { margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .btile .bstats { margin-top:4px; display:flex; gap:10px; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; flex-wrap:wrap; }
+  .bbadge { font-size:11px; padding:0 6px; border-radius:20px; background:#3d1b1b; color:#ff9b9b; cursor:help; white-space:nowrap; }
+  .bbadge.auto { background:#1d2a44; color:#9ecbff; }
   /* IP table */
   #ipt td { font-size:13px; }
   #ipt tr.client { cursor:pointer; }
@@ -86,6 +106,10 @@
   <h1>OpenVP</h1><small>open-source virtual control processor</small>
   <span style="flex:1"></span><a href="metrics.html" target="openvp-metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="panel.html" target="_blank" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a>
 </header>
+<section id="board">
+  <h2 title="Every slot at a glance. Click a tile to select that slot.">Status board</h2>
+  <div id="board-tiles"></div>
+</section>
 <main>
   <div>
     <section>
@@ -219,6 +243,7 @@ async function api(path, opts) {
 
 async function refreshSlots() {
   const slots = await api("/api/slots");
+  boardSlots = slots; renderBoard();
   const tb = $("#slots tbody"); tb.innerHTML = "";
   for (const s of slots) {
     const tr = document.createElement("tr");
@@ -240,6 +265,48 @@ async function refreshSlots() {
       $("#devices").textContent = s.devices.length ? `${s.devices.length} IP ID${s.devices.length === 1 ? "" : "s"}, ${online} online. Who's connected is in the IP table.` : "";
     }
   }
+}
+
+// ---------------- Status board ----------------
+// One tile per slot. Problems come straight from /api/metrics (the same per-slot warnings the Metrics page lists)
+// plus the slot's own error state.
+let boardSlots = [], boardMetrics = null, boardHtml = "";
+
+function renderBoard() {
+  const bySlot = {};
+  for (const m of boardMetrics?.slots ?? []) bySlot[m.number] = m;
+  const html = boardSlots.map(s => {
+    const m = bySlot[s.number];
+    const st = s.program || s.state === "Error" ? s.state : "Empty";
+    const problems = [];
+    if (s.state === "Error") problems.push("The program failed to load or run." + (s.error ? " " + s.error.split("\n")[0] : ""));
+    for (const w of m?.warnings ?? []) problems.push(w[0].toUpperCase() + w.slice(1));
+    const online = s.devices.filter(d => d.online).length;
+    const eps = m ? `${m.eventsPerSecond.toFixed(1)} ev/s` : "– ev/s";
+    const flags = (problems.length ? `<span class="bbadge" title="${esc(problems.join("\n"))}">${problems.length > 1 ? problems.length + " problems" : "problem"}</span>` : "")
+      + (s.watching ? `<span class="bbadge auto" title="${esc("Reloads when this file changes: " + s.watching)}">auto-reload</span>` : "");
+    const label = `Slot ${s.number}${typeof s.roomId === "string" ? ", room " + s.roomId : ""}: ${s.program ?? "empty"}, ${st}`;
+    return `<div class="btile st-${st}${s.number === sel ? " sel" : ""}" data-n="${s.number}" role="button" tabindex="0" aria-label="${esc(label)}" title="${esc("Select slot " + s.number)}">
+      <div class="btop"><span class="bdot"></span><span class="bnum">${s.number}</span>${typeof s.roomId === "string" ? `<span class="broom mono">${esc(s.roomId)}</span>` : ""}<span class="bflags">${flags}</span></div>
+      <div class="bprog" title="${esc(s.program ?? "")}">${s.program ? `${esc(s.program)} <span class="muted">· ${esc(s.kind)}</span>` : "empty"}</div>
+      <div class="bstats">${st === "Empty" ? "" : `<span>${st}</span>`}<span title="Panels online / IP IDs in this slot's IP table">${online}/${s.devices.length} online</span><span title="Events per second on the slot thread">${eps}</span></div>
+    </div>`;
+  }).join("");
+  if (html === boardHtml) return; // unchanged: leave the DOM (and any open tooltip) alone
+  boardHtml = html;
+  $("#board-tiles").innerHTML = html;
+}
+$("#board-tiles").addEventListener("click", e => { const t = e.target.closest(".btile"); if (t) select(+t.dataset.n); });
+$("#board-tiles").addEventListener("keydown", e => {
+  const t = e.target.closest(".btile");
+  if (t && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); select(+t.dataset.n); }
+});
+
+async function refreshBoard() {
+  try {
+    const [slots, metrics] = await Promise.all([api("/api/slots"), api("/api/metrics?history=false").catch(() => null)]);
+    boardSlots = slots; boardMetrics = metrics; renderBoard();
+  } catch { }
 }
 
 function esc(t) { return String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
@@ -692,6 +759,7 @@ drop.ondrop = async e => {
 
 select(1);
 setInterval(refreshSlots, 3000);
+refreshBoard(); setInterval(refreshBoard, 2000);
 setInterval(() => { if (!document.hidden) refreshIpTable(); }, 2000);
 </script>
 </body>

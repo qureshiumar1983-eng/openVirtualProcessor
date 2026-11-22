@@ -85,6 +85,13 @@
     <dt><span class="b">Help</span></dt><dd>Opens this page.</dd>
   </dl>
 
+  <h3>Status board</h3>
+  <dl>
+    <dt>A tile</dt><dd>One per slot, across the top of the page, so you can see every slot without clicking into it. A tile shows the slot number and Room ID, the program and its kind (or "empty"), the state (green dot for Running, amber for Stopped, red for Error, dim for empty), how many of the slot's IP IDs have a panel online, and events per second. Click a tile to select that slot, the same as clicking its row below. The selected slot's tile is highlighted. The board refreshes every 2 seconds.</dd>
+    <dt><span class="b">problem</span></dt><dd>A red badge on a tile. Hover it to read what's wrong. It shows when the slot is in the Error state or when <a href="#metrics">Metrics</a> lists a problem for it: the slot thread stuck in one event, events backing up, a thread left running from an unloaded program, or background work running for 30 s or more.</dd>
+    <dt><span class="b">auto-reload</span></dt><dd>A blue badge on a tile whose program reloads when its file changes. Hover it to see the file.</dd>
+  </dl>
+
   <h3>Program slots</h3>
   <dl>
     <dt>A row in the table</dt><dd>Click it to select that slot. The rest of the page (IP table, files, console, log) switches to it. The <b>State</b> column shows <b>Running</b>, <b>Stopped</b>, <b>Error</b> or empty.</dd>
