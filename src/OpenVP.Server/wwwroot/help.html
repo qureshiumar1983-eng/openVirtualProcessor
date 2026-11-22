@@ -34,6 +34,9 @@
   kbd { font:12px ui-monospace, Menlo, Consolas, monospace; background:var(--input); border:1px solid var(--line); border-bottom-width:2px; border-radius:4px; padding:0 5px; white-space:nowrap; }
   code { font:12px ui-monospace, Menlo, Consolas, monospace; background:var(--input); border-radius:4px; padding:1px 5px; overflow-wrap:anywhere; }
   .tip { border-left:3px solid var(--accent); background:var(--soft); border-radius:0 6px 6px 0; padding:8px 12px; margin:10px 0; }
+  h3:target { color:var(--text); text-decoration:underline; text-decoration-color:var(--accent); text-underline-offset:4px; }
+  dt:target, dt:target + dd { background:var(--active); border-radius:4px; }
+  section:target > h2 { text-decoration:underline; text-decoration-color:var(--accent); text-underline-offset:4px; }
   #none { color:var(--muted); padding:20px; text-align:center; }
   [hidden] { display:none !important; }
   @media (max-width: 640px) {
@@ -82,8 +85,9 @@
   <h2>Console (main page)</h2>
   <p class="muted">Load programs, see who is connected, manage the program's files, and read its log. Everything on the page is about the slot selected in <b>Program slots</b>.</p>
 
-  <h3>Top bar</h3>
+  <h3 id="top-bar">Top bar</h3>
   <dl>
+    <dt id="top-templates"><span class="b">Templates</span></dt><dd>Starter projects to download, see <a href="#templates">Templates</a>.</dd>
     <dt><span class="b">Metrics ↗</span></dt><dd>Opens the <a href="#metrics">Metrics</a> page: CPU, memory and how busy each slot is.</dd>
     <dt><span class="b">Test panel ↗</span></dt><dd>Opens a blank <a href="#panel">test panel</a>. Type the IP ID you want and click Connect.</dd>
     <dt><span class="b">Help</span></dt><dd>Opens this page.</dd>
@@ -99,12 +103,12 @@
     <dt>The switch</dt><dd>Turns Internet access on or off. When on, OpenVP runs <code>cloudflared</code>, which makes a free Cloudflare "quick tunnel" (no account) and gives it a public <code>https://….trycloudflare.com</code> address. Only shared-panel links work through it. The console, the API and the debugger can't be reached from the internet. It is off every time OpenVP starts.</dd>
     <dt>The status</dt><dd><b>starting</b> while <code>cloudflared</code> starts, <b>on</b> when the address is ready (it can take a few seconds before it answers), <b>error</b> with the reason if something went wrong or <code>cloudflared</code> stopped, <b>off</b> when it is off. <b>cloudflared output</b> shows its recent messages.</dd>
     <dt>The address · <span class="b">Copy</span></dt><dd>The public address while the tunnel is on. While it is on, new share links use it. The address changes each time the tunnel starts, so links you copied earlier need the new address.</dd>
-    <dt><span class="b">Stop</span></dt><dd>Turns the tunnel off and kills <code>cloudflared</code>. Everyone outside is cut off at once.</dd>
+    <dt id="stop"><span class="b">Stop</span></dt><dd>Turns the tunnel off and kills <code>cloudflared</code>. Everyone outside is cut off at once.</dd>
     <dt><span class="b">Download cloudflared and start</span></dt><dd>Shown the first time, if <code>cloudflared</code> isn't installed. OpenVP downloads Cloudflare's official build from github.com/cloudflare/cloudflared into its data folder (<code>tools</code>), only after you click this. <span class="b">Cancel</span> downloads nothing. If you'd rather install <code>cloudflared</code> yourself, put it on the PATH or set <code>OpenVP:CloudflaredPath</code>.</dd>
     <dt>Not for XPanel</dt><dd>Classic VT Pro-e XPanels and the Crestron apps connect over CIP (port 41794), which can't go through the tunnel. Browser panels and CH5 projects can.</dd>
   </dl>
 
-  <h3>Status board</h3>
+  <h3 id="status-board">Status board</h3>
   <dl>
     <dt>A tile</dt><dd>One per slot, across the top of the page, so you can see every slot without clicking into it. A tile shows the slot number and Room ID, the program and its kind (or "empty"), the state (green dot for Running, amber for Stopped, red for Error, dim for empty), how many of the slot's IP IDs have a panel online, and events per second. Click a tile to select that slot, the same as clicking its row below. The selected slot's tile is highlighted. The board refreshes every 2 seconds.</dd>
     <dt><span class="b">problem</span></dt><dd>A red badge on a tile. Hover it to read what's wrong. It shows when the slot is in the Error state or when <a href="#metrics">Metrics</a> lists a problem for it: the slot thread stuck in one event, events backing up, a thread left running from an unloaded program, or background work running for 30 s or more.</dd>
@@ -115,27 +119,73 @@
     <dt><span class="b">● recording</span> <span class="b">▶ replaying</span></dt><dd>A red or blue badge on a tile while that slot is recording, or while a recording is being replayed into it. See <a href="#recordings">Recordings</a>.</dd>
   </dl>
 
-  <h3>Program slots</h3>
+  <h3 id="program-slots">Program slots</h3>
   <dl>
     <dt>A row in the table</dt><dd>Click it to select that slot. The rest of the page (IP table, files, console, log) switches to it. The <b>State</b> column shows <b>Running</b>, <b>Stopped</b>, <b>Error</b> or empty.</dd>
   </dl>
 
-  <h3>Slot</h3>
+  <h3 id="slot">Slot</h3>
   <dl>
-    <dt>Drop a program</dt><dd>Drop a <code>.cpz</code>, <code>.dll</code>, <code>.lpz</code> or <code>.smw</code> (with its <code>.sig</code> and sidecar files) anywhere on the page and it loads into the selected slot. The overlay names the slot. In the desktop app it loads from where the file is on disk, like Load &amp; start. Dropping on the Files list still uploads there.</dd>
-    <dt><span class="b">Recent ▾</span></dt><dd>The last 10 programs loaded. Click one to load it into the selected slot. A program loaded from a path is loaded from that path again; an upload is loaded from the copy OpenVP kept (up to 100 MB each).</dd>
-    <dt><span class="b">Choose files</span></dt><dd>Picks the program file(s) from your computer. Nothing is loaded until you click Load &amp; start. You can select several files at once, for example a <code>.lpz</code> with its <code>.sig</code>.</dd>
-    <dt><span class="b">Load &amp; start</span></dt><dd>Uploads the chosen file(s) into the selected slot and starts the program. It replaces whatever was in the slot before. In the desktop app it loads the program from where it is on your computer instead, and brings along the files that belong with it: the <code>.sig</code> with the same name (or the only <code>.sig</code> in that folder), the <code>.lpz</code> behind a <code>.smw</code>, and sidecar files like <code>.openvp.json</code>. The Log lists what came along.</dd>
-    <dt>Reload when the file changes</dt><dd>Shown in the desktop app, or when the page is open on the OpenVP computer itself. When ticked, a program loaded from your computer is loaded again by itself whenever its file (or its <code>.sig</code>) changes, for example each time you compile in SIMPL Windows. OpenVP waits until the compiler has finished writing. A running program starts again; a stopped one stays stopped. Your choice is remembered.</dd>
-    <dt><span class="b">Load from path…</span></dt><dd>Shown when the page is open in a browser on the OpenVP computer itself (a browser can't tell OpenVP where a chosen file is). Type or paste the program's full path, for example <code>C:\Programs\Room\Room.lpz</code>; its <code>.sig</code> and sidecar files come along as above.</dd>
-    <dt>Reloads when this changes · <span class="b">Stop watching</span></dt><dd>Shows which file the slot is watching. Stop watching keeps the program running but stops reloading it. Loading another program, or Unload, also stops it.</dd>
-    <dt><span class="b">Inspect .lpz</span></dt><dd>Reads the chosen <code>.lpz</code> without running it and prints a report in the Console box: what's in it and which parts OpenVP can and can't run. Add the <code>.sig</code> to see signal names.</dd>
-    <dt><span class="b">Start</span></dt><dd>Starts the program loaded in this slot, after it was stopped.</dd>
+    <dt id="drop-program">Drop a program</dt><dd>Drop a <code>.cpz</code>, <code>.dll</code>, <code>.lpz</code> or <code>.smw</code> (with its <code>.sig</code> and sidecar files) anywhere on the page and it loads into the selected slot. The overlay names the slot. In the desktop app it loads from where the file is on disk, like Load &amp; start. Dropping on the Files list still uploads there.</dd>
+    <dt id="recent"><span class="b">Recent ▾</span></dt><dd>The last 10 programs loaded. Click one to load it into the selected slot. A program loaded from a path is loaded from that path again; an upload is loaded from the copy OpenVP kept (up to 100 MB each).</dd>
+    <dt id="choose-files"><span class="b">Choose files</span></dt><dd>Picks the program file(s) from your computer. Nothing is loaded until you click Load &amp; start; OpenVP tells you whether the program will run, see <a href="#readiness">Will it run?</a>. You can select several files at once, for example a <code>.lpz</code> with its <code>.sig</code>.</dd>
+    <dt id="load-start"><span class="b">Load &amp; start</span></dt><dd>Uploads the chosen file(s) into the selected slot and starts the program. It replaces whatever was in the slot before. In the desktop app it loads the program from where it is on your computer instead, and brings along the files that belong with it: the <code>.sig</code> with the same name (or the only <code>.sig</code> in that folder), the <code>.lpz</code> behind a <code>.smw</code>, and sidecar files like <code>.openvp.json</code>. The Log lists what came along.</dd>
+    <dt id="reload-on-change">Reload when the file changes</dt><dd>Shown in the desktop app, or when the page is open on the OpenVP computer itself. When ticked, a program loaded from your computer is loaded again by itself whenever its file (or its <code>.sig</code>) changes, for example each time you compile in SIMPL Windows. OpenVP waits until the compiler has finished writing. A running program starts again; a stopped one stays stopped. Your choice is remembered.</dd>
+    <dt id="load-from-path"><span class="b">Load from path…</span></dt><dd>Shown when the page is open in a browser on the OpenVP computer itself (a browser can't tell OpenVP where a chosen file is). Type or paste the program's full path, for example <code>C:\Programs\Room\Room.lpz</code>; its <code>.sig</code> and sidecar files come along as above.</dd>
+    <dt id="stop-watching">Reloads when this changes · <span class="b">Stop watching</span></dt><dd>Shows which file the slot is watching. Stop watching keeps the program running but stops reloading it. Loading another program, or Unload, also stops it.</dd>
+    <dt id="demo-button"><span class="b">Try the demo</span></dt><dd>Loads two samples into slots 1 and 2 and opens a panel, see <a href="#demo">Try the demo</a>.</dd>
+    <dt id="inspect"><span class="b">Inspect .lpz</span></dt><dd>Reads the chosen <code>.lpz</code> without running it and prints a report in the Console box: what's in it and which parts OpenVP can and can't run. Add the <code>.sig</code> to see signal names.</dd>
+    <dt id="start"><span class="b">Start</span></dt><dd>Starts the program loaded in this slot, after it was stopped.</dd>
     <dt><span class="b">Stop</span></dt><dd>Stops the program but keeps it loaded, so Start runs it again.</dd>
-    <dt><span class="b">Restart</span></dt><dd>Loads the program again from its file and starts it.</dd>
-    <dt><span class="b">Unload</span></dt><dd>Stops the program and removes it from the slot. The slot becomes empty. Files in NVRAM and User are kept. A snapshot is saved first, so <b>Undo</b> (shown for 10 seconds) puts the program back.</dd>
-    <dt><span class="b">Compatibility</span></dt><dd>Prints a report in the Console box listing anything the loaded program uses that OpenVP doesn't support yet. Check this first if a program misbehaves.</dd>
-    <dt>Room ID <span class="b">Edit…</span></dt><dd>Changes the slot's Room ID (the Virtual Control "room" name). Panels can connect to the slot by this name instead of its number. Shown only when the slot has a Room ID.</dd>
+    <dt id="restart"><span class="b">Restart</span></dt><dd>Loads the program again from its file and starts it.</dd>
+    <dt id="unload"><span class="b">Unload</span></dt><dd>Stops the program and removes it from the slot. The slot becomes empty. Files in NVRAM and User are kept. A snapshot is saved first, so <b>Undo</b> (shown for 10 seconds) puts the program back.</dd>
+    <dt id="compat"><span class="b">Compatibility</span></dt><dd>Prints a report in the Console box listing anything the loaded program uses that OpenVP doesn't support yet. Check this first if a program misbehaves.</dd>
+    <dt id="room-id">Room ID <span class="b">Edit…</span></dt><dd>Changes the slot's Room ID (the Virtual Control "room" name). Panels can connect to the slot by this name instead of its number. Shown only when the slot has a Room ID.</dd>
+  </dl>
+
+  <h3 id="readiness">Will it run? (readiness check)</h3>
+  <p class="muted">As soon as you choose a program file, or drop one on the page, OpenVP reads it without loading it and says whether it will run. It never stops you from loading: it is advice.</p>
+  <dl>
+    <dt><span class="b">✓ Will run</span></dt><dd>Green. Everything the program uses is supported.</dd>
+    <dt><span class="b">! Will partly run, N things aren't supported yet</span></dt><dd>Amber. The program loads and runs, but it uses symbols, SIMPL# types or SIMPL+ modules OpenVP doesn't have yet. Open the list to see them: those parts do nothing, and the rest works. The same things are in the <span class="b">Compatibility</span> report once the program is loaded.</dd>
+    <dt><span class="b">✕ Won't run</span></dt><dd>Red, with the reason: the file isn't a program, it is damaged, or a <code>.dll</code> has no <code>CrestronControlSystem</code> class to start.</dd>
+    <dt>Dropping a file</dt><dd>A box names the slot and shows the verdict, with <span class="b">Load &amp; start</span> and <span class="b">Cancel</span>. Load &amp; start is always available, whatever the verdict.</dd>
+    <dt>How it checks</dt><dd>It loads the program into a throwaway one-slot processor that is never started, so nothing runs, no panel registers and your slots are untouched. For a file on this computer (desktop app) the <code>.sig</code> and sidecar files next to it are used too. <span class="b">Inspect .lpz</span> still prints the long report.</dd>
+  </dl>
+
+  <h3 id="summary">Program summary</h3>
+  <p class="muted">One plain sentence about what is in the program, for example <i>SIMPL Windows · 3 touch panels (IP IDs 03, 04, 05), 2 EISCs, 4 COM ports, 1 IR port, 12 SIMPL+ modules, 2 user macros, 1,284 signals.</i></p>
+  <dl>
+    <dt>Under the program name</dt><dd>Shown under the slot's file name once a program is loaded, and in the readiness check before you load it. Hover a tile on the <a href="#status-board">Status board</a> to read it there.</dd>
+    <dt>What it counts</dt><dd>Touch panels and XPanels (with their IP IDs), EISCs, other IP devices, COM and IR ports, SIMPL+ modules, user macros and the signals the logic uses. User macros are counted from the compiled <code>.lpz</code> (a <code>.smw</code> alone doesn't show them).</dd>
+    <dt>SIMPL# programs</dt><dd>A SIMPL# program makes its devices when it starts, so before then the summary only names the device types it refers to. Once it runs, it counts the devices it registered.</dd>
+  </dl>
+
+  <h3 id="demo">Try the demo</h3>
+  <dl>
+    <dt><span class="b">Try the demo</span></dt><dd>On the Welcome screen, next to <span class="b">Recent ▾</span> and in the search box (<kbd>Ctrl</kbd> <kbd>K</kbd>). Loads the SIMPL# Pro sample into slot 1 and the SIMPL Windows sample into slot 2, links them over an EISC, starts both and opens slot 1's test panel. If slot 1 or 2 already has a program it asks first; the replaced program is saved in History.</dd>
+    <dt>What to press</dt><dd>On slot 1's panel press <b>digital 10</b> (the button labelled 10). Slot 2's panel (IP ID 03) lights its button 10, and the other way round. Digital 1 toggles a lamp on the panel you are on.</dd>
+  </dl>
+
+  <h3 id="templates">Templates</h3>
+  <dl>
+    <dt id="template-simpl-sharp"><span class="b">Templates</span> · SIMPL# Pro starter</dt><dd>A zip with <code>StarterProgram.csproj</code>, <code>ControlSystem.cs</code> (a panel at IP ID 03 and an EISC at IP ID 10) and <code>lib/</code>. Unzip it, run <code>dotnet build</code>, then load <code>bin/Debug/net8.0/StarterProgram.dll</code> into a slot. It builds against OpenVP's own copy of the SIMPL# Pro API, so it needs no Crestron files; to build for a real processor, point the project's two references at Crestron's SDK.</dd>
+    <dt id="template-ch5"><span class="b">Templates</span> · CH5 panel starter</dt><dd>A <code>.ch5z</code> web page with buttons (digital joins), a slider (analog join 1) and text feedback (serial joins), using numeric joins. Upload it for an IP ID (<span class="b">Upload .ch5z…</span> in the IP table), then <span class="b">Share…</span>. It also runs as a plain page: unzip it and open <code>index.html?host=localhost:8080&amp;ipid=03&amp;slot=1</code>.</dd>
+  </dl>
+
+  <h3 id="activity">Activity</h3>
+  <p class="muted">A processor-wide list of who did what and when, newest first. It is kept in <code>activity.jsonl</code> in the data folder (the last 5,000 entries) and also at <code>GET /api/activity</code>.</p>
+  <dl>
+    <dt>Show</dt><dd>All slots, the selected slot, or one slot. Entries about the whole processor (Internet access, templates, the demo) show under all slots.</dd>
+    <dt>Who</dt><dd><b>this computer</b> for something done on the OpenVP computer, an address for another computer, <b>share link …</b> for someone using a shared panel and <b>auto</b> for what OpenVP did by itself (reloads when a file changes, crash-policy restarts, restores at start-up). When OpenVP has user accounts a name will show here too.</dd>
+    <dt>What is listed</dt><dd>Loads and unloads, start, stop and restart, roll backs and snapshots, recordings and replays, share links made, opened and revoked, CH5 projects, Internet access on and off, settings changes, crash-policy actions, auto-reloads and start-up restores. The <a href="metrics.html">Metrics</a> page shows the latest few.</dd>
+  </dl>
+
+  <h3 id="help-hover">Help on any control</h3>
+  <dl>
+    <dt>The <span class="b">?</span> by a control</dt><dd>Hover a button or box for a moment and a small <b>?</b> appears at its corner. Click it to open this page at that control's section, in the help window.</dd>
+    <dt><kbd>Shift</kbd> + click · <kbd>F1</kbd> · long-press</dt><dd>Hold Shift and click a control to open its help instead of using it, or press <kbd>F1</kbd> while it has the focus, or press and hold it on a touch screen.</dd>
+    <dt>Search</dt><dd>The search box (<kbd>Ctrl</kbd> <kbd>K</kbd>) also finds help topics: type a word and pick one that starts with <b>Help:</b>.</dd>
   </dl>
 
   <h3 id="slotsettings">Slot settings</h3>
@@ -155,7 +205,7 @@
     <dt>On a phone</dt><dd>Sections collapse (tap a heading), a slot picker with Start, Stop and Restart stays at the top, and tables become cards.</dd>
   </dl>
 
-  <h3>IP table</h3>
+  <h3 id="ip-table">IP table</h3>
   <p class="muted">Every IP ID the program registered (touch panels, EISCs and other devices) and who is connected to each.</p>
   <dl>
     <dt>A row in the table</dt><dd>Click it to open the details below the table: who the client is, how long it has been connected, and traffic counts.</dd>
@@ -176,7 +226,7 @@
     <dt>CH5 project</dt><dd>If this IP ID has an uploaded <code>.ch5z</code>, the link opens that. Otherwise it opens OpenVP's own test panel, with the IP ID fixed. The box has the same Upload / Replace / Remove buttons.</dd>
   </dl>
 
-  <h3>Shared panels</h3>
+  <h3 id="shared-panels">Shared panels</h3>
   <p class="muted">The links you have made.</p>
   <dl>
     <dt>A row</dt><dd>The label, the slot and IP ID, whether it opens a CH5 project or the test panel, when it expires, when someone last opened it, and how many people have it open right now.</dd>
@@ -185,12 +235,12 @@
     <dt><span class="b">Revoke</span></dt><dd>Click it twice. The link stops working and anyone using it is disconnected within a few seconds; their page shows "This link has expired or was revoked".</dd>
   </dl>
 
-  <h3>Debugger</h3>
+  <h3 id="debugger-button">Debugger</h3>
   <dl>
     <dt><span class="b">Open debugger ↗</span></dt><dd>Opens the <a href="#debugger">Debugger</a> for the selected slot in its own window. Open one per slot to debug several programs side by side.</dd>
   </dl>
 
-  <h3>Files</h3>
+  <h3 id="files">Files</h3>
   <p class="muted">The folders the program reads and writes, in place of a real processor's storage.</p>
   <dl>
     <dt><span class="b">NVRAM</span> <span class="b">User</span></dt><dd>Switch between the slot's two storage areas: <code>\NVRAM</code> and <code>\USER</code>. The program's own path for the folder you're in is shown on the right.</dd>
@@ -205,10 +255,10 @@
     <dt><span class="b">Create … folder</span> / <span class="b">Open …</span></dt><dd>Appear in a yellow box when the program looked for a file and didn't find it. They create (or open) the exact folder the program expects, so you can upload the missing file into it.</dd>
   </dl>
 
-  <h3>History</h3>
+  <h3 id="history">History</h3>
   <p class="muted">Before a new program is loaded into the slot, OpenVP saves a snapshot of what is there: the program files plus the NVRAM and User folders. The last 10 are kept. The Room ID isn't part of a snapshot.</p>
   <dl>
-    <dt><span class="b">Snapshot now</span></dt><dd>Saves a snapshot of the slot as it is, without loading anything.</dd>
+    <dt id="snapshot-now"><span class="b">Snapshot now</span></dt><dd>Saves a snapshot of the slot as it is, without loading anything.</dd>
     <dt><span class="b">Roll back</span></dt><dd>Puts the slot back as it was at that time: program, NVRAM and User files are replaced, and the program is loaded again (and started, if it was running). The current state is saved first as a "before roll back" snapshot, so you can undo it. It asks you to confirm first.</dd>
     <dt><span class="b">Delete</span></dt><dd>Deletes that snapshot (Undo is offered for 10 seconds).</dd>
   </dl>
@@ -216,7 +266,7 @@
   <h3 id="recordings">Recordings</h3>
   <p class="muted">Record what a person does to a room, then replay it after loading a new program version and get a PASS or FAIL: does the program still answer the same way? It captures everything coming into the program (panel presses, levels and text, EISC inputs, and signals you force in the <a href="#debugger">Debugger</a>) and the feedback the program sends back.</p>
   <dl>
-    <dt><span class="b">● Record</span> · <span class="b">■ Stop</span></dt><dd>Starts and stops recording the selected slot. While it records, the button shows the time and how many inputs have been captured. Stop asks for a name (Cancel keeps the suggested one, program name and time) and saves the recording. Start recording when the room is in the state you want to test from, for example right after loading the program. A recording also ends, and is saved, if the program is unloaded or replaced meanwhile.</dd>
+    <dt id="record"><span class="b">● Record</span> · <span class="b">■ Stop</span></dt><dd>Starts and stops recording the selected slot. While it records, the button shows the time and how many inputs have been captured. Stop asks for a name (Cancel keeps the suggested one, program name and time) and saves the recording. Start recording when the room is in the state you want to test from, for example right after loading the program. A recording also ends, and is saved, if the program is unloaded or replaced meanwhile.</dd>
     <dt><span class="b">Replay</span></dt><dd>Sends the recorded inputs into the slot's program with the same gaps between them (so timers and delays behave as they did), then compares the feedback with the recording. A bar shows progress; <span class="b">Cancel</span> stops it and gives no result.</dd>
     <dt><span class="b">Replay fast</span></dt><dd>The same, but a gap between inputs longer than 1 second is shortened to 1 second. Shorter gaps stay as recorded, because programs often depend on press and release timing. The program's own timers still run in real time, so use Replay for programs that depend on long delays.</dd>
     <dt>include EISC inputs</dt><dd>Also sends the inputs that came in over an EISC link from another slot. Turn it off if that other slot is running and drives the EISC itself while you replay. The result notes which you used.</dd>
@@ -226,14 +276,14 @@
     <dt>● recording · ▶ replaying</dt><dd>Badges on the slot's tile in the Status board.</dd>
   </dl>
 
-  <h3>Console</h3>
+  <h3 id="console-box">Console</h3>
   <dl>
     <dt>Command box and <span class="b">Run</span></dt><dd>Sends a console command to the slot, like the text console on a real processor. Type <code>help</code> to list the commands. Pressing <kbd>Enter</kbd> does the same as Run.</dd>
     <dt><span class="b">−</span> <span class="b">+</span></dt><dd>Make the box shorter or taller. You can also drag its bottom-right corner.</dd>
     <dt><span class="b">Maximize</span></dt><dd>Fills the window with the console. Click <span class="b">Restore</span> or press <kbd>Esc</kbd> to shrink it back.</dd>
   </dl>
 
-  <h3>Log</h3>
+  <h3 id="log">Log</h3>
   <dl>
     <dt>The log box</dt><dd>Messages from OpenVP and the program in this slot. Errors are red, warnings yellow, notices blue.</dd>
     <dt><span class="b">−</span> <span class="b">+</span> <span class="b">Maximize</span></dt><dd>Same as for the Console box: shorter, taller, fill the window.</dd>
@@ -244,14 +294,14 @@
   <h2>Debugger</h2>
   <p class="muted">Shows every signal in the program and its current value on the left, and a running list of changes (the trace) on the right. It works like SIMPL Debugger.</p>
 
-  <h3>Title bar</h3>
+  <h3 id="debugger-title">Title bar</h3>
   <dl>
     <dt>Slot list</dt><dd>Switches the debugger to another program slot.</dd>
     <dt><span class="b">Paths</span></dt><dd>Opens the <a href="#paths">Paths</a> view, starting from the signal you have selected.</dd>
     <dt><span class="b">Console</span></dt><dd>Goes back to the main page.</dd>
   </dl>
 
-  <h3>Toolbar: recording</h3>
+  <h3 id="dbg-recording">Toolbar: recording</h3>
   <dl>
     <dt><span class="b">● Stream</span> <kbd>F5</kbd></dt><dd>Starts or stops recording signal changes in the trace. Green means recording. The program keeps running either way.</dd>
     <dt><span class="b">Clear</span></dt><dd>Empties the trace. Signal values are not affected.</dd>
@@ -260,7 +310,7 @@
     <dt><span class="b">Waveform</span></dt><dd>Shows or hides a logic-analyzer style chart at the bottom, with one lane for each ticked signal.</dd>
   </dl>
 
-  <h3>Toolbar: stepping</h3>
+  <h3 id="dbg-stepping">Toolbar: stepping</h3>
   <p class="muted">Step mode freezes the program at each signal change so you can see cause and effect one step at a time.</p>
   <dl>
     <dt><span class="b">⏸ Step</span> <kbd>Ctrl</kbd>+<kbd>F5</kbd></dt><dd>Turns step mode on or off. While it's on, the program pauses at each change until you press Next.</dd>
@@ -270,7 +320,7 @@
     <dt><b>Break on</b>: every change / marked signals ⏸</dt><dd>Chooses what pauses the program: any signal change, or only changes to signals ticked in the <b>⏸</b> column.</dd>
   </dl>
 
-  <h3>Toolbar: display</h3>
+  <h3 id="dbg-display">Toolbar: display</h3>
   <dl>
     <dt><b>Time</b></dt><dd>Show trace times as clock time (absolute) or as time since the first row (relative).</dd>
     <dt><b>Analog</b></dt><dd>Show analog values as decimal (0–65535), hex or percent.</dd>
@@ -278,7 +328,7 @@
     <dt><b>auto-scroll</b></dt><dd>Keeps the trace scrolled to the newest row. Untick it to read older rows while new ones arrive.</dd>
   </dl>
 
-  <h3>Signals list (left)</h3>
+  <h3 id="dbg-signals">Signals list (left)</h3>
   <dl>
     <dt><span class="b">flat</span> <span class="b">tree</span></dt><dd>Show the signals as one list, or grouped into folders by program structure or name prefix.</dd>
     <dt>Watch-group tabs and <span class="b">+</span></dt><dd>A watch group is a saved set of signals. Click a tab to show only its signals, or <span class="b">All</span> to show every signal again; click <span class="b">+</span> to make a new group. Right-click a tab to rename it, delete it, empty it, or add the checked or shown signals to it.</dd>
@@ -299,7 +349,7 @@
     <dt>Drag the bar between the panes</dt><dd>Makes the signals list wider or narrower.</dd>
   </dl>
 
-  <h3>Trace (right)</h3>
+  <h3 id="dbg-trace">Trace (right)</h3>
   <dl>
     <dt><b>Filter trace</b> box</dt><dd>Shows only trace rows that match. Same search syntax as Find signal.</dd>
     <dt><b>follow</b> list</dt><dd>Limits the trace to the signal selected on the left (<b>only selected</b>) or to it and the signals wired to it (<b>selected + neighbours</b>).</dd>
@@ -307,7 +357,7 @@
     <dt><b>↳ caused</b></dt><dd>Shows changes made by program logic in reaction to another change. Untick it to see only outside events: panel presses, device inputs and timers.</dd>
   </dl>
 
-  <h3>Waveform</h3>
+  <h3 id="dbg-waveform">Waveform</h3>
   <dl>
     <dt><span class="b">100 ms</span> <span class="b">1 s</span> <span class="b">10 s</span> <span class="b">1 min</span></dt><dd>Set how much time the chart shows across its width.</dd>
     <dt><span class="b">⟳ live</span></dt><dd>Jumps back to now and follows new changes again, after you scrolled or zoomed.</dd>
@@ -315,7 +365,7 @@
     <dt>Mouse</dt><dd>Wheel zooms. Drag (or <kbd>Shift</kbd>+wheel) moves through time. Click places a marker; double-click removes it. Drag the top edge of the chart to resize it.</dd>
   </dl>
 
-  <h3>Force bar (bottom)</h3>
+  <h3 id="dbg-force">Force bar (bottom)</h3>
   <p class="muted">Change a signal by hand, as if the program or a device had done it.</p>
   <dl>
     <dt>Signal name box</dt><dd>The signal to change. Click one in the list, or type to search.</dd>
@@ -330,14 +380,14 @@
   <h2>Paths</h2>
   <p class="muted">Draws the program's wiring as a map: signals, the symbols between them, and live pulses travelling along the wires as signals change. Use it to answer "what happens when this goes high?" and "why did this change?".</p>
 
-  <h3>Title bar</h3>
+  <h3 id="paths-title">Title bar</h3>
   <dl>
     <dt>Slot list</dt><dd>Switches to another program slot.</dd>
     <dt><span class="b">← Debugger</span></dt><dd>Opens the <a href="#debugger">Debugger</a> for the same slot.</dd>
     <dt><span class="b">Console</span></dt><dd>Goes back to the main page.</dd>
   </dl>
 
-  <h3>Toolbar</h3>
+  <h3 id="paths-toolbar">Toolbar</h3>
   <dl>
     <dt><b>start signal</b> box</dt><dd>Type part of a signal name and pick one. The map is drawn outwards from this signal.</dd>
     <dt>Direction list</dt><dd><b>What does it drive? →</b> follows the wiring forwards from the start signal. <b>← What drives it?</b> follows it backwards to find the cause.</dd>
@@ -352,7 +402,7 @@
     <dt><span class="b">Retry</span></dt><dd>Appears if the wiring could not be loaded. Tries again.</dd>
   </dl>
 
-  <h3>The map</h3>
+  <h3 id="paths-map">The map</h3>
   <dl>
     <dt>Drag / mouse wheel</dt><dd>Drag to move the map; the wheel (or a two-finger pinch) zooms.</dd>
     <dt>Hover a box</dt><dd>Shows its full name and current value.</dd>
@@ -362,7 +412,7 @@
     <dt>Line colours</dt><dd>Grey is a wire, cyan is a signal travelling along it, pink is a loop.</dd>
   </dl>
 
-  <h3>Side lists</h3>
+  <h3 id="paths-lists">Side lists</h3>
   <dl>
     <dt><b>Loops &amp; oscillations</b></dt><dd>Signals that changed more than once in the same chain reaction. Red means it's changing so often it's probably stuck in a loop. Click one to centre the map on it.</dd>
     <dt><b>Last burst</b></dt><dd>Every change in the most recent chain reaction, in order. Click one to centre the map on it.</dd>

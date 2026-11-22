@@ -19,6 +19,9 @@ public sealed class StartupRestorer
     /// <summary>Wraps loading one slot (the server holds the slot's upload lock here).</summary>
     public Func<int, Func<bool>, bool>? Guard { get; set; }
 
+    /// <summary>Raised for each slot Run tries to restore: the entry, and the error text if it couldn't be restored (else null).</summary>
+    public event Action<RestoreEntry, string?>? Restored;
+
     public StartupRestorer(Processor processor, Action<TimeSpan>? sleep = null)
     {
         _processor = processor;
@@ -61,9 +64,11 @@ public sealed class StartupRestorer
             {
                 var did = Guard != null ? Guard(e.Slot, () => RestoreOne(e)) : RestoreOne(e);
                 if (did) ok++;
+                try { Restored?.Invoke(e, null); } catch { }
             }
             catch (Exception ex)
             {
+                try { Restored?.Invoke(e, ex.Message); } catch { }
                 if (slot.State != SlotState.Error) slot.Fail(ex);
                 slot.Log("Error", $"Couldn't restore the program at start-up: {ex.Message}");
             }

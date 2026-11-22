@@ -21,7 +21,7 @@ cd openVirtualProcessor
 dotnet run --project src/OpenVP.Server
 ```
 
-Open **http://localhost:8080**. From another machine you'll be asked for the access key, which the server prints when it starts (see [Security](#security)). Pick a slot, choose a `.cpz`, `.dll`, `.lpz` or `.smw` file, and click **Load & start**. Click **open test panel** next to a device to get a browser panel at that IP ID. Every page has a **Help** link that explains what each button on it does. The first time, a short welcome screen explains what OpenVP is and what to do first; finish or skip it and it stays away for everyone. Reopen it from **Help**.
+Open **http://localhost:8080**. New here? Click **Try the demo** (on the Welcome screen, in the console or in the search box, `Ctrl+K`): it loads the two sample programs into slots 1 and 2, starts them and opens a test panel; press button 10 on it and watch the other slot answer. From another machine you'll be asked for the access key, which the server prints when it starts (see [Security](#security)). Pick a slot, choose a `.cpz`, `.dll`, `.lpz` or `.smw` file, and OpenVP tells you whether it will run (green *Will run*, amber *Will partly run*, red *Won't run*, with the reasons). Then click **Load & start**; the verdict is advice and never blocks the load. Click **open test panel** next to a device to get a browser panel at that IP ID. Every page has a **Help** link that explains what each button on it does. The first time, a short welcome screen explains what OpenVP is and what to do first; finish or skip it and it stays away for everyone. Reopen it from **Help**.
 
 ### Desktop app (Windows)
 
@@ -46,6 +46,8 @@ The container prints its access key at startup (`docker logs <container>`), and 
 
 ### Try the samples
 
+The **Try the demo** button does this for you. The built samples ship with the server (in `samples/` next to it, in `OpenVP.exe` and Docker too), so it needs no build and asks before replacing anything already in slots 1 or 2. To do it by hand:
+
 ```bash
 dotnet build samples/SampleProgram          # a small SIMPL# Pro program
 # then in the web console:
@@ -54,6 +56,13 @@ dotnet build samples/SampleProgram          # a small SIMPL# Pro program
 ```
 
 Both register a panel at IP ID 03 and an EISC at IP ID 10 on 127.0.0.2. Press digital 10 on slot 1's panel and slot 2's panel lights up digital 10, and the reverse. That's a SIMPL# program and a SIMPL Windows program talking through the processor.
+
+### Templates
+
+**Templates** in the console's top bar (also in the search box) downloads two starter projects. Their files are in [`templates/`](templates) in this repo; the server builds the zips from them when you ask.
+
+- **SIMPL# Pro starter** (`OpenVP-SimplSharp-Starter.zip`): `StarterProgram.csproj`, `ControlSystem.cs` (a touch panel at IP ID 03 and an EISC at IP ID 10, with comments on what each press does), a README and `lib/` with `SimplSharpPro.dll` and `OpenVP.Core.dll`. Unzip it, run `dotnet build` in `StarterProgram/` (needs the .NET 8 SDK), then load `bin/Debug/net8.0/StarterProgram.dll` into a slot. It builds against OpenVP's own copy of the SIMPL# Pro API under Crestron's assembly name (the same stub the sample program uses, see `samples/RefStub`), so the compiled program refers to `SimplSharpPro` as one built with Crestron's SDK does, and nothing in `lib/` is Crestron code. To build the same source for a real processor, point the two `<Reference>` lines in the project at Crestron's SDK.
+- **CH5 / HTML panel starter** (`OpenVP-Ch5-Panel-Starter.ch5z`): `index.html`, `app.js` and `style.css` with buttons (digital joins 1, 2, 3 and 10), a slider (analog join 1) and text feedback (serial joins 2 and 10) on numeric joins, using `openvp-crcomlib.js`. Upload it for an IP ID (**Upload .ch5z…** in the IP table) and **Share…** it, see [Sharing a panel](#sharing-a-panel). It also works as a plain page: unzip it and open `index.html?host=localhost:8080&ipid=03&slot=1`, and it loads the join library from the console. It matches the SIMPL# starter (digital 1 lamp, analog 1 echo, serial 1 in upper case on serial 2) but any program works; change the joins.
 
 ## How it works
 
@@ -78,6 +87,7 @@ Both register a panel at IP ID 03 and an EISC at IP ID 10 on 127.0.0.2. Press di
 | `OpenVP.Lpz` | `.lpz` reader and runtime, and the logic symbol library both engines share (`LogicSymbolCatalog`) |
 | `OpenVP.Panels` | Browser panel WebSocket protocol and the CIP server |
 | `OpenVP.Server` | The app: web console, REST API, debugger stream, autoload |
+| `templates/` | Files of the two starter projects (SIMPL# Pro, CH5 panel), shipped with the server and zipped on request |
 
 ### SIMPL# programs
 
@@ -165,7 +175,12 @@ Each slot has a **Room ID**, like the Virtual Control Room ID of a VC-4 program.
 
 ### Console features
 
-- **Drop anywhere.** Drop a `.cpz`, `.dll`, `.lpz` or `.smw` (with its `.sig` and sidecars) anywhere on the console to load it into the selected slot; an overlay names the slot. In the desktop app it loads from disk like **Load & start**. Dropping on the Files list still uploads files there.
+- **Drop anywhere.** Drop a `.cpz`, `.dll`, `.lpz` or `.smw` (with its `.sig` and sidecars) anywhere on the console; a box names the slot, shows whether the program will run, and loads it into the selected slot when you click **Load & start**. In the desktop app it loads from disk like **Load & start**. Dropping on the Files list still uploads files there.
+- **Will it run?** When you choose or drop a file, OpenVP reads it without loading it: *Will run* (green), *Will partly run, N things aren't supported yet* (amber, with the list) or *Won't run* (red, with the reason: not a program, damaged, a `.dll` with no `CrestronControlSystem`…). It loads the file into a throwaway one-slot processor that is never started, so nothing runs and your slots are untouched, and it uses the same compatibility code as the **Compatibility** button. Advice only: loading is never blocked. `POST /api/check`.
+- **Program summary.** One plain sentence under the program name, in the readiness check and in the Status board tile's tooltip: *SIMPL Windows · 3 touch panels (IP IDs 03, 04, 05), 2 EISCs, 4 COM ports, 1 IR port, 12 SIMPL+ modules, 2 user macros, 1,284 signals.* It counts what the runtime already knows: devices by IP ID (touch panels, EISCs, others), COM and IR ports, SIMPL+ modules, user macros (from a compiled `.lpz`) and signals. A SIMPL# program makes its devices when it starts, so before that the summary names the device types it uses. `GET /api/slots/{n}/summary`.
+- **Try the demo.** Loads the SIMPL# sample into slot 1 and the SIMPL Windows sample into slot 2, linked over EISC, starts them, opens slot 1's test panel and says what to press (digital 10) and what you will see. It asks first if slots 1 or 2 already have programs (their programs are snapshotted before they are replaced).
+- **Help on any control.** Hover a button or box and click the small **?** that appears, or hold `Shift` and click it, press `F1` on it, or long-press it on a touch screen: the help window opens at that control's section (`help.html#anchor`; controls are tied to anchors with `data-help`). The search box (`Ctrl+K`) also finds help topics.
+- **Activity.** A processor-wide feed of who did what and when, newest first: loads, unloads, start, stop and restart, roll backs and snapshots, recordings, share links made, opened and revoked, CH5 uploads, Internet access on and off, settings changes, crash-policy actions, auto-reloads and start-up restores. *Who* is **this computer**, an address, **share link …** or **auto**; a user name will be added when OpenVP has accounts. The last 5,000 entries are kept in `activity.jsonl` in the data folder (JSON lines). The console shows it in **Activity** (filter by slot) and the Metrics page shows the latest. `GET /api/activity?slot=&limit=`.
 - **Recent.** The last 10 programs loaded (`data/recent/`). A path load is remembered by its path; an upload by name, with its files kept (up to 100 MB each, 400 MB in all). **Recent ▾** loads one into the selected slot.
 - **Search and shortcuts.** `Ctrl+K` / `Cmd+K` opens a fuzzy search over every action. Keys (never while typing in a box): `1`–`9`, `0` select a slot, `S` start, `X` stop, `R` restart, `U` unload, `D` debugger, `P` paths, `M` metrics, `N` snapshot, `L` log filter, `T` theme, `?` lists them. The debugger lists its F-keys with `?`.
 - **Settings save themselves.** Slot settings save as you change them (a "Saved" mark shows). Only the Room ID is edited in a dialog.
@@ -369,6 +384,12 @@ Every endpoint except `/api/info` and `/api/login` needs the access key (see [Se
 | POST | `/api/slots/{n}/iptable/{ipid}/identify` | Run reverse DNS and Crestron autodiscovery again |
 | POST | `/api/slots/{n}/iptable/{ipid}/clients/{id}/login` | `{"username":"...","password":"...","port":22}`; SSH in and run read-only commands (credentials not stored) |
 | GET | `/api/slots/{n}/compat` | Compatibility report |
+| GET | `/api/slots/{n}/summary` | `{loaded, program, kind, summary}`: the loaded program in one sentence (`summary.text`) and as numbers (`panels`, `eiscs`, `otherDevices`, `comPorts`, `irPorts`, `splusModules`, `userMacros`, `signals`). The same `summary` is in each slot of `/api/slots` |
+| POST | `/api/check` | "Will it run?" without loading. Multipart `file` (the program) plus its `.sig` and sidecar files; returns `{file, kind, verdict, headline, reason, problems, summary}` where `verdict` is `will-run`, `partly` (with `problems`: `kind`, `name`, `detail`) or `wont-run` (with `reason`). Loads nothing |
+| POST | `/api/check/path` | The same for a file on the OpenVP computer: `{"path": "C:\\…\\Room.lpz", "files": []}` (the `.sig` and sidecars next to it come along). Only from that computer (403 otherwise) |
+| GET | `/api/activity?slot=&limit=` | Who did what and when, newest first (`time`, `action`, `text`, `slot`, `who`, `user`, `detail`); `slot` keeps one slot's entries, `limit` is 200 by default and at most 5,000 |
+| GET · POST | `/api/demo` | `{available, occupied}` · load the demo into slots 1 and 2 and start it; `{"replace": true}` is needed if a slot already has a program (409 otherwise) |
+| GET | `/api/templates` · `/api/templates/{id}` | The starter projects · download one: `simpl-sharp` (a `.zip`) or `ch5-panel` (a `.ch5z`) |
 | GET | `/api/slots/{n}/files?root=user&path=config` | List a folder in the slot's NVRAM (`root=nvram`) or User (`root=user`) folder |
 | GET | `/api/slots/{n}/files/missing` | Files and folders the program looked for and didn't find, with the folder each belongs in (also in the `missing` field of the folder listing) |
 | POST | `/api/slots/{n}/files?root=user&path=config` | Multipart upload into that folder; a file name can include sub-folders (`rooms/r1.xml`) |

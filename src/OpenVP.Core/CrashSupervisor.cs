@@ -82,6 +82,9 @@ public sealed class CrashSupervisor : IDisposable
         lock (st) st.Restarts.Clear();
     }
 
+    /// <summary>Raised when the policy acts on a crash: slot number, what it decided ("restarting", "staying stopped"...) and why.</summary>
+    public event Action<int, string, string>? Acted;
+
     private void OnFault(ProgramSlot slot, string reason) => Task.Run(() => Handle(slot, reason));
 
     /// <summary>Applies the slot's policy to a fault. Runs on its own thread; returns when it has restarted the slot or left it stopped.</summary>
@@ -103,6 +106,7 @@ public sealed class CrashSupervisor : IDisposable
             if (d.Restart && path != null) st.Restarts.Add(now);
         }
         slot.Log(d.Restart ? "Warning" : "Error", $"Crash policy: {d.Text} ({reason}).");
+        try { Acted?.Invoke(slot.Number, d.Text, reason); } catch { }
         if (!d.Restart || path == null)
         {
             if (d.Restart) { lock (st) st.LastAction = "stopped"; slot.Log("Error", "Crash policy: there is no program file to restart from; the slot stays stopped."); }

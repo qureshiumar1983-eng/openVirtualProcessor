@@ -47,7 +47,7 @@ public sealed class SimplSharpLoader : IProgramLoader
 }
 
 /// <summary>A SIMPL# Pro program running in one slot.</summary>
-public sealed class SimplSharpRuntime : IProgramRuntime
+public sealed class SimplSharpRuntime : IProgramRuntime, IProgramAnalysis
 {
     private readonly ProgramSlot _slot;
     private readonly string _programDll;
@@ -66,6 +66,7 @@ public sealed class SimplSharpRuntime : IProgramRuntime
         // Check compatibility up front against a reference copy of the shim.
         var shim = Assembly.LoadFrom(Path.Combine(shimDir, "OpenVP.SimplSharp.dll"));
         Compat = CompatScanner.Scan(programDll, shim);
+        _deviceTypes = Compat.UsedTypes.Where(n => shim.GetType(n) is { IsAbstract: false } t && IsDeviceType(t)).Select(n => n[(n.LastIndexOf('.') + 1)..]).Distinct().ToList();
         foreach (var t in Compat.MissingTypes)
         {
             slot.Log("Warning", $"Not implemented in OpenVP yet: type {t}");
@@ -81,6 +82,43 @@ public sealed class SimplSharpRuntime : IProgramRuntime
     public string Kind => "SIMPL#";
     public string ProgramName { get; }
     public CompatReport Compat { get; }
+
+    private readonly List<string> _deviceTypes;
+
+    private static bool IsDeviceType(Type? t)
+    {
+        for (; t != null; t = t.BaseType) if (t.Name == "BasicTriList") return true;
+        return false;
+    }
+
+    string? IProgramAnalysis.Blocker => Compat.ControlSystemType == null
+        ? "No class deriving from CrestronControlSystem was found, so there is nothing to start. Is this the program's own .dll?" : null;
+
+    IReadOnlyList<ReadinessProblem> IProgramAnalysis.Problems() =>
+        Compat.MissingTypes.Select(t => new ReadinessProblem("SIMPL# type", t))
+            .Concat(Compat.MissingMembers.Select(m => new ReadinessProblem("SIMPL# member", m))).ToList();
+
+    /// <summary>A SIMPL# program makes its devices when it starts, so before then only the device types it refers to are known.
+    /// Once it runs (and has registered devices), the summary is of what it registered.</summary>
+    public ProgramSummary Summarize()
+    {
+        var devices = _slot.Devices.ToList();
+        if (devices.Count == 0)
+            return new ProgramSummary(Kind, Array.Empty<string>(), Array.Empty<string>(), 0, 0, 0, 0, 0, 0, DevicesKnown: false, Uses: _deviceTypes);
+        var panels = new List<string>();
+        var eiscs = new List<string>();
+        var other = 0;
+        foreach (var d in devices.OrderBy(d => d.IpId))
+        {
+            switch (DeviceKinds.Classify(d.Type))
+            {
+                case DeviceClass.Panel: panels.Add($"{d.IpId:X2}"); break;
+                case DeviceClass.Eisc: eiscs.Add($"{d.IpId:X2}"); break;
+                default: other++; break;
+            }
+        }
+        return new ProgramSummary(Kind, panels, eiscs, other, 0, 0, 0, 0, 0);
+    }
 
     public void Start()
     {

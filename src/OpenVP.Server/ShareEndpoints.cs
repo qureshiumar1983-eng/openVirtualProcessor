@@ -35,7 +35,8 @@ internal static class ShareEndpoints
         return p;
     }
 
-    public static void Map(WebApplication app, Processor processor, ShareStore shares, Ch5Panels ch5, TunnelManager? tunnel, TunnelGate gate, string? tunnelUnavailable)
+    public static void Map(WebApplication app, Processor processor, ShareStore shares, Ch5Panels ch5, TunnelManager? tunnel, TunnelGate gate, string? tunnelUnavailable,
+        ActivityLog activity, Func<HttpContext, string> actor)
     {
         var web = app.Environment.WebRootFileProvider;
 
@@ -69,7 +70,7 @@ internal static class ShareEndpoints
 
         app.MapGet("/api/shares", () => shares.Active().Select(ShareDto));
 
-        app.MapPost("/api/shares", (JsonElement body) =>
+        app.MapPost("/api/shares", (HttpContext ctx, JsonElement body) =>
         {
             try
             {
@@ -82,21 +83,34 @@ internal static class ShareEndpoints
                 var pin = body.TryGetProperty("pin", out var pn) && pn.ValueKind != JsonValueKind.Null ? pn.ToString() : null;
                 var expires = body.TryGetProperty("expires", out var ex) ? ex.GetString() : "never";
                 var link = shares.Create(slot, ipId, label, string.IsNullOrEmpty(pin) ? null : pin, ShareStore.ParseExpiry(expires));
+                activity.Add("share.create", $"Made a share link{(string.IsNullOrWhiteSpace(link.Label) ? "" : " “" + link.Label + "”")} for slot {slot}, IP ID {ipId:X2}{(link.HasPin ? " (with a PIN)" : "")}, expires {(expires is null or "never" ? "never" : "in " + expires)}", slot, actor(ctx));
                 return Results.Ok(ShareDto(link));
             }
             catch (ArgumentException e) { return Results.BadRequest(new { error = e.Message }); }
         });
 
-        app.MapDelete("/api/shares/{id}", (string id) => shares.Revoke(id) ? Results.Ok() : Results.NotFound(new { error = "No such link (maybe it already expired)." }));
+        app.MapDelete("/api/shares/{id}", (HttpContext ctx, string id) =>
+        {
+            var link = shares.Active().FirstOrDefault(l => l.Id == id);
+            if (!shares.Revoke(id)) return Results.NotFound(new { error = "No such link (maybe it already expired)." });
+            activity.Add("share.revoke", $"Revoked the share link{(string.IsNullOrWhiteSpace(link?.Label) ? "" : " “" + link!.Label + "”")}{(link == null ? "" : $" for slot {link.Slot}, IP ID {link.IpId:X2}")}", link?.Slot, actor(ctx));
+            return Results.Ok();
+        });
 
         // Undo a revoke (the console's "Undo" toast): the same link, token and PIN come back, if it was revoked in the last few minutes.
-        app.MapPost("/api/shares/{id}/undo", (string id) => shares.Undo(id) is { } l ? Results.Ok(ShareDto(l)) : Results.NotFound(new { error = "That link can't be brought back (it was revoked too long ago, or has expired)." }));
+        app.MapPost("/api/shares/{id}/undo", (HttpContext ctx, string id) =>
+        {
+            if (shares.Undo(id) is not { } l) return Results.NotFound(new { error = "That link can't be brought back (it was revoked too long ago, or has expired)." });
+            activity.Add("share.undo", $"Brought back the share link{(string.IsNullOrWhiteSpace(l.Label) ? "" : " “" + l.Label + "”")} for slot {l.Slot}", l.Slot, actor(ctx));
+            return Results.Ok(ShareDto(l));
+        });
 
         object Ch5Dto(Ch5Info i) => new { slot = i.Slot, ipId = $"{i.IpId:X2}", name = i.Name, uploadedAt = i.UploadedAt, files = i.Files, bytes = i.Bytes };
         app.MapGet("/api/panels", () => ch5.List().Select(Ch5Dto));
 
-        app.MapPost("/api/slots/{n:int}/panels/{ipid}/ch5", async (int n, string ipid, HttpRequest req) =>
+        app.MapPost("/api/slots/{n:int}/panels/{ipid}/ch5", async (int n, string ipid, HttpContext ctx) =>
         {
+            var req = ctx.Request;
             if (!processor.IsValidSlot(n)) return Results.NotFound(new { error = $"Slot must be 1-{processor.Slots.Count}." });
             if (!uint.TryParse(ipid, System.Globalization.NumberStyles.HexNumber, null, out var ipId) || ipId is 0 or > 0xFE)
                 return Results.BadRequest(new { error = "IP ID must be 01-FE (hex)." });
@@ -112,16 +126,20 @@ internal static class ShareEndpoints
                 using var ms = new MemoryStream();
                 await s.CopyToAsync(ms);
                 ms.Position = 0;
-                return Results.Ok(Ch5Dto(ch5.Install(n, ipId, ms, Path.GetFileName(file.FileName))));
+                var info = ch5.Install(n, ipId, ms, Path.GetFileName(file.FileName));
+                activity.Add("panel.upload", $"Uploaded the CH5 project {info.Name} for slot {n}, IP ID {ipId:X2}", n, actor(ctx));
+                return Results.Ok(Ch5Dto(info));
             }
             catch (Ch5Exception e) { return Results.BadRequest(new { error = e.Message }); }
         });
 
-        app.MapDelete("/api/slots/{n:int}/panels/{ipid}/ch5", (int n, string ipid) =>
+        app.MapDelete("/api/slots/{n:int}/panels/{ipid}/ch5", (int n, string ipid, HttpContext ctx) =>
         {
             if (!uint.TryParse(ipid, System.Globalization.NumberStyles.HexNumber, null, out var ipId) || ipId is 0 or > 0xFE)
                 return Results.BadRequest(new { error = "IP ID must be 01-FE (hex)." });
-            return ch5.Remove(n, ipId) ? Results.Ok() : Results.NotFound(new { error = "No CH5 project for that IP ID." });
+            if (!ch5.Remove(n, ipId)) return Results.NotFound(new { error = "No CH5 project for that IP ID." });
+            activity.Add("panel.remove", $"Removed the CH5 project of slot {n}, IP ID {ipId:X2}", n, actor(ctx));
+            return Results.Ok();
         });
 
         // What address would work for someone else: this machine's LAN addresses (the console may have been opened as localhost).
@@ -158,12 +176,15 @@ internal static class ShareEndpoints
             }
             catch (JsonException) { }
             // Keep going in the background (the download or cloudflared's start-up can take a while); the console polls.
+            var before = tunnel.Status().State;
             var run = tunnel.StartAsync(download);
+            if (before is TunnelState.Off or TunnelState.Error) activity.Add("internet.on", "Turned Internet access on (shared panels reachable from outside)", null, actor(ctx));
             await Task.WhenAny(run, Task.Delay(2000));
             return Results.Ok(TunnelDto(tunnel.Status()));
         });
-        app.MapPost("/api/tunnel/stop", () =>
+        app.MapPost("/api/tunnel/stop", (HttpContext ctx) =>
         {
+            if (tunnel != null && tunnel.Status().State != TunnelState.Off) activity.Add("internet.off", "Turned Internet access off", null, actor(ctx));
             tunnel?.Stop();
             return Results.Ok(TunnelDto(tunnel?.Status() ?? idle));
         });
@@ -204,6 +225,7 @@ internal static class ShareEndpoints
             await ctx.Response.WriteAsync(Template("share/gone.html"));
         }
 
+        var seen = new Dictionary<string, long>();
         bool IsAuthorized(HttpContext ctx, ShareLink link) => shares.Authorized(link, ctx.Request.Cookies[PinCookie]);
 
         string Inject(string html, string snippet)
@@ -367,6 +389,12 @@ internal static class ShareEndpoints
 
             using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
             using var open = shares.OpenConnection(link.Id);
+            // One line per person per link per hour, so a phone reconnecting doesn't fill the feed.
+            var seenKey = link.Id + "|" + who;
+            var nowTicks = Environment.TickCount64;
+            bool first;
+            lock (seen) { first = !seen.TryGetValue(seenKey, out var t) || nowTicks - t > 3_600_000; if (first) seen[seenKey] = nowTicks; if (seen.Count > 2000) seen.Clear(); }
+            if (first) activity.Add("share.open", $"Opened the shared panel{(string.IsNullOrWhiteSpace(link.Label) ? "" : " “" + link.Label + "”")} (slot {link.Slot}, IP ID {link.IpId:X2})", link.Slot, Actors.ShareLink(link.Label), null, who);
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ctx.RequestAborted);
             // Revoked or expired: close within about a second.
             var watcher = Task.Run(async () =>

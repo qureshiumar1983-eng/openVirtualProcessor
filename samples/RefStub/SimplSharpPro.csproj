@@ -3,7 +3,8 @@
     Test-only stand-in for Crestron's SDK: the OpenVP API compiled under the name "SimplSharpPro".
     The sample program builds against this, so its compiled DLL references "SimplSharpPro" exactly
     like a program built with Crestron's real SDK. OpenVP then runs it through the facades.
-    Never ship this; real programs are built with Crestron's SDK.
+    It is OpenVP's own code (no Crestron files). The SIMPL# starter template ships it as lib/SimplSharpPro.dll so a starter project builds
+    with nothing but the .NET SDK. Don't deploy it to a real processor: programs for hardware are built with Crestron's SDK.
   -->
   <PropertyGroup>
     <AssemblyName>SimplSharpPro</AssemblyName>

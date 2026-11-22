@@ -258,6 +258,37 @@
   #slot-set .chk { flex-direction:row; align-items:center; gap:6px; color:var(--text); font-size:14px; }
   #slot-strip { display:none; }
   #log-filter { flex:1; min-width:120px; }
+  /* ---- readiness check, program summary, demo, templates, activity, help-on-hover */
+  .ready { margin:0 0 10px; }
+  .rd { border:1px solid var(--line); border-left:5px solid var(--line); border-radius:8px; padding:8px 10px; background:var(--tile); overflow-wrap:anywhere; }
+  .rd.rd-will-run { border-left-color:var(--ok); } .rd.rd-partly { border-left-color:var(--warn); } .rd.rd-wont-run { border-left-color:var(--err); }
+  .rd-head { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; }
+  .rd-badge { font-weight:600; padding:1px 10px; border-radius:20px; background:var(--chip); }
+  .rd-will-run .rd-badge { background:var(--ok-bg); color:var(--ok-fg); } .rd-partly .rd-badge { background:var(--warn-bg); color:var(--warn-fg); } .rd-wont-run .rd-badge { background:var(--err-bg); color:var(--err-fg); }
+  .rd-sum, .rd-why, .rd-note { margin-top:6px; } .rd-note { font-size:12px; color:var(--muted); }
+  .rd details { margin-top:6px; } .rd summary { cursor:pointer; color:var(--muted); } .rd ul { margin:6px 0 0; padding-left:20px; max-height:200px; overflow:auto; }
+  .rd li small { color:var(--muted); }
+  #sel-summary { margin:4px 0 0; overflow-wrap:anywhere; }
+  #demo-dlg, #tpl-dlg, #drop-dlg { width:min(560px, calc(100vw - 24px)); max-height:calc(100dvh - 24px); overflow:auto; min-width:0; }
+  #demo-dlg h2, #tpl-dlg h2, #drop-dlg h2 { margin:0; font-size:18px; text-transform:none; letter-spacing:0; color:var(--text); }
+  #demo-dlg p, #tpl-dlg p, #drop-dlg p { margin:0; overflow-wrap:anywhere; }
+  #demo-dlg ol { margin:0; padding-left:22px; } #demo-dlg li { margin:0 0 6px; }
+  .tpl { border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:var(--tile); display:flex; flex-direction:column; gap:6px; }
+  .tpl a.dl { align-self:flex-start; text-decoration:none; padding:5px 12px; border:1px solid var(--accent); border-radius:6px; background:var(--active); color:var(--text); }
+  .tpl small { color:var(--muted); }
+  #act-table td { font-size:13px; } #act-table td.when { white-space:nowrap; color:var(--muted); } #act-table td.who { white-space:nowrap; }
+  #act-table td.what { overflow-wrap:anywhere; }
+  #help-q { position:fixed; z-index:160; width:20px; height:20px; padding:0; min-height:0; border-radius:50%; font-size:12px; line-height:18px; text-align:center; background:var(--accent); color:#fff; border:1px solid var(--accent); box-shadow:0 2px 8px #0005; }
+  #help-q:hover { filter:brightness(1.15); }
+  body.help-shift [data-help] { cursor:help; }
+  @media (max-width: 600px) {
+    #act-table thead { display:none; }
+    #act-table, #act-table tbody, #act-table tr, #act-table td { display:block; }
+    #act-table tr { border-bottom:1px solid var(--line); padding:6px 0; }
+    #act-table td { border:none; padding:2px 6px; }
+    #act-table td.when::after { content:" · " attr(data-who); }
+    #act-table td.who, #act-table td.num { display:none; }
+  }
   /* ---- phone: collapsible sections, big touch targets, sticky slot selector, cards instead of wide tables */
   section h2.sec-t { cursor:default; }
   @media (max-width: 700px) {
@@ -305,10 +336,10 @@
 <body>
 <header>
   <h1>OpenVP</h1><small>open-source virtual control processor</small>
-  <span style="flex:1"></span><span id="saved" role="status" aria-live="polite"></span><button class="hbtn" id="pal-open" title="Search every action (Ctrl+K or Cmd+K)">Search ⌘K</button><button class="hbtn" id="keys-open" title="Keyboard shortcuts (?)">?</button><button class="theme-btn" data-theme-toggle></button><a href="metrics.html" target="openvp-metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="panel.html" target="_blank" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a><a href="#welcome" id="welcome-link" title="Show the welcome screen again">Welcome</a>
+  <span style="flex:1"></span><span id="saved" role="status" aria-live="polite"></span><button class="hbtn" id="pal-open" title="Search every action and every help topic (Ctrl+K or Cmd+K)" data-help="palette">Search ⌘K</button><button class="hbtn" id="keys-open" title="Keyboard shortcuts (?)" data-help="palette">?</button><button class="hbtn" id="tpl-open" title="Starter projects to download: a SIMPL# Pro program and a CH5 panel" data-help="templates">Templates</button><button class="theme-btn" data-theme-toggle data-help="top-bar"></button><a href="metrics.html" target="openvp-metrics" data-help="metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="panel.html" target="_blank" data-help="panel" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a><a href="#welcome" id="welcome-link" title="Show the welcome screen again">Welcome</a>
 </header>
 <div id="slot-strip" aria-label="Selected slot"><select id="strip-slot" aria-label="Slot"></select><button id="strip-start" title="Start">▶</button><button id="strip-stop" title="Stop">■</button><button id="strip-restart" title="Restart">↻</button></div>
-<div id="net-bar">
+<div id="net-bar" data-help="internet">
   <button id="net-switch" class="switch" role="switch" aria-checked="false" aria-labelledby="net-label" title="Turn the internet tunnel on or off"></button>
   <b id="net-label">Internet access</b>
   <span id="net-state">off</span>
@@ -320,7 +351,7 @@
   <p id="net-help">Lets people outside your network open the panels you share, through a free Cloudflare tunnel (cloudflared, no account needed). Only shared-panel links work through it: the console, the API and the debugger are never reachable from the internet. Turn it off and all outside access stops.</p>
   <details id="net-log" hidden><summary>cloudflared output</summary><pre></pre></details>
 </div>
-<section id="board">
+<section id="board" data-help="status-board">
   <h2 class="sec-t" title="Every slot at a glance. Click a tile to select that slot. Tick the boxes to start, stop, restart or unload several at once.">Status board</h2>
   <div id="board-tiles"></div>
   <div id="bulk-bar" role="group" aria-label="Selected slots"><b id="bulk-count"></b>
@@ -329,36 +360,39 @@
 </section>
 <main>
   <div>
-    <section id="slots-sec">
+    <section id="slots-sec" data-help="program-slots">
       <h2 class="sec-t">Program slots</h2>
       <table id="slots"><thead><tr><th><input type="checkbox" id="slots-all" class="bsel" aria-label="Select all slots" title="Tick every slot to act on several at once"></th><th>#</th><th class="roomcol">Room</th><th>Program</th><th>State</th></tr></thead><tbody></tbody></table>
     </section>
-    <section style="margin-top:16px" id="slot-sec">
+    <section style="margin-top:16px" id="slot-sec" data-help="slot">
       <h2 class="sec-t">Slot <span id="sel-num">1</span> <span id="sel-name" class="muted"></span></h2>
       <div class="bar">
-        <input type="file" id="file" accept=".cpz,.dll,.zip,.smw,.json,.lpz,.sig" multiple title="Pick the program: .cpz or .dll (SIMPL# Pro), .lpz (add its .sig for signal names) or .smw">
-        <button id="upload" title="Upload the chosen file(s) into this slot and start the program. Replaces what was in the slot. You can also drop a program anywhere on this page.">Load &amp; start</button>
-        <span class="menu-wrap"><button id="recent-btn" aria-haspopup="true" aria-expanded="false" title="Load one of the last programs again into this slot">Recent ▾</button><div id="recent-menu" role="menu" hidden></div></span>
-        <button id="inspect" title="Report what OpenVP can run in a compiled .lpz (add its .sig for names)">Inspect .lpz</button>
+        <input type="file" id="file" accept=".cpz,.dll,.zip,.smw,.json,.lpz,.sig" multiple data-help="choose-files" title="Pick the program: .cpz or .dll (SIMPL# Pro), .lpz (add its .sig for signal names) or .smw. OpenVP checks it and says whether it will run.">
+        <button id="upload" data-help="load-start" title="Upload the chosen file(s) into this slot and start the program. Replaces what was in the slot. You can also drop a program anywhere on this page.">Load &amp; start</button>
+        <span class="menu-wrap"><button id="recent-btn" data-help="recent" aria-haspopup="true" aria-expanded="false" title="Load one of the last programs again into this slot">Recent ▾</button><div id="recent-menu" role="menu" hidden></div></span>
+        <button id="inspect" data-help="inspect" title="Report what OpenVP can run in a compiled .lpz (add its .sig for names)">Inspect .lpz</button>
+        <button id="demo-btn" data-help="demo" title="Load the SIMPL# and SIMPL Windows samples into slots 1 and 2, linked over EISC, start them and open a test panel">Try the demo</button>
       </div>
+      <div id="ready" class="ready" data-help="readiness" hidden aria-live="polite"></div>
       <div class="bar" id="disk-bar" hidden>
-        <label title="Load the program from where it is on this computer and load it again whenever it changes, for example each time you compile in SIMPL Windows"><input type="checkbox" id="watch"> Reload when the file changes</label>
-        <button id="from-path" hidden title="Type the full path of a program on this computer. Its .sig and sidecar files are loaded with it.">Load from path…</button>
+        <label data-help="reload-on-change" title="Load the program from where it is on this computer and load it again whenever it changes, for example each time you compile in SIMPL Windows"><input type="checkbox" id="watch"> Reload when the file changes</label>
+        <button id="from-path" data-help="load-from-path" hidden title="Type the full path of a program on this computer. Its .sig and sidecar files are loaded with it.">Load from path…</button>
       </div>
       <div class="bar" id="watch-bar" hidden>
         <span class="muted">Reloads when this changes:</span> <span id="watch-path" class="mono" style="word-break:break-all"></span>
-        <button id="watch-stop" title="Keep the program running but stop reloading it when the file changes">Stop watching</button>
+        <button id="watch-stop" data-help="stop-watching" title="Keep the program running but stop reloading it when the file changes">Stop watching</button>
       </div>
       <div class="bar">
-        <button data-act="start" title="Start the program loaded in this slot">Start</button><button data-act="stop" title="Stop the program but keep it loaded">Stop</button><button data-act="restart" title="Load the program again from its file and start it">Restart</button><button data-act="unload" title="Stop the program and remove it from this slot. NVRAM and User files are kept. You can undo it for a few seconds.">Unload</button>
-        <button id="compat" title="List what the loaded program uses that OpenVP does not support yet (shown in the Console box)">Compatibility</button>
+        <button data-act="start" data-help="start" title="Start the program loaded in this slot">Start</button><button data-act="stop" data-help="stop" title="Stop the program but keep it loaded">Stop</button><button data-act="restart" data-help="restart" title="Load the program again from its file and start it">Restart</button><button data-act="unload" data-help="unload" title="Stop the program and remove it from this slot. NVRAM and User files are kept. You can undo it for a few seconds.">Unload</button>
+        <button id="compat" data-help="compat" title="List what the loaded program uses that OpenVP does not support yet (shown in the Console box)">Compatibility</button>
       </div>
       <div class="bar" id="room-bar" style="display:none">
         <span class="muted">Room ID</span> <b id="room-id" class="mono"></b>
-        <button id="room-edit" title="Virtual Control Room ID for this slot (panels can connect with ?room=ID)">Edit…</button>
+        <button id="room-edit" data-help="room-id" title="Virtual Control Room ID for this slot (panels can connect with ?room=ID)">Edit…</button>
       </div>
       <div id="sel-info" class="muted mono"></div>
-      <details id="slot-set"><summary>Slot settings</summary>
+      <div id="sel-summary" class="muted" data-help="summary" hidden></div>
+      <details id="slot-set" data-help="slotsettings"><summary>Slot settings</summary>
         <div class="frow">
           <label class="fld">Name<input type="text" id="set-name" maxlength="40" placeholder="e.g. Boardroom" autocomplete="off"></label>
           <div class="fld">Colour<div id="set-colors" role="group" aria-label="Slot colour"></div></div>
@@ -382,7 +416,7 @@
     </section>
   </div>
   <div>
-    <section id="ipt-sec">
+    <section id="ipt-sec" data-help="ip-table">
       <h2 class="sec-t">IP table · slot <span class="sel-num2">1</span><span class="room-tag"></span></h2>
       <div class="scroll-x">
       <table id="ipt">
@@ -396,7 +430,7 @@
           <b id="d-title"></b><span style="flex:1"></span>
           <button id="d-identify" title="Run reverse DNS and Crestron autodiscovery again">Re-identify</button>
           <button id="d-login-toggle" title="Log in over SSH and read hostname, firmware, uptime, network and IP table (read-only commands)">Log in &amp; read…</button>
-          <button id="d-share" title="Make a link that opens this panel for someone else">Share…</button>
+          <button id="d-share" data-help="sharing" title="Make a link that opens this panel for someone else">Share…</button>
           <a id="d-panel" target="_blank" title="Open a browser touch panel connected to this IP ID">open test panel</a>
           <button id="d-close" title="Close">✕</button>
         </div>
@@ -412,7 +446,7 @@
         <div id="d-body" class="kv"></div>
       </div>
     </section>
-    <section style="margin-top:16px" id="shares-sec">
+    <section style="margin-top:16px" id="shares-sec" data-help="shared-panels">
       <h2 class="sec-t" title="Links you have given out. Revoke one and it stops working at once.">Shared panels</h2>
       <div id="shares-empty" class="muted">No shared panels. Click <b>Share…</b> on an IP ID in the table above to make a link someone else can open.</div>
       <div class="scroll-x"><table id="shares-table" hidden>
@@ -420,14 +454,14 @@
         <tbody></tbody>
       </table></div>
     </section>
-    <section style="margin-top:16px" id="dbg-sec">
+    <section style="margin-top:16px" id="dbg-sec" data-help="debugger-button">
       <h2 class="sec-t">Debugger · slot <span class="sel-num2">1</span></h2>
       <div class="bar">
         <button id="open-debugger" title="Watch and change this slot's signals live, in its own window">Open debugger ↗</button>
         <span class="muted">Signal list and trace window for this slot, in its own window. Open one per slot to debug several programs at once.</span>
       </div>
     </section>
-    <section style="margin-top:16px" id="files-sec">
+    <section style="margin-top:16px" id="files-sec" data-help="files">
       <h2 class="sec-t">Files · slot <span class="sel-num2">1</span></h2>
       <div class="bar">
         <div class="tabs"><button data-root="nvram" class="active" title="The slot's \NVRAM folder">NVRAM</button><button data-root="user" title="The slot's \USER folder">User</button></div>
@@ -446,19 +480,19 @@
         <div id="files-empty" class="muted" style="padding:10px 6px" hidden>Empty. Drop files here, or use Upload.</div>
       </div>
     </section>
-    <section style="margin-top:16px" id="hist-sec">
+    <section style="margin-top:16px" id="hist-sec" data-help="history">
       <h2 class="sec-t">History · slot <span class="sel-num2">1</span></h2>
       <div class="bar">
-        <button id="hist-now" title="Save a copy of this slot's program, NVRAM and User files now">Snapshot now</button>
+        <button id="hist-now" data-help="snapshot-now" title="Save a copy of this slot's program, NVRAM and User files now">Snapshot now</button>
         <span class="muted">A snapshot is saved before every load. The last 10 are kept.</span>
       </div>
       <table id="hist-table"><thead><tr><th>Time</th><th>Program</th><th>Reason</th><th class="num">Size</th><th></th></tr></thead><tbody></tbody></table>
       <div id="hist-empty" class="muted" style="padding:10px 6px" hidden>No snapshots yet.</div>
     </section>
-    <section style="margin-top:16px" id="rec-sec">
+    <section style="margin-top:16px" id="rec-sec" data-help="recordings">
       <h2 class="sec-t">Recordings · slot <span class="sel-num2">1</span></h2>
       <div class="bar">
-        <button id="rec-toggle" title="Record every input to this slot's program (panels, EISC, forced signals) and the feedback it sends back"><span class="rdot">●</span> <span id="rec-toggle-label">Record</span></button>
+        <button id="rec-toggle" data-help="record" title="Record every input to this slot's program (panels, EISC, forced signals) and the feedback it sends back"><span class="rdot">●</span> <span id="rec-toggle-label">Record</span></button>
         <span id="rec-status" class="mono muted"></span>
         <span style="flex:1"></span>
         <label class="muted" title="Also send the inputs that came from the other end of an EISC link. Turn this off if the other slot is running and drives the EISC itself."><input type="checkbox" id="rec-eisc" checked> include EISC inputs</label>
@@ -474,8 +508,18 @@
       <div id="rec-empty" class="muted" style="padding:10px 6px" hidden>No recordings yet. Press Record, use the room, then Stop.</div>
       <div id="rec-result"></div>
     </section>
+    <section style="margin-top:16px" id="act-sec" data-help="activity">
+      <h2 class="sec-t">Activity</h2>
+      <div class="bar">
+        <label class="muted" for="act-filter">Show</label>
+        <select id="act-filter" title="Show everything the processor did, or only one slot's"><option value="all">all slots</option></select>
+        <span class="muted">Who did what and when: loads, starts, roll backs, shares, Internet access, settings, crashes and restores.</span>
+      </div>
+      <table id="act-table"><thead><tr><th>When</th><th>Who</th><th>Slot</th><th>What</th></tr></thead><tbody></tbody></table>
+      <div id="act-empty" class="muted" style="padding:10px 6px" hidden>Nothing yet.</div>
+    </section>
     <div class="grid2" style="margin-top:16px">
-      <section id="console-sec">
+      <section id="console-sec" data-help="console-box">
         <div class="sec-head">
           <h2 class="sec-t">Console</h2>
           <button id="console-smaller" title="Make the console shorter">−</button>
@@ -485,7 +529,7 @@
         <div class="bar"><input id="console-in" class="mono" style="flex:1" placeholder="help, ipt, metrics, taskstat, cpuload, ramfree, or a program command"><button id="console-run" title="Send the command to this slot (Enter does the same). Type help for the list of commands.">Run</button></div>
         <div id="console-out" class="mono" title="Drag the bottom-right corner to resize"></div>
       </section>
-      <section id="log-sec">
+      <section id="log-sec" data-help="log">
         <div class="sec-head">
           <h2 class="sec-t">Log</h2>
           <button id="log-smaller" title="Make the log shorter">−</button>
@@ -501,7 +545,7 @@
 <div id="toasts" aria-live="polite"></div>
 <div id="drop-ov" aria-hidden="true"><div id="drop-text">Drop to load</div></div>
 <div id="pal-back"><div id="pal" role="dialog" aria-modal="true" aria-label="Search actions">
-  <input id="pal-in" role="combobox" aria-expanded="true" aria-controls="pal-list" aria-autocomplete="list" placeholder="Type to search: start slot 2, debugger, snapshot, theme…" autocomplete="off" spellcheck="false">
+  <input id="pal-in" role="combobox" aria-expanded="true" aria-controls="pal-list" aria-autocomplete="list" placeholder="Type to search: start slot 2, debugger, snapshot, or a help topic…" autocomplete="off" spellcheck="false">
   <ul id="pal-list" role="listbox"></ul>
   <div id="pal-foot">↑ ↓ to move · Enter to run · Esc to close</div>
 </div></div>
@@ -538,6 +582,36 @@
     <div class="row"><button type="submit" value="ok" id="share-done">Done</button></div>
   </div>
 </form></dialog>
+<dialog id="demo-dlg" aria-labelledby="demo-title"><form method="dialog" onsubmit="return false">
+  <h2 id="demo-title">Try the demo</h2>
+  <div id="demo-v1" style="display:flex;flex-direction:column;gap:10px">
+    <p>This loads the SIMPL# Pro sample into slot 1 and the SIMPL Windows sample into slot 2, links them over an EISC, starts them and opens slot 1's test panel.</p>
+    <div id="demo-warn" class="warnbox" hidden></div>
+    <div id="demo-err" class="warnbox" role="alert" hidden></div>
+    <div class="row"><button type="button" id="demo-cancel">Cancel</button><button type="button" id="demo-go" autofocus>Load the demo</button></div>
+  </div>
+  <div id="demo-v2" hidden style="display:flex;flex-direction:column;gap:10px">
+    <p><b>The demo is running.</b> A test panel for slot 1 (IP ID 03) opened in a new window.</p>
+    <ol>
+      <li>On that panel, press and hold the button labelled <b>10</b> (digital join 10).</li>
+      <li>Slot 1's SIMPL# program passes it over the EISC to slot 2's SIMPL Windows program, which lights <b>digital 10</b> on its own panel. Open <b>slot 2's panel</b> to see its button 10 turn green while you hold the one on slot 1.</li>
+      <li>It works the other way too: press 10 on slot 2's panel and slot 1's button 10 lights up.</li>
+    </ol>
+    <p class="muted">Both programs are in the Program slots table; the Log shows what they do. Load your own program into a slot any time.</p>
+    <div class="row" style="flex-wrap:wrap"><button type="button" id="demo-p1">Open slot 1's panel</button><button type="button" id="demo-p2">Open slot 2's panel</button><button type="button" id="demo-done">Done</button></div>
+  </div>
+</form></dialog>
+<dialog id="tpl-dlg" aria-labelledby="tpl-title"><form method="dialog">
+  <h2 id="tpl-title">Templates</h2>
+  <p class="muted">Starter projects to build on. Both work with OpenVP as they are.</p>
+  <div id="tpl-list" style="display:flex;flex-direction:column;gap:10px"></div>
+  <div class="row"><button value="ok" autofocus>Close</button></div>
+</form></dialog>
+<dialog id="drop-dlg" aria-labelledby="drop-title"><form method="dialog" onsubmit="return false">
+  <h2 id="drop-title">Load into slot</h2>
+  <div id="drop-ready" class="ready"></div>
+  <div class="row"><button type="button" id="drop-cancel">Cancel</button><button type="button" id="drop-go" autofocus>Load &amp; start</button></div>
+</form></dialog>
 <dialog id="welcome" aria-labelledby="welcome-title"><form method="dialog">
   <h2 id="welcome-title">Welcome to OpenVP</h2>
   <p>OpenVP runs Crestron SIMPL# Pro (.cpz, .dll) and SIMPL Windows (.lpz, .smw) programs on any computer. There is no license server. You get up to 10 slots, browser test panels and a debugger. It is not affiliated with Crestron.</p>
@@ -548,13 +622,15 @@
     <li>In the <b>IP table</b>, click a device and open a test panel.</li>
     <li>Click <b>Open debugger</b> to watch signals change.</li>
   </ol>
+  <p>No program yet? <b>Try the demo</b> loads two samples that talk to each other, and <b>Templates</b> in the top bar has starter projects to download.</p>
   <h3>Good to know</h3>
   <ul>
     <li>The <b>Status board</b> shows every slot at a glance.</li>
     <li><b>History</b> takes snapshots of a slot and rolls back to them. <b>Recordings</b> record joins and replay them.</li>
-    <li>The <b>Help</b> link on every page explains each button.</li>
+    <li>The <b>Help</b> link on every page explains each button. Hold <kbd>Shift</kbd> and click a button, or hover it and click the <b>?</b>, to open its help.</li>
+    <li>OpenVP tells you whether a program will run as soon as you choose it, and <b>Activity</b> lists who did what.</li>
   </ul>
-  <div class="row"><button type="button" id="welcome-skip">Skip</button><button value="ok" id="welcome-go" autofocus>Get started</button></div>
+  <div class="row"><button type="button" id="welcome-skip">Skip</button><button type="button" id="welcome-demo" title="Load the SIMPL# and SIMPL Windows samples into slots 1 and 2, linked over EISC, and open a test panel">Try the demo</button><button value="ok" id="welcome-go" autofocus>Get started</button></div>
 </form></dialog>
 <script src="openvp-auth.js"></script>
 <script src="qrcode.js"></script>
@@ -574,7 +650,7 @@ async function api(path, opts) {
 
 async function refreshSlots() {
   const slots = await api("/api/slots");
-  boardSlots = slots; renderBoard(); renderStrip();
+  boardSlots = slots; renderBoard(); renderStrip(); fillActivityFilter();
   const tb = $("#slots tbody"); tb.innerHTML = "";
   for (const s of slots) {
     const tr = document.createElement("tr");
@@ -596,6 +672,7 @@ async function refreshSlots() {
       $("#watch-bar").hidden = !s.watching;
       $("#watch-path").textContent = s.watching || "";
       $("#sel-info").textContent = s.file ? `${s.file}${s.error ? "\n" + s.error.split("\n")[0] : ""}` : "No program loaded.";
+      $("#sel-summary").hidden = !s.summary; $("#sel-summary").textContent = s.summary?.text || "";
       const online = s.devices.filter(d => d.online).length;
       $("#devices").textContent = s.devices.length ? `${s.devices.length} IP ID${s.devices.length === 1 ? "" : "s"}, ${online} online. Who's connected is in the IP table.` : "";
     }
@@ -631,9 +708,9 @@ function renderBoard() {
     const nm = s.name ? `<span class="bname" title="${esc(s.name)}">${esc(s.name)}</span>` : "";
     const room = typeof s.roomId === "string" ? `<span class="broom mono">${esc(s.roomId)}</span>` : "";
     const label = `Slot ${s.number}${s.name ? " " + s.name : ""}${typeof s.roomId === "string" ? ", room " + s.roomId : ""}: ${s.program ?? "empty"}, ${st}`;
-    return `<div class="btile st-${st}${s.number === sel ? " sel" : ""}" data-n="${s.number}" role="button" tabindex="0" aria-label="${esc(label)}" title="${esc("Select slot " + s.number + (s.name ? " · " + s.name : "") + (typeof s.roomId === "string" ? " · room " + s.roomId : ""))}"${s.color ? ` style="--sc:${esc(s.color)}"` : ""}>
+    return `<div class="btile st-${st}${s.number === sel ? " sel" : ""}" data-n="${s.number}" role="button" tabindex="0" aria-label="${esc(label)}" title="${esc("Select slot " + s.number + (s.name ? " · " + s.name : "") + (typeof s.roomId === "string" ? " · room " + s.roomId : "") + (s.summary ? "\n" + (s.program ?? "") + "\n" + s.summary.text : ""))}"${s.color ? ` style="--sc:${esc(s.color)}"` : ""}>
       <div class="btop"><input type="checkbox" class="bsel" data-n="${s.number}" aria-label="Select slot ${s.number} for bulk actions" ${bulkSel.has(s.number) ? "checked" : ""}><span class="bdot"></span><span class="bnum">${s.number}</span>${nm || room}<span class="bflags">${flags}</span></div>
-      <div class="bprog" title="${esc(s.program ?? "")}">${s.program ? `${esc(s.program)} <span class="muted">· ${esc(s.kind)}</span>` : "empty"}</div>
+      <div class="bprog" title="${esc((s.program ?? "") + (s.summary ? "\n" + s.summary.text : ""))}">${s.program ? `${esc(s.program)} <span class="muted">· ${esc(s.kind)}</span>` : "empty"}</div>
       <div class="bstats">${st === "Empty" ? "" : `<span>${st}</span>`}<span title="Panels online / IP IDs in this slot's IP table">${online}/${s.devices.length} online</span><span title="Events per second on the slot thread">${eps}</span></div>${crashLine}
     </div>`;
   }).join("");
@@ -897,7 +974,7 @@ $("#watch-stop").onclick = async () => {
 async function loadFiles(list) {
   const files = [...list].filter(f => f.name);
   if (!files.length) return alert("Choose a .cpz, .dll, .lpz or .smw first.");
-  const main = files.find(f => /\.(lpz|cpz|dll|zip|smw)$/i.test(f.name)) || (list === $("#file").files ? files[0] : null);
+  const main = pickMain(files) || (list === $("#file").files ? files[0] : null);
   if (!main) return toast("That isn't a program. Drop a .cpz, .dll, .lpz or .smw (with its .sig and sidecar files).", { error: true });
   const others = files.filter(f => f !== main);
   // In the desktop app, load it from disk: OpenVP finds the .sig itself and can watch the file.
@@ -910,9 +987,25 @@ async function loadFiles(list) {
   const fd = new FormData();
   fd.append("file", main);
   for (const f of others) fd.append("extra", f);
-  try { await api(`/api/slots/${sel}/program`, { method: "POST", body: fd }); toast(`Loaded ${main.name} into slot ${sel}.`); }
+  try { await api(`/api/slots/${sel}/program`, { method: "POST", body: fd }); toast(`Loaded ${main.name} into slot ${sel}.`); renderReady($("#ready"), null); }
   catch (e) { alert(e.message); }
   refreshAllSoon(sel);
+}
+
+// A program dropped on the page: say whether it will run, then let the person choose (it never blocks the load).
+async function dropLoad(list) {
+  const files = [...list].filter(f => f.name), main = pickMain(files);
+  if (!main) return toast("That isn't a program. Drop a .cpz, .dll, .lpz or .smw (with its .sig and sidecar files).", { error: true });
+  const d = $("#drop-dlg"), box = $("#drop-ready"), s = boardSlots.find(x => x.number === sel), n = sel;
+  $("#drop-title").textContent = `Load ${main.name} into slot ${n}${s?.name ? " · " + s.name : ""}?`;
+  box.innerHTML = `<div class="rd"><div class="rd-head"><span class="rd-badge">Checking…</span></div></div>`;
+  $("#drop-go").onclick = () => { d.close(); sel === n || select(n); loadFiles(files); };
+  $("#drop-cancel").onclick = () => d.close();
+  if (!d.open) d.showModal();
+  $("#drop-go").focus();
+  let rep = null;
+  try { rep = await checkProgram(files); } catch { }
+  renderReady(box, rep, (s?.program ? `This replaces ${s.program}; a snapshot of it is saved first. ` : "") + "The check is advice only: you can still load it.");
 }
 $("#upload").onclick = () => loadFiles($("#file").files);
 
@@ -1608,7 +1701,7 @@ async function slotAction(n, act) {
   return r;
 }
 const runAction = (n, act) => slotAction(n, act).catch(fail);
-function refreshAllSoon(n) { refreshSlots(); refreshBoard(); refreshHistory(); if (n === sel) { refreshFiles(); refreshIpTable(); } }
+function refreshAllSoon(n) { refreshSlots(); refreshBoard(); refreshHistory(); refreshActivitySoon(); if (n === sel) { refreshFiles(); refreshIpTable(); } }
 
 // ------------------------------------------------------------------ bulk selection
 function renderBulk() {
@@ -1777,7 +1870,7 @@ addEventListener("drop", e => {
   if (overFiles(e)) return;                       // the Files list handles its own drops
   e.preventDefault();
   if (document.querySelector("dialog[open]")) return;
-  loadFiles([...e.dataTransfer.files]);
+  dropLoad(e.dataTransfer.files);
 });
 
 // ------------------------------------------------------------------ keyboard shortcuts and the command palette
@@ -1785,7 +1878,7 @@ const SHORTCUTS = [
   ["1 – 9, 0", "Select slot 1 – 9, and 10"], ["S", "Start the selected slot"], ["X", "Stop the selected slot"], ["R", "Restart the selected slot"],
   ["U", "Unload the selected slot (Undo is offered)"], ["D", "Open the debugger for the selected slot"], ["P", "Open the paths view for the selected slot"],
   ["M", "Open metrics"], ["N", "Take a snapshot of the selected slot"], ["L", "Go to the log filter"], ["T", "Change the theme: auto, light, dark"],
-  ["Ctrl K  /  ⌘ K", "Search every action"], ["?", "Show this list"], ["Esc", "Close a box or menu"],
+  ["Ctrl K  /  ⌘ K", "Search every action and help topic"], ["Shift click  /  F1", "Open help for a button or control (or hover it and click the ?)"], ["?", "Show this list"], ["Esc", "Close a box or menu"],
 ];
 $("#keys-list").innerHTML = SHORTCUTS.map(([k, d]) => `<dt>${k.split("  /  ").map(x => `<kbd>${esc(x)}</kbd>`).join(" or ")}</dt><dd>${esc(d)}</dd>`).join("");
 const keysBack = $("#keys-back");
@@ -1866,6 +1959,13 @@ function paletteItems() {
   add("Go to the log filter", "L", () => { $("#log-sec").classList.remove("collapsed"); $("#log-filter").focus(); }, "search");
   add("Show keyboard shortcuts", "?", () => toggleKeys(true), "help keys");
   add("Show the welcome screen", "", () => $("#welcome-link").click(), "intro");
+  add("Try the demo", "samples in slots 1 and 2", tryDemo, "sample example getting started demo eisc");
+  add("Templates: download a starter project", "SIMPL# and CH5", openTemplates, "template starter download csproj ch5 ch5z new project");
+  add("Download the SIMPL# Pro starter project", ".zip", () => { location.href = "/api/templates/simpl-sharp"; setTimeout(refreshActivity, 800); }, "template csproj controlsystem build");
+  add("Download the CH5 panel starter", ".ch5z", () => { location.href = "/api/templates/ch5-panel"; setTimeout(refreshActivity, 800); }, "template html panel upload");
+  add("Show activity: who did what", "Activity", () => { const sec = $("#act-sec"); sec.classList.remove("collapsed"); sec.scrollIntoView({ block: "start" }); refreshActivity(); }, "log audit history feed events");
+  for (const t of helpTopics || [])
+    items.push({ label: "Help: " + t.label, hint: t.where, help: true, run: () => openHelp(t.anchor), key: ("help " + t.label + " " + t.where + " " + t.text).toLowerCase().replace(/\s+/g, " ") });
   return items;
 }
 
@@ -1889,7 +1989,14 @@ function fuzzy(q, text) {
 
 function renderPalette() {
   const q = palIn.value.trim().toLowerCase();
-  const scored = palItems.map((it, i) => ({ it, i, s: q ? fuzzy(q, it.key) : 0 })).filter(x => x.s >= 0);
+  const words = q.split(/\s+/).filter(Boolean);
+  // Help topics match whole words anywhere in their text (title matches rank higher); actions match fuzzily.
+  const scored = palItems.map((it, i) => {
+    if (!it.help) return { it, i, s: q ? fuzzy(q, it.key) : 0 };
+    if (q.length < 2 || !words.every(w => it.key.includes(w))) return { it, i, s: -1 };
+    const title = it.label.toLowerCase();
+    return { it, i, s: 2 + words.reduce((a, w) => a + (title.includes(w) ? 6 : 0), 0) };
+  }).filter(x => x.s >= 0);
   if (q) scored.sort((a, b) => b.s - a.s || a.i - b.i);
   palShown = scored.slice(0, 60).map(x => x.it);
   palOn = Math.min(palOn, Math.max(0, palShown.length - 1));
@@ -1920,6 +2027,7 @@ async function openPalette() {
     palExtra = { devices, recent };
     if (palBack.classList.contains("open")) { palItems = paletteItems(); renderPalette(); }
   } catch { }
+  if (!helpTopics) loadHelpTopics().then(() => { if (palBack.classList.contains("open")) { palItems = paletteItems(); renderPalette(); } });
 }
 function closePalette() { palBack.classList.remove("open"); palIn.blur(); }
 const togglePalette = () => palBack.classList.contains("open") ? closePalette() : openPalette();
@@ -1941,6 +2049,228 @@ $("#log-filter").oninput = () => { for (const d of $("#log").children) d.hidden 
 $("#log-filter").onkeydown = e => { if (e.key === "Escape") { e.target.value = ""; e.target.oninput(); e.target.blur(); } };
 
 
+// ------------------------------------------------------------------ will it run? (the readiness check)
+// When a file is chosen or dropped, OpenVP reads it without loading it and says whether it will run. It is advice only:
+// Load & start always works.
+const MAIN_RE = /\.(lpz|cpz|dll|zip|smw)$/i;
+const pickMain = files => files.find(f => MAIN_RE.test(f.name)) || null;
+const CHECK_LIMIT = 200 * 1048576;
+
+async function checkProgram(files) {
+  const main = pickMain(files) || (files.length === 1 ? files[0] : null);
+  if (!main) return null;
+  const others = files.filter(f => f !== main);
+  const mainPath = desktop?.pathForFile(main);
+  if (mainPath) return api("/api/check/path", jsonPost({ path: mainPath, files: others.map(f => desktop.pathForFile(f)).filter(Boolean) }));
+  if (main.size > CHECK_LIMIT) return { file: main.name, verdict: "skipped", headline: "Not checked", reason: "The file is too big to check before loading. It will still load.", problems: [], summary: null };
+  const fd = new FormData();
+  fd.append("file", main);
+  for (const f of others) fd.append("extra", f);
+  return api("/api/check", { method: "POST", body: fd });
+}
+
+function renderReady(el, rep, note) {
+  el.innerHTML = "";
+  if (!rep) { el.hidden = true; return; }
+  el.hidden = false;
+  const icon = { "will-run": "✓ ", partly: "! ", "wont-run": "✕ " }[rep.verdict] || "";
+  const box = document.createElement("div");
+  box.className = "rd rd-" + rep.verdict;
+  box.innerHTML = `<div class="rd-head"><span class="rd-badge"></span><b class="rd-file"></b></div>`;
+  box.querySelector(".rd-badge").textContent = icon + rep.headline;
+  box.querySelector(".rd-file").textContent = rep.file || "";
+  const add = (cls, text) => { const d = document.createElement("div"); d.className = cls; d.textContent = text; box.append(d); };
+  if (rep.reason) add("rd-why", rep.reason);
+  if (rep.summary?.text) add("rd-sum", rep.summary.text);
+  if (rep.problems?.length) {
+    const det = document.createElement("details");
+    det.open = rep.problems.length <= 5;
+    det.innerHTML = `<summary>What isn't supported yet (${rep.problems.length})</summary><ul></ul>`;
+    const ul = det.querySelector("ul");
+    for (const p of rep.problems) { const li = document.createElement("li"); li.textContent = `${p.kind}: ${p.name}`; if (p.detail) { const sm = document.createElement("small"); sm.textContent = " · " + p.detail; li.append(sm); } ul.append(li); }
+    box.append(det);
+  }
+  add("rd-note", note ?? "This is advice only: you can still load it.");
+  el.append(box);
+}
+
+let readyToken = 0;
+async function runReady() {
+  const files = [...$("#file").files], el = $("#ready"), tok = ++readyToken;
+  if (!files.length) { renderReady(el, null); return; }
+  el.hidden = false; el.innerHTML = `<div class="rd"><div class="rd-head"><span class="rd-badge">Checking…</span><b></b></div></div>`;
+  el.querySelector("b").textContent = (pickMain(files) || files[0]).name;
+  let rep = null;
+  try { rep = await checkProgram(files); } catch (e) { if (tok === readyToken) { el.innerHTML = ""; el.hidden = true; } return; }
+  if (tok === readyToken) renderReady(el, rep);
+}
+$("#file").addEventListener("change", runReady);
+
+// ------------------------------------------------------------------ try the demo
+async function tryDemo() {
+  let info;
+  try { info = await api("/api/demo"); } catch (e) { return fail(e); }
+  if (!info.available) return toast("The demo programs aren't installed with this copy of OpenVP.", { error: true });
+  const d = $("#demo-dlg");
+  $("#demo-v1").hidden = false; $("#demo-v2").hidden = true; $("#demo-err").hidden = true;
+  const warn = $("#demo-warn");
+  warn.hidden = !info.occupied.length;
+  warn.textContent = info.occupied.length
+    ? `This replaces ${info.occupied.map(o => `${o.program} in slot ${o.slot}`).join(" and ")}. A snapshot is saved first, so you can roll back from History.`
+    : "";
+  $("#demo-go").disabled = false;
+  if (!d.open) d.showModal();
+  $("#demo-go").focus();
+  $("#demo-go").onclick = async () => {
+    $("#demo-go").disabled = true; $("#demo-err").hidden = true;
+    try { await api("/api/demo", jsonPost({ replace: true })); }
+    catch (e) { $("#demo-err").hidden = false; $("#demo-err").textContent = e.message; $("#demo-go").disabled = false; return; }
+    select(1); refreshAllSoon(1);
+    window.open("panel.html?ipid=03&slot=1", "openvp-demo-panel-1");
+    $("#demo-v1").hidden = true; $("#demo-v2").hidden = false;
+  };
+}
+$("#demo-cancel").onclick = () => $("#demo-dlg").close();
+$("#demo-done").onclick = () => $("#demo-dlg").close();
+$("#demo-p1").onclick = () => window.open("panel.html?ipid=03&slot=1", "openvp-demo-panel-1");
+$("#demo-p2").onclick = () => window.open("panel.html?ipid=03&slot=2", "openvp-demo-panel-2");
+$("#demo-btn").onclick = tryDemo;
+
+// ------------------------------------------------------------------ templates
+async function openTemplates() {
+  const d = $("#tpl-dlg"), list = $("#tpl-list");
+  list.innerHTML = `<p class="muted">Loading…</p>`;
+  if (!d.open) d.showModal();
+  let items;
+  try { items = await api("/api/templates"); } catch (e) { list.innerHTML = ""; const p = document.createElement("p"); p.textContent = e.message; list.append(p); return; }
+  const how = {
+    "simpl-sharp": "Unzip it, run dotnet build in the StarterProgram folder (needs the .NET 8 SDK), then load bin/Debug/net8.0/StarterProgram.dll into a slot. It builds against OpenVP's own copy of the SIMPL# Pro API, in lib/.",
+    "ch5-panel": "In the IP table, click an IP ID and choose Upload .ch5z…, then Share… to get a link that opens it. Or unzip it and open index.html?host=localhost:8080&ipid=03&slot=1 as a plain page."
+  };
+  list.innerHTML = "";
+  for (const t of items) {
+    const box = document.createElement("div"); box.className = "tpl";
+    box.innerHTML = `<b></b><span></span><small></small>`;
+    box.querySelector("b").textContent = t.name; box.querySelector("span").textContent = t.description; box.querySelector("small").textContent = how[t.id] || "";
+    if (t.available) {
+      const a = document.createElement("a"); a.className = "dl"; a.href = t.url; a.setAttribute("download", t.file); a.textContent = "Download " + t.file; a.title = "Download " + t.name;
+      a.onclick = () => setTimeout(refreshActivity, 800);
+      box.append(a);
+    } else { const m = document.createElement("small"); m.textContent = "Not installed with this copy of OpenVP."; box.append(m); }
+    list.append(box);
+  }
+}
+$("#tpl-open").onclick = openTemplates;
+
+// ------------------------------------------------------------------ activity feed
+let actTimer = 0, actHtml = "";
+function actWhen(t) {
+  const d = new Date(t), now = new Date(), hm = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return d.toDateString() === now.toDateString() ? hm : `${d.toLocaleDateString([], { month: "short", day: "numeric" })} ${hm}`;
+}
+function refreshActivitySoon() { clearTimeout(actTimer); actTimer = setTimeout(refreshActivity, 400); }
+async function refreshActivity() {
+  const f = $("#act-filter").value;
+  const slot = f === "sel" ? sel : f === "all" ? "" : f;
+  let list;
+  try { list = await api(`/api/activity?limit=100${slot ? "&slot=" + slot : ""}`); } catch { return; }
+  const html = list.map(e => `<tr title="${esc(new Date(e.time).toLocaleString())}"><td class="when" data-who="${esc((e.user ? e.user + " · " : "") + e.who + (e.slot ? " · slot " + e.slot : ""))}">${esc(actWhen(e.time))}</td><td class="who">${esc(e.user ? e.user + " · " + e.who : e.who)}</td><td class="num">${e.slot ?? ""}</td><td class="what">${esc(e.text)}</td></tr>`).join("");
+  $("#act-empty").hidden = list.length > 0;
+  if (html !== actHtml) { actHtml = html; $("#act-table tbody").innerHTML = html; }
+}
+function fillActivityFilter() {
+  const f = $("#act-filter"), cur = f.value;
+  const html = `<option value="all">all slots</option><option value="sel">the selected slot</option>` + boardSlots.map(s => `<option value="${s.number}">slot ${s.number}${s.name ? " · " + esc(s.name) : ""}</option>`).join("");
+  if (f.dataset.html !== html) { f.dataset.html = html; f.innerHTML = html; f.value = [...f.options].some(o => o.value === cur) ? cur : "all"; }
+}
+$("#act-filter").onchange = refreshActivity;
+
+// ------------------------------------------------------------------ help on hover
+// Controls are tied to a section of help.html by data-help="anchor" (the nearest ancestor with one wins). Hover a control
+// and click the small ?, hold Shift and click it, press F1 on it, or long-press it on a touch screen.
+const CONTROL = "button, input, select, textarea, a[href], summary, label, [role=button], [role=switch], .btile";
+const openHelp = a => { window.open("help.html#" + encodeURIComponent(a), "openvp-help"); };
+const helpFor = el => el?.closest?.("[data-help]")?.dataset.help || null;
+{
+  const q = document.createElement("button");
+  q.id = "help-q"; q.type = "button"; q.hidden = true; q.textContent = "?"; q.setAttribute("aria-label", "Help for this control"); q.title = "Open help for this control";
+  document.body.append(q);
+  let target = null, showTimer = 0, hideTimer = 0, anchor = null;
+  const hide = () => { clearTimeout(showTimer); q.hidden = true; target = null; };
+  const place = el => {
+    const r = el.getBoundingClientRect();
+    q.style.left = Math.min(innerWidth - 24, Math.max(2, r.right - 10)) + "px";
+    q.style.top = Math.max(2, r.top - 9) + "px";
+  };
+  document.addEventListener("pointerover", e => {
+    if (e.pointerType === "touch" || !matchMedia("(hover: hover)").matches) return;
+    if (e.target === q) { clearTimeout(hideTimer); return; }
+    const el = e.target.closest?.(CONTROL);
+    if (!el || el.closest("dialog, #pal-back, #keys-back, #toasts") || el.id === "help-q") return;
+    const a = helpFor(el);
+    if (!a) return;
+    clearTimeout(hideTimer); clearTimeout(showTimer);
+    if (el === target) return;
+    showTimer = setTimeout(() => { target = el; anchor = a; place(el); q.hidden = false; }, 450);
+  });
+  document.addEventListener("pointerout", e => {
+    if (e.target === q || e.target.closest?.(CONTROL)) { clearTimeout(showTimer); hideTimer = setTimeout(hide, 250); }
+  });
+  q.addEventListener("pointerover", () => clearTimeout(hideTimer));
+  q.addEventListener("pointerout", () => { hideTimer = setTimeout(hide, 250); });
+  q.onclick = e => { e.stopPropagation(); if (anchor) openHelp(anchor); hide(); };
+  addEventListener("scroll", hide, true);
+  // Shift + click opens help instead of acting.
+  document.addEventListener("click", e => {
+    if (!e.shiftKey || e.ctrlKey || e.metaKey) return;
+    const el = e.target.closest?.(CONTROL), a = helpFor(el || e.target);
+    if (!a || e.target.closest("dialog, #pal-back")) return;
+    e.preventDefault(); e.stopPropagation(); openHelp(a);
+  }, true);
+  addEventListener("keydown", e => { if (e.shiftKey) document.body.classList.add("help-shift"); if (e.key === "F1") { const a = helpFor(document.activeElement); if (a) { e.preventDefault(); openHelp(a); } } });
+  addEventListener("keyup", e => { if (!e.shiftKey) document.body.classList.remove("help-shift"); });
+  addEventListener("blur", () => document.body.classList.remove("help-shift"));
+  // Long-press on touch.
+  let press = 0, pressed = false;
+  document.addEventListener("pointerdown", e => {
+    if (e.pointerType === "mouse") return;
+    const el = e.target.closest?.(CONTROL), a = helpFor(el);
+    if (!el || !a || el.closest("dialog, #pal-back")) return;
+    pressed = false; clearTimeout(press);
+    press = setTimeout(() => { pressed = true; openHelp(a); }, 650);
+  }, true);
+  const cancelPress = () => clearTimeout(press);
+  document.addEventListener("pointerup", cancelPress, true); document.addEventListener("pointercancel", cancelPress, true); document.addEventListener("pointermove", e => { if (Math.abs(e.movementX) + Math.abs(e.movementY) > 6) cancelPress(); }, true);
+  document.addEventListener("click", e => { if (pressed) { pressed = false; e.preventDefault(); e.stopPropagation(); } }, true);
+  document.addEventListener("contextmenu", e => { if (pressed || press) { const el = e.target.closest?.(CONTROL); if (el && helpFor(el)) e.preventDefault(); } });
+}
+
+// Help topics for the command palette: read from help.html the first time the palette opens.
+let helpTopics = null;
+async function loadHelpTopics() {
+  if (helpTopics) return helpTopics;
+  helpTopics = [];
+  try {
+    const html = await (await fetch("help.html")).text();
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    for (const sec of doc.querySelectorAll("main > section")) {
+      const secTitle = sec.querySelector("h2")?.textContent.trim() || sec.id;
+      let h3 = null;
+      for (const el of sec.children) {
+        if (el.tagName === "H3") { h3 = el; if (el.id) helpTopics.push({ label: el.textContent.trim(), where: secTitle, anchor: el.id, text: el.textContent }); }
+        else if (el.tagName === "DL") {
+          for (const dt of el.querySelectorAll(":scope > dt")) {
+            const dd = dt.nextElementSibling;
+            const anchor = dt.id || h3?.id || sec.id;
+            helpTopics.push({ label: dt.textContent.replace(/\s+/g, " ").trim(), where: [secTitle, h3?.textContent.trim()].filter(Boolean).join(" › "), anchor, text: dt.textContent + " " + (dd?.textContent || "") });
+          }
+        }
+      }
+    }
+  } catch { }
+  return helpTopics;
+}
+
 select(1);
 
 // ------------------------------------------------------------------ welcome screen
@@ -1956,6 +2286,7 @@ select(1);
     $("#welcome-go").focus();
   }
   $("#welcome-skip").onclick = () => d.close("skip");
+  $("#welcome-demo").onclick = () => { d.close("ok"); tryDemo(); };
   $("#welcome-link").onclick = e => { e.preventDefault(); showWelcome(); };
   const fromHash = () => { if (location.hash !== "#welcome") return false; history.replaceState(null, "", location.pathname + location.search); showWelcome(); return true; };
   addEventListener("hashchange", fromHash);
@@ -1971,6 +2302,7 @@ refreshHistory();
 setInterval(() => { if (!document.hidden) pollRecording(); }, 700);
 setInterval(refreshSlots, 3000);
 refreshBoard(); setInterval(refreshBoard, 2000);
+refreshActivity(); setInterval(() => { if (!document.hidden) refreshActivity(); }, 3000);
 setInterval(() => { if (!document.hidden) refreshIpTable(); }, 2000);
 </script>
 </body>

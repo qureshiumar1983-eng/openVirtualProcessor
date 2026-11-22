@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenVP starter panel</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Starter panel</h1>
+  <span id="state" class="state" role="status">connecting…</span>
+</header>
+<main>
+  <section>
+    <h2>Buttons</h2>
+    <p class="hint">Digital joins. A button lights up when the program sets its feedback join.</p>
+    <div class="grid">
+      <button class="btn" data-join="1">Lamp<small>join 1</small></button>
+      <button class="btn" data-join="2">Join 2<small>join 2</small></button>
+      <button class="btn" data-join="3">Join 3<small>join 3</small></button>
+      <button class="btn" data-join="10">To EISC<small>join 10</small></button>
+    </div>
+  </section>
+  <section>
+    <h2>Level</h2>
+    <p class="hint">Analog join 1, 0 to 65535. The program echoes it back.</p>
+    <input id="level" type="range" min="0" max="65535" value="0" aria-label="Level (analog join 1)">
+    <div class="read"><span id="level-fb">0</span> <small>analog feedback 1</small></div>
+  </section>
+  <section>
+    <h2>Text</h2>
+    <p class="hint">Serial join 1 goes to the program; the program answers on serial join 2 in upper case.</p>
+    <form id="text-form"><input id="text" type="text" placeholder="Type and press Enter" autocomplete="off" aria-label="Text (serial join 1)"><button type="submit">Send</button></form>
+    <div class="read"><span id="text-fb">&nbsp;</span> <small>serial feedback 2</small></div>
+    <div class="read"><span id="status-fb">&nbsp;</span> <small>serial feedback 10</small></div>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
