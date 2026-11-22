@@ -177,6 +177,23 @@
     #shares-table td::before { content:attr(data-l) " "; color:var(--muted); font-size:11px; }
     #shares-table td.act::before, #shares-table td.nm::before { content:""; }
   }
+  /* Internet access */
+  #net-bar { margin:12px 16px 0; padding:8px 12px; border:1px solid var(--line); border-radius:10px; background:var(--card); display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; }
+  #net-bar b { font-weight:600; }
+  .switch { position:relative; width:42px; height:24px; flex:none; border-radius:12px; border:1px solid var(--line); background:#111519; padding:0; cursor:pointer; }
+  .switch::after { content:""; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:#8b95a3; transition:left .15s, background .15s; }
+  .switch[aria-checked="true"] { background:#173a2c; border-color:var(--ok); }
+  .switch[aria-checked="true"]::after { left:20px; background:#7fe0b1; }
+  .switch.busy::after { background:var(--warn); }
+  .switch:disabled { opacity:.45; cursor:default; }
+  #net-state { font-size:12px; padding:1px 9px; border-radius:20px; background:#252c36; }
+  #net-state.on { background:#173a2c; color:#7fe0b1; } #net-state.err { background:#3d1b1b; color:#ff9b9b; } #net-state.wait { background:#3a321a; color:#f2cf7a; }
+  #net-url { font-family:ui-monospace, Menlo, monospace; font-size:13px; overflow-wrap:anywhere; }
+  #net-help { flex-basis:100%; margin:0; font-size:12px; color:var(--muted); }
+  #net-msg { flex-basis:100%; margin:0; font-size:13px; overflow-wrap:anywhere; }
+  #net-msg.err { color:#ff9b9b; }
+  #net-bar button { padding:2px 9px; font-size:12px; }
+  #net-bar details { flex-basis:100%; font-size:12px; color:var(--muted); } #net-bar details pre { margin:4px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; max-height:160px; overflow:auto; }
 </style>
 </head>
 <body>
@@ -184,6 +201,18 @@
   <h1>OpenVP</h1><small>open-source virtual control processor</small>
   <span style="flex:1"></span><a href="metrics.html" target="openvp-metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="panel.html" target="_blank" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a><a href="#welcome" id="welcome-link" title="Show the welcome screen again">Welcome</a>
 </header>
+<div id="net-bar">
+  <button id="net-switch" class="switch" role="switch" aria-checked="false" aria-labelledby="net-label" title="Turn the internet tunnel on or off"></button>
+  <b id="net-label">Internet access</b>
+  <span id="net-state">off</span>
+  <span id="net-url" hidden></span>
+  <button id="net-copy" hidden title="Copy the public address">Copy</button>
+  <button id="net-stop" hidden title="Turn the tunnel off. Everyone outside is cut off at once.">Stop</button>
+  <span id="net-ask" hidden><button id="net-dl" title="Download Cloudflare's official cloudflared into this program's data folder (tools), then start the tunnel">Download cloudflared and start</button> <button id="net-dl-no">Cancel</button></span>
+  <p id="net-msg" hidden></p>
+  <p id="net-help">Lets people outside your network open the panels you share, through a free Cloudflare tunnel (cloudflared, no account needed). Only shared-panel links work through it: the console, the API and the debugger are never reachable from the internet. Turn it off and all outside access stops.</p>
+  <details id="net-log" hidden><summary>cloudflared output</summary><pre></pre></details>
+</div>
 <section id="board">
   <h2 title="Every slot at a glance. Click a tile to select that slot.">Status board</h2>
   <div id="board-tiles"></div>
@@ -1126,13 +1155,17 @@ function untilText(t) {
 
 function ch5For(slot, ipId) { return ch5List.find(c => c.slot === slot && c.ipId.toUpperCase() === String(ipId).toUpperCase()); }
 
-// Where the link should point: the address this console was opened with; if that is localhost (useless to anyone
-// else), this computer's LAN addresses.
+// Where the link should point: the tunnel's public address when Internet access is on; else the address this
+// console was opened with; if that is localhost (useless to anyone else), this computer's LAN addresses.
 async function shareBases() {
   const out = [];
   const host = location.hostname;
   const isLocal = ["localhost", "127.0.0.1", "[::1]", "::1"].includes(host);
   const port = location.port ? ":" + location.port : "";
+  try {
+    const t = await api("/api/tunnel");
+    if (t.state === "on" && t.url) out.push({ label: `Internet (${new URL(t.url).host})`, base: t.url, internet: true });
+  } catch { }
   if (!isLocal) out.push({ label: `This address (${location.host})`, base: location.origin, lan: true });
   let net = { lan: [] };
   try { net = await api("/api/network"); } catch { }
@@ -1298,7 +1331,7 @@ async function showShareResult(link, pin) {
     const note = $("#share-addr-note");
     note.hidden = !b.local && !b.lan;
     note.textContent = b.local ? "This link only works on this computer. Open the console by this computer's network address to get one other people can use."
-      : b.lan ? "This address works for people on the same network." : "";
+      : b.lan ? "This address works for people on the same network. To reach people elsewhere, turn on Internet access at the top of the page." : "";
   };
   sel.onchange = draw; draw();
   $("#share-copied").textContent = "";
@@ -1309,6 +1342,52 @@ async function showShareResult(link, pin) {
 
 $("#d-share").onclick = () => { if (iptSel) { const d = iptData.find(x => x.ipId === iptSel.ipId); if (d) openShare(d.slot, d.ipId); } };
 refreshShares(); setInterval(() => { if (!document.hidden) refreshShares(); }, 3000);
+
+// ------------------------------------------------------------------ Internet access (tunnel)
+let tunnelSt = null, tunnelBusy = false;
+function renderTunnel() {
+  const t = tunnelSt; if (!t) return;
+  const sw = $("#net-switch"), st = $("#net-state");
+  const on = t.state === "on", wait = t.state === "starting" || t.state === "downloading";
+  sw.setAttribute("aria-checked", on || wait ? "true" : "false");
+  sw.classList.toggle("busy", wait);
+  sw.disabled = !t.available || tunnelBusy;
+  st.className = on ? "on" : wait || t.needsDownload ? "wait" : t.state === "error" ? "err" : "";
+  st.textContent = !t.available ? "unavailable" : t.needsDownload ? "needs cloudflared" : t.state === "downloading" ? "downloading…" : t.state === "starting" ? "starting…" : t.state === "on" ? "on" : t.state === "error" ? "error" : "off";
+  const url = $("#net-url");
+  url.hidden = !on; url.textContent = on ? t.url : "";
+  $("#net-copy").hidden = !on; $("#net-stop").hidden = !(on || wait);
+  $("#net-ask").hidden = !t.needsDownload;
+  const msg = $("#net-msg");
+  const text = t.needsDownload ? `cloudflared isn't installed. OpenVP can download Cloudflare's official build from ${t.downloadUrl ? new URL(t.downloadUrl).host + "/cloudflare/cloudflared" : "github.com/cloudflare/cloudflared"} (over HTTPS, about 40 MB) and keep it in the data folder, under tools. Nothing is downloaded unless you click the button.`
+    : t.state === "error" || !t.available || wait ? (t.message || t.unavailableReason || "") : on ? "Public address: anyone with a shared link can open it from the internet. It can take a few seconds before the address answers." : "";
+  msg.hidden = !text; msg.textContent = text; msg.className = t.state === "error" || !t.available ? "err" : "";
+  if (t.needsDownload) msg.className = "";
+  const log = $("#net-log");
+  log.hidden = !(t.log && t.log.length && (t.state === "error" || on));
+  if (!log.hidden) log.querySelector("pre").textContent = t.log.join("\n");
+}
+async function refreshTunnel() {
+  try { tunnelSt = await api("/api/tunnel"); } catch { return; }
+  renderTunnel();
+}
+async function tunnelCall(path, body) {
+  tunnelBusy = true; renderTunnel();
+  try { tunnelSt = await api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }); }
+  catch (e) { tunnelSt = { ...(tunnelSt || {}), available: true, state: "error", message: e.message }; }
+  tunnelBusy = false; renderTunnel();
+}
+$("#net-switch").onclick = () => {
+  if (!tunnelSt || !tunnelSt.available) return;
+  if (tunnelSt.state === "on" || tunnelSt.state === "starting" || tunnelSt.state === "downloading") tunnelCall("/api/tunnel/stop");
+  else tunnelCall("/api/tunnel/start", { download: false });
+};
+$("#net-stop").onclick = () => tunnelCall("/api/tunnel/stop");
+$("#net-dl").onclick = () => tunnelCall("/api/tunnel/start", { download: true });
+$("#net-dl-no").onclick = () => tunnelCall("/api/tunnel/stop");
+$("#net-copy").onclick = e => { if (tunnelSt && tunnelSt.url) copyText(tunnelSt.url, e.target); };
+refreshTunnel();
+setInterval(() => { if (!document.hidden || (tunnelSt && ["starting", "downloading"].includes(tunnelSt.state))) refreshTunnel(); }, 1500);
 
 select(1);
 

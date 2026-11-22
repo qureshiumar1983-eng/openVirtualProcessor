@@ -25,7 +25,7 @@ Open **http://localhost:8080**. From another machine you'll be asked for the acc
 
 ### Desktop app (Windows)
 
-**`OpenVP.exe`** is OpenVP as a desktop app (Electron), in one file: nothing to install, no .NET needed, no console window. Run it and the web console opens in its own window. Test panels and the debugger open in their own windows too. Closing the main window stops OpenVP. Your data and the log (`openvp.log`) are kept in `%APPDATA%\OpenVP`. The first time it runs, Windows may ask whether to let it through the firewall; allow it if you want panels or other machines to connect.
+**`OpenVP.exe`** is OpenVP as a desktop app (Electron), in one file: nothing to install, no .NET needed, no console window. Run it and the web console opens in its own window. Test panels and the debugger open in their own windows too. Closing the main window stops OpenVP. Your data and the log (`openvp.log`) are kept in `%APPDATA%\OpenVP`; shared-panel links are in `%APPDATA%\OpenVP\data\shares.json` and a downloaded `cloudflared` in `%APPDATA%\OpenVP\data\tools`. The internet tunnel is stopped when the app quits. The first time it runs, Windows may ask whether to let it through the firewall; allow it if you want panels or other machines to connect.
 
 **Loading from your computer.** In the desktop app, **Load & start** loads the program from where it is on disk rather than uploading a copy, so the files that belong with it come along without picking them: the `.sig` with the same name (or the only `.sig` in that folder), the `.lpz` behind a `.smw`, and sidecars such as `.openvp.json`. Tick **Reload when the file changes** and the slot reloads by itself whenever the program or its `.sig` changes, for example every time you compile in SIMPL Windows. A running program starts again and a stopped one stays stopped. In a browser on the OpenVP computer itself, **Load from path…** does the same from a typed path. From other machines you still upload the files.
 
@@ -121,13 +121,13 @@ A panel can connect before its program loads. It binds to the IP ID and comes on
 
 ### Sharing a panel
 
-To let someone else use a panel, click **Share…** on an IP ID in the IP table. OpenVP makes a link for that slot and IP ID. Send it, and the person opens it in their browser (a phone works well; the box also shows a QR code) and controls the program straight away.
+To let someone else use a panel, click **Share…** on an IP ID in the IP table. OpenVP makes a link for that slot and IP ID. Send it, and the person opens it in their browser (a phone works well; the box also shows a QR code) and controls the program straight away. For someone outside your network, turn on [Internet access](#internet-access-tunnel) first.
 
 - **What the link opens.** `/s/{token}` opens the panel for that slot and IP ID, and nothing else. The slot and IP ID are stored with the link, never taken from the address, so changing the address can't reach another one. The person can press joins on that IP ID and see its feedback. They can't open the console, the API, the debugger or trace streams, the files, other slots or other IP IDs. Their browser talks to OpenVP over a WebSocket at `/s/{token}/ws`, which does the same job as `/ws/panel` but only for that link.
 - **The link.** The token is 192 random bits. A link has a label (only you see it), an optional **PIN** (4 to 8 digits), and an expiry of 1 hour, 1 day, 1 week or never. The console shows when it was created and last used and how many people have it open now. Links are kept in `data/shares.json` (readable only by its owner on Linux and macOS, like `apikey.txt`).
 - **PIN.** Only a salted hash is stored (PBKDF2-SHA256), so a PIN can't be shown again; make a new link to change it. After a correct PIN the browser keeps a cookie for that link only (HttpOnly, SameSite=Strict, limited to `/s/{token}`). Wrong tries are limited: 5 wrong PINs from one address lock that address out of that link for 5 minutes, and 20 wrong PINs from all addresses together lock the link for 5 minutes.
 - **Revoke and expiry.** **Revoke** (in **Shared panels**) deletes the link. Anyone connected is disconnected within a few seconds and their page shows "This link has expired or was revoked". The same happens when a link expires.
-- **Which address goes in the link.** The address the console was opened with. If that is `localhost`, which means nothing to anyone else, the box offers this computer's network addresses instead. A link on a network address only works for people on that network.
+- **Which address goes in the link.** The address the console was opened with. If that is `localhost`, which means nothing to anyone else, the box offers this computer's network addresses instead. A link on a network address only works for people on that network. With [Internet access](#internet-access-tunnel) on, links use the tunnel's public address instead.
 - **Test panel or CH5.** With no CH5 project for the IP ID, the link opens OpenVP's own test panel with the slot and IP ID fixed (no pickers). With a CH5 project, it opens that.
 
 **CH5 (HTML5) panels.** Upload a CH5 project archive (`.ch5z`, which is a zip) for an IP ID with **Upload .ch5z…** in the IP table's details (or in the Share box), or `POST /api/slots/{n}/panels/{ipid}/ch5`. It is unpacked to `data/panels/slotNN/ipidXX/` and served to link holders under `/s/{token}/app/`. The archive must contain an `index.html` (at the top, or inside one folder). Paths that would escape the folder (`../`, absolute paths, drive letters) are refused, an archive over 100 MB, 300 MB unpacked or 10,000 files is refused, and nothing is installed if any entry is bad. OpenVP ships no Crestron files.
@@ -138,6 +138,26 @@ What works with CH5, and what doesn't:
 - Projects normally bundle Crestron's own CrComLib. OpenVP pins `window.CrComLib` to its own version, so when the bundle loads and assigns `window.CrComLib` the assignment is ignored and the page keeps talking to OpenVP. A script that declares it with `let` or `const` at the top level would still fail.
 - **Not covered:** the CH5 web components (`ch5-button`, `ch5-slider`, and so on) and anything else that uses the bundled library's own internal signal system instead of the global `CrComLib` functions, contract-editor signal names, and the library's own connection code. A project made entirely of CH5 components with contract names will load but will not control the program. This has been tested with a small hand-made page, not with real Crestron CH5 Studio output.
 - Classic VT Pro-e XPanels are not CH5. They connect over CIP.
+
+### Internet access (tunnel)
+
+To let someone outside your network open a shared panel, turn on **Internet access** at the top of the console. OpenVP runs [`cloudflared`](https://github.com/cloudflare/cloudflared) as a Cloudflare "quick tunnel" (`cloudflared tunnel --url http://127.0.0.1:8085 --no-autoupdate`), which is free and needs no account. The console shows the public `https://….trycloudflare.com` address, the status (starting, on, error, off) and a **Stop** button. While it is on, share links use that address (so the QR code works from anywhere). Turning it off kills `cloudflared`, and all outside access stops. It is off at every start unless you set `OpenVP:TunnelAutoStart=true`. A quick tunnel's address changes every time it starts, so a link you copied earlier points at the old address (the link itself is still valid): copy it again from **Shared panels**.
+
+**The tunnel only exposes shared panels.** It does not point at the console's port.
+
+- OpenVP opens a second listener on `127.0.0.1:8085` (`OpenVP:TunnelPort`) and `cloudflared` is pointed only at that. Nothing on the console's port (8080) is reachable through the tunnel.
+- Every request that arrives on the tunnel port is treated as remote, whatever its address or `Host` header. (`cloudflared` connects from 127.0.0.1, which would otherwise look local.) None of them gets the "local machine needs no key" exception.
+- The tunnel port serves only `/s/{token}…`: the share page, its WebSocket, its CH5 files and the one script they need, all under the link's own address. Everything else (the console, `/api/*`, `/ws/trace`, `/ws/metrics`, `/ws/panel`, the debugger, help and metrics pages) is a plain 404, even with the right access key.
+- `/s/{token}…` needs the link's token (and the PIN, if the link has one). A request to the console's own port that carries `Cf-Connecting-IP`, `Cf-Ray` or `CF-Visitor`, as well as `X-Forwarded-For`, `Forwarded` or `X-Real-IP`, is never treated as local either.
+- If the tunnel port is the same as the console's port, or is already in use, Internet access is switched off (the console says why) rather than risk it.
+
+**Where `cloudflared` comes from.** OpenVP uses `OpenVP:CloudflaredPath` if that is set, else `cloudflared` on the PATH, else the copy it downloaded earlier into `data/tools`. If there is none, the first time you turn Internet access on, the console asks. Only if you click **Download cloudflared and start** does OpenVP download Cloudflare's official build for your system from `https://github.com/cloudflare/cloudflared/releases/latest/download/…` (over HTTPS) into `data/tools`. On macOS Cloudflare publishes a `.tgz`, which OpenVP unpacks. There is no signature check beyond HTTPS from GitHub, so install `cloudflared` yourself and set `OpenVP:CloudflaredPath` if you want to control that.
+
+**Limits.**
+
+- Classic VT Pro-e XPanels and the Crestron apps connect over CIP (TCP 41794), which cannot go through this tunnel. They need port 41794 reachable directly (same network, VPN or a port forward). CIP support is experimental and untested with real XPanels. The tunnel is for browser panels and CH5 projects.
+- Quick tunnels have no uptime guarantee and are subject to Cloudflare's terms. For something permanent, run your own named tunnel or reverse proxy in front of the tunnel port.
+- On Windows and in the desktop app, `cloudflared` is stopped when OpenVP stops. If the OpenVP process is killed outright on Linux or macOS (`kill -9`), `cloudflared` can be left running; it is harmless (it can only reach the tunnel port) but stop it yourself.
 
 ### Room ID
 
@@ -272,13 +292,15 @@ A SIMPL# program is .NET code that runs inside the OpenVP process, so anyone who
 - If `OpenVP:ApiKey` isn't set, a random key is generated on first start, saved in `data/apikey.txt` (readable only by its owner) and printed to the console.
 - In a browser, open `http://host:8080/?key=KEY` once, or type the key into the login box. You'll get an HttpOnly, SameSite=Strict cookie.
 - From scripts, send `Authorization: Bearer KEY` or `X-OpenVP-Key: KEY`.
-- Requests from the same machine to `localhost` don't need the key, unless `OpenVP:LocalRequiresKey=true`. This exception never applies to requests that arrive through a reverse proxy (with `X-Forwarded-For`, `Forwarded` or `X-Real-IP` headers) or are addressed to a host name other than localhost, which also stops DNS-rebinding attacks.
+- Requests from the same machine to `localhost` don't need the key, unless `OpenVP:LocalRequiresKey=true`. This exception never applies to requests that arrive through a reverse proxy (with `X-Forwarded-For`, `Forwarded`, `X-Real-IP`, `Cf-Connecting-IP`, `Cf-Ray` or `CF-Visitor` headers), to anything that arrives on the internet tunnel's port, or to a host name other than localhost, which also stops DNS-rebinding attacks.
 - Requests from a web page on another site are refused (403) even when the browser has the cookie, and even from localhost. So a malicious page open in your browser can't upload a program.
 - Panels (`/ws/panel` and CIP on 41794) don't need the key, because they can only press joins, like panels on a real processor. Set `OpenVP:PanelsRequireKey=true` to protect `/ws/panel` too. CIP has no way to send a key, so keep port 41794 on a trusted network.
 - **Shared panel links** (`/s/{token}`) don't need the key either: the secret token in the link is the credential. A link is for one slot and IP ID and can only press joins there. Treat it like a password: anyone who has it (and the PIN, if there is one) can use that panel until it expires or you revoke it. Links, their tokens and hashed PINs are stored in `data/shares.json`, owner-only on Linux and macOS. Pages under `/s/` are sent with `Referrer-Policy: no-referrer` so the link doesn't leak to other sites. A CH5 project you upload is your own code running in the link holder's browser, on the same address as the console, so only upload projects you trust.
 - `OpenVP:ApiKey=off` turns the key off. Only do that on a network you trust completely.
 
-Traffic is plain HTTP. To use OpenVP across an untrusted network, put it behind a reverse proxy that adds HTTPS.
+- **Internet access (tunnel)** exposes only shared panels, through a separate listener that serves nothing but `/s/{token}…`; see [Internet access (tunnel)](#internet-access-tunnel). The console, API and debugger are never reachable through it.
+
+Traffic is plain HTTP. To use OpenVP across an untrusted network, put it behind a reverse proxy that adds HTTPS. Through the internet tunnel, Cloudflare provides HTTPS between the visitor and Cloudflare.
 
 ## Configuration
 
@@ -295,6 +317,9 @@ Traffic is plain HTTP. To use OpenVP across an untrusted network, put it behind 
 | `OpenVP:LocalRequiresKey` | `false` | Require the key from localhost too |
 | `OpenVP:PanelsRequireKey` | `false` | Require the key for browser panels (`/ws/panel`) |
 | `OpenVP:UnsupportedLog` | `docs/unsupported.md` in a source checkout, else `unsupported.md` in the data folder | Where the list of unsupported symbols is kept (see [Compatibility](#compatibility)); `off` keeps it in memory only |
+| `OpenVP:TunnelPort` | `8085` | Port of the second listener (on 127.0.0.1 only) that the internet tunnel points at. `0` switches Internet access off. Must differ from the console's port |
+| `OpenVP:CloudflaredPath` | | Path to `cloudflared`. If empty, OpenVP looks on the PATH, then in `data/tools` |
+| `OpenVP:TunnelAutoStart` | `false` | Start the tunnel when OpenVP starts (only if `cloudflared` is already installed; it never downloads by itself) |
 | `OpenVP:Autoload:slot1` | | Program file to load into slot 1 at startup |
 | `Urls` | `http://0.0.0.0:8080` | Web console address |
 
@@ -344,6 +369,8 @@ Every endpoint except `/api/info` and `/api/login` needs the access key (see [Se
 | GET | `/api/panels` | The uploaded CH5 projects (slot, IP ID, name, files, size) |
 | POST / DELETE | `/api/slots/{n}/panels/{ipid}/ch5` | Upload a `.ch5z` as multipart `file` (replaces any project there; 400 with the reason if it is refused) · remove the project |
 | GET | `/api/network` | This computer's LAN addresses, for building a link someone else can reach |
+| GET | `/api/tunnel` | Internet access: `state` (`off`, `downloading`, `starting`, `on`, `error`), `url`, `message`, `needsDownload`, `available`, recent `cloudflared` output |
+| POST | `/api/tunnel/start` · `tunnel/stop` | Start the tunnel (`{"download":true}` also allows downloading `cloudflared` if it isn't installed; without it you get `needsDownload`) · stop it and kill `cloudflared` |
 | GET / WS | `/s/{token}` · `/s/{token}/ws` · `/s/{token}/app/…` · `/s/{token}/status` | What a link holder uses (no access key; the token and PIN are the credential). `410` once the link has expired or been revoked. `POST /s/{token}/pin` checks a PIN |
 | GET | `/api/info` | Version, slot count, and whether you're logged in |
 | POST | `/api/login` · `/api/logout` | `{"key":"..."}`; sets or clears the login cookie |

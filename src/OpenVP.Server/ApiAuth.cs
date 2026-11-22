@@ -15,7 +15,9 @@ namespace OpenVP.Server;
 ///
 /// Requests from this machine (loopback) don't need the key unless <c>OpenVP:LocalRequiresKey</c> is true,
 /// and never when they carry a proxy's forwarding header, since a reverse proxy on this machine would
-/// otherwise make every remote user look local. Panels (<c>/ws/panel</c>, CIP) can only press joins, so they
+/// otherwise make every remote user look local. The same goes for Cloudflare's headers (<c>Cf-Connecting-IP</c>,
+/// <c>Cf-Ray</c>, <c>CF-Visitor</c>), and for every request that arrives on the tunnel port (see
+/// <see cref="TunnelGate"/>), whatever its address or Host header. Panels (<c>/ws/panel</c>, CIP) can only press joins, so they
 /// stay open unless <c>OpenVP:PanelsRequireKey</c> is true.
 /// </summary>
 public sealed class ApiAuth
@@ -77,13 +79,17 @@ public sealed class ApiAuth
     /// </summary>
     public static bool IsDirectLocal(HttpContext ctx)
     {
+        // The tunnel's agent (cloudflared) connects from 127.0.0.1 and can send any Host header, so nothing
+        // that arrives on the tunnel port is ever "local".
+        if (ctx.Items.ContainsKey(TunnelGate.ItemKey)) return false;
         var ip = ctx.Connection.RemoteIpAddress;
         if (ip == null || !IPAddress.IsLoopback(ip)) return false;
         var host = ctx.Request.Host.Host.Trim('[', ']');
         if (!(host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || (IPAddress.TryParse(host, out var h) && IPAddress.IsLoopback(h))))
             return false;
         var hd = ctx.Request.Headers;
-        return !hd.ContainsKey("X-Forwarded-For") && !hd.ContainsKey("Forwarded") && !hd.ContainsKey("X-Real-IP");
+        return !hd.ContainsKey("X-Forwarded-For") && !hd.ContainsKey("Forwarded") && !hd.ContainsKey("X-Real-IP")
+            && !hd.ContainsKey("Cf-Connecting-IP") && !hd.ContainsKey("Cf-Ray") && !hd.ContainsKey("CF-Visitor");
     }
 
     /// <summary>A browser request from a page on another site (blocks cross-site WebSocket hijacking).</summary>

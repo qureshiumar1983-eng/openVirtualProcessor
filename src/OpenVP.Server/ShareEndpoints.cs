@@ -12,10 +12,10 @@ namespace OpenVP.Server;
 
 /// <summary>
 /// Shared panels. Two groups of endpoints:
-///   - <c>/api/shares</c>, <c>/api/panels</c>, <c>/api/network</c>: for the console, protected by the
+///   - <c>/api/shares</c>, <c>/api/panels</c>, <c>/api/tunnel</c>, <c>/api/network</c>: for the console, protected by the
 ///     access key like the rest of /api.
 ///   - <c>/s/{token}/...</c>: what a link holder gets. The token is the credential; the slot and IP ID come from the
-///     share, never from the request.
+///     share, never from the request. These are the only paths the tunnel port serves (see <see cref="TunnelGate"/>).
 /// </summary>
 internal static class ShareEndpoints
 {
@@ -35,7 +35,7 @@ internal static class ShareEndpoints
         return p;
     }
 
-    public static void Map(WebApplication app, Processor processor, ShareStore shares, Ch5Panels ch5)
+    public static void Map(WebApplication app, Processor processor, ShareStore shares, Ch5Panels ch5, TunnelManager? tunnel, TunnelGate gate, string? tunnelUnavailable)
     {
         var web = app.Environment.WebRootFileProvider;
 
@@ -125,13 +125,56 @@ internal static class ShareEndpoints
         app.MapGet("/api/network", () => new
         {
             host = Dns.GetHostName(),
-            lan = LanAddresses()
+            lan = LanAddresses(),
+            tunnelPort = tunnel?.Port
+        });
+
+        object TunnelDto(TunnelStatus s) => new
+        {
+            available = tunnel != null,
+            unavailableReason = tunnelUnavailable,
+            state = s.State.ToString().ToLowerInvariant(),
+            url = s.Url,
+            message = s.Message,
+            needsDownload = s.NeedsDownload,
+            downloadUrl = s.DownloadUrl,
+            binary = s.Binary,
+            port = tunnel?.Port,
+            log = s.Log
+        };
+        var idle = new TunnelStatus(TunnelState.Off, null, tunnelUnavailable, false, null, null, Array.Empty<string>());
+        app.MapGet("/api/tunnel", () => TunnelDto(tunnel?.Status() ?? idle));
+        app.MapPost("/api/tunnel/start", async (HttpContext ctx) =>
+        {
+            if (tunnel == null) return Results.Json(new { error = tunnelUnavailable ?? "Internet access is not available." }, statusCode: 409);
+            var download = false;
+            try
+            {
+                if (ctx.Request.ContentLength > 0 && await JsonSerializer.DeserializeAsync<JsonElement>(ctx.Request.Body) is { ValueKind: JsonValueKind.Object } b
+                    && b.TryGetProperty("download", out var d)) download = d.ValueKind == JsonValueKind.True;
+            }
+            catch (JsonException) { }
+            // Keep going in the background (the download or cloudflared's start-up can take a while); the console polls.
+            var run = tunnel.StartAsync(download);
+            await Task.WhenAny(run, Task.Delay(2000));
+            return Results.Ok(TunnelDto(tunnel.Status()));
+        });
+        app.MapPost("/api/tunnel/stop", () =>
+        {
+            tunnel?.Stop();
+            return Results.Ok(TunnelDto(tunnel?.Status() ?? idle));
         });
 
         // ------------------------------------------------------------------ what a link holder gets
 
         string ClientKey(HttpContext ctx)
         {
+            // cloudflared connects from 127.0.0.1 and passes the visitor's address on; only trust that on the tunnel port.
+            if (gate.IsTunnelRequest(ctx))
+            {
+                var cf = ctx.Request.Headers["Cf-Connecting-IP"].ToString();
+                if (cf.Length is > 0 and <= 64) return cf;
+            }
             var ip = ctx.Connection.RemoteIpAddress;
             if (ip is { IsIPv4MappedToIPv6: true }) ip = ip.MapToIPv4();
             return ip?.ToString() ?? "?";
@@ -312,10 +355,12 @@ internal static class ShareEndpoints
 
             var remote = ctx.Connection.RemoteIpAddress;
             if (remote is { IsIPv4MappedToIPv6: true }) remote = remote.MapToIPv4();
-            var client = new DeviceConnection("Web panel", remote?.ToString(), ctx.Connection.RemotePort);
+            var who = gate.IsTunnelRequest(ctx) ? ClientKey(ctx) : remote?.ToString();
+            var client = new DeviceConnection("Web panel", who, gate.IsTunnelRequest(ctx) ? 0 : ctx.Connection.RemotePort);
             var ua = ctx.Request.Headers.UserAgent.ToString();
             if (ua.Length > 0) ClientIdentifier.ApplyUserAgent(client, ua.Length > 500 ? ua[..500] : ua);
             client.SetDetail("Shared link", string.IsNullOrEmpty(link.Label) ? link.Id : $"{link.Label} ({link.Id})");
+            client.SetDetail("Via", gate.IsTunnelRequest(ctx) ? "internet tunnel" : "direct");
 
             using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
             using var open = shares.OpenConnection(link.Id);

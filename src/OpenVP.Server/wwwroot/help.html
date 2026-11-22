@@ -87,6 +87,17 @@
     <dt><span class="b">Help</span></dt><dd>Opens this page.</dd>
   </dl>
 
+  <h3 id="internet">Internet access</h3>
+  <p class="muted">The bar under the title. Lets people outside your network open the panels you share.</p>
+  <dl>
+    <dt>The switch</dt><dd>Turns Internet access on or off. When on, OpenVP runs <code>cloudflared</code>, which makes a free Cloudflare "quick tunnel" (no account) and gives it a public <code>https://….trycloudflare.com</code> address. Only shared-panel links work through it. The console, the API and the debugger can't be reached from the internet. It is off every time OpenVP starts.</dd>
+    <dt>The status</dt><dd><b>starting</b> while <code>cloudflared</code> starts, <b>on</b> when the address is ready (it can take a few seconds before it answers), <b>error</b> with the reason if something went wrong or <code>cloudflared</code> stopped, <b>off</b> when it is off. <b>cloudflared output</b> shows its recent messages.</dd>
+    <dt>The address · <span class="b">Copy</span></dt><dd>The public address while the tunnel is on. While it is on, new share links use it. The address changes each time the tunnel starts, so links you copied earlier need the new address.</dd>
+    <dt><span class="b">Stop</span></dt><dd>Turns the tunnel off and kills <code>cloudflared</code>. Everyone outside is cut off at once.</dd>
+    <dt><span class="b">Download cloudflared and start</span></dt><dd>Shown the first time, if <code>cloudflared</code> isn't installed. OpenVP downloads Cloudflare's official build from github.com/cloudflare/cloudflared into its data folder (<code>tools</code>), only after you click this. <span class="b">Cancel</span> downloads nothing. If you'd rather install <code>cloudflared</code> yourself, put it on the PATH or set <code>OpenVP:CloudflaredPath</code>.</dd>
+    <dt>Not for XPanel</dt><dd>Classic VT Pro-e XPanels and the Crestron apps connect over CIP (port 41794), which can't go through the tunnel. Browser panels and CH5 projects can.</dd>
+  </dl>
+
   <h3>Status board</h3>
   <dl>
     <dt>A tile</dt><dd>One per slot, across the top of the page, so you can see every slot without clicking into it. A tile shows the slot number and Room ID, the program and its kind (or "empty"), the state (green dot for Running, amber for Stopped, red for Error, dim for empty), how many of the slot's IP IDs have a panel online, and events per second. Click a tile to select that slot, the same as clicking its row below. The selected slot's tile is highlighted. The board refreshes every 2 seconds.</dd>
@@ -132,7 +143,7 @@
   <dl>
     <dt><span class="b">Share…</span> box</dt><dd>Choose a <b>Label</b> (only you see it), an optional <b>PIN</b> and when the link <b>Expires</b>, then click <span class="b">Create link</span>. The box then shows the link with a <span class="b">Copy link</span> button and a QR code for a phone camera.</dd>
     <dt><b>PIN</b></dt><dd>4 to 8 digits. The person is asked for it before the panel opens. <span class="b">Random</span> fills in a 6-digit one. OpenVP keeps only a scrambled copy, so the PIN is shown once, when you create the link: write it down and send it separately from the link. Five wrong tries from one device lock it out for 5 minutes.</dd>
-    <dt><b>Address in the link</b></dt><dd>Where the link points. If you opened the console as <code>localhost</code>, that wouldn't work for anyone else, so this lists this computer's network addresses. Pick the one the other person can reach. Links on a network address only work for people on that network.</dd>
+    <dt><b>Address in the link</b></dt><dd>Where the link points. If you opened the console as <code>localhost</code>, that wouldn't work for anyone else, so this lists this computer's network addresses. Pick the one the other person can reach. Links on a network address only work for people on that network. With <a href="#internet">Internet access</a> on, the first choice is the tunnel's public address, which works from anywhere.</dd>
     <dt>CH5 project</dt><dd>If this IP ID has an uploaded <code>.ch5z</code>, the link opens that. Otherwise it opens OpenVP's own test panel, with the IP ID fixed. The box has the same Upload / Replace / Remove buttons.</dd>
   </dl>
 

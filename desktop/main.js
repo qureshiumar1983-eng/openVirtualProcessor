@@ -236,7 +236,8 @@ function stopServer() {
   const s = server;
   server = null;
   try {
-    // dotnet watch runs the server as a child process, so stop the whole tree.
+    // dotnet watch runs the server as a child process, so stop the whole tree. (This also takes down cloudflared,
+    // the internet tunnel, which the server starts as its own child, so no tunnel is left running.)
     if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(s.pid), '/T', '/F'], { windowsHide: true });
     else if (DEV) process.kill(-s.pid, 'SIGKILL');   // dotnet watch ignores SIGTERM
     else s.kill();

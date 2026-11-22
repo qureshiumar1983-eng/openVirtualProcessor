@@ -25,6 +25,19 @@ public static class OpenVpServer
         builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = 512L * 1024 * 1024);
         var cfg = builder.Configuration.GetSection("OpenVP");
 
+        // The internet tunnel gets its own listener on 127.0.0.1, never the console's port (see TunnelGate).
+        var tunnelPort = cfg.GetValue("TunnelPort", 8085);
+        string? tunnelUnavailable = null;
+        if (tunnelPort > 0)
+        {
+            var urls = builder.Configuration["urls"];
+            if (string.IsNullOrWhiteSpace(urls)) urls = "http://localhost:5000";
+            tunnelUnavailable = CheckTunnelPort(urls, tunnelPort);
+            if (tunnelUnavailable == null) builder.WebHost.UseUrls(urls + ";http://127.0.0.1:" + tunnelPort);
+            else Console.WriteLine("Internet access (tunnel) is off: " + tunnelUnavailable);
+        }
+        else tunnelUnavailable = "Internet access is switched off (OpenVP:TunnelPort is 0).";
+
         var processor = new Processor(cfg["DataDirectory"] ?? "data", cfg.GetValue("Slots", 10), cfg.GetValue("SlotSpinMicroseconds", 0));
         processor.AddLoader(new SimplSharpLoader());
         processor.AddLoader(new SimplLoader(Path.Combine(processor.DataDirectory, "symbols.json")));
@@ -69,18 +82,24 @@ public static class OpenVpServer
         }
 
         var app = builder.Build();
+        var gate = new TunnelGate(tunnelUnavailable == null ? tunnelPort : 0);
+        app.Use(gate.Handle);   // first: anything on the tunnel port is marked remote and limited to /s/...
         app.Use(auth.Handle);
         app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20) });
         // gzip/brotli for JSON, html, js and the like (the default MIME list; downloads of programs and other
         // binary files are not touched). Compression only applies to a response whose request asks for it, so
         // WebSocket upgrades (101, no body) pass straight through.
         app.UseResponseCompression();
-        app.UseDefaultFiles();
-        // Pages are served with an ETag and no-cache: the browser keeps them but asks every time, and an unchanged
-        // file costs a 304, so an edited page still shows at once in dev mode.
-        app.UseStaticFiles(new StaticFileOptions
+        // The console's own pages are never served on the tunnel port.
+        app.UseWhen(c => !c.Items.ContainsKey(TunnelGate.ItemKey), b =>
         {
-            OnPrepareResponse = c => c.Context.Response.Headers[Microsoft.Net.Http.Headers.HeaderNames.CacheControl] = "no-cache"
+            b.UseDefaultFiles();
+            // Pages are served with an ETag and no-cache: the browser keeps them but asks every time, and an unchanged
+            // file costs a 304, so an edited page still shows at once in dev mode.
+            b.UseStaticFiles(new StaticFileOptions
+            {
+                OnPrepareResponse = c => c.Context.Response.Headers[Microsoft.Net.Http.Headers.HeaderNames.CacheControl] = "no-cache"
+            });
         });
 
         var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
@@ -940,11 +959,21 @@ public static class OpenVpServer
             await new WebPanelSession(ws, processor, ipid, slot, client).RunAsync(ctx.RequestAborted);
         });
 
-        // ------------------------------------------------------------------ shared panels
+        // ------------------------------------------------------------------ shared panels and the internet tunnel
 
         var shares = new ShareStore(processor.DataDirectory);
         var ch5Panels = new Ch5Panels(processor.DataDirectory);
-        ShareEndpoints.Map(app, processor, shares, ch5Panels);
+        TunnelManager? tunnel = null;
+        if (tunnelUnavailable == null)
+        {
+            tunnel = new TunnelManager(processor.DataDirectory, tunnelPort, cfg["CloudflaredPath"]);
+            if (cfg.GetValue("TunnelAutoStart", false))
+            {
+                // Only starts what is already installed; it never downloads without a click.
+                _ = tunnel.StartAsync(allowDownload: false);
+            }
+        }
+        ShareEndpoints.Map(app, processor, shares, ch5Panels, tunnel, gate, tunnelUnavailable);
 
         // ------------------------------------------------------------------ autoload
 
@@ -955,8 +984,32 @@ public static class OpenVpServer
             catch (Exception e) { Console.WriteLine($"Autoload slot {n} failed: {e.Message}"); }
         }
 
-        app.Lifetime.ApplicationStopping.Register(() => { for (var i = 1; i <= watches.Length; i++) StopWatching(i); cip?.Dispose(); recordings.Dispose(); processor.Dispose(); });
+        app.Lifetime.ApplicationStopping.Register(() => { for (var i = 1; i <= watches.Length; i++) StopWatching(i); tunnel?.Dispose(); cip?.Dispose(); recordings.Dispose(); processor.Dispose(); });
+        // If the process ends some other way (not a clean stop), still take cloudflared down with it.
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => tunnel?.Stop();
         return app;
+    }
+
+    /// <summary>Null if 127.0.0.1:<paramref name="port"/> can be used for the tunnel listener, else why not.</summary>
+    public static string? CheckTunnelPort(string urls, int port)
+    {
+        foreach (var u in urls.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var probe = u.Replace("://*", "://localhost").Replace("://+", "://localhost").Replace("://[::]", "://localhost");
+            if (Uri.TryCreate(probe, UriKind.Absolute, out var uri) && uri.Port == port)
+                return $"OpenVP:TunnelPort ({port}) is the console's own port. Choose a different port.";
+        }
+        try
+        {
+            var l = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, port);
+            l.Start();
+            l.Stop();
+        }
+        catch (System.Net.Sockets.SocketException)
+        {
+            return $"port {port} on 127.0.0.1 is already in use. Set OpenVP:TunnelPort to a free port.";
+        }
+        return null;
     }
 
     /// <summary>Most events in one /ws/trace frame, so one burst can't build an enormous message.</summary>
