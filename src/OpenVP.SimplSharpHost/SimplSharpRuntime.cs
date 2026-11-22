@@ -30,7 +30,9 @@ public sealed class SimplSharpLoader : IProgramLoader
         if (Path.GetExtension(path).Equals(".dll", StringComparison.OrdinalIgnoreCase))
         {
             // Copy the dll and anything next to it (its own dependencies).
-            foreach (var f in Directory.GetFiles(Path.GetDirectoryName(Path.GetFullPath(path))!, "*.dll"))
+            // Along with each .dll, its .pdb: it is what lets an exception name the file and line.
+            var from = Path.GetDirectoryName(Path.GetFullPath(path))!;
+            foreach (var f in Directory.GetFiles(from, "*.dll").Concat(Directory.GetFiles(from, "*.pdb")))
                 File.Copy(f, Path.Combine(appDir, Path.GetFileName(f)), overwrite: true);
             programDll = Path.Combine(appDir, Path.GetFileName(path));
         }
@@ -40,6 +42,10 @@ public sealed class SimplSharpLoader : IProgramLoader
             programDll = Directory.GetFiles(appDir, "*.dll", SearchOption.AllDirectories)
                 .FirstOrDefault(CompatScanner.DefinesControlSystem)
                 ?? throw new InvalidDataException("No class deriving from CrestronControlSystem was found in the archive.");
+            // A .pdb that came beside the .cpz (not inside it) goes next to the program .dll.
+            var beside = Path.ChangeExtension(Path.GetFullPath(path), ".pdb");
+            var want = Path.ChangeExtension(programDll, ".pdb");
+            if (File.Exists(beside) && !File.Exists(want)) File.Copy(beside, want);
         }
 
         return new SimplSharpRuntime(slot, programDll, _shimDir);
@@ -130,7 +136,8 @@ public sealed class SimplSharpRuntime : IProgramRuntime, IProgramAnalysis
         _bridge = shim.GetType("OpenVP.SimplSharp.OpenVPBridge", throwOnError: true)!;
         _bridge.GetProperty("Slot")!.SetValue(null, _slot);
 
-        var program = _alc.LoadFromStream(new MemoryStream(File.ReadAllBytes(_programDll))); // unlocked, so a reload can replace it
+        var program = _alc.LoadWithSymbols(_programDll); // from memory (unlocked, so a reload can replace it), with its .pdb so stack traces have file and line
+        NoteSymbols();
         var csType = program.GetType(Compat.ControlSystemType, throwOnError: true)!;
 
         _slot.Dispatcher.Invoke(() =>
@@ -149,6 +156,14 @@ public sealed class SimplSharpRuntime : IProgramRuntime, IProgramAnalysis
                 throw Explain(e);
             }
         });
+    }
+
+    /// <summary>A .pdb that is there but can't be read says so in the log, once. (A missing .pdb is not worth a line: the Exceptions list explains it when it matters.)</summary>
+    private void NoteSymbols()
+    {
+        var pdb = ProgramSymbols.Find(_programDll);
+        if (pdb != null && !ProgramSymbols.IsPortable(File.ReadAllBytes(pdb)))
+            _slot.Log("Info", $"{Path.GetFileName(pdb)} is a Windows (full) PDB, which OpenVP can't read. Build with <DebugType>portable</DebugType> to get file and line numbers in exceptions.");
     }
 
     private Exception Explain(Exception e)

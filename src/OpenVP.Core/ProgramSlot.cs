@@ -2,7 +2,8 @@ using System.Collections.Concurrent;
 
 namespace OpenVP.Core;
 
-public sealed record LogEntry(DateTimeOffset Time, int Slot, string Level, string Message);
+/// <summary>One log line. <see cref="Detail"/> is extra text shown when the entry is expanded (an exception's stack trace).</summary>
+public sealed record LogEntry(DateTimeOffset Time, int Slot, string Level, string Message, string? Detail = null);
 
 /// <summary>
 /// A console command registered by a program (CrestronConsole.AddNewConsoleCommand or similar).
@@ -25,7 +26,9 @@ public sealed class ProgramSlot : IDisposable
     {
         Processor = processor;
         Number = number;
-        Stepper.Changed += _ => Processor.NotifyStepChanged(this);
+        Monitor = new SlotMonitor(this);
+        Stepper.ValueLookup = Monitor.Values.Get;
+        Stepper.Changed += _ => { Processor.NotifyStepChanged(this); Monitor.Refresh(); };
         Metrics = new SlotMetrics(() => Volatile.Read(ref _generation));
         MissingFiles = new MissingFileLog(() => Directory, Log);
         _dispatcher = NewDispatcher();
@@ -247,6 +250,23 @@ public sealed class ProgramSlot : IDisposable
     /// <summary>Step-through debugging: pause the slot's logic on each signal change.</summary>
     public SignalStepper Stepper { get; } = new();
 
+    /// <summary>Watches, oscillation alerts and the never-changed tracker for this slot (see <see cref="SlotMonitor"/>).</summary>
+    public SlotMonitor Monitor { get; }
+
+    /// <summary>Exceptions the program threw (event handlers, timers, threads, background work).</summary>
+    public ExceptionLog Exceptions { get; } = new();
+
+    /// <summary>
+    /// A program threw an exception that nothing caught. Logged as an Error with the full stack trace (expand the entry),
+    /// and added to <see cref="Exceptions"/>. File and line numbers appear when the program's .pdb was loaded with it.
+    /// </summary>
+    public void ReportException(string source, Exception e)
+    {
+        var rec = ExceptionReport.Build(e, source, Number);
+        Exceptions.Add(rec);
+        Processor.WriteLog(new LogEntry(rec.Time, Number, "Error", $"Unhandled {rec.Type} in {source}: {rec.Message}", rec.Stack));
+    }
+
     /// <summary>Threads, background work and timers the program started, for the metrics page.</summary>
     public SlotMetrics Metrics { get; }
 
@@ -390,9 +410,11 @@ public sealed class ProgramSlot : IDisposable
             if (State == SlotState.Running) return;
             try
             {
+                Monitor.ProgramStarting();
                 Runtime.Start();
                 SetState(SlotState.Running);
                 Log("Notice", "Program started");
+                Monitor.ProgramStarted();
             }
             catch (Exception e)
             {
@@ -412,6 +434,7 @@ public sealed class ProgramSlot : IDisposable
             catch (Exception e) { Log("Error", $"Error while stopping: {e.Message}"); }
             SetState(SlotState.Stopped);
             Log("Notice", "Program stopped");
+            Monitor.ProgramStopped();
         }
     }
 
@@ -428,6 +451,8 @@ public sealed class ProgramSlot : IDisposable
             catch (Exception e) { Log("Error", $"Error while unloading: {e.Message}"); }
             Runtime = null;
             ProgramPath = null;
+            Exceptions.Clear();
+            Monitor.Refresh();
             _commands.Clear();
             Interlocked.Increment(ref _generation);
             Metrics.ResetTimers();
@@ -471,12 +496,16 @@ public sealed class ProgramSlot : IDisposable
         StateChanged?.Invoke(this);
     }
 
+    // What was running, in words: the dispatcher knows a panel's input event as the method that raises it.
+    private static string FriendlySource(string? label) =>
+        string.IsNullOrEmpty(label) ? "an event handler" : label.StartsWith("BasicTriList.OnInputFromDevice", StringComparison.Ordinal) ? "a panel's SigChange handler" : label;
+
     private SlotDispatcher NewDispatcher() =>
         new($"slot{Number:00}", e =>
         {
-            Log("Error", $"Unhandled exception in program: {e}");
+            ReportException(FriendlySource(Dispatcher.GetSnapshot().CurrentLabel), e);
             if (_settings.Crash.FaultOnUnhandled) Fault($"unhandled {e.GetType().Name}: {e.Message}");
         }, () => Stepper.IsPaused, Processor.SlotSpinMicroseconds);
 
-    public void Dispose() => Unload();
+    public void Dispose() { Unload(); Monitor.Dispose(); }
 }

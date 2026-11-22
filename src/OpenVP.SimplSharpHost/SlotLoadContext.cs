@@ -1,4 +1,5 @@
 using System.Reflection;
+using OpenVP.Core;
 using System.Runtime.Loader;
 
 namespace OpenVP.SimplSharpHost;
@@ -36,10 +37,23 @@ internal sealed class SlotLoadContext : AssemblyLoadContext
 
         var programPath = Path.Combine(_programDir, simple + ".dll");
         // From memory, so the program's files stay unlocked and can be replaced by a reload (Windows).
-        if (File.Exists(programPath)) return LoadFromStream(new MemoryStream(File.ReadAllBytes(programPath)));
+        if (File.Exists(programPath)) return LoadWithSymbols(programPath);
 
         if (LooksLikeCrestron(simple)) Unresolved.Add(simple);
         return null; // framework assemblies come from the default context
+    }
+
+    /// <summary>Load an assembly from memory together with its portable .pdb (if there is one), so stack traces name files and lines.</summary>
+    internal Assembly LoadWithSymbols(string dllPath)
+    {
+        var dll = new MemoryStream(File.ReadAllBytes(dllPath));
+        var pdbPath = ProgramSymbols.Find(dllPath);
+        if (pdbPath != null)
+        {
+            var pdb = File.ReadAllBytes(pdbPath);
+            if (ProgramSymbols.IsPortable(pdb)) return LoadFromStream(dll, new MemoryStream(pdb));
+        }
+        return LoadFromStream(dll);
     }
 
     private bool IsShimAssembly(string simple) =>

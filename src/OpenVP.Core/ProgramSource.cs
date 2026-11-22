@@ -50,6 +50,8 @@ public static class ProgramSource
             var sig = sigs.Count == 1 ? sigs[0] : SigFor(lpz);
             if (sig != null) Add(sig, Path.ChangeExtension(Path.GetFileName(lpz), ".sig"));
         }
+        // A program's symbols come along: they give exceptions file and line numbers.
+        if (ext is ".dll" or ".cpz") Add(Path.ChangeExtension(program, ".pdb"), Path.ChangeExtension(Path.GetFileName(program), ".pdb"));
         foreach (var p in picked) Add(p, Path.GetFileName(p));
         foreach (var main in new[] { program, lpz }.OfType<string>().Distinct(PathComparer))
             foreach (var s in Sidecars)

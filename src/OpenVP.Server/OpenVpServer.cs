@@ -166,6 +166,9 @@ public static class OpenVpServer
             file = s.ProgramPath is null ? null : Path.GetFileName(s.ProgramPath),
             error = s.LastError,
             summary = SummaryDto(SummaryOf(s)),
+            alerts = s.Monitor.Oscillation.Recent(DateTimeOffset.Now),
+            alertText = s.Monitor.Oscillation.Alerts.FirstOrDefault()?.Message,
+            exceptions = s.Exceptions.Count,
             watching = watches[s.Number - 1]?.Program,
             recording = recordings.Busy(s.Number),
             devices = s.Devices.OrderBy(d => d.IpId).Select(DeviceDto)
@@ -245,7 +248,8 @@ public static class OpenVpServer
                 enabled = st.Enabled,
                 onlyBreakSignals = st.OnlyBreakSignals,
                 breakSignals = st.BreakSignals,
-                paused = p is null ? null : new { step = p.Step, time = p.Time, signal = p.Signal, kind = p.Kind.ToString(), value = p.Value, source = p.Source, symbol = p.Symbol, cause = p.Cause, depth = p.Depth, chain = p.Chain }
+                conditions = st.Conditions ?? Array.Empty<string>(),
+                paused = p is null ? null : new { step = p.Step, time = p.Time, signal = p.Signal, kind = p.Kind.ToString(), value = p.Value, source = p.Source, symbol = p.Symbol, cause = p.Cause, depth = p.Depth, chain = p.Chain, reason = p.Reason }
             };
         }
 
@@ -862,8 +866,11 @@ public static class OpenVpServer
             bool? Bool(string k) => body.TryGetProperty(k, out var v) && v.ValueKind is JsonValueKind.True or JsonValueKind.False ? v.GetBoolean() : null;
             IEnumerable<string>? names = body.TryGetProperty("breakSignals", out var b) && b.ValueKind == JsonValueKind.Array
                 ? b.EnumerateArray().Select(x => x.GetString() ?? "").ToList() : null;
-            slot.Stepper.Configure(Bool("enabled"), Bool("onlyBreakSignals"), names);
-            return StepDto(slot);
+            IEnumerable<string>? conds = body.TryGetProperty("conditions", out var cd) && cd.ValueKind == JsonValueKind.Array
+                ? cd.EnumerateArray().Select(x => x.GetString() ?? "").ToList() : null;
+            try { slot.Stepper.Configure(Bool("enabled"), Bool("onlyBreakSignals"), names, conds); }
+            catch (ArgumentException e) { return Results.BadRequest(new { error = e.Message }); }
+            return Results.Ok(StepDto(slot));
         });
         slotApi.MapPost("/step/next", (int n) => { processor.Slot(n).Stepper.Next(); return StepDto(processor.Slot(n)); });
         slotApi.MapPost("/step/run", (int n) => { processor.Slot(n).Stepper.Run(); return StepDto(processor.Slot(n)); });
@@ -874,15 +881,18 @@ public static class OpenVpServer
             catch (Exception e) { return Results.Text("Error: " + e.Message); }
         });
 
-        slotApi.MapGet("/compat", (int n) => processor.Slot(n).Runtime switch
+        string CompatText(ProgramSlot slot) => slot.Runtime switch
         {
-            SimplSharpRuntime s => Results.Text(s.Compat.ToString()),
-            LpzRuntime l => Results.Text(LpzReport.Build(l.Package, l.Package.Signals)),
-            SimplRuntime r => Results.Text(r.Unsupported.Count == 0
+            SimplSharpRuntime s => s.Compat.ToString(),
+            LpzRuntime l => LpzReport.Build(l.Package, l.Package.Signals),
+            SimplRuntime r => r.Unsupported.Count == 0
                 ? "Every wired symbol has a behavior."
-                : "Symbols without a behavior yet:\n" + string.Join('\n', r.Unsupported.Select(u => $"  {u} pins in={u.Inputs.Count} out={u.Outputs.Count}"))),
-            _ => Results.Text("No program loaded.")
-        });
+                : "Symbols without a behavior yet:\n" + string.Join('\n', r.Unsupported.Select(u => $"  {u} pins in={u.Inputs.Count} out={u.Outputs.Count}")),
+            _ => "No program loaded."
+        };
+        slotApi.MapGet("/compat", (int n) => Results.Text(CompatText(processor.Slot(n))));
+
+        DebugEndpoints.Map(app, slotApi, processor, activity, sl => SummaryDto(SummaryOf(sl)), CompatText, Who);
 
         // ------------------------------------------------------------------ slot files (\NVRAM and \USER)
 
@@ -1257,6 +1267,8 @@ public static class OpenVpServer
                 if (slot is int sn && sn >= 1 && sn <= processor.Slots.Count) OnStep(processor.Slot(sn)); // current state on connect
             }
             processor.LogWritten += OnLog;
+            // While a debugger is open on a slot, the slot keeps its recent changes, which is what "why is this signal this value?" reads.
+            var lease = wantTrace && slot is int ls && processor.IsValidSlot(ls) ? processor.Slot(ls).Monitor.AcquireTrace() : null;
             var buffer = new byte[1024];
             var receive = ws.ReceiveAsync(buffer, ctx.RequestAborted);
             var frame = new ArrayBufferWriter<byte>(16 * 1024);
@@ -1286,6 +1298,7 @@ public static class OpenVpServer
                 foreach (var sl in processor.Slots) sl.Traced -= OnTrace;
                 processor.StepChanged -= OnStep;
                 processor.LogWritten -= OnLog;
+                lease?.Dispose();
             }
         });
 
@@ -1481,6 +1494,7 @@ public static class OpenVpServer
                 w.WriteNumber("slot", l.Slot);
                 w.WriteString("level", l.Level);
                 w.WriteString("message", l.Message);
+                if (l.Detail != null) w.WriteString("detail", l.Detail);
                 w.WriteEndObject();
                 break;
             default:

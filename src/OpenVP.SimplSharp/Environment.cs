@@ -141,7 +141,7 @@ namespace Crestron.SimplSharp
             {
                 using var work = slot?.Metrics.BeginWork("CrestronInvoke", label);
                 try { callbackFunction(userObject); }
-                catch (Exception e) { slot?.Log("Error", "Exception in CrestronInvoke: " + e); }
+                catch (Exception e) { if (slot != null) slot.ReportException("CrestronInvoke " + label, e); }
             });
             return null;
         }
