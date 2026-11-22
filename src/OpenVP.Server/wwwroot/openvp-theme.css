@@ -19,3 +19,48 @@
 }
 .theme-btn { font:inherit; font-size:12px; padding:2px 9px; white-space:nowrap; }
 /* The debugger and Paths draw on a dark stage in both themes (a logic-analyzer style view); the rest of the page follows the theme. */
+
+/* The slot log widget (openvp-log.js): level chips, search, pause/copy/download, colour by level, links, expandable entries. */
+.ovl { display:flex; flex-direction:column; min-height:0; min-width:0; }
+.ovl-bar { display:flex; flex-wrap:wrap; gap:6px 8px; align-items:center; margin-bottom:8px; }
+.ovl-chips { display:flex; flex-wrap:wrap; gap:4px; }
+.ovl-chip { font:inherit; font-size:12px; padding:2px 9px; border-radius:20px; border:1px solid var(--line); background:var(--input); cursor:pointer; white-space:nowrap; }
+.ovl-chip.lv-Error { color:var(--err-fg); border-color:var(--err); background:var(--err-bg); }
+.ovl-chip.lv-Warning { color:var(--warn-fg); border-color:var(--warn-line); background:var(--warn-bg); }
+.ovl-chip.lv-Notice { color:var(--info-fg); border-color:var(--info-fg); background:var(--info-bg); }
+.ovl-chip.lv-Info, .ovl-chip.lv-Console { color:var(--text2); }
+.ovl-chip.off { opacity:.45; background:transparent; text-decoration:line-through; }
+.ovl-filter { flex:1; min-width:140px; }
+.ovl-btns { display:flex; gap:4px; }
+.ovl-btns button { font-size:12px; padding:3px 9px; }
+.ovl-btns .ovl-pause.on { border-color:var(--warn); color:var(--warn-fg); background:var(--warn-bg); }
+.ovl-list { flex:1 1 auto; min-height:0; overflow:auto; background:var(--well); border:1px solid var(--line); border-radius:6px; padding:4px 0; overflow-wrap:anywhere; }
+.ovl-line { padding:1px 8px 1px 4px; }
+.ovl-line:hover { background:var(--hover); }
+.ovl-head { display:flex; gap:0; align-items:baseline; }
+.ovl-head > .ovl-msg { flex:1; min-width:0; white-space:pre-wrap; }
+.ovl-tog { flex:none; width:18px; padding:0; border:0; background:none; color:var(--muted); cursor:pointer; font-size:11px; text-align:center; }
+.ovl-tog:hover { color:var(--text); }
+.ovl-t { color:var(--muted); margin-right:8px; }
+.ovl-lv { display:inline-block; min-width:5.2em; margin-right:4px; font-weight:600; }
+.ovl-line.lv-Error { color:var(--err); } .ovl-line.lv-Error .ovl-lv { color:var(--err); }
+.ovl-line.lv-Warning { color:var(--warn); }
+.ovl-line.lv-Notice { color:var(--info-fg); }
+.ovl-line.lv-Info { color:var(--text2); }
+.ovl-line.lv-Console { color:var(--text); }
+.ovl-line.lv-Info .ovl-lv, .ovl-line.lv-Console .ovl-lv { color:var(--muted); font-weight:400; }
+a.ovl-link { color:var(--accent); text-decoration:underline dotted; text-underline-offset:2px; cursor:pointer; }
+a.ovl-link:hover { text-decoration:underline; }
+.ovl-detail { margin:2px 0 4px 22px; padding:6px 8px; background:var(--card, var(--well)); border:1px solid var(--line); border-radius:6px; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--text2); font-size:11.5px; max-height:300px; overflow:auto; }
+.ovl-empty { color:var(--muted); padding:10px 12px; font-family:system-ui, sans-serif; }
+.ovl-exc { border:1px solid var(--line); border-radius:6px; margin:0 0 6px; background:var(--soft); }
+.ovl-exc > summary { padding:5px 8px; cursor:pointer; overflow-wrap:anywhere; }
+.ovl-exc > summary b { color:var(--err); }
+.ovl-src { color:var(--muted); font-size:12px; }
+.ovl-frames { padding:2px 8px 8px; }
+.ovl-frame { padding:1px 0; overflow-wrap:anywhere; }
+.ovl-file { color:var(--accent); }
+.ovl-note { margin:6px 0; padding:6px 8px; border:1px solid var(--warn-line); background:var(--warn-box); border-radius:6px; font-size:12px; }
+.ovl-frames details { margin-top:6px; }
+.ovl-frames details > summary { cursor:pointer; color:var(--muted); font-size:12px; }
+@media (max-width: 600px) { .ovl-lv { min-width:0; } .ovl-btns { width:100%; } .ovl-btns button { flex:1; } }

@@ -72,7 +72,7 @@
   .row > .c { padding:0 6px; line-height:calc(var(--rh) - 1px); border-bottom:1px solid var(--hover); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
   .row:hover { background:var(--hover); }
   .row.sel { background:var(--sel); }
-  #sigs { --cols:28px 28px minmax(0,1fr) 62px 40px 34%; }
+  #sigs { --cols:28px 28px 24px minmax(0,1fr) 62px 40px 34%; }
   #sigs .th:first-child, #sigs .row > .c:first-child { text-align:center; padding:0; }
   #sigs input[type=checkbox] { margin:0; vertical-align:middle; }
   #trace { --cols:52px 104px 76px minmax(0,1fr) 84px 24% 64px; }
@@ -171,17 +171,75 @@
   #menu hr { border:0; border-top:1px solid var(--line); margin:4px 0; }
   #menu .hd { color:var(--muted); font-size:11px; cursor:default; } #menu .hd:hover { background:none; }
 
+  /* stars, notes */
+  #sigs .c.s, #sigs .th.s { text-align:center; padding:0; }
+  .star { cursor:pointer; color:var(--lo); user-select:none; } .star.on { color:var(--brk); } .star:hover { color:var(--text); }
+  .nmn { color:var(--muted); font-style:italic; font-size:11px; }
+
+  /* the dock under the panes: watches, alerts, never changed, traces */
+  #dock { flex:none; height:var(--dh, 240px); display:flex; flex-direction:column; border-top:1px solid var(--line); background:var(--pane); min-height:0; }
+  #dsplit { height:5px; flex:none; background:var(--line); cursor:row-resize; }
+  #dsplit:hover, #dsplit.drag { background:var(--accent); }
+  .dockbar { display:flex; align-items:center; gap:8px; padding:3px 8px; background:var(--head); border-bottom:1px solid var(--line); flex:none; }
+  .dockbar .grow { flex:1; }
+  .dpane { flex:1; min-height:0; overflow:auto; padding:8px 10px; }
+  .dform { display:flex; flex-wrap:wrap; gap:6px 8px; align-items:center; margin-bottom:6px; }
+  .dform input.mono { flex:1 1 320px; min-width:160px; } .dform input.nm { width:160px; }
+  .dmsg { min-height:1.3em; color:var(--muted); font-size:12px; margin-bottom:4px; } .dmsg.bad { color:var(--err); }
+  table.dt { width:100%; border-collapse:collapse; }
+  table.dt th, table.dt td { text-align:left; padding:3px 6px; border-bottom:1px solid var(--hover); vertical-align:top; }
+  table.dt th { color:var(--muted); font-weight:500; font-size:11px; position:sticky; top:-8px; background:var(--pane); }
+  table.dt td.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  table.dt td.ex { overflow-wrap:anywhere; }
+  .wdot { display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--lo); margin-right:5px; vertical-align:middle; }
+  .wdot.true { background:var(--err); box-shadow:0 0 0 3px #e0525233; } .wdot.waiting { background:var(--brk); } .wdot.error { background:var(--err); outline:2px solid var(--err); outline-offset:1px; background:transparent; }
+  tr.wtrue td { background:#e0525214; }
+  .hits div { padding:2px 0; border-bottom:1px solid var(--hover); }
+  .hits .t { color:var(--muted); margin-right:6px; }
+  h4.dh { margin:10px 0 4px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+  .abadge { display:inline-block; min-width:16px; padding:0 6px; border-radius:20px; font-size:11px; line-height:16px; text-align:center; background:var(--err); color:#fff; margin-left:4px; }
+  .abadge[hidden] { display:none; }
+  .title .alertchip { background:var(--warn-bg); color:var(--warn-fg); border:1px solid var(--warn-line); border-radius:20px; padding:0 8px; font-size:12px; cursor:pointer; }
+  .pane.tracepane { grid-template-rows:auto auto auto 1fr; }
+  #viewbanner[hidden] { display:block !important; height:0; padding:0; border:0; overflow:hidden; }
+  .banner { display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; padding:5px 8px; background:var(--sel); border-bottom:1px solid var(--accent); font-size:12px; }
+  dialog.dlg { background:var(--menu); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:14px 16px; max-width:calc(100vw - 24px); }
+  dialog.dlg::backdrop { background:#0008; }
+  dialog.dlg form { display:flex; flex-direction:column; gap:10px; margin:0; }
+  dialog.dlg .drow { display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+  dialog.dlg h3 { margin:0; font-size:15px; }
+  #ask-dlg { width:min(460px, calc(100vw - 24px)); } #ask-dlg textarea, #ask-dlg input { width:100%; font:inherit; color:var(--text); background:var(--input); border:1px solid var(--line); border-radius:4px; padding:5px 8px; }
+  #why-dlg { width:min(720px, calc(100vw - 24px)); max-height:86vh; overflow:auto; }
+  .whysum { padding:8px 10px; background:var(--soft); border:1px solid var(--line); border-radius:6px; overflow-wrap:anywhere; }
+  .whystep { display:grid; grid-template-columns:auto 1fr; gap:2px 10px; padding:6px 0; border-bottom:1px solid var(--hover); }
+  .whystep .tm { color:var(--muted); white-space:nowrap; } .whystep .k { font-size:11px; color:var(--muted); text-transform:uppercase; }
+  .whystep a { color:var(--accent); cursor:pointer; }
+  #cmp-dlg { width:min(1100px, calc(100vw - 24px)); height:min(760px, 90vh); overflow:hidden; }
+  #cmp-dlg form { height:100%; min-height:0; }
+  #cmp-body { flex:1; min-height:0; overflow:auto; }
+  table.cmp { width:100%; border-collapse:collapse; table-layout:fixed; }
+  table.cmp th, table.cmp td { text-align:left; padding:3px 6px; border-bottom:1px solid var(--hover); vertical-align:top; overflow-wrap:anywhere; }
+  table.cmp th { position:sticky; top:0; background:var(--head); color:var(--muted); font-weight:500; font-size:11px; }
+  table.cmp tr.onlyA td:nth-child(3), table.cmp tr.onlyB td:nth-child(2) { color:var(--muted); font-style:italic; }
+  table.cmp tr.onlyA td:nth-child(2), table.cmp tr.onlyB td:nth-child(3) { background:#e0525222; }
+  table.cmp tr.value td:nth-child(2), table.cmp tr.value td:nth-child(3) { background:#e0a05226; }
+  table.cmp tr.timing td:nth-child(4) { color:var(--brk); }
+  .chips { display:flex; flex-wrap:wrap; gap:4px; }
+  .chips button { border-radius:20px; padding:1px 9px; font-size:12px; } .chips button.on { background:var(--sel); border-color:var(--accent); }
+  #conds-list div { display:flex; gap:6px; align-items:center; padding:3px 0; border-bottom:1px solid var(--hover); } #conds-list div span { flex:1; overflow-wrap:anywhere; }
+
   @media (max-width: 760px) {
     body { display:block; overflow:auto; }
+    #dock { height:auto; max-height:70vh; }
     .panes { grid-template-columns: 1fr; grid-template-rows: 55vh 0 55vh; }
     .splitter { display:none; }
     .title, .group { flex-wrap:wrap; }
     .title select, .toolbar select { max-width:100%; }
     #prog { flex-basis:100%; order:5; }
     #wavewrap { height:200px; }
-    #sigs { --cols:28px 28px minmax(0,1fr) 0 0 34%; }
+    #sigs { --cols:28px 28px 24px minmax(0,1fr) 0 0 34%; }
     #trace, #trace.nocause { --cols:52px 104px 76px minmax(0,1fr) 0 24% 64px; }
-    #sigs .row:not(.folder) > .c:nth-child(4), #sigs .row:not(.folder) > .c:nth-child(5), #sigs .th:nth-child(4), #sigs .th:nth-child(5), #trace .via { padding:0; border:0; font-size:0; overflow:hidden; }
+    #sigs .row:not(.folder) > .c:nth-child(5), #sigs .row:not(.folder) > .c:nth-child(6), #sigs .th:nth-child(5), #sigs .th:nth-child(6), #trace .via { padding:0; border:0; font-size:0; overflow:hidden; }
   }
   #keys-back { position:fixed; inset:0; z-index:50; background:#0008; display:none; align-items:flex-start; justify-content:center; padding:10vh 12px 12px; }
   #keys-back.open { display:flex; }
@@ -201,19 +259,25 @@
     <dt><kbd>F8</kbd></dt><dd>Run: turn step mode off and let the program go</dd>
     <dt><kbd>F9</kbd></dt><dd>Mark or unmark the selected signal as a break signal</dd>
     <dt><kbd>F10</kbd></dt><dd>Next: let the paused change through and stop at the next</dd>
+    <dt><kbd>S</kbd></dt><dd>Star or unstar the selected signal (starred signals are in the ★ tab)</dd>
+    <dt><kbd>N</kbd></dt><dd>Add or edit a note on the selected signal</dd>
+    <dt><kbd>Y</kbd></dt><dd>Why is the selected signal this value? Walks back to what set it</dd>
+    <dt><kbd>W</kbd></dt><dd>Show or hide the Watches panel</dd>
     <dt><kbd>Enter</kbd></dt><dd>In the force box: set the value</dd>
     <dt><kbd>Esc</kbd></dt><dd>Close a menu or this list</dd>
     <dt><kbd>?</kbd></dt><dd>Show or hide this list</dd>
   </dl>
-  <div class="foot">Right-click a signal for Set, Clear, Pulse, Toggle and the paths views. Shortcuts that are plain letters don't fire while you type in a box.</div>
+  <div class="foot">Right-click a signal for Set, Clear, Pulse, Toggle, Star, Note, Why is it this value? and the paths views. Shortcuts that are plain letters don't fire while you type in a box.</div>
 </div></div>
 <div class="title">
   <b>Debugger</b>
   <select id="slot" title="Program slot"></select>
   <span id="prog" class="muted mono"></span>
   <span style="flex:1"></span>
+  <button id="alertchip" class="alertchip" hidden title="A signal in this program is racing or oscillating. Click for the list."></button>
   <button class="theme-btn" data-theme-toggle></button>
   <button id="keys-open" title="Keyboard shortcuts (?)" style="padding:1px 8px">?</button>
+  <a id="loglink" href="log.html" target="_blank" rel="noopener" title="Open this slot's log on its own page">Log</a>
   <a id="pathslink" href="paths.html" target="_blank" rel="noopener" title="Open the signal paths view (follows the selected signal)">Paths</a>
   <a href="/" title="Back to the main page">Console</a>
   <a href="help.html#debugger" target="openvp-help" title="What every button on this page does">Help</a>
@@ -232,11 +296,19 @@
     <button id="stepnext" disabled title="Let the paused change through and stop at the next one (F10)">Next ▶|</button>
     <button id="steprun" disabled title="Turn step mode off and let the program run (F8)">Run ▶▶</button>
     <label title="Which changes pause the program">Break on <select id="bmode"><option value="all">every change</option><option value="marked">marked signals ⏸</option></select></label>
+    <button id="condbtn" title="Conditional breakpoints: pause when a change to a signal in the condition makes it true, e.g. Vol > 500 or Err contains &quot;ERR&quot;">Conditions</button>
   </div>
   <div class="sep"></div>
   <div class="group">
     <label title="Record every signal in the trace, or only the ones ticked in the T column">Trace <select id="tmode"><option value="all">all signals</option><option value="watch">checked signals only</option></select></label>
     <button id="wavebtn" title="Show a waveform (logic analyzer) of the signals checked for trace">Waveform</button>
+  </div>
+  <div class="sep"></div>
+  <div class="group" id="dockbtns">
+    <button data-dock="watches" title="Watches: expressions such as Room_On=1 &amp;&amp; Proj_Power=0 that are reported when they become true, even with this window closed (W)">Watches<span class="abadge" id="wbadge" hidden></span></button>
+    <button data-dock="alerts" title="Signals that race or oscillate, and the thresholds that decide it">Alerts<span class="abadge" id="abadge" hidden></span></button>
+    <button data-dock="dead" title="Signals that haven't changed since the program started or since a reset: unused logic">Never changed</button>
+    <button data-dock="traces" title="Save, export, import and compare traces">Traces</button>
   </div>
   <div class="sep"></div>
   <div class="group">
@@ -281,7 +353,7 @@
     <div id="nonames" hidden>This compiled program has no signal names, so signals show as numbers (#123). Its names are in the <b>.sig</b> file the compiler writes next to the .smw: in the console, select the .lpz and its .sig together and click Load &amp; start.</div>
     <div class="scroll" id="sigscroll">
       <div id="sigs" class="vlist">
-        <div class="vhead"><div class="th" title="Trace this signal">T</div><div class="th b" title="Break: pause on changes to this signal when Break on = marked signals (F9)">⏸</div><div class="th sortable" data-sort="name">Signal name</div><div class="th sortable" data-sort="kind">Type</div><div class="th sortable" data-sort="count" title="Number of changes seen">Chg</div><div class="th">Value</div></div>
+        <div class="vhead"><div class="th" title="Trace this signal">T</div><div class="th b" title="Break: pause on changes to this signal when Break on = marked signals (F9)">⏸</div><div class="th s" title="Star: starred signals are in the ★ tab (S)">★</div><div class="th sortable" data-sort="name">Signal name</div><div class="th sortable" data-sort="kind">Type</div><div class="th sortable" data-sort="count" title="Number of changes seen">Chg</div><div class="th">Value</div></div>
         <div class="vbody" id="sigbody"></div>
       </div>
       <div class="empty" id="sigempty">Loading signals…</div>
@@ -293,8 +365,9 @@
     </div>
   </section>
   <div class="splitter" id="splitter"></div>
-  <section class="pane">
+  <section class="pane tracepane">
     <h2>Trace <span class="count mono" id="tracecount"></span></h2>
+    <div class="banner" id="viewbanner" hidden><span id="viewtext"></span><button id="viewback" class="minibtn" title="Drop the saved trace and show the live trace again">Back to live</button></div>
     <div class="filters">
       <input type="search" id="tsearch" placeholder="Filter trace" class="mono" autocomplete="off">
       <span class="help" id="thelp" title="">?</span>
@@ -313,6 +386,93 @@
     </div>
   </section>
 </div>
+
+<section id="dock" hidden>
+  <div id="dsplit" title="Drag to resize"></div>
+  <div class="dockbar">
+    <span class="seg" id="dtabs"><button data-t="watches">Watches</button><button data-t="alerts">Alerts</button><button data-t="dead">Never changed</button><button data-t="traces">Traces</button></span>
+    <span class="grow"></span>
+    <button id="dockclose" class="minibtn" title="Close this panel">×</button>
+  </div>
+  <div class="dpane" id="dp-watches" hidden>
+    <div class="dform">
+      <input id="w-expr" class="mono" placeholder="Room_On=1 && Proj_Power=0    Vol>50000    Src_Name contains &quot;HDMI&quot;    add  for 2s  to wait" autocomplete="off" spellcheck="false">
+      <input id="w-name" class="nm" placeholder="name (optional)" autocomplete="off">
+      <label title="When this watch becomes true, also stop the program at that change (turns step mode on)"><input type="checkbox" id="w-pause"> pause stepping</label>
+      <button id="w-add" title="Save this watch for the slot. It is checked on the server, so it works with this window closed.">Add watch</button>
+      <span class="help" id="w-help">?</span>
+    </div>
+    <div class="dmsg" id="w-msg"></div>
+    <table class="dt" id="w-table"><thead><tr><th style="width:2.2em"></th><th>Watch</th><th class="num">Hits</th><th>Last</th><th title="Pause stepping when it becomes true">⏸</th><th title="Switch the watch on or off">On</th><th></th></tr></thead><tbody></tbody></table>
+    <div class="muted" id="w-empty" style="padding:6px 0">No watches yet. Type an expression above and press Enter.</div>
+    <h4 class="dh">Recent hits</h4>
+    <div class="hits mono" id="w-hits"></div>
+  </div>
+  <div class="dpane" id="dp-alerts" hidden>
+    <div class="dform">
+      <label title="Look for signals that change too often. It needs every change traced, so it costs the slot a little while it is on."><input type="checkbox" id="a-on"> Detect races and oscillation</label>
+      <label>more than <input type="number" id="a-burst" min="2" style="width:5em"> changes in one burst</label>
+      <label>or <input type="number" id="a-flips" min="3" style="width:5em"> flips of a digital signal within <input type="number" id="a-win" min="10" style="width:6em"> ms</label>
+      <button id="a-save">Save</button><button id="a-clear" title="Forget the alerts so far">Clear alerts</button>
+    </div>
+    <div class="dmsg" id="a-msg"></div>
+    <div class="hits mono" id="a-list"></div>
+  </div>
+  <div class="dpane" id="dp-dead" hidden>
+    <div class="dform">
+      <span id="d-state"></span>
+      <button id="d-track" title="Start remembering which signals change (and keep doing so on every program start)">Start tracking</button>
+      <button id="d-reset" title="Forget what has changed so far: from now on only changes after this count">Reset</button>
+      <input type="search" id="d-find" placeholder="Filter" class="nm" autocomplete="off">
+    </div>
+    <div class="dmsg" id="d-msg"></div>
+    <table class="dt" id="d-table"><thead><tr><th>Signal</th><th>Type</th><th>Value</th></tr></thead><tbody></tbody></table>
+  </div>
+  <div class="dpane" id="dp-traces" hidden>
+    <div class="dform">
+      <button id="t-save" title="Keep the trace shown in the Trace pane on the server, under a name, so it can be compared later">Save current trace…</button>
+      <button id="t-csv" title="Download the trace shown as a CSV file: time, signal, kind, value, source, symbol, cause, depth, chain">Export CSV</button>
+      <button id="t-json" title="Download the trace shown as JSON with every field">Export JSON</button>
+      <button id="t-import" title="Bring a trace exported earlier (JSON or CSV) back, to view or compare">Import…</button>
+      <input type="file" id="t-file" accept=".json,.csv,application/json,text/csv" hidden>
+      <span class="grow"></span>
+      <label title="Changes whose times differ by more than this are reported">tolerance <input type="number" id="t-tol" value="50" min="0" style="width:5.5em"> ms</label>
+      <button id="t-cmp" disabled title="Tick two saved traces to compare them side by side">Compare ticked</button>
+    </div>
+    <div class="dmsg" id="t-msg"></div>
+    <table class="dt" id="t-table"><thead><tr><th style="width:2.2em"></th><th>Name</th><th>Saved</th><th class="num">Changes</th><th></th></tr></thead><tbody></tbody></table>
+    <div class="muted" id="t-empty" style="padding:6px 0">No saved traces. Save one before and one after a program change, tick both and compare.</div>
+  </div>
+</section>
+
+<dialog id="ask-dlg" class="dlg"><form method="dialog">
+  <h3 id="ask-title"></h3>
+  <label id="ask-label" style="color:var(--muted)"></label>
+  <textarea id="ask-text" rows="3" hidden></textarea><input id="ask-input" autocomplete="off">
+  <div class="drow"><button type="button" id="ask-cancel">Cancel</button><button id="ask-ok" value="ok" style="border-color:var(--accent)">OK</button></div>
+</form></dialog>
+<dialog id="why-dlg" class="dlg"><form method="dialog">
+  <h3 id="why-title"></h3>
+  <div class="whysum" id="why-sum"></div>
+  <div id="why-steps"></div>
+  <div class="dmsg" id="why-note"></div>
+  <div class="drow"><button value="close">Close</button></div>
+</form></dialog>
+<dialog id="cond-dlg" class="dlg" style="width:min(560px, calc(100vw - 24px))"><form method="dialog" onsubmit="return false">
+  <h3>Conditional breakpoints</h3>
+  <p class="muted" style="margin:0">Pause when a change to a signal named in the condition makes it true, using the same expressions as watches: <span class="mono">Vol &gt; 500</span>, <span class="mono">Err contains "ERR"</span>, <span class="mono">Room_On=1 &amp;&amp; Proj_Power=0</span>. They pause even when Break on is <i>marked signals</i>. Step mode has to be on (Ctrl+F5).</p>
+  <div class="dform"><input id="cond-in" class="mono" placeholder="Vol > 500" autocomplete="off"><button type="button" id="cond-add">Add</button></div>
+  <div class="dmsg" id="cond-msg"></div>
+  <div id="conds-list"></div>
+  <div class="drow"><button type="button" id="cond-close">Close</button></div>
+</form></dialog>
+<dialog id="cmp-dlg" class="dlg"><form method="dialog" onsubmit="return false">
+  <h3 id="cmp-title">Compare traces</h3>
+  <div id="cmp-sum" class="muted"></div>
+  <div class="chips" id="cmp-chips"></div>
+  <div id="cmp-body"></div>
+  <div class="drow"><label style="margin-right:auto">tolerance <input type="number" id="cmp-tol" min="0" style="width:5.5em"> ms <button type="button" id="cmp-redo">Compare again</button></label><button type="button" id="cmp-close">Close</button></div>
+</form></dialog>
 
 <div id="wavewrap" hidden>
   <div id="wsplit" title="Drag to resize"></div>
@@ -384,7 +544,7 @@ const MAX_CHANGES = 50000;
 const changes = new Deque(); let cseq = 0;   // { cn, time, signal, prev, value }
 let stepLog = [];             // { step, signal, kind, value, source, cn }
 let view = null, viewVals = null; // index into stepLog while looking back; null = live
-let step = { enabled: false, onlyBreakSignals: false, breakSignals: new Set(), paused: null }, stepSynced = false;
+let step = { enabled: false, onlyBreakSignals: false, breakSignals: new Set(), paused: null, conditions: [] }, stepSynced = false;
 const opts = { tmode: store.get("tmode", "all"), tfmt: store.get("tfmt", "abs") === "rel" ? "rel" : "abs", afmt: store.get("afmt", "dec"), sfmt: store.get("sfmt", "ascii") };
 for (const k of Object.keys(opts)) { $("#" + k).value = opts[k]; $("#" + k).onchange = e => { opts[k] = e.target.value; store.set(k, opts[k]); rerenderValues(); }; }
 
@@ -597,7 +757,7 @@ const groupsKey = () => "groups." + slot, tabKey = () => "tab." + slot;
 function loadGroups() {
   groups = new Map(Object.entries(store.get(groupsKey(), {})).map(([k, v]) => [k, new Set(v)]));
   activeTab = store.get(tabKey(), null);
-  if (activeTab != null && !groups.has(activeTab)) activeTab = null;
+  if (activeTab != null && activeTab !== STAR && !groups.has(activeTab)) activeTab = null;
   renderTabs();
 }
 function saveGroups() { store.set(groupsKey(), Object.fromEntries([...groups].map(([k, v]) => [k, [...v]]))); store.set(tabKey(), activeTab); }
@@ -609,6 +769,7 @@ function renderTabs() {
     frag.appendChild(b); return b;
   };
   { const all = mk("All", activeTab == null); all.title = "Show every signal, not just one watch group"; all.onclick = () => setTab(null); }
+  { const st = mk("★ Starred", activeTab === STAR, starred.size); st.title = "Signals you starred in this program (saved on the server, so they come back after a reload)"; st.onclick = () => setTab(STAR); }
   for (const [name, set] of groups) {
     const b = mk(name, name === activeTab, set.size);
     b.title = "Right-click: rename, delete, add checked signals";
@@ -619,8 +780,8 @@ function renderTabs() {
   box.replaceChildren(frag);
 }
 function setTab(name) { activeTab = name; saveGroups(); renderTabs(); applyFilter(); }
-function newGroup(thenAdd) {
-  const name = (prompt("Name of the new watch group:") || "").trim();
+async function newGroup(thenAdd) {
+  const name = ((await askText({ title: "New watch group", label: "Name of the new watch group", ok: "Create" })) || "").trim();
   if (!name) return null;
   if (groups.has(name)) { setTab(name); if (thenAdd) addToGroup(name, thenAdd); return name; }
   groups.set(name, new Set());
@@ -631,8 +792,8 @@ function addToGroup(name, s) { groups.get(name)?.add(s.name); saveGroups(); rend
 function removeFromGroup(name, s) { groups.get(name)?.delete(s.name); saveGroups(); renderTabs(); applyFilter(); }
 function tabMenu(x, y, name) {
   popMenu(x, y, [[name, null, "hd"],
-    ["Rename…", () => {
-      const n = (prompt("Rename group:", name) || "").trim(); if (!n || n === name) return;
+    ["Rename…", async () => {
+      const n = ((await askText({ title: "Rename group", label: "New name", value: name, ok: "Rename" })) || "").trim(); if (!n || n === name) return;
       if (groups.has(n)) return msg(`A group named '${n}' already exists`, true);
       groups = new Map([...groups].map(([k, v]) => [k === name ? n : k, v]));
       if (activeTab === name) activeTab = n; saveGroups(); renderTabs();
@@ -768,12 +929,14 @@ async function loadSignals(full = true) {
       signals.set(s.name, n);
     }
     rankDirty = true; tree = null;
+    loadBookmarks();
     $("#sigempty").textContent = "No program in this slot.";
     $("#sigempty").hidden = signals.size > 0;
     // Every name a bare number: a compiled program loaded without its .sig.
     $("#nonames").hidden = !(list.length && list.every(s => /^#\d+$/.test(s.name)));
     reorder(); applyFilter();
     scheduleLanes();
+    if (pendingFocus) { const n = pendingFocus; pendingFocus = null; focusSignal(n); }
     loadGraph();             // the tree (if shown) is built once the graph has arrived
   } else {
     // start/stop: same program, refresh the values (and pick up signals we have not met yet)
@@ -934,7 +1097,7 @@ let curQuery = null, rows = [], rowsTree = false, shownCount = 0, forceOpen = fa
 function applyFilter() {
   const q = compileQuery($("#search").value), k = $("#kfilter").value, only = $("#onlychecked").checked, onlyB = $("#onlybreak").checked, act = $("#activeonly").checked;
   curQuery = q;
-  const grp = activeTab ? groups.get(activeTab) : null;
+  const grp = activeTab === STAR ? starred : activeTab ? groups.get(activeTab) : null;
   const isTree = viewMode === "tree" && !!tree;
   forceOpen = !!q;                    // a search overrides collapsed folders so matches are never hidden
   if (isTree) for (const f of tree.folders) { f.vis = 0; f.ri = -1; f.closed = !forceOpen && (f.collapsed || (f.parent !== tree.root && f.parent.closed)); }
@@ -957,7 +1120,8 @@ function applyFilter() {
   sigList.setCount(out.length); sigList.invalidate();
   updateCounts();
   $("#signone").hidden = shown > 0 || signals.size === 0;
-  $("#signone").textContent = activeTab && groups.get(activeTab)?.size === 0 ? "This group is empty: right-click a signal and choose Add to group." : "No signal matches.";
+  $("#signone").textContent = activeTab === STAR && starred.size === 0 ? "Nothing is starred yet: click the ☆ next to a signal (or press S)."
+    : activeTab && activeTab !== STAR && groups.get(activeTab)?.size === 0 ? "This group is empty: right-click a signal and choose Add to group." : "No signal matches.";
   requestFrame();
 }
 function updateCounts() {
@@ -968,10 +1132,10 @@ function updateCounts() {
 // ---- rows
 function makeSigRow() {
   const el = document.createElement("div"); el.className = "row";
-  el.innerHTML = '<div class="c"><input type="checkbox" class="chk"></div><div class="c b"><input type="checkbox" class="brk" title="Break on this signal"></div><div class="c mono nm"></div><div class="c type"></div><div class="c chg mono"></div><div class="c val"></div>' +
+  el.innerHTML = '<div class="c"><input type="checkbox" class="chk"></div><div class="c b"><input type="checkbox" class="brk" title="Break on this signal"></div><div class="c s"><span class="star" title="Star this signal (S)">☆</span></div><div class="c mono nm"><span class="nmt"></span><span class="nmn"></span></div><div class="c type"></div><div class="c chg mono"></div><div class="c val"></div>' +
                  '<div class="fcell"><span class="tw"></span><span class="fl"></span><span class="fc mono"></span><i class="adot"></i></div>';
   const k = el.children;
-  el._c = { chk: k[0].firstChild, brk: k[1].firstChild, nm: k[2], type: k[3], chg: k[4], val: k[5], fcell: k[6], tw: k[6].children[0], fl: k[6].children[1], fc: k[6].children[2] };
+  el._c = { chk: k[0].firstChild, brk: k[1].firstChild, star: k[2].firstChild, nm: k[3], nmt: k[3].children[0], nmn: k[3].children[1], type: k[4], chg: k[5], val: k[6], fcell: k[7], tw: k[7].children[0], fl: k[7].children[1], fc: k[7].children[2] };
   return el;
 }
 const put = (el, key, node, v) => { if (el[key] !== v) { node.textContent = v; el[key] = v; } };
@@ -996,9 +1160,14 @@ function bindSig(el, it) {
   if (c.chk.checked !== it.watch) c.chk.checked = it.watch;
   if (c.brk.checked !== it.brk) c.brk.checked = it.brk;
   const lab = rowsTree ? it.label : it.name;
-  put(el, "_nm", c.nm, lab);
+  put(el, "_nm", c.nmt, lab);
+  const note = notes.get(it.name) || "";
+  put(el, "_nn", c.nmn, note ? "  ✎ " + note : "");
+  const isStar = starred.has(it.name), sc = "star" + (isStar ? " on" : "");
+  if (el._sc !== sc) { c.star.className = sc; c.star.textContent = isStar ? "★" : "☆"; el._sc = sc; }
   const pl = rowsTree ? (6 + it.depth * 14 + 14) + "px" : ""; if (el._pl !== pl) { c.nm.style.paddingLeft = pl; el._pl = pl; }
-  if (el._ti !== it.name) { c.nm.title = it.name; el._ti = it.name; }
+  const nti = note ? it.name + "\nNote: " + note : it.name;
+  if (el._ti !== nti) { c.nm.title = nti; el._ti = nti; }
   put(el, "_ty", c.type, it.kind);
   put(el, "_ch", c.chg, it.changeCount ? String(it.changeCount) : "");
   const past = viewVals && viewVals.has(it.name) && viewVals.get(it.name) !== undefined;
@@ -1019,6 +1188,7 @@ $("#sigbody").addEventListener("click", e => {
   if (it.isFolder) return toggleFolder(it);
   if (e.target.classList.contains("chk")) { setWatch(it, e.target.checked); watchChanged(); return; }
   if (e.target.classList.contains("brk")) { setBrk(it, e.target.checked); setBreakDone(); return; }
+  if (e.target.classList.contains("star")) { toggleStar(it); return; }
   selectSignal(it.name);
 });
 $("#sigbody").addEventListener("dblclick", e => {
@@ -1218,6 +1388,7 @@ function updateTraceCount() {
 function rerenderValues() { if (curQuery?.usesValue) applyFilter(); repaintAll(); }
 
 function clearTrace() {
+  if (viewing) endViewing(false);
   trace.clear(); tview.clear(); seq = 0; firstTime = null; selTraceE = null; selChain = null; lastChain = undefined; pausedE = histE = null; fresh = [];
   traceDirty = true; shownTraceCount = -1; newCount = 0; flushTraceModel(); traceList.invalidate(); requestFrame();
   wave?.clear(); waveBuf = [];
@@ -1274,7 +1445,9 @@ function onStep(st) {
   if (st.version != null && st.version < stepVersion) return;
   stepVersion = st.version ?? stepVersion;
   const wasPausedOn = step.paused && step.paused.step;
-  step = { enabled: st.enabled, onlyBreakSignals: st.onlyBreakSignals, breakSignals: new Set(st.breakSignals || []), paused: st.paused };
+  step = { enabled: st.enabled, onlyBreakSignals: st.onlyBreakSignals, breakSignals: new Set(st.breakSignals || []), paused: st.paused, conditions: st.conditions || [] };
+  $("#condbtn").textContent = step.conditions.length ? `Conditions (${step.conditions.length})` : "Conditions";
+  paintConds();
 
   // First state after connecting: if the server has no break list (e.g. it restarted) restore ours.
   if (!stepSynced) {
@@ -1333,7 +1506,7 @@ function renderStep(newPause) {
       Object.assign(document.createElement("b"), { className: "mono", textContent: p.signal }),
       document.createTextNode(" → "),
       Object.assign(document.createElement("span"), { className: valClass(p.kind, p.value), textContent: fmt(p.kind, p.value) }),
-      document.createTextNode(`  (${p.source || "logic"}) — the new value is set; logic driven by it runs when you press Next.`));
+      document.createTextNode(`  (${p.source || "logic"})${p.reason ? " — stopped by " + p.reason : ""} — the new value is set; logic driven by it runs when you press Next.`));
     what.title = what.textContent;
   } else if (step.enabled) {
     const n = step.breakSignals.size;
@@ -1571,6 +1744,8 @@ function showMenu(x, y, s) {
   if (s.kind === "Digital") items.push(["Set (1)", () => force(s.name, 1)], ["Clear (0)", () => force(s.name, 0)], ["Pulse", () => pulse(s.name)], ["Toggle", () => force(s.name, isHigh(s.value) ? 0 : 1)]);
   else if (s.kind === "Analog") items.push(["Set value…", () => { $("#fval").focus(); $("#fval").select(); }], ["Set to 0", () => force(s.name, 0)], ["Set to 65535", () => force(s.name, 65535)]);
   else items.push(["Send string…", () => { $("#fval").value = ""; $("#fval").focus(); }], ["Clear string", () => force(s.name, "")]);
+  items.push(["-"], [starred.has(s.name) ? "★ Unstar" : "☆ Star this signal", () => toggleStar(s)], [notes.has(s.name) ? "Edit note…" : "Add note…", () => editNote(s)],
+             ["Why is it this value?", () => why(s.name)]);
   items.push(["-"], [s.brk ? "Don't break on this signal" : "Break on this signal ⏸", () => setBreak(s, !s.brk)],
              [s.watch ? "Uncheck for trace" : "Check for trace", () => { setWatch(s, !s.watch); repaintSig(s); watchChanged(); }]);
   // watch groups
@@ -1669,15 +1844,18 @@ async function loadSlots() {
 function switchSlot(n) {
   slot = n; history.replaceState(null, "", `?slot=${n}`);
   selected = null; $("#fname").value = ""; $("#fval").value = "";
-  step = { enabled: false, onlyBreakSignals: false, breakSignals: new Set(), paused: null };
+  step = { enabled: false, onlyBreakSignals: false, breakSignals: new Set(), paused: null, conditions: [] };
   changes.clear(); stepLog = []; view = null; viewVals = null; hlPaused = hlHist = null; renderStep(false);
   tree = null; graphGen++; graphReady = false; nearSet = null; gw("clear").catch(() => { });
   litFolders.clear(); dirtySigs.clear(); $("#rel").hidden = true; $("#pathslink").href = pathsUrl();
   signals = new Map(); watched = new Set(); marked = new Set(); rows = []; order = []; seqItems = []; lazyQ = []; loadedFile = undefined;
   watchNames = new Set(store.get(watchKey(), []));
   collapsedMap = store.get(collapsedKey(), {}) || {};
+  starred = new Set(); notes = new Map(); watchState = { watches: [], hits: [] }; monState = null; deadState = null; tsel.clear();
+  $("#loglink").href = `log.html?slot=${n}`;
   loadGroups();
   clearTrace(); applyFilter(); loadSlots(); loadSignals(true); connect();
+  pollDebug(); if (dock.open) refreshDock();
   if (wave) wave.setSignals([]);
 }
 
@@ -1718,6 +1896,421 @@ $("#sortsel").onchange = e => { const v = e.target.value; if (v !== sortBy) { so
     sp.onpointerup = () => { sp.classList.remove("drag"); sp.onpointermove = null; };
   };
 })();
+
+// ================================================================ B3: dialogs, bookmarks, watches, alerts, never changed, traces, why
+window.__openvpDebugger = true;
+const STAR = "\u2605";
+let starred = new Set(), notes = new Map(), pendingFocus = new URLSearchParams(location.search).get("signal");
+let watchState = { watches: [], hits: [] }, monState = null, deadState = null, savedTraces = [], viewing = false;
+const tsel = new Set();
+
+// A small replacement for window.prompt (which doesn't exist in the desktop app).
+function askText({ title, label = "", value = "", multiline = false, ok = "OK" }) {
+  return new Promise(resolve => {
+    const d = $("#ask-dlg"), ta = $("#ask-text"), inp = $("#ask-input"), f = multiline ? ta : inp;
+    $("#ask-title").textContent = title; $("#ask-label").textContent = label; $("#ask-ok").textContent = ok;
+    ta.hidden = !multiline; inp.hidden = multiline; f.value = value;
+    let done = false;
+    const fin = v => { if (done) return; done = true; if (d.open) d.close(); resolve(v); };
+    $("#ask-cancel").onclick = () => fin(null);
+    $("#ask-ok").onclick = e => { e.preventDefault(); fin(f.value); };
+    inp.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); fin(inp.value); } };
+    d.onclose = () => fin(null);
+    d.showModal(); f.focus(); f.select();
+  });
+}
+const clock = t => { const d = new Date(t); return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`; };
+const jsonPost = (method, body) => ({ method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+
+// ---- find a signal: used by the log's links (URL ?signal= or a message from the console / log page)
+function searchTextFor(name) { return /^[-=<>\/]|[*\s]|^[dasDAS]:/.test(name) ? "/^" + name.replace(/[.*+?^${}()|[\]\\\/]/g, "\\$&") + "$/" : name; }
+function focusSignal(name) {
+  if (!name) return;
+  $("#search").value = searchTextFor(name); $("#kfilter").value = ""; $("#onlychecked").checked = $("#onlybreak").checked = $("#activeonly").checked = false;
+  if (activeTab) { activeTab = null; saveGroups(); renderTabs(); }
+  applyFilter();
+  const s = signals.get(name);
+  if (!s) { msg(`'${name}' isn't in this slot's signal list.`, true); return; }
+  selectSignal(name);
+  if (viewMode === "tree" && tree) for (let f = s.folder; f && f !== tree.root; f = f.parent) f.collapsed = false;
+  sigList.reveal(s.ri, "center");
+  msg("");
+}
+addEventListener("message", e => {
+  const m = e.data;
+  if (e.origin !== location.origin || !m || m.type !== "openvp-focus-signal") return;
+  if (m.slot && m.slot !== slot) { pendingFocus = m.signal; $("#slot").value = m.slot; switchSlot(m.slot); }
+  else focusSignal(m.signal);
+});
+
+// ---- starred signals and notes (kept on the server per program name)
+async function loadBookmarks() {
+  const my = slot;
+  try {
+    const b = await api(`/api/slots/${slot}/bookmarks`);
+    if (my !== slot) return;
+    starred = new Set(b.starred || []); notes = new Map(Object.entries(b.notes || {}));
+  } catch { }
+  renderTabs(); if (activeTab === STAR) applyFilter(); else repaintAll();
+}
+async function toggleStar(s) {
+  const on = !starred.has(s.name);
+  if (on) starred.add(s.name); else starred.delete(s.name);
+  renderTabs(); if (activeTab === STAR) applyFilter(); else repaintSig(s);
+  try { await api(`/api/slots/${slot}/bookmarks/star`, jsonPost("PUT", { signal: s.name, starred: on })); }
+  catch (e) { msg(e.message, true); if (on) starred.delete(s.name); else starred.add(s.name); renderTabs(); repaintSig(s); }
+}
+async function editNote(s) {
+  const t = await askText({ title: "Note for " + s.name, label: "Saved with the program, shown next to the signal and in its tooltip. Leave empty to remove it.", value: notes.get(s.name) || "", multiline: true, ok: "Save" });
+  if (t == null) return;
+  try {
+    const b = await api(`/api/slots/${slot}/bookmarks/note`, jsonPost("PUT", { signal: s.name, note: t }));
+    notes = new Map(Object.entries(b.notes || {})); repaintSig(s);
+  } catch (e) { msg(e.message, true); }
+}
+
+// ---- conditional breakpoints
+function paintConds() {
+  const box = $("#conds-list"); if (!box) return;
+  box.replaceChildren(...(step.conditions.length ? step.conditions : []).map((c, i) => {
+    const d = document.createElement("div"), sp = document.createElement("span"), b = document.createElement("button");
+    sp.className = "mono"; sp.textContent = c; b.type = "button"; b.textContent = "Remove"; b.className = "minibtn";
+    b.onclick = () => setConds(step.conditions.filter((_, j) => j !== i));
+    d.append(sp, b); return d;
+  }));
+  if (!step.conditions.length) { const d = document.createElement("div"); d.style.color = "var(--muted)"; d.textContent = "No conditions."; box.appendChild(d); }
+}
+async function setConds(list) {
+  try { onStep(await api(`/api/slots/${slot}/step`, jsonPost("POST", { conditions: list }))); $("#cond-msg").textContent = ""; $("#cond-msg").className = "dmsg"; return true; }
+  catch (e) { $("#cond-msg").textContent = e.message; $("#cond-msg").className = "dmsg bad"; return false; }
+}
+$("#condbtn").onclick = () => { paintConds(); $("#cond-msg").textContent = ""; $("#cond-dlg").showModal(); $("#cond-in").focus(); };
+$("#cond-close").onclick = () => $("#cond-dlg").close();
+async function addCond() { const t = $("#cond-in").value.trim(); if (!t) return; if (await setConds([...step.conditions, t])) $("#cond-in").value = ""; }
+$("#cond-add").onclick = addCond;
+$("#cond-in").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); addCond(); } };
+
+// ---- the dock
+const dock = { open: false, tab: store.get("dock", "watches") };
+const DOCKS = ["watches", "alerts", "dead", "traces"];
+function paintDock() {
+  $("#dock").hidden = !dock.open;
+  for (const b of document.querySelectorAll("#dockbtns button")) b.classList.toggle("on", dock.open && b.dataset.dock === dock.tab);
+  for (const b of document.querySelectorAll("#dtabs button")) b.classList.toggle("on", b.dataset.t === dock.tab);
+  for (const t of DOCKS) $("#dp-" + t).hidden = t !== dock.tab;
+}
+function openDock(t) {
+  if (!DOCKS.includes(t)) t = "watches";
+  if (dock.open && dock.tab === t) { dock.open = false; paintDock(); return; }
+  dock.open = true; dock.tab = t; store.set("dock", t); paintDock(); refreshDock(); requestFrame();
+}
+function refreshDock() {
+  if (dock.tab === "watches") loadWatches();
+  else if (dock.tab === "alerts") loadMonitor(true);
+  else if (dock.tab === "dead") loadDead();
+  else if (dock.tab === "traces") loadTraces();
+}
+for (const b of document.querySelectorAll("#dockbtns button")) b.onclick = () => openDock(b.dataset.dock);
+for (const b of document.querySelectorAll("#dtabs button")) b.onclick = () => { dock.tab = b.dataset.t; store.set("dock", dock.tab); paintDock(); refreshDock(); };
+$("#dockclose").onclick = () => { dock.open = false; paintDock(); requestFrame(); };
+(() => {
+  const sp = $("#dsplit"), dk = $("#dock");
+  const h = store.get("dockh", 240); dk.style.setProperty("--dh", h + "px");
+  sp.onpointerdown = e => {
+    sp.setPointerCapture(e.pointerId); sp.classList.add("drag");
+    const y0 = e.clientY, h0 = dk.getBoundingClientRect().height;
+    sp.onpointermove = ev => { const nh = Math.round(Math.max(110, Math.min(innerHeight * 0.75, h0 + (y0 - ev.clientY)))); dk.style.setProperty("--dh", nh + "px"); store.set("dockh", nh); };
+    sp.onpointerup = () => { sp.classList.remove("drag"); sp.onpointermove = null; };
+  };
+})();
+
+// ---- watches
+$("#w-help").title = "A watch is an expression over signals, checked by the server on every change, so it works with this window closed.\n" +
+  "  Room_On=1 && Proj_Power=0     digital signals are 1 or 0\n  Vol>50000   Vol>=50%   Vol<1F4h     analog values: 500, 1F4h or 50%\n" +
+  "  Src_Name contains \"HDMI\"     also startswith, endswith (= and != match exactly)\n  (A or B) and not C     and, or, not, ( )\n" +
+  "  Room_On=1 for 2s     only when it stays true that long (ms, s, m, h)\n  [Name with spaces]     square brackets quote a signal name\n" +
+  "When it becomes true it shows here with the time and a Warning goes to the slot log. It can also pause stepping.";
+async function loadWatches() {
+  const my = slot;
+  try { const d = await api(`/api/slots/${slot}/watches`); if (my !== slot) return; watchState = d; } catch { }
+  paintWatches();
+}
+function watchDefs() { return watchState.watches.map(w => ({ id: w.id, expression: w.expression, pauseStep: w.pauseStep, enabled: w.enabled, name: w.name })); }
+async function saveWatches(defs, fromForm) {
+  try { watchState = await api(`/api/slots/${slot}/watches`, jsonPost("PUT", { watches: defs })); $("#w-msg").textContent = ""; $("#w-msg").className = "dmsg"; if (fromForm) { $("#w-expr").value = ""; $("#w-name").value = ""; } paintWatches(); return true; }
+  catch (e) { $("#w-msg").textContent = e.message; $("#w-msg").className = "dmsg bad"; return false; }
+}
+let watchHtml = "";
+function paintWatches() {
+  const ws = watchState.watches, tr = ws.filter(w => w.state === "true").length;
+  $("#wbadge").hidden = !tr; $("#wbadge").textContent = tr;
+  if (!dock.open || dock.tab !== "watches") return;
+  const sig = JSON.stringify([ws, watchState.hits]);
+  if (sig === watchHtml) return;
+  watchHtml = sig;
+  $("#w-empty").hidden = ws.length > 0; $("#w-table").hidden = ws.length === 0;
+  const tb = $("#w-table tbody"); tb.replaceChildren();
+  for (const w of ws) {
+    const r = document.createElement("tr"); if (w.state === "true") r.className = "wtrue";
+    const c0 = document.createElement("td"); const dot = document.createElement("span"); dot.className = "wdot " + w.state; dot.title = { idle: "Not true", waiting: "True, waiting out its 'for' time", true: "True now", error: "Can't be evaluated", off: "Switched off" }[w.state] || w.state; c0.appendChild(dot);
+    const c1 = document.createElement("td"); c1.className = "ex";
+    const ex = document.createElement("span"); ex.className = "mono"; ex.textContent = w.expression;
+    if (w.name) { const b = document.createElement("b"); b.textContent = w.name + "  "; c1.appendChild(b); }
+    c1.appendChild(ex);
+    if (w.error) { const e = document.createElement("div"); e.style.color = "var(--err)"; e.textContent = w.error; c1.appendChild(e); }
+    else if (w.unknownSignals?.length) { const e = document.createElement("div"); e.style.color = "var(--brk)"; e.textContent = "Not in this program: " + w.unknownSignals.join(", "); c1.appendChild(e); }
+    const c2 = document.createElement("td"); c2.className = "num"; c2.textContent = w.hits || "";
+    const c3 = document.createElement("td"); c3.className = "mono"; c3.textContent = w.lastHit ? clock(w.lastHit) : "";
+    const mk = (prop) => { const td = document.createElement("td"); const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !!w[prop]; cb.onchange = () => saveWatches(watchDefs().map(d => d.id === w.id ? { ...d, [prop]: cb.checked } : d)); td.appendChild(cb); return td; };
+    const c4 = mk("pauseStep"), c5 = mk("enabled");
+    const c6 = document.createElement("td"); const del = document.createElement("button"); del.className = "minibtn"; del.textContent = "Remove"; del.onclick = () => saveWatches(watchDefs().filter(d => d.id !== w.id)); c6.appendChild(del);
+    r.append(c0, c1, c2, c3, c4, c5, c6); tb.appendChild(r);
+  }
+  const hits = $("#w-hits"); hits.replaceChildren();
+  for (const h of watchState.hits) { const d = document.createElement("div"); const t = document.createElement("span"); t.className = "t"; t.textContent = clock(h.time); d.append(t, h.message); hits.appendChild(d); }
+  if (!watchState.hits.length) { const d = document.createElement("div"); d.style.color = "var(--muted)"; d.textContent = "Nothing yet."; hits.appendChild(d); }
+}
+async function addWatch() {
+  const expression = $("#w-expr").value.trim(); if (!expression) return;
+  await saveWatches([...watchDefs(), { id: "", expression, pauseStep: $("#w-pause").checked, enabled: true, name: $("#w-name").value.trim() || null }], true);
+}
+$("#w-add").onclick = addWatch;
+$("#w-expr").onkeydown = $("#w-name").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); addWatch(); } };
+
+// ---- alerts: races and oscillation
+async function loadMonitor(fill) {
+  const my = slot;
+  try { const d = await api(`/api/slots/${slot}/monitor`); if (my !== slot) return; monState = d; } catch { }
+  paintMonitor(fill);
+}
+let monSig = "";
+function paintMonitor(fill) {
+  const m = monState; if (!m) return;
+  const n = m.recentAlerts || 0;
+  $("#abadge").hidden = !n; $("#abadge").textContent = n;
+  $("#alertchip").hidden = !n; $("#alertchip").textContent = `⚠ ${n} oscillating`;
+  if (!dock.open || dock.tab !== "alerts") return;
+  if (fill || !$("#dp-alerts").contains(document.activeElement)) {
+    $("#a-on").checked = m.oscillation; $("#a-burst").value = m.maxChangesPerBurst; $("#a-flips").value = m.oscillationChanges; $("#a-win").value = m.oscillationWindowMs;
+  }
+  const sig = JSON.stringify(m.alerts) + m.oscillation;
+  if (sig === monSig && !fill) return;
+  monSig = sig;
+  const box = $("#a-list"); box.replaceChildren();
+  if (!m.oscillation) { const d = document.createElement("div"); d.style.color = "var(--muted)"; d.textContent = "Detection is off. Tick the box and Save to start watching for signals that race or oscillate (it also puts a badge on this slot's tile in the console)."; box.appendChild(d); }
+  for (const a of m.alerts) {
+    const d = document.createElement("div"), t = document.createElement("span"), l = document.createElement("a");
+    t.className = "t"; t.textContent = clock(a.time); l.textContent = a.signal; l.style.cssText = "color:var(--accent);cursor:pointer"; l.onclick = () => focusSignal(a.signal);
+    d.append(t, l, " · " + a.message); box.appendChild(d);
+  }
+  if (m.oscillation && !m.alerts.length) { const d = document.createElement("div"); d.style.color = "var(--muted)"; d.textContent = "No alerts."; box.appendChild(d); }
+}
+async function putMonitor(body, msgEl) {
+  try { monState = await api(`/api/slots/${slot}/monitor`, jsonPost("PUT", body)); paintMonitor(true); if (msgEl) { msgEl.textContent = "Saved."; setTimeout(() => { msgEl.textContent = ""; }, 1500); } return true; }
+  catch (e) { if (msgEl) { msgEl.textContent = e.message; msgEl.className = "dmsg bad"; } return false; }
+}
+$("#a-save").onclick = () => putMonitor({ oscillation: $("#a-on").checked, maxChangesPerBurst: +$("#a-burst").value || 6, oscillationChanges: +$("#a-flips").value || 20, oscillationWindowMs: +$("#a-win").value || 1000 }, $("#a-msg"));
+$("#a-clear").onclick = async () => { try { await api(`/api/slots/${slot}/monitor/alerts`, { method: "DELETE" }); } catch { } loadMonitor(); };
+$("#alertchip").onclick = () => { if (!(dock.open && dock.tab === "alerts")) openDock("alerts"); };
+
+// ---- never changed (dead logic)
+async function loadDead() {
+  const my = slot;
+  try { const d = await api(`/api/slots/${slot}/never-changed`); if (my !== slot) return; deadState = d; } catch { }
+  paintDead();
+}
+function paintDead() {
+  const d = deadState; if (!d) return;
+  $("#d-track").textContent = d.tracking ? "Stop tracking" : "Start tracking"; $("#d-reset").disabled = !d.tracking;
+  $("#d-state").textContent = d.tracking ? `Since ${new Date(d.since).toLocaleTimeString()}: ${d.neverCount} of ${d.total} signals have not changed.` : "Tracking is off: nothing is remembered about which signals change.";
+  const q = $("#d-find").value.trim().toLowerCase(), tb = $("#d-table tbody"); tb.replaceChildren();
+  const list = (d.signals || []).filter(s => !q || s.name.toLowerCase().includes(q));
+  for (const s of list.slice(0, 1000)) {
+    const r = document.createElement("tr"), a = document.createElement("td"), b = document.createElement("td"), c = document.createElement("td");
+    a.className = "mono"; a.textContent = s.name; a.style.cursor = "pointer"; a.onclick = () => focusSignal(s.name);
+    b.textContent = s.kind; c.className = "mono"; c.textContent = fmt(s.kind, s.value);
+    r.append(a, b, c); tb.appendChild(r);
+  }
+  $("#d-msg").textContent = d.tracking ? (list.length > 1000 ? `Showing 1000 of ${list.length}: use the filter.` : d.neverCount ? "Click a name to find it in the signal list. Drive the room through its modes, then look here: what's left may be unused logic." : "Every signal has changed since the reset point.") : "";
+}
+$("#d-track").onclick = async () => { await putMonitor({ trackChanges: !(deadState?.tracking) }); loadDead(); };
+$("#d-reset").onclick = async () => { try { await api(`/api/slots/${slot}/never-changed/reset`, { method: "POST" }); } catch (e) { $("#d-msg").textContent = e.message; } loadDead(); };
+$("#d-find").oninput = paintDead;
+
+// ---- traces: save, export, import, view, compare
+function traceBody() {
+  const events = [];
+  for (let i = 0; i < trace.length; i++) {
+    const e = trace.get(i);
+    events.push({ time: new Date(e.time).toISOString(), signal: e.signal, kind: e.kind, value: e.kind === "Digital" ? isHigh(e.value) : e.kind === "Analog" ? Number(e.value) || 0 : String(e.value ?? ""),
+                  source: e.source || "", symbol: e.symbol ?? null, cause: e.cause ?? null, depth: e.depth | 0, chain: e.chain ?? 0 });
+  }
+  return JSON.stringify({ format: "openvp-trace", version: 1, slot, program: $("#prog").textContent, events });
+}
+function download(blob, name) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); }
+const stampName = () => { const d = new Date(); return `slot${pad(slot)}-trace-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`; };
+const tmsg = (t, bad) => { $("#t-msg").textContent = t; $("#t-msg").className = "dmsg" + (bad ? " bad" : ""); };
+async function exportTrace(fmt) {
+  if (!trace.length) return tmsg("The trace is empty.", true);
+  try {
+    const r = await fetch(`/api/slots/${slot}/trace/export?format=${fmt}`, { method: "POST", headers: { "content-type": "application/json" }, body: traceBody() });
+    if (openvpAuth.check(r)) return;
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
+    download(await r.blob(), stampName() + "." + fmt); tmsg(`Exported ${trace.length} changes as ${fmt.toUpperCase()}.`);
+  } catch (e) { tmsg(e.message, true); }
+}
+async function saveCurrentTrace() {
+  if (!trace.length) return tmsg("The trace is empty: let some changes through first.", true);
+  const name = await askText({ title: "Save the trace", label: "A name to find it by, e.g. before the edit", value: "", ok: "Save" });
+  if (name == null) return;
+  try { const i = await api(`/api/slots/${slot}/traces?name=${encodeURIComponent(name.trim())}`, { method: "POST", headers: { "content-type": "application/json" }, body: traceBody() }); tmsg(`Saved “${i.name}” (${i.count} changes).`); loadTraces(); }
+  catch (e) { tmsg(e.message, true); }
+}
+async function loadTraces() {
+  const my = slot;
+  try { const l = await api(`/api/slots/${slot}/traces`); if (my !== slot) return; savedTraces = l; } catch { }
+  for (const id of [...tsel]) if (!savedTraces.some(t => t.id === id)) tsel.delete(id);
+  paintTraces();
+}
+function paintTraces() {
+  $("#t-empty").hidden = savedTraces.length > 0; $("#t-table").hidden = savedTraces.length === 0;
+  const tb = $("#t-table tbody"); tb.replaceChildren();
+  for (const t of savedTraces) {
+    const r = document.createElement("tr");
+    const c0 = document.createElement("td"), cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = tsel.has(t.id); cb.title = "Tick two traces to compare them";
+    cb.onchange = () => { if (cb.checked) { tsel.add(t.id); if (tsel.size > 2) tsel.delete([...tsel][0]); } else tsel.delete(t.id); paintTraces(); }; c0.appendChild(cb);
+    const c1 = document.createElement("td"); c1.textContent = t.name; c1.title = t.program;
+    const c2 = document.createElement("td"); c2.className = "mono"; c2.textContent = new Date(t.saved).toLocaleString();
+    const c3 = document.createElement("td"); c3.className = "num"; c3.textContent = t.count;
+    const c4 = document.createElement("td");
+    const btn = (label, fn, title) => { const b = document.createElement("button"); b.className = "minibtn"; b.textContent = label; b.title = title || label; b.onclick = fn; c4.append(b, " "); };
+    btn("View", () => viewSaved(t), "Show this trace in the Trace pane (read-only) until you go back to live");
+    btn("JSON", () => download_(t, "json"), "Download as JSON"); btn("CSV", () => download_(t, "csv"), "Download as CSV");
+    btn("Rename", async () => { const n = await askText({ title: "Rename trace", value: t.name, ok: "Rename" }); if (n && n.trim()) { await api(`/api/slots/${slot}/traces/${t.id}`, jsonPost("PUT", { name: n })); loadTraces(); } });
+    btn("Delete", async () => { await api(`/api/slots/${slot}/traces/${t.id}`, { method: "DELETE" }); loadTraces(); });
+    r.append(c0, c1, c2, c3, c4); tb.appendChild(r);
+  }
+  $("#t-cmp").disabled = tsel.size !== 2;
+}
+function download_(t, fmt) { const a = document.createElement("a"); a.href = `/api/slots/${slot}/traces/${t.id}?format=${fmt}`; document.body.appendChild(a); a.click(); a.remove(); }
+async function viewSaved(t) {
+  try {
+    const f = await api(`/api/slots/${slot}/traces/${t.id}?format=json`);
+    startViewing(f.events || [], t.name);
+  } catch (e) { tmsg(e.message, true); }
+}
+function startViewing(events, name) {
+  streaming = false; $("#stream").classList.remove("on"); $("#stream").textContent = "○ Stream";
+  trace.clear(); tview.clear(); seq = 0; firstTime = null; selTraceE = null; selChain = null; pausedE = histE = null; fresh = []; band = 0; bandFlip = false; lastChain = undefined;
+  viewing = true;
+  for (const m of events) {
+    const time = Date.parse(m.time), s = signals.get(m.signal), chain = m.chain || null;
+    if (chain == null) band = 0; else { if (chain !== lastChain) bandFlip = !bandFlip; band = bandFlip ? 1 : 0; }
+    lastChain = chain;
+    const e = { cn: ++cseq, n: ++seq, time, signal: m.signal, name: m.signal, lname: s ? s.lname : m.signal.toLowerCase(), kind: m.kind, value: m.value, source: m.source || "", symbol: m.symbol ?? null, cause: m.cause ?? null,
+                depth: m.depth | 0, chain, band, fresh: false, _el: null };
+    if (!hasCause && (m.symbol != null || chain)) { hasCause = true; $("#trace").classList.remove("nocause"); }
+    if (firstTime == null) firstTime = time;
+    trace.push(e); if (traceVisible(e, tfilter)) tview.push(e);
+  }
+  $("#viewtext").textContent = `Viewing the saved trace “${name}”: ${events.length} changes. Live changes are not being added.`;
+  $("#viewbanner").hidden = false;
+  traceDirty = true; shownTraceCount = -1; flushTraceModel(); traceList.invalidate(); requestFrame();
+}
+function endViewing(clear = true) {
+  viewing = false; $("#viewbanner").hidden = true;
+  streaming = true; $("#stream").classList.add("on"); $("#stream").textContent = "● Stream";
+  if (clear) clearTrace();
+}
+$("#viewback").onclick = () => endViewing(true);
+$("#t-save").onclick = saveCurrentTrace; $("#t-csv").onclick = () => exportTrace("csv"); $("#t-json").onclick = () => exportTrace("json");
+$("#t-import").onclick = () => $("#t-file").click();
+$("#t-file").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  try {
+    const text = await f.text();
+    const i = await api(`/api/slots/${slot}/traces?name=${encodeURIComponent(f.name.replace(/\.[^.]+$/, ""))}`, { method: "POST", headers: { "content-type": "text/plain" }, body: text });
+    tmsg(`Imported “${i.name}” (${i.count} changes). View it, or tick it and another to compare.`); loadTraces();
+  } catch (err) { tmsg(err.message, true); }
+};
+let cmpResult = null, cmpFilter = "all";
+async function runCompare() {
+  const [a, b] = [...tsel];
+  const tol = Number($("#t-tol").value);
+  try { cmpResult = await api(`/api/slots/${slot}/traces/compare`, jsonPost("POST", { a, b, toleranceMs: isNaN(tol) ? 50 : tol })); }
+  catch (e) { tmsg(e.message, true); return false; }
+  $("#cmp-tol").value = cmpResult.toleranceMs; cmpFilter = "all"; paintCompare();
+  if (!$("#cmp-dlg").open) $("#cmp-dlg").showModal();
+  return true;
+}
+function paintCompare() {
+  const c = cmpResult; if (!c) return;
+  $("#cmp-title").textContent = `A: ${c.a.name}  ·  B: ${c.b.name}`;
+  $("#cmp-sum").textContent = c.same ? `The traces are the same (${c.matched} changes line up, times within ${c.toleranceMs} ms).`
+    : `${c.matched} changes line up · ${c.onlyA} only in A · ${c.onlyB} only in B · ${c.valueDiffs} different values · ${c.timingDiffs} timing differences over ${c.toleranceMs} ms` + (c.truncated ? " (first 5000 shown)" : "");
+  const counts = { all: c.diffs.length, onlyA: c.onlyA, onlyB: c.onlyB, value: c.valueDiffs, timing: c.timingDiffs };
+  const labels = { all: "All", onlyA: "Only in A", onlyB: "Only in B", value: "Different value", timing: "Timing" };
+  $("#cmp-chips").replaceChildren(...Object.keys(labels).map(k => { const b = document.createElement("button"); b.type = "button"; b.textContent = `${labels[k]} ${counts[k]}`; b.className = cmpFilter === k ? "on" : ""; b.onclick = () => { cmpFilter = k; paintCompare(); }; return b; }));
+  const tbl = document.createElement("table"); tbl.className = "cmp mono";
+  tbl.innerHTML = '<thead><tr><th style="width:30%">Signal</th><th style="width:22%">A</th><th style="width:22%">B</th><th>Difference</th></tr></thead>';
+  const tb = document.createElement("tbody");
+  const rows = c.diffs.filter(d => cmpFilter === "all" || d.kind === cmpFilter);
+  for (const d of rows.slice(0, 2000)) {
+    const r = document.createElement("tr"); r.className = d.kind;
+    const cell = (x) => { const td = document.createElement("td"); td.textContent = x ? `${fmt(x.kind, x.kind === "Digital" ? x.value === "1" : x.kind === "Analog" ? Number(x.value) : x.value)}  @ ${clock(x.time)}` : "—"; return td; };
+    const sg = document.createElement("td"); sg.textContent = d.signal;
+    const df = document.createElement("td"); df.textContent = d.kind === "onlyA" ? "only in A" : d.kind === "onlyB" ? "only in B" : d.kind === "value" ? "different value" : `timing ${d.deltaMs >= 0 ? "+" : "−"}${Math.abs(Math.round(d.deltaMs))} ms`;
+    r.append(sg, cell(d.a), cell(d.b), df); tb.appendChild(r);
+  }
+  tbl.appendChild(tb);
+  const body = $("#cmp-body"); body.replaceChildren(tbl);
+  if (!rows.length) { const d = document.createElement("div"); d.className = "empty"; d.textContent = c.same ? "Nothing differs." : "Nothing in this category."; body.appendChild(d); }
+  else if (rows.length > 2000) { const d = document.createElement("div"); d.className = "muted"; d.textContent = `Showing 2000 of ${rows.length}.`; body.appendChild(d); }
+}
+$("#t-cmp").onclick = runCompare; $("#cmp-redo").onclick = () => { $("#t-tol").value = $("#cmp-tol").value; runCompare(); }; $("#cmp-close").onclick = () => $("#cmp-dlg").close();
+
+// ---- why is this signal this value?
+async function why(name) {
+  $("#why-title").textContent = "Why is it this value? · " + name;
+  $("#why-sum").textContent = "Working it out…"; $("#why-steps").replaceChildren(); $("#why-note").textContent = "";
+  if (!$("#why-dlg").open) $("#why-dlg").showModal();
+  let r;
+  try { r = await api(`/api/slots/${slot}/why?signal=${encodeURIComponent(name)}`); }
+  catch (e) { $("#why-sum").textContent = e.message; return; }
+  $("#why-sum").textContent = r.summary;
+  $("#why-steps").replaceChildren(...r.steps.map(st => {
+    const d = document.createElement("div"); d.className = "whystep";
+    const tm = document.createElement("div"); tm.className = "tm mono"; tm.textContent = st.time ? clock(st.time) : "—";
+    const body = document.createElement("div");
+    const k = document.createElement("div"); k.className = "k"; k.textContent = { change: "logic", panel: "input from a panel", force: "forced", start: "start-up", program: "set by the program", external: "outside the logic", none: "no change seen", unknown: "from the wiring" }[st.kind] || st.kind;
+    const t = document.createElement("div"); t.textContent = st.text;
+    const a = document.createElement("a"); a.textContent = "  show " + st.signal; a.onclick = () => { $("#why-dlg").close(); focusSignal(st.signal); };
+    if (signals.has(st.signal)) t.appendChild(a);
+    body.append(k, t); d.append(tm, body); return d;
+  }));
+  $("#why-note").textContent = r.note || (r.complete ? "" : "The chain stops here.");
+}
+
+// ---- polling: watches and alerts keep working with the window closed; this just shows them
+let pollTick = 0;
+async function pollDebug() {
+  if (document.hidden) return;
+  pollTick++;
+  await Promise.all([loadWatches(), loadMonitor(false)]);
+  if (dock.open && dock.tab === "dead" && pollTick % 2 === 0) loadDead();
+}
+setInterval(pollDebug, 1500);
+
+addEventListener("keydown", e => {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+  if (e.target.closest?.("input,textarea,select,[contenteditable]") || document.querySelector("dialog[open]")) return;
+  const k = e.key.toLowerCase(), sel = signals.get(selected);
+  if (k === "s" && sel) { e.preventDefault(); toggleStar(sel); }
+  else if (k === "n" && sel) { e.preventDefault(); editNote(sel); }
+  else if (k === "y" && sel) { e.preventDefault(); why(sel.name); }
+  else if (k === "w") { e.preventDefault(); openDock("watches"); }
+});
+paintDock();
 
 document.querySelectorAll("#viewseg button").forEach(b => b.classList.toggle("on", b.dataset.v === viewMode));
 $("#foldbtns").hidden = viewMode !== "tree";

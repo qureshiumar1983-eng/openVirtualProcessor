@@ -38,6 +38,8 @@
   .sec-head button { padding:2px 8px; font-size:12px; }
   section.max { position:fixed; inset:16px; z-index:50; display:flex; flex-direction:column; box-shadow:0 10px 40px #000c; }
   section.max #log, section.max #console-out { flex:1; height:auto !important; resize:none; }
+  section.max #logw { flex:1; min-height:0; display:flex; flex-direction:column; } section.max #logw .ovl { flex:1; }
+  #log { padding:4px 0; }
   .lv-Error { color:var(--err); } .lv-Warning { color:var(--warn); } .lv-Notice { color:var(--info-fg); } .lv-Console { color:var(--text2); }
   .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
   @media (max-width: 1200px) { .grid2 { grid-template-columns: 1fr; } }
@@ -62,6 +64,17 @@
   .btile .bstats { margin-top:4px; display:flex; gap:10px; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; flex-wrap:wrap; }
   .bbadge { font-size:11px; padding:0 6px; border-radius:20px; background:var(--err-bg); color:var(--err-fg); cursor:help; white-space:nowrap; }
   .bbadge.auto { background:var(--info-bg); color:var(--info-fg); }
+  .bbadge.osc { background:var(--warn-bg); color:var(--warn-fg); }
+  #log-sec .sec-head .lnk { font-size:12px; padding:2px 8px; }
+  #exc-det { margin-top:8px; } #exc-det > summary { cursor:pointer; color:var(--muted); }
+  #exc-box { margin-top:6px; max-height:320px; overflow:auto; }
+  #sigfind-wrap { position:relative; }
+  #sigfind { width:200px; font-size:13px; padding:3px 8px; }
+  #sigfind-res { position:absolute; right:0; top:100%; z-index:90; width:min(460px, 92vw); max-height:60vh; overflow:auto; background:var(--menu); border:1px solid var(--line); border-radius:8px; margin-top:4px; box-shadow:0 8px 30px #0006; }
+  #sigfind-res div { padding:5px 10px; cursor:pointer; border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
+  #sigfind-res div:hover, #sigfind-res div.on { background:var(--active); }
+  #sigfind-res small { color:var(--muted); display:block; }
+  @media (max-width: 600px) { #sigfind { width:130px; } }
   /* IP table */
   #ipt td { font-size:13px; }
   #ipt tr.client { cursor:pointer; }
@@ -336,7 +349,7 @@
 <body>
 <header>
   <h1>OpenVP</h1><small>open-source virtual control processor</small>
-  <span style="flex:1"></span><span id="saved" role="status" aria-live="polite"></span><button class="hbtn" id="pal-open" title="Search every action and every help topic (Ctrl+K or Cmd+K)" data-help="palette">Search ⌘K</button><button class="hbtn" id="keys-open" title="Keyboard shortcuts (?)" data-help="palette">?</button><button class="hbtn" id="tpl-open" title="Starter projects to download: a SIMPL# Pro program and a CH5 panel" data-help="templates">Templates</button><button class="theme-btn" data-theme-toggle data-help="top-bar"></button><a href="metrics.html" target="openvp-metrics" data-help="metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="panel.html" target="_blank" data-help="panel" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a><a href="#welcome" id="welcome-link" title="Show the welcome screen again">Welcome</a>
+  <span style="flex:1"></span><span id="saved" role="status" aria-live="polite"></span><span id="sigfind-wrap"><input id="sigfind" type="search" placeholder="Find a signal in all slots" aria-label="Find a signal by name in every loaded slot" autocomplete="off" title="Finds signals by name across all loaded slots and opens that slot's debugger on the one you pick (press F)" data-help="signal-search"><div id="sigfind-res" hidden></div></span><button class="hbtn" id="pal-open" title="Search every action and every help topic (Ctrl+K or Cmd+K)" data-help="palette">Search ⌘K</button><button class="hbtn" id="keys-open" title="Keyboard shortcuts (?)" data-help="palette">?</button><button class="hbtn" id="tpl-open" title="Starter projects to download: a SIMPL# Pro program and a CH5 panel" data-help="templates">Templates</button><button class="theme-btn" data-theme-toggle data-help="top-bar"></button><a href="metrics.html" target="openvp-metrics" data-help="metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="panel.html" target="_blank" data-help="panel" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a><a href="#welcome" id="welcome-link" title="Show the welcome screen again">Welcome</a>
 </header>
 <div id="slot-strip" aria-label="Selected slot"><select id="strip-slot" aria-label="Slot"></select><button id="strip-start" title="Start">▶</button><button id="strip-stop" title="Stop">■</button><button id="strip-restart" title="Restart">↻</button></div>
 <div id="net-bar" data-help="internet">
@@ -535,9 +548,11 @@
           <button id="log-smaller" title="Make the log shorter">−</button>
           <button id="log-bigger" title="Make the log taller">+</button>
           <button id="log-max" title="Fill the window with the log (Esc to restore)">Maximize</button>
+          <button id="log-full" class="lnk" title="Open the log on its own page, for this slot">Full page ↗</button>
+          <button id="bundle-open" class="lnk" title="Download a zip with this slot's log, recent trace, report and settings, to send when asking for help">Support bundle…</button>
         </div>
-        <div class="bar"><input id="log-filter" type="search" placeholder="Filter the log (press L)" aria-label="Filter the log" autocomplete="off"></div>
-        <div id="log" class="mono" title="Drag the bottom-right corner to resize"></div>
+        <div id="logw"></div>
+        <details id="exc-det" hidden><summary id="exc-sum">Exceptions</summary><div id="exc-box"></div></details>
       </section>
     </div>
   </div>
@@ -612,6 +627,12 @@
   <div id="drop-ready" class="ready"></div>
   <div class="row"><button type="button" id="drop-cancel">Cancel</button><button type="button" id="drop-go" autofocus>Load &amp; start</button></div>
 </form></dialog>
+<dialog id="bundle-dlg" aria-labelledby="bundle-title"><form method="dialog" onsubmit="return false">
+  <b id="bundle-title">Support bundle for slot <span id="bundle-slot"></span></b>
+  <p class="muted" style="margin:0">A zip with the slot's log, its recent trace (if a debugger was open), compatibility report, program summary, metrics, settings, activity and the OpenVP version and OS. It never contains the access key, and leaves out the program, its NVRAM and User files unless you tick the box.</p>
+  <label><input type="checkbox" id="bundle-prog"> Include the program files, NVRAM and User files</label>
+  <div class="row"><button type="button" id="bundle-cancel">Cancel</button><button type="button" id="bundle-go" style="border-color:var(--accent)">Download</button></div>
+</form></dialog>
 <dialog id="welcome" aria-labelledby="welcome-title"><form method="dialog">
   <h2 id="welcome-title">Welcome to OpenVP</h2>
   <p>OpenVP runs Crestron SIMPL# Pro (.cpz, .dll) and SIMPL Windows (.lpz, .smw) programs on any computer. There is no license server. You get up to 10 slots, browser test panels and a debugger. It is not affiliated with Crestron.</p>
@@ -634,6 +655,7 @@
 </form></dialog>
 <script src="openvp-auth.js"></script>
 <script src="qrcode.js"></script>
+<script src="openvp-log.js"></script>
 <script>
 openvpAuth.init();
 const $ = s => document.querySelector(s);
@@ -699,6 +721,8 @@ function renderBoard() {
     const eps = m ? `${m.eventsPerSecond.toFixed(1)} ev/s` : "– ev/s";
     const pol = crashLabel(s.crash);
     const flags = (problems.length ? `<span class="bbadge" title="${esc(problems.join("\n"))}">${problems.length > 1 ? problems.length + " problems" : "problem"}</span>` : "")
+      + (s.alerts > 0 ? `<span class="bbadge osc" title="${esc((s.alertText || "A signal is racing or oscillating") + "\nOpen the debugger's Alerts panel for the list.")}">⚠ ${s.alerts > 1 ? s.alerts + " oscillating" : "oscillating"}</span>` : "")
+      + (s.exceptions > 0 ? `<span class="bbadge" title="${esc("The program threw " + s.exceptions + " unhandled exception" + (s.exceptions > 1 ? "s" : "") + ". See Exceptions under the log.")}">${s.exceptions} exception${s.exceptions > 1 ? "s" : ""}</span>` : "")
       + (s.recording === "recording" ? `<span class="bbadge rec" title="This slot is recording its inputs and feedback">● recording</span>` : "")
       + (s.recording === "replaying" ? `<span class="bbadge play" title="A recording is being replayed into this slot">▶ replaying</span>` : "")
       + (s.watching ? `<span class="bbadge auto" title="${esc("Reloads when this file changes: " + s.watching)}">auto-reload</span>` : "")
@@ -877,7 +901,6 @@ $("#login-form").onsubmit = async e => {
 
 function line(el, text, cls) {
   const d = document.createElement("div"); if (cls) d.className = cls; d.textContent = text;
-  if (el.id === "log" && !logMatch(text)) d.hidden = true;
   el.appendChild(d); while (el.children.length > 500) el.removeChild(el.firstChild);
   el.scrollTop = el.scrollHeight;
 }
@@ -892,7 +915,9 @@ function connectLog() {
     for (const m of Array.isArray(data) ? data : [data]) {
       const t = new Date(m.time).toLocaleTimeString();
       if (m.t === "log") {
-        line($("#log"), `${t}  ${m.level}  ${m.message}`, "lv-" + m.level);
+        logw.add({ time: m.time, level: m.level, message: m.message, detail: m.detail });
+        if (/^\s*Loaded .* program/.test(m.message)) logw.refreshSignals(true);
+        if (m.level === "Error" && m.detail) refreshExceptions();
         if (/Loaded|started|stopped|Crash policy|faulted|Restored/.test(m.message)) { refreshSlots(); refreshBoard(); }
         if (/snapshot|Rolled back/i.test(m.message)) refreshHistorySoon();
         if (/^The program looked for /.test(m.message)) refreshFilesSoon();
@@ -901,6 +926,14 @@ function connectLog() {
   };
 }
 
+const logw = OpenVPLog.create($("#logw"), {
+  slot: 1, listId: "log", filterId: "log-filter",
+  onLink(kind, value, s) {
+    if (kind === "slot") select(+value);
+    else if (kind === "ipid") gotoIp(s, value);
+    else if (kind === "path") gotoFiles(s, value);
+  }
+});
 // Log / Console size: drag the corner, use −/+, or Maximize to fill the window. Heights are remembered.
 function resizable(name, box) {
   const el = $(box), sec = $(`#${name}-sec`), KEY = `openvp.${name}Height`;
@@ -924,9 +957,55 @@ resizable("log", "#log");
 resizable("console", "#console-out");
 
 async function loadLog() {
-  $("#log").innerHTML = "";
-  for (const e of await api(`/api/log?slot=${sel}&max=200`)) line($("#log"), `${new Date(e.time).toLocaleTimeString()}  ${e.level}  ${e.message}`, "lv-" + e.level);
+  const my = sel;
+  logw.setSlot(sel);
+  const entries = await api(`/api/log?slot=${sel}&max=1000`);
+  if (my !== sel) return;
+  logw.setEntries(entries);
+  logw.refreshSignals(true);
+  refreshExceptions();
 }
+
+// Exceptions a SIMPL# program threw, listed under the log with their stack traces.
+async function refreshExceptions() {
+  const my = sel;
+  let list = [];
+  try { list = await api(`/api/slots/${my}/exceptions`); } catch { }
+  if (my !== sel) return;
+  $("#exc-det").hidden = !list.length;
+  $("#exc-sum").textContent = `Exceptions (${list.length})`;
+  OpenVPLog.renderExceptions($("#exc-box"), list);
+}
+
+// Links from log lines and the full-page log: #slot:N  #ipid:N:XX  #files:N:root|path
+function gotoIp(slot, ipid) {
+  const go = () => { $("#ipt-sec").classList.remove("collapsed"); $("#ipt-sec").scrollIntoView({ block: "start" });
+    const row = [...document.querySelectorAll("#ipt tr")].find(r => r.textContent.toUpperCase().includes(ipid)); row?.click(); };
+  if (slot !== sel) { select(slot); setTimeout(go, 700); } else go();
+}
+function gotoFiles(slot, spec) {
+  const [root, ...rest] = spec.split("|"), path = rest.join("|"), parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+  const go = () => { fRoot = root === "user" ? "user" : "nvram"; fPath = parent; refreshFiles(); const sec = $("#files-sec"); sec.classList.remove("collapsed"); sec.scrollIntoView({ block: "start" }); };
+  if (slot !== sel) { select(slot); setTimeout(go, 700); } else go();
+}
+function applyHash() {
+  const raw = decodeURIComponent(location.hash.slice(1)), [k, a, b] = raw.split(":");
+  if (k === "slot" && +a) select(+a);
+  else if (k === "ipid" && +a) gotoIp(+a, (b || "").toUpperCase());
+  else if (k === "files" && +a) gotoFiles(+a, raw.split(":").slice(2).join(":"));
+  if (k === "slot" || k === "ipid" || k === "files") history.replaceState(null, "", location.pathname + location.search);
+}
+addEventListener("hashchange", applyHash);
+
+$("#log-full").onclick = () => window.open(`log.html?slot=${sel}`, `openvp-log-${sel}`);
+$("#bundle-open").onclick = () => { $("#bundle-slot").textContent = sel; $("#bundle-dlg").showModal(); };
+$("#bundle-cancel").onclick = () => $("#bundle-dlg").close();
+$("#bundle-go").onclick = () => {
+  const a = document.createElement("a");
+  a.href = `/api/slots/${sel}/support-bundle` + ($("#bundle-prog").checked ? "?includeProgram=true" : "");
+  document.body.appendChild(a); a.click(); a.remove();
+  $("#bundle-dlg").close(); toast(`Downloading the support bundle for slot ${sel}…`, { ms: 3000 });
+};
 
 function select(n) {
   if (pendingSet) flushSettings();
@@ -1877,7 +1956,7 @@ addEventListener("drop", e => {
 const SHORTCUTS = [
   ["1 – 9, 0", "Select slot 1 – 9, and 10"], ["S", "Start the selected slot"], ["X", "Stop the selected slot"], ["R", "Restart the selected slot"],
   ["U", "Unload the selected slot (Undo is offered)"], ["D", "Open the debugger for the selected slot"], ["P", "Open the paths view for the selected slot"],
-  ["M", "Open metrics"], ["N", "Take a snapshot of the selected slot"], ["L", "Go to the log filter"], ["T", "Change the theme: auto, light, dark"],
+  ["M", "Open metrics"], ["N", "Take a snapshot of the selected slot"], ["L", "Go to the log filter"], ["F", "Find a signal in all slots"], ["T", "Change the theme: auto, light, dark"],
   ["Ctrl K  /  ⌘ K", "Search every action and help topic"], ["Shift click  /  F1", "Open help for a button or control (or hover it and click the ?)"], ["?", "Show this list"], ["Esc", "Close a box or menu"],
 ];
 $("#keys-list").innerHTML = SHORTCUTS.map(([k, d]) => `<dt>${k.split("  /  ").map(x => `<kbd>${esc(x)}</kbd>`).join(" or ")}</dt><dd>${esc(d)}</dd>`).join("");
@@ -1887,7 +1966,7 @@ keysBack.onclick = e => { if (e.target === keysBack) toggleKeys(false); };
 $("#keys-open").onclick = () => toggleKeys(true);
 
 const isTyping = e => !!e.target.closest?.("input,textarea,select,[contenteditable],[contenteditable=true]");
-const openDebugger = n => window.open(`debugger.html?slot=${n}`, `openvp-debugger-${n}`);
+const openDebugger = n => OpenVPLog.openDebugger(n);
 const openPaths = n => window.open(`paths.html?slot=${n}`, `openvp-paths-${n}`);
 const openMetrics = n => window.open(n ? `metrics.html?slot=${n}` : "metrics.html", "openvp-metrics");
 const cycleTheme = () => { window.openvpTheme?.cycle(); flashSaved(); };
@@ -1914,13 +1993,14 @@ addEventListener("keydown", e => {
     case "p": e.preventDefault(); openPaths(sel); break;
     case "m": e.preventDefault(); openMetrics(0); break;
     case "n": e.preventDefault(); snapshotNow(); break;
-    case "l": e.preventDefault(); { const sec = $("#log-sec"); sec.classList.remove("collapsed"); $("#log-filter").focus(); } break;
+    case "l": e.preventDefault(); { const sec = $("#log-sec"); sec.classList.remove("collapsed"); logw.focusFilter(); } break;
+    case "f": e.preventDefault(); sf.focus(); break;
     case "t": e.preventDefault(); cycleTheme(); break;
   }
 });
 
 const palBack = $("#pal-back"), palIn = $("#pal-in"), palList = $("#pal-list");
-let palItems = [], palShown = [], palOn = 0, palExtra = { devices: [], recent: [] };
+let palItems = [], palShown = [], palOn = 0, palExtra = { devices: [], recent: [] }, palSig = [], palSigTimer = 0;
 
 function paletteItems() {
   const items = [];
@@ -1956,7 +2036,11 @@ function paletteItems() {
   add("Show compatibility report", "Console box", () => $("#compat").click(), "unsupported");
   add("Select every slot", "bulk", () => $("#bulk-all").click(), "bulk all");
   add("Clear the slot selection", "bulk", () => $("#bulk-clear").click(), "bulk none");
-  add("Go to the log filter", "L", () => { $("#log-sec").classList.remove("collapsed"); $("#log-filter").focus(); }, "search");
+  add("Go to the log filter", "L", () => { $("#log-sec").classList.remove("collapsed"); logw.focusFilter(); }, "search");
+  add(`Open the full-page log for slot ${sel}`, "new window", () => $("#log-full").click(), "log errors warnings");
+  add(`Download a support bundle for slot ${sel}`, "zip", () => $("#bundle-open").click(), "support help diagnostics logs");
+  add("Find a signal in all slots", "F", () => sf.focus(), "search name debugger");
+  for (const h of palSig) add(`Signal: ${h.signal}`, `slot ${h.slot} · ${h.program} · opens the debugger`, () => openSignal(h), `${h.signal} ${h.kind} slot ${h.slot} ${h.program} find`);
   add("Show keyboard shortcuts", "?", () => toggleKeys(true), "help keys");
   add("Show the welcome screen", "", () => $("#welcome-link").click(), "intro");
   add("Try the demo", "samples in slots 1 and 2", tryDemo, "sample example getting started demo eisc");
@@ -2019,7 +2103,7 @@ function markPalette() {
 }
 async function openPalette() {
   toggleKeys(false);
-  palItems = paletteItems(); palIn.value = ""; palOn = 0; renderPalette();
+  palSig = []; palItems = paletteItems(); palIn.value = ""; palOn = 0; renderPalette();
   palBack.classList.add("open"); palIn.focus();
   // Things that need a request: every IP ID and the recent programs. They appear in the list a moment later.
   try {
@@ -2032,7 +2116,18 @@ async function openPalette() {
 function closePalette() { palBack.classList.remove("open"); palIn.blur(); }
 const togglePalette = () => palBack.classList.contains("open") ? closePalette() : openPalette();
 function runPalette(i) { const it = palShown[i]; if (!it) return; closePalette(); try { const r = it.run(); if (r?.catch) r.catch(fail); } catch (e) { fail(e); } }
-palIn.oninput = () => { palOn = 0; renderPalette(); };
+palIn.oninput = () => {
+  palOn = 0; renderPalette();
+  // Signal names across all slots: asked for a moment after typing stops, and added to the list.
+  clearTimeout(palSigTimer);
+  const q = palIn.value.trim();
+  if (q.length < 2) { if (palSig.length) { palSig = []; palItems = paletteItems(); renderPalette(); } return; }
+  palSigTimer = setTimeout(async () => {
+    const hits = await findSignals(q);
+    if (palIn.value.trim() !== q || !palBack.classList.contains("open")) return;
+    palSig = hits; palItems = paletteItems(); renderPalette();
+  }, 250);
+};
 palIn.onkeydown = e => {
   if (e.key === "ArrowDown") { e.preventDefault(); palOn = Math.min(palShown.length - 1, palOn + 1); markPalette(); }
   else if (e.key === "ArrowUp") { e.preventDefault(); palOn = Math.max(0, palOn - 1); markPalette(); }
@@ -2043,10 +2138,40 @@ palIn.onkeydown = e => {
 palBack.onclick = e => { if (e.target === palBack) closePalette(); };
 $("#pal-open").onclick = openPalette;
 
-// ------------------------------------------------------------------ log filter
-const logMatch = text => { const f = $("#log-filter").value.trim().toLowerCase(); return !f || text.toLowerCase().includes(f); };
-$("#log-filter").oninput = () => { for (const d of $("#log").children) d.hidden = !logMatch(d.textContent); };
-$("#log-filter").onkeydown = e => { if (e.key === "Escape") { e.target.value = ""; e.target.oninput(); e.target.blur(); } };
+// ------------------------------------------------------------------ find a signal in any slot
+// The box in the header and the command palette both ask /api/search/signals; picking a result opens that slot's debugger on it.
+let sigFindTimer = 0, sigFindSeq = 0;
+async function findSignals(q) {
+  if (q.trim().length < 2) return [];
+  try { return await api(`/api/search/signals?q=${encodeURIComponent(q.trim())}&max=40`); } catch { return []; }
+}
+const openSignal = h => OpenVPLog.openDebugger(h.slot, h.signal);
+const sf = $("#sigfind"), sfRes = $("#sigfind-res");
+let sfHits = [], sfOn = -1;
+function paintSigFind() {
+  sfRes.replaceChildren(...sfHits.map((h, i) => {
+    const d = document.createElement("div"); d.className = i === sfOn ? "on" : "";
+    const b = document.createElement("b"); b.className = "mono"; b.textContent = h.signal;
+    const sm = document.createElement("small"); sm.textContent = `slot ${h.slot} · ${h.program} · ${h.kind} = ${h.value === "" ? "(empty)" : h.value}`;
+    d.append(b, sm); d.onmousedown = e => { e.preventDefault(); sfRes.hidden = true; openSignal(h); };
+    return d;
+  }));
+  if (!sfHits.length && sf.value.trim().length >= 2) { const d = document.createElement("div"); d.style.color = "var(--muted)"; d.textContent = "No loaded slot has a signal like that."; sfRes.replaceChildren(d); }
+  sfRes.hidden = !sfRes.childNodes.length;
+}
+sf.oninput = () => {
+  clearTimeout(sigFindTimer); const my = ++sigFindSeq;
+  sigFindTimer = setTimeout(async () => { const h = await findSignals(sf.value); if (my !== sigFindSeq) return; sfHits = h; sfOn = -1; paintSigFind(); }, 200);
+  if (sf.value.trim().length < 2) { sfHits = []; sfRes.hidden = true; }
+};
+sf.onkeydown = e => {
+  if (e.key === "ArrowDown") { e.preventDefault(); sfOn = Math.min(sfHits.length - 1, sfOn + 1); paintSigFind(); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); sfOn = Math.max(0, sfOn - 1); paintSigFind(); }
+  else if (e.key === "Enter") { e.preventDefault(); const h = sfHits[Math.max(0, sfOn)]; if (h) { sfRes.hidden = true; openSignal(h); } }
+  else if (e.key === "Escape") { sfRes.hidden = true; sf.blur(); }
+};
+sf.onblur = () => setTimeout(() => { sfRes.hidden = true; }, 150);
+sf.onfocus = () => { if (sfHits.length) sfRes.hidden = false; };
 
 
 // ------------------------------------------------------------------ will it run? (the readiness check)
@@ -2272,6 +2397,7 @@ async function loadHelpTopics() {
 }
 
 select(1);
+applyHash();
 
 // ------------------------------------------------------------------ welcome screen
 // Shown until someone finishes or skips it; that choice is kept on the server. Escape only closes it for now.

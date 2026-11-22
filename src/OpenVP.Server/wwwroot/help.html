@@ -200,7 +200,7 @@
   <h3 id="palette">Search, shortcuts and undo</h3>
   <dl>
     <dt><kbd>Ctrl</kbd> <kbd>K</kbd> or <kbd>⌘</kbd> <kbd>K</kbd></dt><dd>Opens a search box for every action: select, start, stop, restart or unload a slot, open the debugger, paths, metrics or help, open or share a test panel for an IP ID, snapshot, record, Internet access, theme, recent programs. Type a few letters (<code>dbg 3</code> finds the debugger for slot 3), use the arrow keys, Enter to run, Esc to close.</dd>
-    <dt>Keyboard shortcuts</dt><dd><kbd>1</kbd>–<kbd>9</kbd>, <kbd>0</kbd> select slot 1–9 and 10 · <kbd>S</kbd> start · <kbd>X</kbd> stop · <kbd>R</kbd> restart · <kbd>U</kbd> unload · <kbd>D</kbd> debugger · <kbd>P</kbd> paths · <kbd>M</kbd> metrics · <kbd>N</kbd> snapshot now · <kbd>L</kbd> the log filter · <kbd>T</kbd> theme · <kbd>?</kbd> the list. They never fire while you type in a box. In the debugger: <kbd>F5</kbd> stream, <kbd>Ctrl</kbd> <kbd>F5</kbd> step mode, <kbd>F7</kbd> back, <kbd>F8</kbd> run, <kbd>F9</kbd> mark, <kbd>F10</kbd> next, <kbd>?</kbd> the list.</dd>
+    <dt>Keyboard shortcuts</dt><dd><kbd>1</kbd>–<kbd>9</kbd>, <kbd>0</kbd> select slot 1–9 and 10 · <kbd>S</kbd> start · <kbd>X</kbd> stop · <kbd>R</kbd> restart · <kbd>U</kbd> unload · <kbd>D</kbd> debugger · <kbd>P</kbd> paths · <kbd>M</kbd> metrics · <kbd>N</kbd> snapshot now · <kbd>L</kbd> the log filter · <kbd>F</kbd> find a signal in all slots · <kbd>T</kbd> theme · <kbd>?</kbd> the list. They never fire while you type in a box. In the debugger: <kbd>F5</kbd> stream, <kbd>Ctrl</kbd> <kbd>F5</kbd> step mode, <kbd>F7</kbd> back, <kbd>F8</kbd> run, <kbd>F9</kbd> mark, <kbd>F10</kbd> next, <kbd>S</kbd> star, <kbd>N</kbd> note, <kbd>Y</kbd> why is it this value, <kbd>W</kbd> watches, <kbd>?</kbd> the list.</dd>
     <dt>Undo</dt><dd>After Unload, deleting a file or folder, changing a Room ID, revoking a share link, or deleting a snapshot or recording, a message with <b>Undo</b> shows for 10 seconds. Deleted files, snapshots and recordings wait in the data folder's <code>trash</code> for 24 hours. A revoked link comes back with the same address and PIN if undone within 10 minutes.</dd>
     <dt>On a phone</dt><dd>Sections collapse (tap a heading), a slot picker with Start, Stop and Restart stays at the top, and tables become cards.</dd>
   </dl>
@@ -274,6 +274,7 @@
     <dt><span class="b">Download</span> · <span class="b">Upload</span></dt><dd>Save a recording as a file to keep with a project or share, and add one back (to any slot).</dd>
     <dt><span class="b">Rename</span> · <span class="b">Delete</span></dt><dd>Rename a recording, or delete it with its results (no confirmation; Undo is offered for 10 seconds).</dd>
     <dt>● recording · ▶ replaying</dt><dd>Badges on the slot's tile in the Status board.</dd>
+    <dt>⚠ oscillating · exceptions</dt><dd>Badges on the slot's tile: a signal that races or oscillates (when detection is on in the debugger's <b>Alerts</b> panel), or unhandled exceptions thrown by a SIMPL# program. Hover for the first one.</dd>
   </dl>
 
   <h3 id="console-box">Console</h3>
@@ -285,8 +286,22 @@
 
   <h3 id="log">Log</h3>
   <dl>
-    <dt>The log box</dt><dd>Messages from OpenVP and the program in this slot. Errors are red, warnings yellow, notices blue.</dd>
+    <dt>The log box</dt><dd>Messages from OpenVP and the program in this slot. Errors are red, warnings yellow, notices blue, info and console output plain.</dd>
+    <dt><b>Error</b> <b>Warning</b> <b>Notice</b> <b>Info</b> buttons</dt><dd>Each shows how many lines of that level the log holds. Click one to hide or show those lines (the choice is remembered). <b>Console</b> appears when the program printed to the console.</dd>
+    <dt>Search box <kbd>L</kbd></dt><dd>Shows only lines containing the text (case does not matter). <kbd>Esc</kbd> clears it.</dd>
+    <dt><span class="b">Pause</span> / <span class="b">Resume</span></dt><dd>Stops the list moving while you read. New lines are kept and added when you resume.</dd>
+    <dt><span class="b">Copy</span> <span class="b">Download</span></dt><dd>Copy the lines now shown (after the level buttons and the search) to the clipboard, or save them as a text file.</dd>
+    <dt>Links in a line</dt><dd>A signal name, or a SIMPL# join such as <code>IPID03.out.d1</code>, opens the slot's debugger on that signal: the search is set, the row selected and scrolled into view (a debugger window already open for the slot is reused). <b>IP ID 03</b> jumps to that row of the IP table, <b>slot 2</b> selects the slot, and a program path such as <code>\USER\config\rooms.json</code> shows that folder in Files. Other file paths are copied when clicked.</dd>
+    <dt><b>▸</b> in front of a line</dt><dd>Lines that carry more text, such as the stack trace of an exception, expand when you click it.</dd>
+    <dt><span class="b">Full page ↗</span></dt><dd>Opens the log for this slot on its own page (<code>log.html?slot=N</code>) with the same buttons and an <b>Exceptions</b> tab; it also works on a phone.</dd>
+    <dt><b>Exceptions (n)</b></dt><dd>Under the log, when a SIMPL# program has thrown an exception that nothing caught: in an event handler, a <code>CTimer</code>, a <code>CrestronThread</code> or <code>CrestronInvoke</code>. Each shows its type, message and what was running, and expands to the stack frames with file and line when the program's <code>.pdb</code> was found (put it next to the <code>.dll</code> or inside the <code>.cpz</code>; it must be a portable PDB, which is what <code>dotnet build</code> writes). <b>Full text</b> has the complete trace.</dd>
+    <dt><span class="b">Support bundle…</span></dt><dd>Downloads a zip to send when asking for help: the slot's log, the recent trace (if a debugger was open on the slot), the compatibility report, program summary, metrics, slot settings, the slot's activity, its exceptions and watches, and the OpenVP version and OS. It never contains the access key, and leaves out the program, NVRAM and User files unless you tick <b>Include the program files</b>.</dd>
     <dt><span class="b">−</span> <span class="b">+</span> <span class="b">Maximize</span></dt><dd>Same as for the Console box: shorter, taller, fill the window.</dd>
+  </dl>
+
+  <h3 id="signal-search">Find a signal in all slots</h3>
+  <dl>
+    <dt>Box in the top bar <kbd>F</kbd></dt><dd>Type part of a signal name (at least two letters; several words must all appear, <code>*</code> matches anything). It lists matches from every loaded slot with their value; pick one to open that slot's debugger on the signal. The command palette (<kbd>Ctrl</kbd> <kbd>K</kbd>) lists the same matches as <b>Signal: name</b>.</dd>
   </dl>
 </section>
 
@@ -298,7 +313,9 @@
   <dl>
     <dt>Slot list</dt><dd>Switches the debugger to another program slot.</dd>
     <dt><span class="b">Paths</span></dt><dd>Opens the <a href="#paths">Paths</a> view, starting from the signal you have selected.</dd>
+    <dt><span class="b">Log</span></dt><dd>Opens this slot's <a href="#log">log</a> on its own page.</dd>
     <dt><span class="b">Console</span></dt><dd>Goes back to the main page.</dd>
+    <dt>⚠ n oscillating</dt><dd>Appears when a signal in the program raced or oscillated lately. Click it for the list (see <a href="#dbg-alerts">Alerts</a>).</dd>
   </dl>
 
   <h3 id="dbg-recording">Toolbar: recording</h3>
@@ -307,7 +324,8 @@
     <dt><span class="b">Clear</span></dt><dd>Empties the trace. Signal values are not affected.</dd>
     <dt><span class="b">Save…</span></dt><dd>Saves the trace to a text file on your computer.</dd>
     <dt><b>Trace</b>: all signals / checked signals only</dt><dd>Chooses what gets recorded: every signal, or only the ones ticked in the <b>T</b> column.</dd>
-    <dt><span class="b">Waveform</span></dt><dd>Shows or hides a logic-analyzer style chart at the bottom, with one lane for each ticked signal.</dd>
+    <dt><span class="b">Waveform</span></dt><dd>Shows or hides a logic-analyzer style chart at the bottom, with one lane for each ticked signal. Digital signals are level traces; analog signals are a stepped line graph from 0 to 65535 with a percent axis; serial signals are markers labelled with the new text.</dd>
+    <dt><span class="b">Watches</span> <span class="b">Alerts</span> <span class="b">Never changed</span> <span class="b">Traces</span></dt><dd>Open the panel under the lists (see below). Click the same button again to close it.</dd>
   </dl>
 
   <h3 id="dbg-stepping">Toolbar: stepping</h3>
@@ -317,7 +335,8 @@
     <dt><span class="b">Next ▶|</span> <kbd>F10</kbd></dt><dd>Lets the paused change through and stops at the next one.</dd>
     <dt><span class="b">◀| Back</span> <kbd>F7</kbd></dt><dd>Shows the step before this one, with values as they were then. It only looks back; the program stays where it is.</dd>
     <dt><span class="b">Run ▶▶</span> <kbd>F8</kbd></dt><dd>Turns step mode off and lets the program run normally.</dd>
-    <dt><b>Break on</b>: every change / marked signals ⏸</dt><dd>Chooses what pauses the program: any signal change, or only changes to signals ticked in the <b>⏸</b> column.</dd>
+    <dt><b>Break on</b>: every change / marked signals ⏸</dt><dd>Chooses what pauses the program: any signal change, or only changes to signals ticked in the <b>⏸</b> column (and changes that make a condition true).</dd>
+    <dt><span class="b">Conditions</span></dt><dd>Conditional breakpoints. Add an expression such as <code>Vol &gt; 500</code> or <code>Err contains "ERR"</code>; the program pauses at a change to a signal the expression reads when it is true at that moment. With <b>marked signals</b>, the marked ones and the conditions pause; with <b>every change</b> everything pauses anyway. The paused bar says which condition stopped it. The expression language is the one watches use (see <a href="#dbg-watches">Watches</a>).</dd>
   </dl>
 
   <h3 id="dbg-display">Toolbar: display</h3>
@@ -331,6 +350,8 @@
   <h3 id="dbg-signals">Signals list (left)</h3>
   <dl>
     <dt><span class="b">flat</span> <span class="b">tree</span></dt><dd>Show the signals as one list, or grouped into folders by program structure or name prefix.</dd>
+    <dt><b>★ Starred</b> tab, <b>★</b> column <kbd>S</kbd></dt><dd>Click the star next to a signal (or press <kbd>S</kbd>) to keep it in the <b>★ Starred</b> tab. Stars and notes are saved on the server under the program's name, so they are still there after a reload, on another slot and from another computer.</dd>
+    <dt>Notes <kbd>N</kbd></dt><dd>Right-click a signal and choose <b>Add note…</b> (or press <kbd>N</kbd>) to attach a few words to it. The note shows after the name and in the tooltip.</dd>
     <dt>Watch-group tabs and <span class="b">+</span></dt><dd>A watch group is a saved set of signals. Click a tab to show only its signals, or <span class="b">All</span> to show every signal again; click <span class="b">+</span> to make a new group. Right-click a tab to rename it, delete it, empty it, or add the checked or shown signals to it.</dd>
     <dt><b>Find signal</b> box</dt><dd>Filters the list as you type. Hold the mouse over the <span class="b">?</span> next to it for the full search syntax (wildcards, by type, by value, exclude).</dd>
     <dt>Type list</dt><dd>Show only Digital, Analog or Serial signals.</dd>
@@ -345,8 +366,16 @@
     <dt><b>⏸</b> column <kbd>F9</kbd></dt><dd>Tick to pause the program when this signal changes (when Break on is set to marked signals).</dd>
     <dt>Click a signal</dt><dd>Selects it and puts its name in the Force bar.</dd>
     <dt>Double-click a signal</dt><dd>A digital signal toggles between 0 and 1. For an analog or serial signal, the cursor jumps to the Force value box.</dd>
-    <dt>Right-click a signal</dt><dd>Opens a menu: set, clear, pulse or toggle it; break on it; check it for trace; add it to a watch group; show what drives it or what it drives; open it in Paths; copy its name.</dd>
+    <dt>Right-click a signal</dt><dd>Opens a menu: set, clear, pulse or toggle it; star it or add a note; <b>Why is it this value?</b>; break on it; check it for trace; add it to a watch group; show what drives it or what it drives; open it in Paths; copy its name.</dd>
     <dt>Drag the bar between the panes</dt><dd>Makes the signals list wider or narrower.</dd>
+  </dl>
+
+  <h3 id="dbg-why">Why is it this value?</h3>
+  <p class="muted">Right-click a signal (or select it and press <kbd>Y</kbd>).</p>
+  <dl>
+    <dt>The answer</dt><dd>OpenVP walks back from the signal through the changes that caused it, using the program's wiring and the recent trace, to the input, force, timer or start-up that began it, for example <i>fb is 1 because fb went high at 10:02:03.120 (driven by AND S21), because mid went high at 10:02:03.119, because press (IPID03 d1) was pressed at 10:02:03.118 on IP ID 03 from panel 192.168.1.20</i>. Each step has its time; click <b>show</b> to find the signal in the list.</dd>
+    <dt>It needs a recent trace</dt><dd>The slot only remembers changes while a debugger window is open on it (the last 20,000). If the signal hasn't changed since then, the answer is what drives it now, from the wiring. Repeat the action with the debugger open.</dd>
+    <dt>SIMPL# programs</dt><dd>They don't expose their logic. For a join such as <code>IPID03.in.d5</code> OpenVP can say it was set by the program and when; for <code>IPID03.out.d1</code> that a device at that IP ID sent it, and from which address. It can't say which line of code did it.</dd>
   </dl>
 
   <h3 id="dbg-trace">Trace (right)</h3>
@@ -355,6 +384,36 @@
     <dt><b>follow</b> list</dt><dd>Limits the trace to the signal selected on the left (<b>only selected</b>) or to it and the signals wired to it (<b>selected + neighbours</b>).</dd>
     <dt><b>this burst only</b></dt><dd>Click a trace row, then tick this to see only the changes from the same chain reaction (burst).</dd>
     <dt><b>↳ caused</b></dt><dd>Shows changes made by program logic in reaction to another change. Untick it to see only outside events: panel presses, device inputs and timers.</dd>
+  </dl>
+
+  <h3 id="dbg-watches">Watches</h3>
+  <p class="muted">An expression over signals that is reported when it becomes true. The server checks it on every change, so it keeps working with the debugger closed, and watches are saved per slot.</p>
+  <dl>
+    <dt>The box and <span class="b">Add watch</span></dt><dd>Type an expression and press <kbd>Enter</kbd>. <code>Room_On=1 &amp;&amp; Proj_Power=0</code> (digital signals are 1 or 0), <code>Vol&gt;50000</code> (also <code>&gt;= &lt; &lt;= != </code>; analog values can be <code>500</code>, <code>1F4h</code> or <code>50%</code>), <code>Src_Name contains "HDMI"</code> (also <code>startswith</code>, <code>endswith</code>; <code>=</code> on text is exact, the others ignore case), <code>(A or B) and not C</code>, <code>[Name with spaces]</code>. A signal on its own is true when it is high, non-zero or not empty. Add <code>for 2s</code> (ms, s, m or h) to count it only when it stays true that long. A malformed expression is refused with a message.</dd>
+    <dt>name, <b>pause stepping</b></dt><dd>A name to show instead of the expression. With <b>pause stepping</b>, the program also stops (step mode turns on) at the change that made it true; the paused bar names the watch.</dd>
+    <dt>The list</dt><dd>Each watch shows whether it is idle, waiting out its <b>for</b> time, or true now, how many times it fired and when it last did. It fires once each time it becomes true, and again only after it was false. ⏸ and <b>On</b> switch pausing and the watch itself; <b>Remove</b> deletes it. A signal the program doesn't have is flagged.</dd>
+    <dt>Recent hits</dt><dd>When it fired, with the time. Each hit also writes a Warning to the slot's log with the values that made it true.</dd>
+  </dl>
+
+  <h3 id="dbg-alerts">Alerts: races and oscillation</h3>
+  <dl>
+    <dt><b>Detect races and oscillation</b></dt><dd>Off by default, because it needs every change traced. When on, the slot raises a Warning in its log, a ⚠ badge on its tile in the console and a count on the <b>Alerts</b> button when a signal changes more than <b>N</b> times in one burst (one press and everything it causes; SIMPL# programs have no bursts) or a digital signal flips <b>N</b> times within <b>M</b> ms. A signal is reported once until it has been quiet. Defaults: 6 changes in a burst, 20 flips in 1000 ms. <span class="b">Save</span> keeps the settings for the slot; <span class="b">Clear alerts</span> forgets the list.</dd>
+  </dl>
+
+  <h3 id="dbg-dead">Never changed</h3>
+  <dl>
+    <dt><span class="b">Start tracking</span></dt><dd>Starts remembering which signals change. It stays on for the slot (and starts again with each program start) until you stop it.</dd>
+    <dt>The list</dt><dd>Signals that have not changed since the program started or since the last reset. Drive the room through its modes, then look here: what is left may be logic nothing uses. Click a name to find it in the signal list. The filter box narrows the list.</dd>
+    <dt><span class="b">Reset</span></dt><dd>Forgets what has changed so far, so only changes from now on count.</dd>
+  </dl>
+
+  <h3 id="dbg-traces">Traces: save, export, import, compare</h3>
+  <dl>
+    <dt><span class="b">Save current trace…</span></dt><dd>Keeps the trace shown, under a name, on the server (up to 50 per slot). Save one before a program change and one after.</dd>
+    <dt><span class="b">Export CSV</span> <span class="b">Export JSON</span></dt><dd>Download the trace shown with every field: time, signal, kind, value, source, symbol, cause, depth and chain.</dd>
+    <dt><span class="b">Import…</span></dt><dd>Brings back a JSON or CSV file exported earlier as a saved trace.</dd>
+    <dt>The list: <b>View</b>, <b>JSON</b>, <b>CSV</b>, <b>Rename</b>, <b>Delete</b></dt><dd><b>View</b> shows the saved trace in the Trace pane (live changes stop being added; <b>Back to live</b> returns). Tick two traces and press <b>Compare ticked</b>.</dd>
+    <dt>Compare</dt><dd>Lines the two traces up signal by signal and shows, side by side, changes only one has, steps with a different value, and changes at times more than the <b>tolerance</b> apart (times are measured from each trace's own first change, so it doesn't matter when each was recorded). The buttons above the table filter by kind.</dd>
   </dl>
 
   <h3 id="dbg-waveform">Waveform</h3>
