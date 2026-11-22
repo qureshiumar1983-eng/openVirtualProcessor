@@ -21,11 +21,13 @@ cd openVirtualProcessor
 dotnet run --project src/OpenVP.Server
 ```
 
-Open **http://localhost:8080**. From another machine you'll be asked for the access key, which the server prints when it starts (see [Security](#security)). Pick a slot, choose a `.cpz`, `.dll` or `.smw` file, and click **Load & start**. Click **open test panel** next to a device to get a browser panel at that IP ID. Every page has a **Help** link that explains what each button on it does.
+Open **http://localhost:8080**. From another machine you'll be asked for the access key, which the server prints when it starts (see [Security](#security)). Pick a slot, choose a `.cpz`, `.dll`, `.lpz` or `.smw` file, and click **Load & start**. Click **open test panel** next to a device to get a browser panel at that IP ID. Every page has a **Help** link that explains what each button on it does.
 
 ### Desktop app (Windows)
 
 **`OpenVP.exe`** is OpenVP as a desktop app (Electron), in one file: nothing to install, no .NET needed, no console window. Run it and the web console opens in its own window. Test panels and the debugger open in their own windows too. Closing the main window stops OpenVP. Your data and the log (`openvp.log`) are kept in `%APPDATA%\OpenVP`. The first time it runs, Windows may ask whether to let it through the firewall; allow it if you want panels or other machines to connect.
+
+**Loading from your computer.** In the desktop app, **Load & start** loads the program from where it is on disk rather than uploading a copy, so the files that belong with it come along without picking them: the `.sig` with the same name (or the only `.sig` in that folder), the `.lpz` behind a `.smw`, and sidecars such as `.openvp.json`. Tick **Reload when the file changes** and the slot reloads by itself whenever the program or its `.sig` changes, for example every time you compile in SIMPL Windows. A running program starts again and a stopped one stays stopped. In a browser on the OpenVP computer itself, **Load from path…** does the same from a typed path. From other machines you still upload the files.
 
 Download the latest from the [Releases](https://github.com/qureshiumar1983-eng/openVirtualProcessor/releases) page: every push to `main` builds a new `OpenVP.exe`, checks that it starts, and publishes it there.
 
@@ -240,6 +242,8 @@ Every endpoint except `/api/info` and `/api/login` needs the access key (see [Se
 |---|---|---|
 | GET | `/api/slots` | All slots with state and devices |
 | POST | `/api/slots/{n}/program` | Multipart `file` (+ sidecar files); loads and starts |
+| POST | `/api/slots/{n}/program/path` | `{"path": "C:\\…\\Room.lpz", "watch": true, "start": true, "files": []}`: load a file on the OpenVP computer with its `.sig` and sidecars, and reload it when it changes. Only from that computer (403 otherwise) |
+| DELETE | `/api/slots/{n}/watch` | Stop reloading the slot when its file changes |
 | POST | `/api/slots/{n}/start` · `stop` · `unload` | |
 | PUT | `/api/slots/{n}/room` | `{"roomId":"ROOM2"}` sets the slot's Room ID (saved in `slot.json`); returns the slot, or 400 if the ID is invalid or another slot has it |
 | GET / POST | `/api/slots/{n}/signals` | List; set with `{"name":"...","value":1}` |

@@ -176,7 +176,8 @@ function createWindow(width, height) {
     backgroundColor: '#202020',
     autoHideMenuBar: true,
     icon: path.join(__dirname, 'build', 'icon.ico'),
-    webPreferences: { contextIsolation: true, sandbox: true },
+    // The preload lets the console ask where a picked program file is, to load it with its .sig and watch it.
+    webPreferences: { contextIsolation: true, sandbox: true, preload: path.join(__dirname, 'preload.js') },
   });
   wire(win);
   return win;

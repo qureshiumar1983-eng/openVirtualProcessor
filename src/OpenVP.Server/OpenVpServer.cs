@@ -86,6 +86,8 @@ public static class OpenVpServer
         var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         var uploads = Path.Combine(processor.DataDirectory, "uploads");
         Directory.CreateDirectory(uploads);
+        // Slots loaded from a file on this computer with "reload when it changes" on: the watch on that file.
+        var watches = new SourceWatch?[processor.Slots.Count];
 
         object SlotDto(ProgramSlot s) => new
         {
@@ -96,6 +98,7 @@ public static class OpenVpServer
             program = s.Runtime?.ProgramName,
             file = s.ProgramPath is null ? null : Path.GetFileName(s.ProgramPath),
             error = s.LastError,
+            watching = watches[s.Number - 1]?.Program,
             devices = s.Devices.OrderBy(d => d.IpId).Select(DeviceDto)
         };
 
@@ -205,6 +208,71 @@ public static class OpenVpServer
         // One upload per slot at a time; a second one waits instead of racing on the same folder.
         var uploadLocks = processor.Slots.Select(_ => new SemaphoreSlim(1, 1)).ToArray();
 
+        // Replace the slot's program files and load the program, which is files[0]. Call with the slot's upload lock held.
+        IResult Install(int n, IReadOnlyList<(string Name, byte[] Data)> files, bool start)
+        {
+            var dir = Path.Combine(uploads, $"slot{n:00}");
+            var path = Path.Combine(dir, Path.GetFileName(files[0].Name));
+            // Unload first so the old program lets go of its files, then replace them and load the new one.
+            // The slot stays locked throughout, so a start/stop/unload request waits instead of interleaving.
+            return processor.WithSlotLocked(n, slot =>
+            {
+                slot.Unload();
+                if (Directory.Exists(dir)) Directory.Delete(dir, true);
+                Directory.CreateDirectory(dir);
+                foreach (var (name, data) in files) File.WriteAllBytes(Path.Combine(dir, Path.GetFileName(name)), data);
+                try { processor.LoadProgram(n, path, start); }
+                catch (Exception e) { return Results.UnprocessableEntity(new { error = e.Message, slot = SlotDto(slot) }); }
+                return Results.Ok(SlotDto(slot));
+            });
+        }
+
+        static byte[] ReadAll(IFormFile f)
+        {
+            using var ms = new MemoryStream();
+            f.CopyTo(ms);
+            return ms.ToArray();
+        }
+
+        void StopWatching(int n)
+        {
+            lock (watches) { watches[n - 1]?.Dispose(); watches[n - 1] = null; }
+        }
+
+        // Load a program straight from disk with the files that belong with it (ProgramSource.Companions). They are
+        // read before the slot is touched, so a file that can't be read leaves the running program alone.
+        IResult LoadFromDisk(int n, string program, string[] chosen, bool start)
+        {
+            var files = ProgramSource.Companions(program, chosen);
+            var data = files.Select(f => (f.Name, File.ReadAllBytes(f.Source))).ToList();
+            var result = Install(n, data, start);
+            var slot = processor.Slot(n);
+            if (files.Count > 1)
+                slot.Log("Notice", $"Loaded from {Path.GetDirectoryName(program)} with " + string.Join(", ", files.Skip(1).Select(f =>
+                    Path.GetFileName(f.Source) == f.Name ? f.Name : $"{Path.GetFileName(f.Source)} (as {f.Name})")));
+            return result;
+        }
+
+        // Reload a watched slot when its files change. The watch is replaced or stopped by anything else that loads or
+        // unloads the slot, so a stale one does nothing.
+        async Task ReloadAsync(int n, SourceWatch w, string[] chosen)
+        {
+            await uploadLocks[n - 1].WaitAsync();
+            try
+            {
+                lock (watches) if (watches[n - 1] != w) return;
+                var slot = processor.Slot(n);
+                slot.Log("Notice", $"{Path.GetFileName(w.Program)} changed on disk; reloading.");
+                LoadFromDisk(n, w.Program, chosen, slot.State != SlotState.Stopped);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                processor.Slot(n).Log("Warning", $"Couldn't reload {Path.GetFileName(w.Program)}: {e.Message} It will be tried again when the file changes.");
+            }
+            catch (Exception e) { processor.Slot(n).Log("Error", $"Reloading {Path.GetFileName(w.Program)} failed: {e.Message}"); }
+            finally { uploadLocks[n - 1].Release(); }
+        }
+
         slotApi.MapPost("/program", async (int n, HttpRequest req) =>
         {
             if (!req.HasFormContentType) return Results.BadRequest("Send the program as multipart/form-data field 'file'.");
@@ -212,38 +280,74 @@ public static class OpenVpServer
             var file = form.Files["file"] ?? form.Files.FirstOrDefault();
             if (file == null) return Results.BadRequest("No file.");
             var start = !string.Equals(form["start"], "false", StringComparison.OrdinalIgnoreCase);
-            var dir = Path.Combine(uploads, $"slot{n:00}");
-            var path = Path.Combine(dir, Path.GetFileName(file.FileName));
+            // Sidecar files (MyProgram.openvp.json, MyProgram.symbols.json, MyProgram.primitives.json) can ride along.
+            // A compiled program's signal names are in its .sig, which the loader looks for under the
+            // program's own name. If exactly one .sig came with it, it is that program's, whatever it's
+            // called (copies get renamed, e.g. with a date added), so save it under the program's name.
+            var name = Path.GetFileName(file.FileName);
+            var sigs = form.Files.Where(f => f != file && f.FileName.EndsWith(".sig", StringComparison.OrdinalIgnoreCase)).ToList();
+            var sigFor = name.EndsWith(".lpz", StringComparison.OrdinalIgnoreCase) && sigs.Count == 1 ? sigs[0] : null;
+            var files = new List<(string, byte[])> { (name, ReadAll(file)) };
+            foreach (var extra in form.Files.Where(f => f != file))
+                files.Add((extra == sigFor ? Path.ChangeExtension(name, ".sig") : Path.GetFileName(extra.FileName), ReadAll(extra)));
+
+            await uploadLocks[n - 1].WaitAsync();
+            try { StopWatching(n); return Install(n, files, start); }
+            finally { uploadLocks[n - 1].Release(); }
+        });
+
+        // Load a program from a file on this computer, bringing its .sig and sidecars along, and optionally reload it
+        // whenever it changes (say, every time SIMPL Windows compiles). Used by the desktop app, which knows where a
+        // picked file is; a browser only ever gets the file's contents. Only for requests from this computer: a remote
+        // user's paths mean nothing here, and this way nobody elsewhere can make OpenVP read files on this machine.
+        slotApi.MapPost("/program/path", async (int n, HttpContext ctx, JsonElement body) =>
+        {
+            if (!ApiAuth.IsDirectLocal(ctx))
+                return Results.Json(new { error = "Loading from a path only works on the computer OpenVP runs on. Upload the files instead." }, statusCode: StatusCodes.Status403Forbidden);
+            string? Str(string k) => body.ValueKind == JsonValueKind.Object && body.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+            bool Flag(string k, bool dflt) => body.ValueKind == JsonValueKind.Object && body.TryGetProperty(k, out var v) && v.ValueKind is JsonValueKind.True or JsonValueKind.False ? v.GetBoolean() : dflt;
+            var path = Str("path")?.Trim().Trim('"');
+            if (string.IsNullOrEmpty(path) || !Path.IsPathFullyQualified(path))
+                return Results.BadRequest(new { error = "Send {\"path\": \"C:\\full\\path\\to\\Program.lpz\"}." });
+            if (!File.Exists(path)) return Results.BadRequest(new { error = $"There's no file at {path}." });
+            var chosen = body.ValueKind == JsonValueKind.Object && body.TryGetProperty("files", out var fl) && fl.ValueKind == JsonValueKind.Array
+                ? fl.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!)
+                    .Where(p => Path.IsPathFullyQualified(p) && File.Exists(p)).ToArray()
+                : Array.Empty<string>();
+            var start = Flag("start", true);
+            var watch = Flag("watch", true);
 
             await uploadLocks[n - 1].WaitAsync();
             try
             {
-                // Unload first so the old program lets go of its files, then replace them and load the new one.
-                // The slot stays locked throughout, so a start/stop/unload request waits instead of interleaving.
-                return processor.WithSlotLocked(n, slot =>
+                StopWatching(n);
+                // Made before the files are read, so a change while they're copied still triggers a reload.
+                var w = watch ? new SourceWatch(path, () => ProgramSource.Companions(path, chosen).Select(f => f.Source)) : null;
+                IResult result;
+                try { result = LoadFromDisk(n, path, chosen, start); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
                 {
-                    slot.Unload();
-                    if (Directory.Exists(dir)) Directory.Delete(dir, true);
-                    Directory.CreateDirectory(dir);
-                    using (var fs = File.Create(path)) file.CopyTo(fs);
-                    // Sidecar files (MyProgram.openvp.json, MyProgram.symbols.json, MyProgram.primitives.json) can ride along.
-                    // A compiled program's signal names are in its .sig, which the loader looks for under the
-                    // program's own name. If exactly one .sig came with it, it is that program's, whatever it's
-                    // called (copies get renamed, e.g. with a date added), so save it under the program's name.
-                    var sigs = form.Files.Where(f => f != file && f.FileName.EndsWith(".sig", StringComparison.OrdinalIgnoreCase)).ToList();
-                    var sigFor = path.EndsWith(".lpz", StringComparison.OrdinalIgnoreCase) && sigs.Count == 1 ? sigs[0] : null;
-                    foreach (var extra in form.Files.Where(f => f != file))
-                    {
-                        var name = extra == sigFor ? Path.ChangeExtension(Path.GetFileName(path), ".sig") : Path.GetFileName(extra.FileName);
-                        using var fs = File.Create(Path.Combine(dir, name));
-                        extra.CopyTo(fs);
-                    }
-                    try { processor.LoadProgram(n, path, start); }
-                    catch (Exception e) { return Results.UnprocessableEntity(new { error = e.Message, slot = SlotDto(slot) }); }
-                    return Results.Ok(SlotDto(slot));
-                });
+                    w?.Dispose();
+                    return Results.UnprocessableEntity(new { error = $"Couldn't read the program: {e.Message}" });
+                }
+                if (w != null)
+                {
+                    w.Changed += () => _ = ReloadAsync(n, w, chosen);
+                    lock (watches) watches[n - 1] = w;
+                    processor.Slot(n).Log("Notice", $"Watching {path}: the slot reloads when it changes.");
+                }
+                return result is IStatusCodeHttpResult { StatusCode: 200 } ? Results.Ok(SlotDto(processor.Slot(n))) : result;
             }
             finally { uploadLocks[n - 1].Release(); }
+        });
+
+        // Stop reloading the slot when its file changes; the program keeps running.
+        slotApi.MapDelete("/watch", (int n) =>
+        {
+            var was = watches[n - 1]?.Program;
+            StopWatching(n);
+            if (was != null) processor.Slot(n).Log("Notice", $"Stopped watching {was}.");
+            return SlotDto(processor.Slot(n));
         });
 
         // Virtual Control Room ID: panels can be routed to the slot by it (/ws/panel?room=).
@@ -265,7 +369,13 @@ public static class OpenVpServer
             catch (Exception e) { return Results.UnprocessableEntity(new { error = e.Message }); }
         });
         slotApi.MapPost("/stop", (int n) => { processor.Slot(n).Stop(); return SlotDto(processor.Slot(n)); });
-        slotApi.MapPost("/unload", (int n) => { processor.Slot(n).Unload(); return SlotDto(processor.Slot(n)); });
+        slotApi.MapPost("/unload", async (int n) =>
+        {
+            // Under the upload lock, so a reload of a watched slot that's already under way can't load it again afterwards.
+            await uploadLocks[n - 1].WaitAsync();
+            try { StopWatching(n); processor.Slot(n).Unload(); return SlotDto(processor.Slot(n)); }
+            finally { uploadLocks[n - 1].Release(); }
+        });
 
         // IP table: every IP ID in the slot with who is connected to it and what is known about them.
         slotApi.MapGet("/iptable", (int n) => processor.Slot(n).Devices.OrderBy(d => d.IpId).Select(DeviceDto));
@@ -644,7 +754,7 @@ public static class OpenVpServer
             catch (Exception e) { Console.WriteLine($"Autoload slot {n} failed: {e.Message}"); }
         }
 
-        app.Lifetime.ApplicationStopping.Register(() => { cip?.Dispose(); processor.Dispose(); });
+        app.Lifetime.ApplicationStopping.Register(() => { for (var i = 1; i <= watches.Length; i++) StopWatching(i); cip?.Dispose(); processor.Dispose(); });
         return app;
     }
 

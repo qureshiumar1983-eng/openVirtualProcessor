@@ -27,6 +27,7 @@
     "files": [
       "main.js",
       "updater.js",
+      "preload.js",
       "loading.html",
       "package.json"
     ],

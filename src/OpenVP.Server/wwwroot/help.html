@@ -66,7 +66,7 @@
   <p class="muted">Run a program in five steps. Everything below starts from the main page, the <a href="/">Console</a>.</p>
   <ol>
     <li>Click a row in <b>Program slots</b> to pick the slot (1–10) you want to use.</li>
-    <li>Click the file chooser and pick your program: a <code>.cpz</code> or <code>.dll</code> (SIMPL# Pro), a <code>.lpz</code> (compiled SIMPL Windows) or a <code>.smw</code>. For a <code>.lpz</code>, select its <code>.sig</code> too (Ctrl+click) so signals have names.</li>
+    <li>Click the file chooser and pick your program: a <code>.cpz</code> or <code>.dll</code> (SIMPL# Pro), a <code>.lpz</code> (compiled SIMPL Windows) or a <code>.smw</code>. For a <code>.lpz</code>, select its <code>.sig</code> too (Ctrl+click) so signals have names. In the desktop app you don't need to: OpenVP finds the <code>.sig</code> next to the program by itself.</li>
     <li>Click <span class="b">Load &amp; start</span>. The slot's state turns to <b>Running</b>, and messages from the program appear in the <b>Log</b>.</li>
     <li>In the <b>IP table</b>, click a row and then <b>open test panel</b> to press buttons on that IP ID from your browser.</li>
     <li>Click <span class="b">Open debugger ↗</span> to watch the program's signals change live.</li>
@@ -93,7 +93,10 @@
   <h3>Slot</h3>
   <dl>
     <dt><span class="b">Choose files</span></dt><dd>Picks the program file(s) from your computer. Nothing is loaded until you click Load &amp; start. You can select several files at once, for example a <code>.lpz</code> with its <code>.sig</code>.</dd>
-    <dt><span class="b">Load &amp; start</span></dt><dd>Uploads the chosen file(s) into the selected slot and starts the program. It replaces whatever was in the slot before.</dd>
+    <dt><span class="b">Load &amp; start</span></dt><dd>Uploads the chosen file(s) into the selected slot and starts the program. It replaces whatever was in the slot before. In the desktop app it loads the program from where it is on your computer instead, and brings along the files that belong with it: the <code>.sig</code> with the same name (or the only <code>.sig</code> in that folder), the <code>.lpz</code> behind a <code>.smw</code>, and sidecar files like <code>.openvp.json</code>. The Log lists what came along.</dd>
+    <dt>Reload when the file changes</dt><dd>Shown in the desktop app, or when the page is open on the OpenVP computer itself. When ticked, a program loaded from your computer is loaded again by itself whenever its file (or its <code>.sig</code>) changes, for example each time you compile in SIMPL Windows. OpenVP waits until the compiler has finished writing. A running program starts again; a stopped one stays stopped. Your choice is remembered.</dd>
+    <dt><span class="b">Load from path…</span></dt><dd>Shown when the page is open in a browser on the OpenVP computer itself (a browser can't tell OpenVP where a chosen file is). Type or paste the program's full path, for example <code>C:\Programs\Room\Room.lpz</code>; its <code>.sig</code> and sidecar files come along as above.</dd>
+    <dt>Reloads when this changes · <span class="b">Stop watching</span></dt><dd>Shows which file the slot is watching. Stop watching keeps the program running but stops reloading it. Loading another program, or Unload, also stops it.</dd>
     <dt><span class="b">Inspect .lpz</span></dt><dd>Reads the chosen <code>.lpz</code> without running it and prints a report in the Console box: what's in it and which parts OpenVP can and can't run. Add the <code>.sig</code> to see signal names.</dd>
     <dt><span class="b">Start</span></dt><dd>Starts the program loaded in this slot, after it was stopped.</dd>
     <dt><span class="b">Stop</span></dt><dd>Stops the program but keeps it loaded, so Start runs it again.</dd>

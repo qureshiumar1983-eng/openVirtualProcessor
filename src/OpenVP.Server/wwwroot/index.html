@@ -26,6 +26,7 @@
   button, input, select { font:inherit; color:var(--text); background:#111519; border:1px solid var(--line); border-radius:6px; padding:5px 9px; }
   button { cursor:pointer; } button:hover { border-color:var(--accent); }
   .bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
+  [hidden] { display:none !important; }
   .mono { font-family: ui-monospace, Menlo, monospace; font-size:12px; }
   #log, #console-out { height:220px; overflow:auto; background:#0b0e11; border:1px solid var(--line); border-radius:6px; padding:8px; white-space:pre-wrap; }
   #log, #console-out { resize:vertical; min-height:120px; }
@@ -97,6 +98,14 @@
         <input type="file" id="file" accept=".cpz,.dll,.zip,.smw,.json,.lpz,.sig" multiple title="Pick the program: .cpz or .dll (SIMPL# Pro), .lpz (add its .sig for signal names) or .smw">
         <button id="upload" title="Upload the chosen file(s) into this slot and start the program. Replaces what was in the slot.">Load &amp; start</button>
         <button id="inspect" title="Report what OpenVP can run in a compiled .lpz (add its .sig for names)">Inspect .lpz</button>
+      </div>
+      <div class="bar" id="disk-bar" hidden>
+        <label title="Load the program from where it is on this computer and load it again whenever it changes, for example each time you compile in SIMPL Windows"><input type="checkbox" id="watch"> Reload when the file changes</label>
+        <button id="from-path" hidden title="Type the full path of a program on this computer. Its .sig and sidecar files are loaded with it.">Load from path…</button>
+      </div>
+      <div class="bar" id="watch-bar" hidden>
+        <span class="muted">Reloads when this changes:</span> <span id="watch-path" class="mono" style="word-break:break-all"></span>
+        <button id="watch-stop" title="Keep the program running but stop reloading it when the file changes">Stop watching</button>
       </div>
       <div class="bar">
         <button data-act="start" title="Start the program loaded in this slot">Start</button><button data-act="stop" title="Stop the program but keep it loaded">Stop</button><button data-act="unload" title="Stop the program and remove it from this slot. NVRAM and User files are kept.">Unload</button>
@@ -224,6 +233,8 @@ async function refreshSlots() {
       document.querySelectorAll(".roomcol").forEach(e => e.style.display = hasRoom ? "" : "none");
       $("#room-bar").style.display = hasRoom ? "" : "none";
       $("#room-id").textContent = s.roomId ?? "";
+      $("#watch-bar").hidden = !s.watching;
+      $("#watch-path").textContent = s.watching || "";
       $("#sel-info").textContent = s.file ? `${s.file}${s.error ? "\n" + s.error.split("\n")[0] : ""}` : "No program loaded.";
       const online = s.devices.filter(d => d.online).length;
       $("#devices").textContent = s.devices.length ? `${s.devices.length} IP ID${s.devices.length === 1 ? "" : "s"}, ${online} online. Who's connected is in the IP table.` : "";
@@ -430,10 +441,44 @@ function select(n) {
 
 $("#open-debugger").onclick = () => window.open(`debugger.html?slot=${sel}`, `openvp-debugger-${sel}`);
 
+// Programs can be loaded from where they are on disk when the page runs in the desktop app (which can say where a
+// picked file is) or on the OpenVP computer itself (type the path). Then the .sig and sidecar files next to the
+// program come along without picking them, and the slot can reload whenever the file changes.
+const desktop = window.openvpDesktop;
+const onThisComputer = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+const WATCH_KEY = "openvp.reloadOnChange";
+if (desktop || onThisComputer) {
+  $("#disk-bar").hidden = false;
+  $("#from-path").hidden = !!desktop;
+  try { $("#watch").checked = localStorage.getItem(WATCH_KEY) !== "0"; } catch { $("#watch").checked = true; }
+  $("#watch").onchange = () => { try { localStorage.setItem(WATCH_KEY, $("#watch").checked ? "1" : "0"); } catch {} };
+}
+
+async function loadFromPath(path, others = []) {
+  try {
+    await api(`/api/slots/${sel}/program/path`, { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path, files: others, watch: $("#watch").checked }) });
+  } catch (e) { alert(e.message); }
+  refreshSlots();
+}
+
+$("#from-path").onclick = async () => {
+  const path = await askName("Full path of the program on this computer (.lpz, .smw, .cpz or .dll)");
+  if (path) loadFromPath(path.replace(/^"|"$/g, ""));
+};
+
+$("#watch-stop").onclick = async () => {
+  try { await api(`/api/slots/${sel}/watch`, { method: "DELETE" }); } catch (e) { alert(e.message); }
+  refreshSlots();
+};
+
 $("#upload").onclick = async () => {
   const files = $("#file").files; if (!files.length) return alert("Choose a .cpz, .dll or .smw first.");
   const fd = new FormData();
   const main = [...files].find(f => /\.(lpz|cpz|dll|zip|smw)$/i.test(f.name)) || files[0];
+  // In the desktop app, load it from disk: OpenVP finds the .sig itself and can watch the file.
+  const mainPath = desktop?.pathForFile(main);
+  if (mainPath) return loadFromPath(mainPath, [...files].filter(f => f !== main).map(f => desktop.pathForFile(f)).filter(Boolean));
   // A compiled program without its .sig runs fine but the debugger can only show signal numbers.
   if (/\.lpz$/i.test(main.name) && ![...files].some(f => /\.sig$/i.test(f.name)) &&
       !confirm(`No .sig selected with ${main.name}.\n\nThe program will run, but the debugger will show signal numbers (#123) instead of names. ` +
