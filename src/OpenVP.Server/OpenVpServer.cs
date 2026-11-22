@@ -387,9 +387,9 @@ public static class OpenVpServer
                 .Select(d => new { name = d.Name, folder = true, size = (long?)null, modified = d.LastWriteTimeUtc })
                 .Concat(info.EnumerateFiles().OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
                     .Select(f => new { name = f.Name, folder = false, size = (long?)f.Length, modified = f.LastWriteTimeUtc }));
-            // The folder SIMPL+ MakeProgramFilename uses: \NVRAM\{Program Name}\.
-            var programName = processor.Slot(n).Runtime?.ProgramName;
-            var programFolder = programName is null ? null : SlotFiles.FolderName(programName);
+            // The folder SIMPL+ MakeProgramFilename uses: \NVRAM\{Program ID Tag}\.
+            var programTag = processor.Slot(n).Runtime?.ProgramIdTag;
+            var programFolder = programTag is null ? null : SlotFiles.FolderName(programTag);
             return Results.Ok(new { root = r, path = Rel(path), programPath = ProgramPathOf(r, Rel(path)), programFolder, entries, missing = Missing(n) });
         }));
 

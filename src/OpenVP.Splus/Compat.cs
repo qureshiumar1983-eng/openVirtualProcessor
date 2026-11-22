@@ -346,7 +346,7 @@ namespace Crestron.Logos.SplusObjects
         /// A name with no top folder goes under \USER\{program name}\.
         /// </summary>
         public CrestronString MakeProgramFilename(string name) =>
-            new CrestronString(OpenVP.Core.SlotFiles.ProgramFilename(name, _host?.Slot.Runtime?.ProgramName));
+            new CrestronString(OpenVP.Core.SlotFiles.ProgramFilename(name, _host?.Slot.Runtime?.ProgramIdTag));
         public CrestronString MakeProgramFilename(CrestronString name) => MakeProgramFilename(name?.Str);
 
         public int IsParameterDefined(UShortParameter p) => p == null ? 0 : 1;

@@ -74,14 +74,27 @@ public sealed class SmwFile
     /// <summary>Dv blocks (hardware/devices). Ad= holds the IP ID or Cresnet ID in hex.</summary>
     public Dictionary<int, SmwBlock> Devices { get; } = new();
     public SmwBlock? Header { get; private set; }
-    public string ProgramName => Header?.Get("PgmNm") ?? Header?.Get("Nm") ?? "SIMPL Windows program";
+    /// <summary>The file this was loaded from, without extension (null when parsed from text).</summary>
+    public string? FileName { get; private set; }
+
+    /// <summary>The program's file name as the header records it (PrNm), else the file it was loaded from.
+    /// Not PgmNm: that is the header's Programmer field.</summary>
+    public string ProgramName =>
+        NonEmpty(Header?.Get("PrNm")) is { } pr ? Path.GetFileNameWithoutExtension(pr.Replace('\\', '/')) : FileName ?? "SIMPL Windows program";
+
+    /// <summary>The header's Program ID Tag (PIT), falling back to <see cref="ProgramName"/>.</summary>
+    public string ProgramIdTag => NonEmpty(Header?.Get("PIT")) ?? ProgramName;
+
+    private static string? NonEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 
     public static SmwFile Load(string path)
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         // .smw files are Windows-1252 text.
         var text = File.ReadAllText(path, Encoding.GetEncoding(1252));
-        return Parse(text);
+        var file = Parse(text);
+        file.FileName = Path.GetFileNameWithoutExtension(path);
+        return file;
     }
 
     public static SmwFile Parse(string text)

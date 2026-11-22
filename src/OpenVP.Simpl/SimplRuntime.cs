@@ -209,6 +209,7 @@ public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
 
     public string Kind => "SIMPL Windows";
     public string ProgramName => _file.ProgramName;
+    public string ProgramIdTag => _file.ProgramIdTag;
 
     /// <summary>Symbols the interpreter has no behavior for (shown as warnings at load).</summary>
     public List<SmwSymbol> Unsupported { get; } = new();
