@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<script src="openvp-theme.js"></script>
 <title>OpenVP</title>
 <style>
   :root { --bg:#0f1216; --card:#181d23; --line:#29303a; --text:#e6e9ee; --muted:#8b95a3; --ok:#2f9e6e; --warn:#d69e2e; --err:#e05252; --accent:#4c8dff; }
@@ -21,22 +23,22 @@
   td, th { text-align:left; padding:6px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
   th { color:var(--muted); font-weight:500; font-size:12px; }
   tr.slot { cursor:pointer; }
-  tr.slot.sel { background:#1f2630; }
-  .state { font-size:12px; padding:2px 8px; border-radius:20px; background:#252c36; }
-  .Running { background:#173a2c; color:#7fe0b1; } .Error { background:#3d1b1b; color:#ff9b9b; } .Stopped { background:#3a321a; color:#f2cf7a; }
-  button, input, select { font:inherit; color:var(--text); background:#111519; border:1px solid var(--line); border-radius:6px; padding:5px 9px; }
+  tr.slot.sel { background:var(--selrow); }
+  .state { font-size:12px; padding:2px 8px; border-radius:20px; background:var(--chip); }
+  .Running { background:var(--ok-bg); color:var(--ok-fg); } .Error { background:var(--err-bg); color:var(--err-fg); } .Stopped { background:var(--warn-bg); color:var(--warn-fg); }
+  button, input, select { font:inherit; color:var(--text); background:var(--input); border:1px solid var(--line); border-radius:6px; padding:5px 9px; }
   button { cursor:pointer; } button:hover { border-color:var(--accent); }
   .bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
   [hidden] { display:none !important; }
   .mono { font-family: ui-monospace, Menlo, monospace; font-size:12px; }
-  #log, #console-out { height:220px; overflow:auto; background:#0b0e11; border:1px solid var(--line); border-radius:6px; padding:8px; white-space:pre-wrap; }
+  #log, #console-out { height:220px; overflow:auto; background:var(--well); border:1px solid var(--line); border-radius:6px; padding:8px; white-space:pre-wrap; }
   #log, #console-out { resize:vertical; min-height:120px; overflow-wrap:anywhere; }
   .sec-head { display:flex; align-items:center; gap:6px; margin-bottom:10px; }
   .sec-head h2 { margin:0; flex:1; }
   .sec-head button { padding:2px 8px; font-size:12px; }
   section.max { position:fixed; inset:16px; z-index:50; display:flex; flex-direction:column; box-shadow:0 10px 40px #000c; }
   section.max #log, section.max #console-out { flex:1; height:auto !important; resize:none; }
-  .lv-Error { color:var(--err); } .lv-Warning { color:var(--warn); } .lv-Notice { color:#9ecbff; } .lv-Console { color:#cfd6df; }
+  .lv-Error { color:var(--err); } .lv-Warning { color:var(--warn); } .lv-Notice { color:var(--info-fg); } .lv-Console { color:var(--text2); }
   .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
   @media (max-width: 1200px) { .grid2 { grid-template-columns: 1fr; } }
   .dev { font-size:12px; color:var(--muted); }
@@ -44,52 +46,52 @@
   /* Status board */
   #board { margin:16px 16px 0; }
   #board-tiles { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px; }
-  .btile { position:relative; background:#12161b; border:1px solid var(--line); border-left:4px solid var(--line); border-radius:8px; padding:8px 10px; cursor:pointer; min-width:0; }
+  .btile { position:relative; background:var(--tile); border:1px solid var(--line); border-left:4px solid var(--line); border-radius:8px; padding:8px 10px; cursor:pointer; min-width:0; }
   .btile:hover { border-color:var(--accent); }
   .btile:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
-  .btile.sel { background:#1f2a3a; border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+  .btile.sel { background:var(--active); border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
   .btile.st-Running { border-left-color:var(--ok); } .btile.st-Stopped { border-left-color:var(--warn); } .btile.st-Error { border-left-color:var(--err); }
-  .btile.st-Empty { border-left-color:#3a4350; } .btile.st-Empty .bprog { color:var(--muted); }
+  .btile.st-Empty { border-left-color:var(--dim); } .btile.st-Empty .bprog { color:var(--muted); }
   .btile .btop { display:flex; align-items:center; gap:2px 6px; flex-wrap:wrap; }
-  .btile .bdot { width:9px; height:9px; border-radius:50%; background:#3a4350; flex:none; }
-  .btile.st-Running .bdot { background:var(--ok); box-shadow:0 0 0 3px #2f9e6e33; } .btile.st-Stopped .bdot { background:var(--warn); } .btile.st-Error .bdot { background:var(--err); }
+  .btile .bdot { width:9px; height:9px; border-radius:50%; background:var(--dim); flex:none; }
+  .btile.st-Running .bdot { background:var(--ok); box-shadow:0 0 0 3px var(--ok-glow); } .btile.st-Stopped .bdot { background:var(--warn); } .btile.st-Error .bdot { background:var(--err); }
   .btile .bnum { font-weight:600; }
   .btile .broom { flex:none; font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
   .btile .bflags { margin-left:auto; display:flex; gap:4px; flex:none; }
   .btile .bprog { margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .btile .bstats { margin-top:4px; display:flex; gap:10px; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; flex-wrap:wrap; }
-  .bbadge { font-size:11px; padding:0 6px; border-radius:20px; background:#3d1b1b; color:#ff9b9b; cursor:help; white-space:nowrap; }
-  .bbadge.auto { background:#1d2a44; color:#9ecbff; }
+  .bbadge { font-size:11px; padding:0 6px; border-radius:20px; background:var(--err-bg); color:var(--err-fg); cursor:help; white-space:nowrap; }
+  .bbadge.auto { background:var(--info-bg); color:var(--info-fg); }
   /* IP table */
   #ipt td { font-size:13px; }
   #ipt tr.client { cursor:pointer; }
-  #ipt tr.client:hover { background:#1b222b; }
-  #ipt tr.client.sel { background:#1f2630; }
+  #ipt tr.client:hover { background:var(--hover); }
+  #ipt tr.client.sel { background:var(--selrow); }
   #ipt .who b { display:block; }
   #ipt .who small { color:var(--muted); }
   #ipt tr.nobody td { color:var(--muted); }
-  .pill { font-size:11px; padding:1px 7px; border-radius:20px; background:#252c36; white-space:nowrap; }
-  .pill.ok { background:#173a2c; color:#7fe0b1; } .pill.off { background:#2a2f37; color:var(--muted); }
+  .pill { font-size:11px; padding:1px 7px; border-radius:20px; background:var(--chip); white-space:nowrap; }
+  .pill.ok { background:var(--ok-bg); color:var(--ok-fg); } .pill.off { background:var(--chip2); color:var(--muted); }
   .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
   #ipt-detail { margin-top:12px; display:none; }
   .kv { display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:10px 16px; }
   .kv h3 { grid-column:1/-1; margin:8px 0 0; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
   .kv div { border-bottom:1px solid var(--line); padding-bottom:4px; min-width:0; overflow-wrap:anywhere; }
   .kv div span { display:block; color:var(--muted); font-size:11px; }
-  pre.out { background:#0b0e11; border:1px solid var(--line); border-radius:6px; padding:8px; margin:4px 0 0; white-space:pre-wrap; max-height:220px; overflow:auto; font-size:12px; }
+  pre.out { background:var(--well); border:1px solid var(--line); border-radius:6px; padding:8px; margin:4px 0 0; white-space:pre-wrap; max-height:220px; overflow:auto; font-size:12px; }
   #login-form { display:none; gap:8px; flex-wrap:wrap; align-items:center; margin-top:8px; }
   .scroll-x { overflow-x:auto; }
   .tabs { display:flex; gap:0; }
   .tabs button { border-radius:0; } .tabs button:first-child { border-radius:6px 0 0 6px; } .tabs button:last-child { border-radius:0 6px 6px 0; margin-left:-1px; }
-  .tabs button.active { background:#1f2a3a; border-color:var(--accent); }
+  .tabs button.active { background:var(--active); border-color:var(--accent); }
   #crumbs a { cursor:pointer; text-decoration:none; } #crumbs .sep { color:var(--muted); margin:0 4px; }
   #files-table td.name a { cursor:pointer; text-decoration:none; }
   #files-table td.act { text-align:right; white-space:nowrap; }
   #files-table td.act button { padding:2px 7px; font-size:12px; }
   #files-drop { border:1px dashed transparent; border-radius:8px; }
-  #files-drop.over { border-color:var(--accent); background:#141b25; }
+  #files-drop.over { border-color:var(--accent); background:var(--soft); }
   dialog { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:16px; min-width:340px; }
-  dialog::backdrop { background:#0008; }
+  dialog::backdrop { background:var(--overlay); }
   dialog form { display:flex; flex-direction:column; gap:10px; margin:0; }
   #welcome { width:min(560px, calc(100vw - 24px)); max-height:calc(100dvh - 24px); box-sizing:border-box; overflow:auto; min-width:0; }
   #welcome h2 { margin:0 0 8px; font-size:20px; }
@@ -98,8 +100,8 @@
   #welcome ol, #welcome ul { margin:0; padding-left:22px; }
   #welcome .row { margin-top:14px; flex-wrap:wrap; }
   dialog .row { display:flex; gap:8px; justify-content:flex-end; }
-  #files-hint { margin:0 0 10px; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:#141a21; }
-  #files-missing { margin:0 0 10px; padding:8px 10px; border:1px solid #6b5a2a; border-radius:6px; background:#1d1a12; }
+  #files-hint { margin:0 0 10px; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:var(--soft); }
+  #files-missing { margin:0 0 10px; padding:8px 10px; border:1px solid var(--warn-line); border-radius:6px; background:var(--warn-box); }
   #files-missing ul { margin:6px 0 0; padding:0; list-style:none; }
   #files-missing li { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:4px 0; border-top:1px solid var(--line); }
   #files-missing li:first-child { border-top:none; }
@@ -115,23 +117,23 @@
     #hist-table td.num, #hist-table td.act { text-align:left; }
   }
   /* Recordings */
-  .bbadge.rec { background:#3d1b1b; color:#ff9b9b; } .bbadge.play { background:#1d2a44; color:#9ecbff; }
+  .bbadge.rec { background:var(--err-bg); color:var(--err-fg); } .bbadge.play { background:var(--info-bg); color:var(--info-fg); }
   #rec-table td.act { text-align:left; padding-top:0; }
   #rec-table tr.datarow td { border-bottom:none; }
   #rec-table td.act button { padding:2px 7px; font-size:12px; }
   #rec-table td.nm { overflow-wrap:anywhere; }
-  #rec-toggle.recording { background:#3d1b1b; border-color:var(--err); color:#ff9b9b; }
+  #rec-toggle.recording { background:var(--err-bg); border-color:var(--err); color:var(--err-fg); }
   #rec-toggle:not(.recording) .rdot { color:var(--err); }
   button:disabled { opacity:.45; cursor:default; } button:disabled:hover { border-color:var(--line); }
-  #rec-replay { margin:0 0 10px; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:#141a21; }
-  .pbar { height:8px; border-radius:4px; background:#0b0e11; border:1px solid var(--line); overflow:hidden; margin:6px 0 0; }
+  #rec-replay { margin:0 0 10px; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:var(--soft); }
+  .pbar { height:8px; border-radius:4px; background:var(--well); border:1px solid var(--line); overflow:hidden; margin:6px 0 0; }
   .pbar > div { height:100%; width:0; background:var(--accent); transition:width .3s linear; }
-  #rec-notice { margin:0 0 10px; padding:8px 10px; border:1px solid #6b5a2a; border-radius:6px; background:#1d1a12; overflow-wrap:anywhere; }
-  .rr { margin-top:12px; padding:10px 12px; border:1px solid var(--line); border-left:5px solid var(--line); border-radius:8px; background:#12161b; }
+  #rec-notice { margin:0 0 10px; padding:8px 10px; border:1px solid var(--warn-line); border-radius:6px; background:var(--warn-box); overflow-wrap:anywhere; }
+  .rr { margin-top:12px; padding:10px 12px; border:1px solid var(--line); border-left:5px solid var(--line); border-radius:8px; background:var(--tile); }
   .rr.pass { border-left-color:var(--ok); } .rr.fail { border-left-color:var(--err); }
   .rr-head { display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 12px; }
   .rr-big { font-size:22px; font-weight:700; letter-spacing:.04em; }
-  .rr.pass .rr-big { color:#7fe0b1; } .rr.fail .rr-big { color:#ff9b9b; }
+  .rr.pass .rr-big { color:var(--ok-fg); } .rr.fail .rr-big { color:var(--err-fg); }
   .rr-sum { margin:6px 0; color:var(--muted); overflow-wrap:anywhere; }
   .rr ul { margin:6px 0; padding-left:18px; color:var(--muted); }
   .rr details { margin-top:8px; }
@@ -139,7 +141,7 @@
   table.diffs td, table.diffs th { font-size:13px; }
   table.diffs .k { white-space:nowrap; }
   table.diffs tr.warn td { color:var(--muted); }
-  .pill.pass { background:#173a2c; color:#7fe0b1; } .pill.fail { background:#3d1b1b; color:#ff9b9b; }
+  .pill.pass { background:var(--ok-bg); color:var(--ok-fg); } .pill.fail { background:var(--err-bg); color:var(--err-fg); }
   @media (max-width: 600px) {
     #rec-table thead, table.diffs thead { display:none; }
     #rec-table, #rec-table tbody, #rec-table tr, #rec-table td, table.diffs, table.diffs tbody, table.diffs tr, table.diffs td { display:block; }
@@ -156,12 +158,12 @@
   #share-dlg label.f { display:flex; flex-direction:column; gap:3px; font-size:12px; color:var(--muted); }
   #share-dlg label.f input, #share-dlg label.f select { font-size:14px; color:var(--text); }
   #share-dlg .pinrow { display:flex; gap:6px; } #share-dlg .pinrow input { flex:1; min-width:0; }
-  #share-dlg .what { margin:0; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:#141a21; overflow-wrap:anywhere; }
-  #share-dlg .err { color:#ff9b9b; min-height:18px; overflow-wrap:anywhere; }
+  #share-dlg .what { margin:0; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:var(--soft); overflow-wrap:anywhere; }
+  #share-dlg .err { color:var(--err-fg); min-height:18px; overflow-wrap:anywhere; }
   #share-url { width:100%; }
   #share-qr { display:grid; place-items:center; padding:10px; background:#fff; border-radius:8px; width:max-content; max-width:100%; margin:0 auto; }
   #share-qr svg { width:min(220px, 60vw); height:auto; display:block; }
-  .warnbox { padding:8px 10px; border:1px solid #6b5a2a; border-radius:6px; background:#1d1a12; overflow-wrap:anywhere; }
+  .warnbox { padding:8px 10px; border:1px solid var(--warn-line); border-radius:6px; background:var(--warn-box); overflow-wrap:anywhere; }
   #shares-table td.act { white-space:nowrap; text-align:right; }
   #shares-table td.act button { padding:2px 7px; font-size:12px; }
   #shares-table td.nm { overflow-wrap:anywhere; }
@@ -180,27 +182,132 @@
   /* Internet access */
   #net-bar { margin:12px 16px 0; padding:8px 12px; border:1px solid var(--line); border-radius:10px; background:var(--card); display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; }
   #net-bar b { font-weight:600; }
-  .switch { position:relative; width:42px; height:24px; flex:none; border-radius:12px; border:1px solid var(--line); background:#111519; padding:0; cursor:pointer; }
-  .switch::after { content:""; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:#8b95a3; transition:left .15s, background .15s; }
-  .switch[aria-checked="true"] { background:#173a2c; border-color:var(--ok); }
-  .switch[aria-checked="true"]::after { left:20px; background:#7fe0b1; }
+  .switch { position:relative; width:42px; height:24px; flex:none; border-radius:12px; border:1px solid var(--line); background:var(--input); padding:0; cursor:pointer; }
+  .switch::after { content:""; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:var(--muted); transition:left .15s, background .15s; }
+  .switch[aria-checked="true"] { background:var(--ok-bg); border-color:var(--ok); }
+  .switch[aria-checked="true"]::after { left:20px; background:var(--ok-fg); }
   .switch.busy::after { background:var(--warn); }
   .switch:disabled { opacity:.45; cursor:default; }
-  #net-state { font-size:12px; padding:1px 9px; border-radius:20px; background:#252c36; }
-  #net-state.on { background:#173a2c; color:#7fe0b1; } #net-state.err { background:#3d1b1b; color:#ff9b9b; } #net-state.wait { background:#3a321a; color:#f2cf7a; }
+  #net-state { font-size:12px; padding:1px 9px; border-radius:20px; background:var(--chip); }
+  #net-state.on { background:var(--ok-bg); color:var(--ok-fg); } #net-state.err { background:var(--err-bg); color:var(--err-fg); } #net-state.wait { background:var(--warn-bg); color:var(--warn-fg); }
   #net-url { font-family:ui-monospace, Menlo, monospace; font-size:13px; overflow-wrap:anywhere; }
   #net-help { flex-basis:100%; margin:0; font-size:12px; color:var(--muted); }
   #net-msg { flex-basis:100%; margin:0; font-size:13px; overflow-wrap:anywhere; }
-  #net-msg.err { color:#ff9b9b; }
+  #net-msg.err { color:var(--err-fg); }
   #net-bar button { padding:2px 9px; font-size:12px; }
   #net-bar details { flex-basis:100%; font-size:12px; color:var(--muted); } #net-bar details pre { margin:4px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; max-height:160px; overflow:auto; }
+
+  /* ---- header buttons, saved indicator, toasts */
+  header .hbtn, .theme-btn { font-size:12px; padding:2px 9px; white-space:nowrap; }
+  #saved { font-size:12px; color:var(--ok-fg); background:var(--ok-bg); border-radius:20px; padding:1px 9px; opacity:0; transition:opacity .25s; pointer-events:none; min-width:60px; text-align:center; }
+  #saved.show { opacity:1; }
+  #toasts { position:fixed; left:50%; bottom:16px; transform:translateX(-50%); z-index:200; display:flex; flex-direction:column; gap:8px; align-items:center; width:min(520px, calc(100vw - 24px)); pointer-events:none; }
+  .toast { pointer-events:auto; display:flex; align-items:center; gap:10px; width:100%; background:var(--menu); color:var(--text); border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:8px; padding:8px 10px 8px 12px; box-shadow:0 6px 24px #0006; }
+  .toast.err { border-left-color:var(--err); }
+  .toast span { flex:1; overflow-wrap:anywhere; }
+  .toast button { padding:3px 12px; }
+  .toast button.undo { background:var(--active); border-color:var(--accent); font-weight:600; }
+  /* ---- command palette and shortcut overlay */
+  #pal-back, #keys-back { position:fixed; inset:0; z-index:150; background:var(--overlay); display:none; align-items:flex-start; justify-content:center; padding:12vh 12px 12px; }
+  #pal-back.open, #keys-back.open { display:flex; }
+  #pal, #keys { width:min(600px, 100%); max-height:76vh; display:flex; flex-direction:column; background:var(--menu); border:1px solid var(--line); border-radius:10px; box-shadow:0 12px 40px #0007; overflow:hidden; }
+  #pal-in { border:0; border-bottom:1px solid var(--line); border-radius:0; padding:12px 14px; font-size:16px; background:transparent; outline:none; }
+  #pal-list { overflow:auto; padding:4px 0; margin:0; list-style:none; }
+  #pal-list li { padding:7px 14px; cursor:pointer; display:flex; gap:10px; align-items:baseline; }
+  #pal-list li .h { margin-left:auto; color:var(--muted); font-size:12px; white-space:nowrap; }
+  #pal-list li.on, #pal-list li:hover { background:var(--selrow); color:var(--text); }
+  #pal-list li.on { box-shadow:inset 3px 0 0 var(--accent); }
+  #pal-foot, #keys-foot { padding:6px 14px; border-top:1px solid var(--line); color:var(--muted); font-size:12px; }
+  #keys { padding:14px 18px; overflow:auto; } #keys h2 { margin:0 0 8px; }
+  #keys dl { display:grid; grid-template-columns:auto 1fr; gap:6px 16px; margin:0; }
+  #keys dt { text-align:right; white-space:nowrap; } #keys dd { margin:0; }
+  kbd { font:12px ui-monospace, Menlo, Consolas, monospace; background:var(--input); border:1px solid var(--line); border-bottom-width:2px; border-radius:4px; padding:0 5px; }
+  /* ---- drop anywhere */
+  #drop-ov { position:fixed; inset:0; z-index:120; display:none; place-items:center; background:var(--overlay); pointer-events:none; }
+  #drop-ov.open { display:grid; }
+  #drop-ov div { background:var(--card); border:3px dashed var(--accent); border-radius:16px; padding:28px 40px; font-size:20px; text-align:center; max-width:calc(100vw - 32px); overflow-wrap:anywhere; }
+  #drop-ov small { display:block; font-size:13px; color:var(--muted); margin-top:6px; }
+  /* ---- recent menu */
+  .menu-wrap { position:relative; display:inline-block; }
+  #recent-menu { position:absolute; left:0; top:calc(100% + 4px); z-index:60; width:min(440px, calc(100vw - 32px)); max-height:60vh; overflow:auto; background:var(--menu); border:1px solid var(--line); border-radius:8px; box-shadow:0 8px 28px #0006; padding:4px 0; }
+  #recent-menu button { display:block; width:100%; text-align:left; border:0; border-radius:0; background:transparent; padding:7px 12px; }
+  #recent-menu button:hover:not(:disabled) { background:var(--selrow); }
+  #recent-menu small { display:block; color:var(--muted); overflow-wrap:anywhere; }
+  #recent-menu .none { padding:10px 12px; color:var(--muted); }
+  /* ---- slot name / colour, bulk selection, crash info */
+  .cdot { display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--sc, transparent); border:1px solid var(--line); vertical-align:baseline; margin-right:5px; }
+  .btile[style*="--sc"] { border-top:3px solid var(--sc); }
+  .btile .bname { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:0 1 auto; }
+  .btile .bsel { margin:0 2px 0 0; width:16px; height:16px; flex:none; accent-color:var(--accent); }
+  .bbadge.pol { background:var(--chip); color:var(--text2); }
+  .bcrash { margin-top:4px; font-size:12px; color:var(--warn-fg); overflow-wrap:anywhere; }
+  tr.slot td:first-child { box-shadow:inset 4px 0 0 var(--sc, transparent); }
+  #slots input.bsel { width:16px; height:16px; margin:0; accent-color:var(--accent); vertical-align:middle; }
+  #bulk-bar { display:none; margin-top:10px; padding:8px 10px; border:1px solid var(--accent); border-radius:8px; background:var(--active); align-items:center; gap:6px 8px; flex-wrap:wrap; }
+  #bulk-bar.open { display:flex; }
+  #slot-set { margin-top:10px; border-top:1px solid var(--line); padding-top:8px; }
+  #slot-set summary { cursor:pointer; color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.06em; }
+  #slot-set .fld { display:flex; flex-direction:column; gap:3px; font-size:12px; color:var(--muted); min-width:0; }
+  #slot-set .frow { display:flex; flex-wrap:wrap; gap:10px 14px; margin:8px 0; align-items:flex-end; }
+  #slot-set input[type=text], #slot-set input[type=number], #slot-set select { color:var(--text); font-size:14px; }
+  #slot-set input[type=number] { width:84px; }
+  #set-colors { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  #set-colors button { width:26px; height:26px; padding:0; border-radius:50%; background:var(--c); border:2px solid var(--line); }
+  #set-colors button.on { border-color:var(--text); box-shadow:0 0 0 2px var(--accent); }
+  #set-colors button.none { background:var(--input); font-size:12px; width:auto; padding:0 9px; border-radius:13px; }
+  #slot-set .chk { flex-direction:row; align-items:center; gap:6px; color:var(--text); font-size:14px; }
+  #slot-strip { display:none; }
+  #log-filter { flex:1; min-width:120px; }
+  /* ---- phone: collapsible sections, big touch targets, sticky slot selector, cards instead of wide tables */
+  section h2.sec-t { cursor:default; }
+  @media (max-width: 700px) {
+    body { font-size:15px; }
+    header { padding:10px 12px; } header small { display:none; }
+    header a, header .hbtn, .theme-btn { padding:8px 6px; }
+    #net-bar { margin:10px 12px 0; } #board { margin:12px 12px 0; }
+    main { padding:12px; gap:12px; }
+    main section, #board { padding:12px; }
+    button, input, select { min-height:40px; font-size:16px; }
+    button { padding:6px 12px; }
+    input[type=checkbox] { min-height:0; }
+    #file { max-width:100%; }
+    .bar { gap:8px; }
+    .btile { padding:10px; min-height:84px; }
+    #board-tiles { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+    #slot-strip { display:flex; position:sticky; top:0; z-index:40; gap:8px; align-items:center; padding:8px 12px; background:var(--bg); border-bottom:1px solid var(--line); }
+    #slot-strip select { flex:1; min-width:0; }
+    #slot-strip button { min-width:44px; padding:6px 10px; }
+    section h2.sec-t { cursor:pointer; display:flex; align-items:center; min-height:36px; user-select:none; }
+    section h2.sec-t::after { content:"▾"; margin-left:auto; padding-left:10px; }
+    section.collapsed h2.sec-t::after { content:"▸"; }
+    section.collapsed > :not(h2):not(.sec-head) { display:none !important; }
+    section.collapsed h2.sec-t { margin-bottom:0; }
+    .sec-head h2.sec-t { min-height:0; }
+    #ipt thead, #files-table thead, #slots thead { display:none; }
+    #ipt, #ipt tbody, #ipt tr, #ipt td, #files-table, #files-table tbody, #files-table tr, #files-table td { display:block; }
+    #ipt tr, #files-table tr { border:1px solid var(--line); border-radius:8px; margin:0 0 8px; padding:6px 8px; }
+    #ipt td, #files-table td { border:none; padding:2px 0; }
+    #ipt td[data-l]::before, #files-table td[data-l]::before { content:attr(data-l) " "; color:var(--muted); font-size:11px; }
+    #ipt td.num, #ipt td.act, #files-table td.num, #files-table td.act { text-align:left; white-space:normal; }
+    #files-table td.act button, #ipt td.act button, #hist-table td.act button, #rec-table td.act button, #shares-table td.act button { min-height:36px; padding:4px 10px; }
+    #slots .roomcol { display:none; }
+    .kv { grid-template-columns:minmax(0, 1fr); }
+    #crumbs, #files-ppath { overflow-wrap:anywhere; }
+    dialog { min-width:0; width:calc(100vw - 24px); max-width:none; }
+    #recent-menu { left:-12px; }
+    #toasts { bottom:8px; }
+    .scroll-x { overflow-x:visible; }
+    pre.out, #log, #console-out { max-width:100%; }
+    #pal-back, #keys-back { padding-top:8vh; }
+  }
 </style>
 </head>
 <body>
 <header>
   <h1>OpenVP</h1><small>open-source virtual control processor</small>
-  <span style="flex:1"></span><a href="metrics.html" target="openvp-metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="panel.html" target="_blank" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a><a href="#welcome" id="welcome-link" title="Show the welcome screen again">Welcome</a>
+  <span style="flex:1"></span><span id="saved" role="status" aria-live="polite"></span><button class="hbtn" id="pal-open" title="Search every action (Ctrl+K or Cmd+K)">Search ⌘K</button><button class="hbtn" id="keys-open" title="Keyboard shortcuts (?)">?</button><button class="theme-btn" data-theme-toggle></button><a href="metrics.html" target="openvp-metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="panel.html" target="_blank" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a><a href="#welcome" id="welcome-link" title="Show the welcome screen again">Welcome</a>
 </header>
+<div id="slot-strip" aria-label="Selected slot"><select id="strip-slot" aria-label="Slot"></select><button id="strip-start" title="Start">▶</button><button id="strip-stop" title="Stop">■</button><button id="strip-restart" title="Restart">↻</button></div>
 <div id="net-bar">
   <button id="net-switch" class="switch" role="switch" aria-checked="false" aria-labelledby="net-label" title="Turn the internet tunnel on or off"></button>
   <b id="net-label">Internet access</b>
@@ -214,20 +321,24 @@
   <details id="net-log" hidden><summary>cloudflared output</summary><pre></pre></details>
 </div>
 <section id="board">
-  <h2 title="Every slot at a glance. Click a tile to select that slot.">Status board</h2>
+  <h2 class="sec-t" title="Every slot at a glance. Click a tile to select that slot. Tick the boxes to start, stop, restart or unload several at once.">Status board</h2>
   <div id="board-tiles"></div>
+  <div id="bulk-bar" role="group" aria-label="Selected slots"><b id="bulk-count"></b>
+    <button data-bulk="start" title="Start the program in each selected slot">Start</button><button data-bulk="stop" title="Stop each selected slot's program">Stop</button><button data-bulk="restart" title="Load each selected slot's program again and start it">Restart</button><button data-bulk="unload" title="Unload each selected slot. You can undo it for a few seconds.">Unload</button>
+    <span style="flex:1"></span><button id="bulk-all" title="Tick every slot">Select all</button><button id="bulk-clear" title="Untick every slot">Clear</button></div>
 </section>
 <main>
   <div>
-    <section>
-      <h2>Program slots</h2>
-      <table id="slots"><thead><tr><th>#</th><th class="roomcol">Room</th><th>Program</th><th>State</th></tr></thead><tbody></tbody></table>
+    <section id="slots-sec">
+      <h2 class="sec-t">Program slots</h2>
+      <table id="slots"><thead><tr><th><input type="checkbox" id="slots-all" class="bsel" aria-label="Select all slots" title="Tick every slot to act on several at once"></th><th>#</th><th class="roomcol">Room</th><th>Program</th><th>State</th></tr></thead><tbody></tbody></table>
     </section>
-    <section style="margin-top:16px">
-      <h2>Slot <span id="sel-num">1</span></h2>
+    <section style="margin-top:16px" id="slot-sec">
+      <h2 class="sec-t">Slot <span id="sel-num">1</span> <span id="sel-name" class="muted"></span></h2>
       <div class="bar">
         <input type="file" id="file" accept=".cpz,.dll,.zip,.smw,.json,.lpz,.sig" multiple title="Pick the program: .cpz or .dll (SIMPL# Pro), .lpz (add its .sig for signal names) or .smw">
-        <button id="upload" title="Upload the chosen file(s) into this slot and start the program. Replaces what was in the slot.">Load &amp; start</button>
+        <button id="upload" title="Upload the chosen file(s) into this slot and start the program. Replaces what was in the slot. You can also drop a program anywhere on this page.">Load &amp; start</button>
+        <span class="menu-wrap"><button id="recent-btn" aria-haspopup="true" aria-expanded="false" title="Load one of the last programs again into this slot">Recent ▾</button><div id="recent-menu" role="menu" hidden></div></span>
         <button id="inspect" title="Report what OpenVP can run in a compiled .lpz (add its .sig for names)">Inspect .lpz</button>
       </div>
       <div class="bar" id="disk-bar" hidden>
@@ -239,7 +350,7 @@
         <button id="watch-stop" title="Keep the program running but stop reloading it when the file changes">Stop watching</button>
       </div>
       <div class="bar">
-        <button data-act="start" title="Start the program loaded in this slot">Start</button><button data-act="stop" title="Stop the program but keep it loaded">Stop</button><button data-act="unload" title="Stop the program and remove it from this slot. NVRAM and User files are kept.">Unload</button>
+        <button data-act="start" title="Start the program loaded in this slot">Start</button><button data-act="stop" title="Stop the program but keep it loaded">Stop</button><button data-act="restart" title="Load the program again from its file and start it">Restart</button><button data-act="unload" title="Stop the program and remove it from this slot. NVRAM and User files are kept. You can undo it for a few seconds.">Unload</button>
         <button id="compat" title="List what the loaded program uses that OpenVP does not support yet (shown in the Console box)">Compatibility</button>
       </div>
       <div class="bar" id="room-bar" style="display:none">
@@ -247,12 +358,32 @@
         <button id="room-edit" title="Virtual Control Room ID for this slot (panels can connect with ?room=ID)">Edit…</button>
       </div>
       <div id="sel-info" class="muted mono"></div>
+      <details id="slot-set"><summary>Slot settings</summary>
+        <div class="frow">
+          <label class="fld">Name<input type="text" id="set-name" maxlength="40" placeholder="e.g. Boardroom" autocomplete="off"></label>
+          <div class="fld">Colour<div id="set-colors" role="group" aria-label="Slot colour"></div></div>
+        </div>
+        <div class="frow">
+          <label class="fld chk" title="Bring this slot's program back (and start it, if it was running) when OpenVP starts"><input type="checkbox" id="set-autostart"> Autostart</label>
+          <label class="fld" title="Slots come back in this order, lowest first">Start order<input type="number" id="set-order" min="1" max="999"></label>
+          <label class="fld" title="Seconds to wait before this slot comes back, after the one before it">Delay (s)<input type="number" id="set-delay" min="0" max="3600"></label>
+        </div>
+        <div class="frow">
+          <label class="fld" title="What to do when the program crashes">If it crashes
+            <select id="set-crash"><option value="stop">Stay stopped</option><option value="restart">Restart</option><option value="limited">Restart a few times, then stop</option></select></label>
+          <label class="fld" id="set-max-l" title="At most this many restarts in the window below">Restarts<input type="number" id="set-max" min="1" max="100"></label>
+          <label class="fld" id="set-win-l" title="Counting restarts over this many minutes">in (minutes)<input type="number" id="set-win" min="1" max="1440"></label>
+          <label class="fld" title="Count the slot as crashed when one event runs this long (the stuck-slot detector). 0 = never. At least 2.">Stuck after (s)<input type="number" id="set-stuck" min="0" max="3600"></label>
+          <label class="fld chk" title="An unhandled exception in a program's event handler counts as a crash. Off: it is only logged."><input type="checkbox" id="set-fault"> Unhandled exception = crash</label>
+        </div>
+        <div class="muted">Saved as you change it.</div>
+      </details>
       <div id="devices" class="muted" style="margin-top:8px"></div>
     </section>
   </div>
   <div>
-    <section>
-      <h2>IP table · slot <span class="sel-num2">1</span><span class="room-tag"></span></h2>
+    <section id="ipt-sec">
+      <h2 class="sec-t">IP table · slot <span class="sel-num2">1</span><span class="room-tag"></span></h2>
       <div class="scroll-x">
       <table id="ipt">
         <thead><tr><th>Connected client</th><th>Address</th><th>IP ID</th><th>Type</th><th>Status</th><th class="num">Connected</th><th class="num">Joins in / out</th><th></th></tr></thead>
@@ -282,22 +413,22 @@
       </div>
     </section>
     <section style="margin-top:16px" id="shares-sec">
-      <h2 title="Links you have given out. Revoke one and it stops working at once.">Shared panels</h2>
+      <h2 class="sec-t" title="Links you have given out. Revoke one and it stops working at once.">Shared panels</h2>
       <div id="shares-empty" class="muted">No shared panels. Click <b>Share…</b> on an IP ID in the table above to make a link someone else can open.</div>
       <div class="scroll-x"><table id="shares-table" hidden>
         <thead><tr><th>Link</th><th>Slot · IP ID</th><th>Panel</th><th>Expires</th><th>Last used</th><th>Now</th><th></th></tr></thead>
         <tbody></tbody>
       </table></div>
     </section>
-    <section style="margin-top:16px">
-      <h2>Debugger · slot <span class="sel-num2">1</span></h2>
+    <section style="margin-top:16px" id="dbg-sec">
+      <h2 class="sec-t">Debugger · slot <span class="sel-num2">1</span></h2>
       <div class="bar">
         <button id="open-debugger" title="Watch and change this slot's signals live, in its own window">Open debugger ↗</button>
         <span class="muted">Signal list and trace window for this slot, in its own window. Open one per slot to debug several programs at once.</span>
       </div>
     </section>
-    <section style="margin-top:16px">
-      <h2>Files · slot <span class="sel-num2">1</span></h2>
+    <section style="margin-top:16px" id="files-sec">
+      <h2 class="sec-t">Files · slot <span class="sel-num2">1</span></h2>
       <div class="bar">
         <div class="tabs"><button data-root="nvram" class="active" title="The slot's \NVRAM folder">NVRAM</button><button data-root="user" title="The slot's \USER folder">User</button></div>
         <span style="flex:1"></span>
@@ -315,8 +446,8 @@
         <div id="files-empty" class="muted" style="padding:10px 6px" hidden>Empty. Drop files here, or use Upload.</div>
       </div>
     </section>
-    <section style="margin-top:16px">
-      <h2>History · slot <span class="sel-num2">1</span></h2>
+    <section style="margin-top:16px" id="hist-sec">
+      <h2 class="sec-t">History · slot <span class="sel-num2">1</span></h2>
       <div class="bar">
         <button id="hist-now" title="Save a copy of this slot's program, NVRAM and User files now">Snapshot now</button>
         <span class="muted">A snapshot is saved before every load. The last 10 are kept.</span>
@@ -325,7 +456,7 @@
       <div id="hist-empty" class="muted" style="padding:10px 6px" hidden>No snapshots yet.</div>
     </section>
     <section style="margin-top:16px" id="rec-sec">
-      <h2>Recordings · slot <span class="sel-num2">1</span></h2>
+      <h2 class="sec-t">Recordings · slot <span class="sel-num2">1</span></h2>
       <div class="bar">
         <button id="rec-toggle" title="Record every input to this slot's program (panels, EISC, forced signals) and the feedback it sends back"><span class="rdot">●</span> <span id="rec-toggle-label">Record</span></button>
         <span id="rec-status" class="mono muted"></span>
@@ -346,7 +477,7 @@
     <div class="grid2" style="margin-top:16px">
       <section id="console-sec">
         <div class="sec-head">
-          <h2>Console</h2>
+          <h2 class="sec-t">Console</h2>
           <button id="console-smaller" title="Make the console shorter">−</button>
           <button id="console-bigger" title="Make the console taller">+</button>
           <button id="console-max" title="Fill the window with the console (Esc to restore)">Maximize</button>
@@ -356,16 +487,29 @@
       </section>
       <section id="log-sec">
         <div class="sec-head">
-          <h2>Log</h2>
+          <h2 class="sec-t">Log</h2>
           <button id="log-smaller" title="Make the log shorter">−</button>
           <button id="log-bigger" title="Make the log taller">+</button>
           <button id="log-max" title="Fill the window with the log (Esc to restore)">Maximize</button>
         </div>
+        <div class="bar"><input id="log-filter" type="search" placeholder="Filter the log (press L)" aria-label="Filter the log" autocomplete="off"></div>
         <div id="log" class="mono" title="Drag the bottom-right corner to resize"></div>
       </section>
     </div>
   </div>
 </main>
+<div id="toasts" aria-live="polite"></div>
+<div id="drop-ov" aria-hidden="true"><div id="drop-text">Drop to load</div></div>
+<div id="pal-back"><div id="pal" role="dialog" aria-modal="true" aria-label="Search actions">
+  <input id="pal-in" role="combobox" aria-expanded="true" aria-controls="pal-list" aria-autocomplete="list" placeholder="Type to search: start slot 2, debugger, snapshot, theme…" autocomplete="off" spellcheck="false">
+  <ul id="pal-list" role="listbox"></ul>
+  <div id="pal-foot">↑ ↓ to move · Enter to run · Esc to close</div>
+</div></div>
+<div id="keys-back"><div id="keys" role="dialog" aria-modal="true" aria-labelledby="keys-title">
+  <h2 id="keys-title" style="text-transform:none;letter-spacing:0;font-size:18px;color:var(--text)">Keyboard shortcuts</h2>
+  <dl id="keys-list"></dl>
+  <div id="keys-foot">Shortcuts don't fire while you are typing in a box. Esc or ? closes this.</div>
+</div></div>
 <dialog id="ask"><form method="dialog">
   <label id="ask-label" for="ask-in"></label>
   <input id="ask-in" class="mono" autocomplete="off">
@@ -417,7 +561,7 @@
 <script>
 openvpAuth.init();
 const $ = s => document.querySelector(s);
-let sel = 1, ws = null, curRoom;
+let sel = 1, ws = null, curRoom, bulkSel = new Set();
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
@@ -430,16 +574,20 @@ async function api(path, opts) {
 
 async function refreshSlots() {
   const slots = await api("/api/slots");
-  boardSlots = slots; renderBoard();
+  boardSlots = slots; renderBoard(); renderStrip();
   const tb = $("#slots tbody"); tb.innerHTML = "";
   for (const s of slots) {
     const tr = document.createElement("tr");
     tr.className = "slot" + (s.number === sel ? " sel" : "");
-    tr.innerHTML = `<td>${s.number}</td><td class="roomcol mono">${esc(s.roomId)}</td><td>${s.program ? `${s.program} <span class="muted">· ${s.kind}</span>` : '<span class="muted">empty</span>'}</td><td><span class="state ${s.state}">${s.state}</span></td>`;
-    tr.onclick = () => select(s.number);
+    if (s.color) tr.style.setProperty("--sc", s.color);
+    tr.innerHTML = `<td><input type="checkbox" class="bsel" data-n="${s.number}" aria-label="Select slot ${s.number}" ${bulkSel.has(s.number) ? "checked" : ""}></td><td>${s.number}</td><td class="roomcol mono">${esc(s.roomId)}</td><td style="overflow-wrap:anywhere">${s.name ? `<b>${esc(s.name)}</b> · ` : ""}${s.program ? `${esc(s.program)} <span class="muted">· ${esc(s.kind)}</span>` : '<span class="muted">empty</span>'}</td><td><span class="state ${s.state}">${s.state}</span></td>`;
+    tr.onclick = e => { if (!e.target.closest(".bsel")) select(s.number); };
     tb.appendChild(tr);
     if (s.number === sel) {
       curRoom = s.roomId;
+      document.title = `OpenVP · slot ${s.number}${s.name ? " " + s.name : ""}`;
+      $("#sel-name").textContent = s.name ? "· " + s.name : "";
+      fillSettings(s);
       document.querySelectorAll(".room-tag").forEach(e => e.textContent = typeof s.roomId === "string" ? ` · room ${s.roomId}` : "");
       const hasRoom = typeof s.roomId === "string";
       document.querySelectorAll(".roomcol").forEach(e => e.style.display = hasRoom ? "" : "none");
@@ -452,6 +600,7 @@ async function refreshSlots() {
       $("#devices").textContent = s.devices.length ? `${s.devices.length} IP ID${s.devices.length === 1 ? "" : "s"}, ${online} online. Who's connected is in the IP table.` : "";
     }
   }
+  renderBulk();
 }
 
 // ---------------- Status board ----------------
@@ -459,6 +608,7 @@ async function refreshSlots() {
 // plus the slot's own error state.
 let boardSlots = [], boardMetrics = null, boardHtml = "";
 
+function crashLabel(c) { return c.mode === "restart" ? "restart on crash" : c.mode === "limited" ? `restart up to ${c.maxRestarts} in ${c.windowMinutes} min` : ""; }
 function renderBoard() {
   const bySlot = {};
   for (const m of boardMetrics?.slots ?? []) bySlot[m.number] = m;
@@ -470,25 +620,31 @@ function renderBoard() {
     for (const w of m?.warnings ?? []) problems.push(w[0].toUpperCase() + w.slice(1));
     const online = s.devices.filter(d => d.online).length;
     const eps = m ? `${m.eventsPerSecond.toFixed(1)} ev/s` : "– ev/s";
+    const pol = crashLabel(s.crash);
     const flags = (problems.length ? `<span class="bbadge" title="${esc(problems.join("\n"))}">${problems.length > 1 ? problems.length + " problems" : "problem"}</span>` : "")
       + (s.recording === "recording" ? `<span class="bbadge rec" title="This slot is recording its inputs and feedback">● recording</span>` : "")
       + (s.recording === "replaying" ? `<span class="bbadge play" title="A recording is being replayed into this slot">▶ replaying</span>` : "")
-      + (s.watching ? `<span class="bbadge auto" title="${esc("Reloads when this file changes: " + s.watching)}">auto-reload</span>` : "");
-    const label = `Slot ${s.number}${typeof s.roomId === "string" ? ", room " + s.roomId : ""}: ${s.program ?? "empty"}, ${st}`;
-    return `<div class="btile st-${st}${s.number === sel ? " sel" : ""}" data-n="${s.number}" role="button" tabindex="0" aria-label="${esc(label)}" title="${esc("Select slot " + s.number)}">
-      <div class="btop"><span class="bdot"></span><span class="bnum">${s.number}</span>${typeof s.roomId === "string" ? `<span class="broom mono">${esc(s.roomId)}</span>` : ""}<span class="bflags">${flags}</span></div>
+      + (s.watching ? `<span class="bbadge auto" title="${esc("Reloads when this file changes: " + s.watching)}">auto-reload</span>` : "")
+      + (pol ? `<span class="bbadge pol" title="${esc("Crash policy: " + pol + (s.crash.stuckSeconds ? `; counts the slot as crashed after ${s.crash.stuckSeconds} s stuck` : ""))}">↻ ${s.crash.mode === "restart" ? "restart" : "≤" + s.crash.maxRestarts + "/" + s.crash.windowMinutes + "m"}</span>` : "");
+    const last = s.crash.last;
+    const crashLine = last ? `<div class="bcrash" title="${esc(last.reason || "")}">↯ ${esc(new Date(last.time).toLocaleTimeString())} crashed: ${esc(last.action)}${s.crash.restarts ? ` (${s.crash.restarts} restart${s.crash.restarts === 1 ? "" : "s"} in the window)` : ""}</div>` : "";
+    const nm = s.name ? `<span class="bname" title="${esc(s.name)}">${esc(s.name)}</span>` : "";
+    const room = typeof s.roomId === "string" ? `<span class="broom mono">${esc(s.roomId)}</span>` : "";
+    const label = `Slot ${s.number}${s.name ? " " + s.name : ""}${typeof s.roomId === "string" ? ", room " + s.roomId : ""}: ${s.program ?? "empty"}, ${st}`;
+    return `<div class="btile st-${st}${s.number === sel ? " sel" : ""}" data-n="${s.number}" role="button" tabindex="0" aria-label="${esc(label)}" title="${esc("Select slot " + s.number + (s.name ? " · " + s.name : "") + (typeof s.roomId === "string" ? " · room " + s.roomId : ""))}"${s.color ? ` style="--sc:${esc(s.color)}"` : ""}>
+      <div class="btop"><input type="checkbox" class="bsel" data-n="${s.number}" aria-label="Select slot ${s.number} for bulk actions" ${bulkSel.has(s.number) ? "checked" : ""}><span class="bdot"></span><span class="bnum">${s.number}</span>${nm || room}<span class="bflags">${flags}</span></div>
       <div class="bprog" title="${esc(s.program ?? "")}">${s.program ? `${esc(s.program)} <span class="muted">· ${esc(s.kind)}</span>` : "empty"}</div>
-      <div class="bstats">${st === "Empty" ? "" : `<span>${st}</span>`}<span title="Panels online / IP IDs in this slot's IP table">${online}/${s.devices.length} online</span><span title="Events per second on the slot thread">${eps}</span></div>
+      <div class="bstats">${st === "Empty" ? "" : `<span>${st}</span>`}<span title="Panels online / IP IDs in this slot's IP table">${online}/${s.devices.length} online</span><span title="Events per second on the slot thread">${eps}</span></div>${crashLine}
     </div>`;
   }).join("");
   if (html === boardHtml) return; // unchanged: leave the DOM (and any open tooltip) alone
   boardHtml = html;
   $("#board-tiles").innerHTML = html;
 }
-$("#board-tiles").addEventListener("click", e => { const t = e.target.closest(".btile"); if (t) select(+t.dataset.n); });
+$("#board-tiles").addEventListener("click", e => { if (e.target.closest(".bsel")) return; const t = e.target.closest(".btile"); if (t) select(+t.dataset.n); });
 $("#board-tiles").addEventListener("keydown", e => {
   const t = e.target.closest(".btile");
-  if (t && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); select(+t.dataset.n); }
+  if (t && !e.target.closest(".bsel") && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); select(+t.dataset.n); }
 });
 
 async function refreshBoard() {
@@ -539,14 +695,14 @@ async function refreshIpTable() {
       const tr = document.createElement("tr");
       if (c) {
         tr.className = "client" + (iptSel && iptSel.ipId === d.ipId && iptSel.clientId === c.id ? " sel" : "");
-        tr.innerHTML = `<td>${whoCell(c)}</td><td class="mono">${esc(c.endpoint || "—")}<br><small class="muted">${esc(c.transport)}</small></td>
-          <td class="mono"><b>${d.ipId}</b></td><td>${esc(d.type)}</td><td>${status}</td>
-          <td class="num">${ago(c.connectedAt)}</td><td class="num">${c.joinsIn} / ${c.joinsOut}</td>${shareCell(d)}`;
+        tr.innerHTML = `<td>${whoCell(c)}</td><td class="mono" data-l="Address">${esc(c.endpoint || "—")}<br><small class="muted">${esc(c.transport)}</small></td>
+          <td class="mono" data-l="IP ID"><b>${d.ipId}</b></td><td data-l="Type">${esc(d.type)}</td><td data-l="Status">${status}</td>
+          <td class="num" data-l="Connected">${ago(c.connectedAt)}</td><td class="num" data-l="Joins in / out">${c.joinsIn} / ${c.joinsOut}</td>${shareCell(d)}`;
         tr.onclick = () => showDetail(d.ipId, c.id);
       } else {
         tr.className = "client nobody" + (iptSel && iptSel.ipId === d.ipId && !iptSel.clientId ? " sel" : "");
-        tr.innerHTML = `<td><i>Nobody connected</i>${d.lastOffline ? `<br><small>last seen ${ago(d.lastOffline)} ago</small>` : ""}</td><td>—</td>
-          <td class="mono"><b>${d.ipId}</b></td><td>${esc(d.type)}</td><td>${status}</td><td class="num">—</td><td class="num">—</td>${shareCell(d)}`;
+        tr.innerHTML = `<td><i>Nobody connected</i>${d.lastOffline ? `<br><small>last seen ${ago(d.lastOffline)} ago</small>` : ""}</td><td></td>
+          <td class="mono" data-l="IP ID"><b>${d.ipId}</b></td><td data-l="Type">${esc(d.type)}</td><td data-l="Status">${status}</td><td class="num"></td><td class="num"></td>${shareCell(d)}`;
         tr.onclick = () => showDetail(d.ipId, null);
       }
       tr.querySelector(".share-btn")?.addEventListener("click", e => { e.stopPropagation(); openShare(d.slot, d.ipId); });
@@ -644,6 +800,7 @@ $("#login-form").onsubmit = async e => {
 
 function line(el, text, cls) {
   const d = document.createElement("div"); if (cls) d.className = cls; d.textContent = text;
+  if (el.id === "log" && !logMatch(text)) d.hidden = true;
   el.appendChild(d); while (el.children.length > 500) el.removeChild(el.firstChild);
   el.scrollTop = el.scrollHeight;
 }
@@ -659,7 +816,7 @@ function connectLog() {
       const t = new Date(m.time).toLocaleTimeString();
       if (m.t === "log") {
         line($("#log"), `${t}  ${m.level}  ${m.message}`, "lv-" + m.level);
-        if (/Loaded|started|stopped/.test(m.message)) refreshSlots();
+        if (/Loaded|started|stopped|Crash policy|faulted|Restored/.test(m.message)) { refreshSlots(); refreshBoard(); }
         if (/snapshot|Rolled back/i.test(m.message)) refreshHistorySoon();
         if (/^The program looked for /.test(m.message)) refreshFilesSoon();
       }
@@ -695,6 +852,7 @@ async function loadLog() {
 }
 
 function select(n) {
+  if (pendingSet) flushSettings();
   if (n !== sel) iptSel = null;
   sel = n; $("#sel-num").textContent = n; document.querySelectorAll(".sel-num2").forEach(e => e.textContent = n);
   refreshSlots(); refreshIpTable(); connectLog(); loadLog(); fPath = ""; refreshFiles(); refreshHistory();
@@ -720,8 +878,9 @@ async function loadFromPath(path, others = []) {
   try {
     await api(`/api/slots/${sel}/program/path`, { method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ path, files: others, watch: $("#watch").checked }) });
+    toast(`Loaded ${path.split(/[\\/]/).pop()} into slot ${sel}.`);
   } catch (e) { alert(e.message); }
-  refreshSlots();
+  refreshAllSoon(sel);
 }
 
 $("#from-path").onclick = async () => {
@@ -734,27 +893,31 @@ $("#watch-stop").onclick = async () => {
   refreshSlots();
 };
 
-$("#upload").onclick = async () => {
-  const files = $("#file").files; if (!files.length) return alert("Choose a .cpz, .dll or .smw first.");
-  const fd = new FormData();
-  const main = [...files].find(f => /\.(lpz|cpz|dll|zip|smw)$/i.test(f.name)) || files[0];
+// Load a program (and the files that belong with it) into the selected slot. Used by the Load button and by dropping files on the page.
+async function loadFiles(list) {
+  const files = [...list].filter(f => f.name);
+  if (!files.length) return alert("Choose a .cpz, .dll, .lpz or .smw first.");
+  const main = files.find(f => /\.(lpz|cpz|dll|zip|smw)$/i.test(f.name)) || (list === $("#file").files ? files[0] : null);
+  if (!main) return toast("That isn't a program. Drop a .cpz, .dll, .lpz or .smw (with its .sig and sidecar files).", { error: true });
+  const others = files.filter(f => f !== main);
   // In the desktop app, load it from disk: OpenVP finds the .sig itself and can watch the file.
   const mainPath = desktop?.pathForFile(main);
-  if (mainPath) return loadFromPath(mainPath, [...files].filter(f => f !== main).map(f => desktop.pathForFile(f)).filter(Boolean));
+  if (mainPath) return loadFromPath(mainPath, others.map(f => desktop.pathForFile(f)).filter(Boolean));
   // A compiled program without its .sig runs fine but the debugger can only show signal numbers.
-  if (/\.lpz$/i.test(main.name) && ![...files].some(f => /\.sig$/i.test(f.name)) &&
+  if (/\.lpz$/i.test(main.name) && !files.some(f => /\.sig$/i.test(f.name)) &&
       !confirm(`No .sig selected with ${main.name}.\n\nThe program will run, but the debugger will show signal numbers (#123) instead of names. ` +
                `The .sig is written next to the .smw when you compile; select it together with the .lpz (Ctrl+click).\n\nLoad without names?`)) return;
+  const fd = new FormData();
   fd.append("file", main);
-  for (const f of files) if (f !== main) fd.append("extra", f);
-  try { await api(`/api/slots/${sel}/program`, { method: "POST", body: fd }); }
+  for (const f of others) fd.append("extra", f);
+  try { await api(`/api/slots/${sel}/program`, { method: "POST", body: fd }); toast(`Loaded ${main.name} into slot ${sel}.`); }
   catch (e) { alert(e.message); }
-  refreshSlots();
-};
+  refreshAllSoon(sel);
+}
+$("#upload").onclick = () => loadFiles($("#file").files);
 
 document.querySelectorAll("[data-act]").forEach(b => b.onclick = async () => {
-  try { await api(`/api/slots/${sel}/${b.dataset.act}`, { method: "POST" }); } catch (e) { alert(e.message); }
-  refreshSlots();
+  try { await slotAction(sel, b.dataset.act); } catch (e) { alert(e.message); }
 });
 
 $("#inspect").onclick = async () => {
@@ -794,7 +957,11 @@ $("#room-edit").onclick = async () => {
   const v = await askName("Room ID (1-64 letters, digits, _ - .)", curRoom || "");
   if (v === null || v === curRoom) return;
   if (!ROOM_RE.test(v)) return alert("Invalid Room ID. Use 1-64 letters, digits, '_', '-' or '.'.");
-  try { await api(`/api/slots/${sel}/room`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ roomId: v }) }); }
+  const n = sel, old = curRoom;
+  try {
+    await api(`/api/slots/${n}/room`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ roomId: v }) });
+    toast(`Room ID of slot ${n} changed to ${v}.`, { undo: async () => { await api(`/api/slots/${n}/room`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ roomId: old }) }); refreshSlots(); } });
+  }
   catch (e) { alert(e.message); }
   refreshSlots();
 };
@@ -828,7 +995,7 @@ async function refreshFiles() {
   for (const e of d.entries) {
     const path = join(d.path, e.name);
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td class="name mono"></td><td class="num muted">${fmtSize(e.size)}</td><td class="muted">${new Date(e.modified).toLocaleString()}</td><td class="act"></td>`;
+    tr.innerHTML = `<td class="name mono"></td><td class="num muted" data-l="Size">${fmtSize(e.size)}</td><td class="muted" data-l="Modified">${new Date(e.modified).toLocaleString()}</td><td class="act"></td>`;
     const nameCell = tr.querySelector(".name");
     if (e.folder) { const a = document.createElement("a"); a.textContent = "📁 " + e.name; a.onclick = () => { fPath = path; refreshFiles(); }; nameCell.appendChild(a); }
     else nameCell.textContent = e.name;
@@ -842,8 +1009,11 @@ async function refreshFiles() {
       refreshFiles();
     });
     btn("✕", e.folder ? "Delete this folder and everything in it" : "Delete this file", async () => {
-      if (!confirm(e.folder ? `Delete folder '${e.name}' and everything in it?` : `Delete '${e.name}'?`)) return;
-      try { await api(`/api/slots/${sel}/files?${q({ root: fRoot, path })}`, { method: "DELETE" }); }
+      const n = sel;
+      try {
+        const r = await api(`/api/slots/${n}/files?${q({ root: fRoot, path })}`, { method: "DELETE" });
+        if (r.undo) toast(`Deleted ${e.folder ? "folder " : ""}${e.name}.`, { undo: async () => { await restoreTrash(r.undo); if (n === sel) refreshFiles(); } });
+      }
       catch (err) { alert(err.message); }
       refreshFiles();
     });
@@ -873,8 +1043,10 @@ async function refreshHistory() {
       refreshSlots(); refreshHistory(); if (n === sel) refreshFiles();
     });
     btn("Delete", "Delete this snapshot", async () => {
-      if (!confirm(`Delete the snapshot from ${new Date(i.time).toLocaleString()}?`)) return;
-      try { await api(`/api/slots/${n}/snapshots/${i.id}`, { method: "DELETE" }); } catch (e) { alert(e.message); }
+      try {
+        const r = await api(`/api/slots/${n}/snapshots/${i.id}`, { method: "DELETE" });
+        if (r.undo) toast(`Deleted the snapshot from ${new Date(i.time).toLocaleString()}.`, { undo: async () => { await restoreTrash(r.undo); refreshHistory(); } });
+      } catch (e) { alert(e.message); }
       refreshHistory();
     });
     tb.appendChild(tr);
@@ -1073,8 +1245,11 @@ async function refreshRecordings() {
       refreshRecordings();
     });
     btn("Delete", "Delete this recording and its results", async () => {
-      if (!confirm(`Delete the recording “${r.name}”?`)) return;
-      try { await api(`/api/slots/${sel}/recordings/${r.id}`, { method: "DELETE" }); } catch (e) { alert(e.message); }
+      const n = sel;
+      try {
+        const d = await api(`/api/slots/${n}/recordings/${r.id}`, { method: "DELETE" });
+        if (d.undo) toast(`Deleted the recording “${r.name}”.`, { undo: async () => { await restoreTrash(d.undo); if (n === sel) refreshRecordings(); } });
+      } catch (e) { alert(e.message); }
       refreshRecordings();
     });
     tb.appendChild(tr); tb.appendChild(tr2);
@@ -1210,6 +1385,7 @@ function renderShares() {
         return;
       }
       try { await api(`/api/shares/${l.id}`, { method: "DELETE" }); } catch (e) { rv.textContent = e.message; return; }
+      toast(`Revoked the link “${l.label || "(no label)"}”.`, { undo: async () => { await api(`/api/shares/${l.id}/undo`, { method: "POST" }); refreshShares(); } });
       refreshShares();
     };
     tb.appendChild(tr);
@@ -1388,6 +1564,382 @@ $("#net-dl-no").onclick = () => tunnelCall("/api/tunnel/stop");
 $("#net-copy").onclick = e => { if (tunnelSt && tunnelSt.url) copyText(tunnelSt.url, e.target); };
 refreshTunnel();
 setInterval(() => { if (!document.hidden || (tunnelSt && ["starting", "downloading"].includes(tunnelSt.state))) refreshTunnel(); }, 1500);
+
+// ------------------------------------------------------------------ saved indicator, toasts, undo
+let savedTimer = 0;
+function flashSaved(text = "Saved") {
+  const el = $("#saved"); el.textContent = "✓ " + text; el.classList.add("show");
+  clearTimeout(savedTimer); savedTimer = setTimeout(() => el.classList.remove("show"), 1800);
+}
+window.openvpSaved = () => flashSaved();
+
+// A message at the bottom of the page. opts.undo = async function: shows an Undo button for ~10 s.
+function toast(msg, opts = {}) {
+  const t = document.createElement("div");
+  t.className = "toast" + (opts.error ? " err" : "");
+  t.setAttribute("role", opts.error ? "alert" : "status");
+  const span = document.createElement("span"); span.textContent = msg; t.append(span);
+  let timer = 0;
+  const close = () => { clearTimeout(timer); t.remove(); };
+  if (opts.undo) {
+    const b = document.createElement("button"); b.className = "undo"; b.textContent = "Undo";
+    b.onclick = async () => {
+      b.disabled = true;
+      try { await opts.undo(); close(); toast("Undone.", { ms: 3000 }); }
+      catch (e) { close(); toast("Couldn't undo: " + e.message, { error: true, ms: 8000 }); }
+    };
+    t.append(b);
+  }
+  const x = document.createElement("button"); x.textContent = "✕"; x.title = "Dismiss"; x.setAttribute("aria-label", "Dismiss"); x.onclick = close; t.append(x);
+  $("#toasts").append(t);
+  while ($("#toasts").children.length > 4) $("#toasts").firstChild.remove();
+  timer = setTimeout(close, opts.ms ?? (opts.undo ? 10000 : opts.error ? 8000 : 4000));
+  return t;
+}
+const fail = e => toast(e.message || String(e), { error: true });
+const restoreTrash = id => api(`/api/trash/${id}/restore`, { method: "POST" });
+
+// ------------------------------------------------------------------ slot actions (buttons, keys, palette, strip)
+async function slotAction(n, act) {
+  const r = await api(`/api/slots/${n}/${act}`, { method: "POST" });
+  if (act === "unload" && r.undo?.snapshot)
+    toast(`Unloaded slot ${n}.`, { undo: async () => { await api(`/api/slots/${n}/snapshots/${r.undo.snapshot}/restore`, jsonPost({ start: r.undo.start })); refreshAllSoon(n); } });
+  refreshAllSoon(n);
+  return r;
+}
+const runAction = (n, act) => slotAction(n, act).catch(fail);
+function refreshAllSoon(n) { refreshSlots(); refreshBoard(); refreshHistory(); if (n === sel) { refreshFiles(); refreshIpTable(); } }
+
+// ------------------------------------------------------------------ bulk selection
+function renderBulk() {
+  const n = bulkSel.size;
+  $("#bulk-bar").classList.toggle("open", n > 0);
+  $("#bulk-count").textContent = n === 1 ? "1 slot selected" : `${n} slots selected`;
+  const all = $("#slots-all"); all.checked = n > 0 && n === boardSlots.length; all.indeterminate = n > 0 && n < boardSlots.length;
+}
+function setBulk(n, on) { if (on) bulkSel.add(n); else bulkSel.delete(n); renderBoard(); renderBulkChecks(); renderBulk(); }
+function renderBulkChecks() { document.querySelectorAll("#slots .bsel[data-n]").forEach(c => c.checked = bulkSel.has(+c.dataset.n)); }
+$("#slots-all").onchange = e => { bulkSel = e.target.checked ? new Set(boardSlots.map(s => s.number)) : new Set(); renderBoard(); renderBulkChecks(); renderBulk(); };
+$("#slots tbody").addEventListener("change", e => { const c = e.target.closest(".bsel"); if (c) setBulk(+c.dataset.n, c.checked); });
+$("#board-tiles").addEventListener("change", e => { const c = e.target.closest(".bsel"); if (c) setBulk(+c.dataset.n, c.checked); });
+$("#bulk-all").onclick = () => { bulkSel = new Set(boardSlots.map(s => s.number)); renderBoard(); renderBulkChecks(); renderBulk(); };
+$("#bulk-clear").onclick = () => { bulkSel = new Set(); renderBoard(); renderBulkChecks(); renderBulk(); };
+document.querySelectorAll("[data-bulk]").forEach(b => b.onclick = () => bulkRun(b.dataset.bulk));
+async function bulkRun(action) {
+  const list = [...bulkSel].sort((a, b) => a - b);
+  if (!list.length) return;
+  if (action !== "start" && !confirm(`${action[0].toUpperCase() + action.slice(1)} slot${list.length === 1 ? "" : "s"} ${list.join(", ")}?` +
+      (action === "unload" ? "\n\nEach slot's program is kept in its History, and you can undo it for a few seconds." : "")))
+    return;
+  let r;
+  try { r = await api("/api/slots/bulk", jsonPost({ slots: list, action })); } catch (e) { return fail(e); }
+  const bad = r.results.filter(x => !x.ok), done = r.results.filter(x => x.ok && !x.skipped);
+  if (bad.length) toast(`${bad.map(x => `slot ${x.slot}: ${x.error}`).join("; ")}`, { error: true });
+  if (done.length) {
+    const undos = r.results.filter(x => x.undo);
+    const verb = { start: "Started", stop: "Stopped", restart: "Restarted", unload: "Unloaded" }[action];
+    toast(`${verb} ${done.length} slot${done.length === 1 ? "" : "s"} (${done.map(x => x.slot).join(", ")}).`, action === "unload" && undos.length ? {
+      undo: async () => { for (const u of undos) await api(`/api/slots/${u.slot}/snapshots/${u.undo.snapshot}/restore`, jsonPost({ start: u.undo.start })); refreshAllSoon(sel); }
+    } : {});
+  }
+  refreshAllSoon(sel);
+}
+
+// ------------------------------------------------------------------ slot settings (saved as you change them)
+const PALETTE = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#a855f7", "#ec4899", "#14b8a6", "#64748b"];
+let settingsFor = 0, pendingSet = null, setTimer = 0;
+function fillSettings(s) {
+  const active = document.activeElement;
+  const typing = settingsFor === s.number && $("#slot-set").contains(active) && active.matches("input[type=text],input[type=number]");
+  settingsFor = s.number;
+  if (!typing) {
+    $("#set-name").value = s.name ?? ""; $("#set-order").value = s.startOrder ?? ""; $("#set-delay").value = s.startDelaySeconds ?? 0;
+    $("#set-max").value = s.crash.maxRestarts; $("#set-win").value = s.crash.windowMinutes; $("#set-stuck").value = s.crash.stuckSeconds;
+  }
+  $("#set-autostart").checked = !!s.autostart;
+  $("#set-crash").value = s.crash.mode; $("#set-fault").checked = !!s.crash.faultOnUnhandled;
+  $("#set-max-l").hidden = $("#set-win-l").hidden = s.crash.mode !== "limited";
+  const box = $("#set-colors");
+  if (box.dataset.cur !== (s.color ?? "") || !box.children.length) {
+    box.dataset.cur = s.color ?? ""; box.innerHTML = "";
+    for (const c of PALETTE) {
+      const b = document.createElement("button"); b.type = "button"; b.style.setProperty("--c", c); b.title = c; b.setAttribute("aria-label", "Colour " + c);
+      b.classList.toggle("on", c === s.color); b.setAttribute("aria-pressed", c === s.color);
+      b.onclick = () => saveSetting({ color: c }, true);
+      box.append(b);
+    }
+    const none = document.createElement("button"); none.type = "button"; none.className = "none"; none.textContent = "none"; none.title = "No colour";
+    none.onclick = () => saveSetting({ color: null }, true); box.append(none);
+  }
+}
+function saveSetting(patch, now) {
+  const n = sel;
+  if (pendingSet && pendingSet.n !== n) flushSettings();
+  pendingSet = { n, body: { ...(pendingSet?.body ?? {}), ...patch, ...(patch.crash ? { crash: { ...(pendingSet?.body?.crash ?? {}), ...patch.crash } } : {}) } };
+  clearTimeout(setTimer);
+  if (now) flushSettings(); else setTimer = setTimeout(flushSettings, 600);
+}
+async function flushSettings() {
+  clearTimeout(setTimer);
+  const p = pendingSet; pendingSet = null; if (!p) return;
+  try { await api(`/api/slots/${p.n}/settings`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(p.body) }); flashSaved(); }
+  catch (e) { fail(e); settingsFor = 0; }
+  refreshSlots(); refreshBoard();
+}
+const numOrNull = v => v === "" ? null : +v;
+$("#set-name").oninput = e => saveSetting({ name: e.target.value.trim() || null });
+$("#set-autostart").onchange = e => saveSetting({ autostart: e.target.checked }, true);
+$("#set-order").oninput = e => saveSetting({ startOrder: numOrNull(e.target.value) });
+$("#set-delay").oninput = e => saveSetting({ startDelaySeconds: +e.target.value || 0 });
+$("#set-crash").onchange = e => saveSetting({ crash: { mode: e.target.value } }, true);
+$("#set-max").oninput = e => saveSetting({ crash: { maxRestarts: +e.target.value } });
+$("#set-win").oninput = e => saveSetting({ crash: { windowMinutes: +e.target.value } });
+$("#set-stuck").oninput = e => saveSetting({ crash: { stuckSeconds: +e.target.value || 0 } });
+$("#set-fault").onchange = e => saveSetting({ crash: { faultOnUnhandled: e.target.checked } }, true);
+addEventListener("beforeunload", () => { if (pendingSet) flushSettings(); });
+
+// ------------------------------------------------------------------ phone: sticky slot selector, collapsible sections
+$("#strip-slot").onchange = e => select(+e.target.value);
+$("#strip-start").onclick = () => runAction(sel, "start");
+$("#strip-stop").onclick = () => runAction(sel, "stop");
+$("#strip-restart").onclick = () => runAction(sel, "restart");
+function renderStrip() {
+  const s = $("#strip-slot");
+  const html = boardSlots.map(x => `<option value="${x.number}">${x.number}${x.name ? " · " + esc(x.name) : ""} (${x.program || x.state === "Error" ? x.state : "empty"})</option>`).join("");
+  if (s.dataset.html !== html) { s.dataset.html = html; s.innerHTML = html; }
+  if (document.activeElement !== s) s.value = sel;
+}
+{
+  const KEY = "openvp.collapsed";
+  let saved = null; try { saved = JSON.parse(localStorage.getItem(KEY) || "null"); } catch { }
+  const defaults = ["shares-sec", "dbg-sec", "files-sec", "hist-sec", "rec-sec", "console-sec", "log-sec"];
+  const state = saved && typeof saved === "object" ? saved : Object.fromEntries(defaults.map(k => [k, true]));
+  const narrow = () => matchMedia("(max-width: 700px)").matches;
+  for (const sec of document.querySelectorAll("section[id]")) {
+    const h = sec.querySelector(":scope > h2.sec-t, :scope > .sec-head > h2.sec-t");
+    if (!h) continue;
+    h.tabIndex = 0; h.setAttribute("role", "button");
+    const apply = () => { sec.classList.toggle("collapsed", !!state[sec.id]); h.setAttribute("aria-expanded", !state[sec.id]); };
+    const flip = () => { if (!narrow()) return; state[sec.id] = !state[sec.id]; try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { } apply(); };
+    h.addEventListener("click", flip);
+    h.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); flip(); } });
+    apply();
+  }
+}
+
+// ------------------------------------------------------------------ Recent programs
+const recentMenu = $("#recent-menu");
+function closeRecent() { recentMenu.hidden = true; $("#recent-btn").setAttribute("aria-expanded", "false"); }
+async function openRecent() {
+  recentMenu.hidden = false; $("#recent-btn").setAttribute("aria-expanded", "true");
+  recentMenu.innerHTML = `<div class="none">Loading…</div>`;
+  try { renderRecent(await api("/api/recent")); } catch (e) { recentMenu.innerHTML = `<div class="none">${esc(e.message)}</div>`; }
+}
+function renderRecent(list) {
+  recentMenu.innerHTML = "";
+  if (!list.length) { recentMenu.innerHTML = `<div class="none">Nothing yet. The programs you load show up here, to load again in one click.</div>`; return; }
+  for (const r of list) {
+    const b = document.createElement("button"); b.type = "button"; b.setAttribute("role", "menuitem"); b.disabled = !r.available;
+    b.title = r.available ? `Load into slot ${sel}` : r.path ? "The file isn't there any more" : "OpenVP didn't keep a copy of this upload (too big). Choose the file again.";
+    b.innerHTML = `<b></b> <span class="muted"></span><small></small>`;
+    b.querySelector("b").textContent = r.name; b.querySelector("span").textContent = "· " + r.kind;
+    b.querySelector("small").textContent = `${r.path ? r.path : "uploaded copy" + (r.hasCopy ? "" : " (not kept)")} · last in slot ${r.slot} · ${ago(r.time)} ago`;
+    b.onclick = () => { closeRecent(); loadRecent(r); };
+    recentMenu.append(b);
+  }
+}
+async function loadRecent(r) {
+  try { await api(`/api/slots/${sel}/program/recent/${r.id}`, { method: "POST" }); toast(`Loaded ${r.name} into slot ${sel}.`); }
+  catch (e) { fail(e); }
+  refreshAllSoon(sel);
+}
+$("#recent-btn").onclick = e => { e.stopPropagation(); if (recentMenu.hidden) openRecent(); else closeRecent(); };
+document.addEventListener("click", e => { if (!recentMenu.hidden && !e.target.closest(".menu-wrap")) closeRecent(); });
+
+// ------------------------------------------------------------------ drop a program anywhere
+let dragDepth = 0;
+const hasFiles = e => [...(e.dataTransfer?.types ?? [])].includes("Files");
+const overFiles = e => !!e.target.closest?.("#files-drop");
+function showDrop(e) {
+  const ov = $("#drop-ov");
+  if (overFiles(e) || document.querySelector("dialog[open]")) { ov.classList.remove("open"); return; }
+  const s = boardSlots.find(x => x.number === sel);
+  $("#drop-text").innerHTML = `Drop to load into slot ${sel}${s?.name ? " · " + esc(s.name) : ""}<small>.cpz .dll .lpz .smw, with its .sig and sidecar files</small>`;
+  ov.classList.add("open");
+}
+const hideDrop = () => { dragDepth = 0; $("#drop-ov").classList.remove("open"); };
+addEventListener("dragenter", e => { if (hasFiles(e)) { dragDepth++; showDrop(e); } });
+addEventListener("dragover", e => { if (hasFiles(e)) { e.preventDefault(); showDrop(e); } });
+addEventListener("dragleave", e => { if (hasFiles(e)) { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth || e.relatedTarget == null) hideDrop(); } });
+addEventListener("drop", e => {
+  if (!hasFiles(e)) return;
+  hideDrop();
+  if (overFiles(e)) return;                       // the Files list handles its own drops
+  e.preventDefault();
+  if (document.querySelector("dialog[open]")) return;
+  loadFiles([...e.dataTransfer.files]);
+});
+
+// ------------------------------------------------------------------ keyboard shortcuts and the command palette
+const SHORTCUTS = [
+  ["1 – 9, 0", "Select slot 1 – 9, and 10"], ["S", "Start the selected slot"], ["X", "Stop the selected slot"], ["R", "Restart the selected slot"],
+  ["U", "Unload the selected slot (Undo is offered)"], ["D", "Open the debugger for the selected slot"], ["P", "Open the paths view for the selected slot"],
+  ["M", "Open metrics"], ["N", "Take a snapshot of the selected slot"], ["L", "Go to the log filter"], ["T", "Change the theme: auto, light, dark"],
+  ["Ctrl K  /  ⌘ K", "Search every action"], ["?", "Show this list"], ["Esc", "Close a box or menu"],
+];
+$("#keys-list").innerHTML = SHORTCUTS.map(([k, d]) => `<dt>${k.split("  /  ").map(x => `<kbd>${esc(x)}</kbd>`).join(" or ")}</dt><dd>${esc(d)}</dd>`).join("");
+const keysBack = $("#keys-back");
+const toggleKeys = on => { keysBack.classList.toggle("open", on ?? !keysBack.classList.contains("open")); };
+keysBack.onclick = e => { if (e.target === keysBack) toggleKeys(false); };
+$("#keys-open").onclick = () => toggleKeys(true);
+
+const isTyping = e => !!e.target.closest?.("input,textarea,select,[contenteditable],[contenteditable=true]");
+const openDebugger = n => window.open(`debugger.html?slot=${n}`, `openvp-debugger-${n}`);
+const openPaths = n => window.open(`paths.html?slot=${n}`, `openvp-paths-${n}`);
+const openMetrics = n => window.open(n ? `metrics.html?slot=${n}` : "metrics.html", "openvp-metrics");
+const cycleTheme = () => { window.openvpTheme?.cycle(); flashSaved(); };
+const snapshotNow = () => { $("#hist-now").click(); toast(`Saving a snapshot of slot ${sel}…`, { ms: 2500 }); };
+
+addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "k") { e.preventDefault(); togglePalette(); return; }
+  if (e.key === "Escape") {
+    if (palBack.classList.contains("open")) { closePalette(); return; }
+    if (keysBack.classList.contains("open")) { toggleKeys(false); return; }
+    if (!recentMenu.hidden) { closeRecent(); return; }
+  }
+  if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented || isTyping(e)) return;
+  if (document.querySelector("dialog[open]") || palBack.classList.contains("open")) return;
+  const k = e.key;
+  if (k === "?") { e.preventDefault(); toggleKeys(); return; }
+  if (keysBack.classList.contains("open")) return;
+  const count = boardSlots.length || 10;
+  if (/^[0-9]$/.test(k)) { const n = k === "0" ? 10 : +k; if (n <= count) { e.preventDefault(); select(n); } return; }
+  const act = { s: "start", x: "stop", r: "restart", u: "unload" }[k.toLowerCase()];
+  if (act) { e.preventDefault(); runAction(sel, act); return; }
+  switch (k.toLowerCase()) {
+    case "d": e.preventDefault(); openDebugger(sel); break;
+    case "p": e.preventDefault(); openPaths(sel); break;
+    case "m": e.preventDefault(); openMetrics(0); break;
+    case "n": e.preventDefault(); snapshotNow(); break;
+    case "l": e.preventDefault(); { const sec = $("#log-sec"); sec.classList.remove("collapsed"); $("#log-filter").focus(); } break;
+    case "t": e.preventDefault(); cycleTheme(); break;
+  }
+});
+
+const palBack = $("#pal-back"), palIn = $("#pal-in"), palList = $("#pal-list");
+let palItems = [], palShown = [], palOn = 0, palExtra = { devices: [], recent: [] };
+
+function paletteItems() {
+  const items = [];
+  const add = (label, hint, run, extra = "") => items.push({ label, hint, run, key: (label + " " + extra).toLowerCase() });
+  for (const s of boardSlots) {
+    const nm = s.name ? ` · ${s.name}` : "", n = s.number;
+    const desc = `${s.program ? s.program + " " : ""}${s.state}`;
+    add(`Select slot ${n}${nm}`, desc, () => select(n), `${s.roomId ?? ""} ${s.program ?? ""} go to`);
+    add(`Start slot ${n}${nm}`, "", () => runAction(n, "start"), "run");
+    add(`Stop slot ${n}${nm}`, "", () => runAction(n, "stop"), "halt");
+    add(`Restart slot ${n}${nm}`, "", () => runAction(n, "restart"), "reload");
+    add(`Unload slot ${n}${nm}`, "can be undone", () => runAction(n, "unload"), "remove eject");
+    add(`Open debugger for slot ${n}${nm}`, "new window", () => openDebugger(n), "signals trace");
+    add(`Open paths for slot ${n}${nm}`, "new window", () => openPaths(n), "map wiring");
+    add(`Open metrics for slot ${n}${nm}`, "new window", () => openMetrics(n), "cpu memory");
+    add(`Open help for slot ${n}${nm}`, "new window", () => window.open("help.html#console", "openvp-help"), "docs");
+  }
+  for (const d of palExtra.devices) {
+    add(`Open test panel for IP ID ${d.ipId} (slot ${d.slot})`, d.type, () => window.open(`panel.html?ipid=${d.ipId}&slot=${d.slot}`, "_blank"), "browser touch panel");
+    add(`Share panel for IP ID ${d.ipId} (slot ${d.slot})`, "make a link", () => openShare(d.slot, d.ipId), "link qr pin");
+  }
+  add("Open metrics", "new window", () => openMetrics(0), "cpu memory");
+  add("Open help", "new window", () => window.open("help.html#console", "openvp-help"), "docs");
+  add("Open the test panel", "new window", () => window.open("panel.html", "_blank"), "browser touch panel");
+  add(`Take a snapshot of slot ${sel}`, "History", snapshotNow, "snapshot now save history");
+  add(recSt?.mode === "recording" ? `Stop recording slot ${sel}` : `Record slot ${sel}`, "Recordings", () => $("#rec-toggle").click(), "record stop macro");
+  add("Turn Internet access " + (tunnelSt && (tunnelSt.state === "on" || tunnelSt.state === "starting") ? "off" : "on"), "tunnel", () => $("#net-switch").click(), "tunnel cloudflare internet toggle");
+  add("Change theme (auto, light, dark)", `now ${window.openvpTheme?.get() ?? "auto"}`, cycleTheme, "toggle dark light mode");
+  for (const t of ["auto", "light", "dark"]) add(`Theme: ${t}`, "", () => { window.openvpTheme?.set(t); flashSaved(); }, "colour mode");
+  add("Load a program into the selected slot…", "choose a file", () => $("#file").click(), "upload open file");
+  add("Show recent programs", "menu", () => { $("#slot-sec").scrollIntoView({ block: "center" }); setTimeout(() => $("#recent-btn").click(), 50); }, "history last");
+  for (const r of palExtra.recent) if (r.available) add(`Load recent: ${r.name} into slot ${sel}`, r.kind, () => loadRecent(r), "recent program");
+  add("Show compatibility report", "Console box", () => $("#compat").click(), "unsupported");
+  add("Select every slot", "bulk", () => $("#bulk-all").click(), "bulk all");
+  add("Clear the slot selection", "bulk", () => $("#bulk-clear").click(), "bulk none");
+  add("Go to the log filter", "L", () => { $("#log-sec").classList.remove("collapsed"); $("#log-filter").focus(); }, "search");
+  add("Show keyboard shortcuts", "?", () => toggleKeys(true), "help keys");
+  add("Show the welcome screen", "", () => $("#welcome-link").click(), "intro");
+  return items;
+}
+
+// Every word typed must match as a subsequence; matches at the start of a word and runs of letters score higher.
+function fuzzy(q, text) {
+  let total = 0;
+  for (const w of q.split(/\s+/).filter(Boolean)) {
+    let ti = 0, score = 0, run = 0;
+    for (const ch of w) {
+      const at = text.indexOf(ch, ti);
+      if (at < 0) return -1;
+      run = at === ti && ti > 0 ? run + 1 : 0;
+      score += 1 + run * 2 + (at === 0 || /[\s·(]/.test(text[at - 1]) ? 4 : 0) - Math.min(at - ti, 6) * 0.2;
+      ti = at + 1;
+    }
+    const whole = text.indexOf(w); if (whole >= 0) score += 6 + (whole === 0 ? 4 : 0);
+    total += score;
+  }
+  return total;
+}
+
+function renderPalette() {
+  const q = palIn.value.trim().toLowerCase();
+  const scored = palItems.map((it, i) => ({ it, i, s: q ? fuzzy(q, it.key) : 0 })).filter(x => x.s >= 0);
+  if (q) scored.sort((a, b) => b.s - a.s || a.i - b.i);
+  palShown = scored.slice(0, 60).map(x => x.it);
+  palOn = Math.min(palOn, Math.max(0, palShown.length - 1));
+  palList.innerHTML = "";
+  palShown.forEach((it, i) => {
+    const li = document.createElement("li"); li.setAttribute("role", "option"); li.id = "pal-opt-" + i;
+    li.setAttribute("aria-selected", i === palOn); li.className = i === palOn ? "on" : "";
+    li.innerHTML = `<span></span><span class="h"></span>`; li.firstChild.textContent = it.label; li.lastChild.textContent = it.hint || "";
+    li.onmousemove = () => { if (palOn !== i) { palOn = i; markPalette(); } };
+    li.onclick = () => runPalette(i);
+    palList.append(li);
+  });
+  if (!palShown.length) palList.innerHTML = `<li style="color:var(--muted)">Nothing matches.</li>`;
+  palIn.setAttribute("aria-activedescendant", palShown.length ? "pal-opt-" + palOn : "");
+}
+function markPalette() {
+  [...palList.children].forEach((li, i) => { li.classList.toggle("on", i === palOn); li.setAttribute("aria-selected", i === palOn); });
+  palList.children[palOn]?.scrollIntoView({ block: "nearest" });
+  palIn.setAttribute("aria-activedescendant", "pal-opt-" + palOn);
+}
+async function openPalette() {
+  toggleKeys(false);
+  palItems = paletteItems(); palIn.value = ""; palOn = 0; renderPalette();
+  palBack.classList.add("open"); palIn.focus();
+  // Things that need a request: every IP ID and the recent programs. They appear in the list a moment later.
+  try {
+    const [devices, recent] = await Promise.all([api("/api/devices").catch(() => []), api("/api/recent").catch(() => [])]);
+    palExtra = { devices, recent };
+    if (palBack.classList.contains("open")) { palItems = paletteItems(); renderPalette(); }
+  } catch { }
+}
+function closePalette() { palBack.classList.remove("open"); palIn.blur(); }
+const togglePalette = () => palBack.classList.contains("open") ? closePalette() : openPalette();
+function runPalette(i) { const it = palShown[i]; if (!it) return; closePalette(); try { const r = it.run(); if (r?.catch) r.catch(fail); } catch (e) { fail(e); } }
+palIn.oninput = () => { palOn = 0; renderPalette(); };
+palIn.onkeydown = e => {
+  if (e.key === "ArrowDown") { e.preventDefault(); palOn = Math.min(palShown.length - 1, palOn + 1); markPalette(); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); palOn = Math.max(0, palOn - 1); markPalette(); }
+  else if (e.key === "Enter") { e.preventDefault(); runPalette(palOn); }
+  else if (e.key === "Home") { e.preventDefault(); palOn = 0; markPalette(); }
+  else if (e.key === "End") { e.preventDefault(); palOn = Math.max(0, palShown.length - 1); markPalette(); }
+};
+palBack.onclick = e => { if (e.target === palBack) closePalette(); };
+$("#pal-open").onclick = openPalette;
+
+// ------------------------------------------------------------------ log filter
+const logMatch = text => { const f = $("#log-filter").value.trim().toLowerCase(); return !f || text.toLowerCase().includes(f); };
+$("#log-filter").oninput = () => { for (const d of $("#log").children) d.hidden = !logMatch(d.textContent); };
+$("#log-filter").onkeydown = e => { if (e.key === "Escape") { e.target.value = ""; e.target.oninput(); e.target.blur(); } };
+
 
 select(1);
 

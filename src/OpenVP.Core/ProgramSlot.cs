@@ -43,6 +43,8 @@ public sealed class ProgramSlot : IDisposable
     public string RoomId => Volatile.Read(ref _roomId);
 
     private string _roomId = "";
+    private volatile SlotSettings _settings = new();
+    private readonly object _settingsGate = new();
     private string SettingsPath => Path.Combine(Directory, "slot.json");
 
     /// <summary>Check and normalize a Room ID: trimmed, 1-64 characters of letters, digits, <c>_ - .</c>. Throws ArgumentException.</summary>
@@ -66,19 +68,85 @@ public sealed class ProgramSlot : IDisposable
             if (other != null && other != this)
                 throw new ArgumentException($"Room ID '{id}' is already used by slot {other.Number}.");
             if (string.Equals(RoomId, id, StringComparison.Ordinal)) return;
-            try
-            {
-                System.IO.Directory.CreateDirectory(Directory);
-                File.WriteAllText(SettingsPath, System.Text.Json.JsonSerializer.Serialize(new { roomId = id }));
-            }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-            {
-                throw new InvalidOperationException($"Couldn't save the Room ID: {e.Message}", e);
-            }
+            Save(s => s with { RoomId = id });
             Volatile.Write(ref _roomId, id);
         }
         Log("Notice", $"Room ID set to '{id}'");
         StateChanged?.Invoke(this);
+    }
+
+    /// <summary>The slot's saved settings (<c>slot.json</c>): name, colour, autostart, crash policy, remembered program.</summary>
+    public SlotSettings Settings => _settings;
+
+    /// <summary>Friendly name, or null.</summary>
+    public string? Name => _settings.Name;
+
+    /// <summary>
+    /// Change settings and save them to <c>slot.json</c>. <paramref name="change"/> gets the current settings and returns
+    /// the new ones; the result is checked. Throws ArgumentException for a bad value, InvalidOperationException if the
+    /// file can't be written. The Room ID is changed with <see cref="SetRoomId"/>, not here.
+    /// </summary>
+    public SlotSettings UpdateSettings(Func<SlotSettings, SlotSettings> change)
+    {
+        SlotSettings now;
+        lock (_settingsGate)
+        {
+            var next = change(_settings) with { RoomId = _settings.RoomId };
+            now = next.Validated();
+            Save(_ => now);
+        }
+        StateChanged?.Invoke(this);
+        return now;
+    }
+
+    // Saves without checking; the caller holds the right lock or is the only writer.
+    private void Save(Func<SlotSettings, SlotSettings> change)
+    {
+        lock (_settingsGate)
+        {
+            var next = change(_settings);
+            try { SlotSettings.Save(SettingsPath, next); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                throw new InvalidOperationException($"Couldn't save the slot's settings: {e.Message}", e);
+            }
+            _settings = next;
+        }
+    }
+
+    /// <summary>Remember the program this slot has, so it comes back after OpenVP restarts. Null forgets it.</summary>
+    public void RememberProgram(ProgramMemory? program)
+    {
+        try { lock (_settingsGate) { if (_settings.Program == program) return; Save(s => s with { Program = program }); } }
+        catch (InvalidOperationException e) { Log("Warning", e.Message); }
+    }
+
+    /// <summary>Remember whether the program should be running after a restart (set by the user's Start and Stop, not by a crash).</summary>
+    public void RememberRunning(bool running)
+    {
+        try
+        {
+            lock (_settingsGate)
+            {
+                if (_settings.Program is not { } p || p.Running == running) return;
+                Save(s => s with { Program = p with { Running = running } });
+            }
+        }
+        catch (InvalidOperationException e) { Log("Warning", e.Message); }
+    }
+
+    /// <summary>Remember whether the slot reloads when its file changes.</summary>
+    public void RememberWatch(bool watch)
+    {
+        try
+        {
+            lock (_settingsGate)
+            {
+                if (_settings.Program is not { } p || p.Watch == watch) return;
+                Save(s => s with { Program = p with { Watch = watch } });
+            }
+        }
+        catch (InvalidOperationException e) { Log("Warning", e.Message); }
     }
 
     /// <summary>After all slots exist: if an earlier slot holds this slot's saved Room ID (a hand-edited file), use the default.</summary>
@@ -96,10 +164,15 @@ public sealed class ProgramSlot : IDisposable
         try
         {
             if (!File.Exists(SettingsPath)) return;
-            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(SettingsPath));
-            if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object
-                && doc.RootElement.TryGetProperty("roomId", out var r) && r.ValueKind == System.Text.Json.JsonValueKind.String)
-                _roomId = ValidateRoomId(r.GetString());
+            var s = SlotSettings.FromJson(File.ReadAllText(SettingsPath));
+            _roomId = s.RoomId is null ? DefaultRoomId : ValidateRoomId(s.RoomId);
+            try { s = (s with { RoomId = _roomId }).Validated(); }
+            catch (ArgumentException e)
+            {
+                Log("Warning", $"Some settings in {SettingsPath} were ignored: {e.Message}");
+                s = new SlotSettings { RoomId = _roomId, Program = s.Program };
+            }
+            _settings = s;
         }
         catch (Exception e) when (e is System.Text.Json.JsonException or ArgumentException or IOException or UnauthorizedAccessException)
         {
@@ -365,6 +438,26 @@ public sealed class ProgramSlot : IDisposable
         }
     }
 
+    /// <summary>A running program faulted (an unhandled exception, or the slot is stuck). The slot goes to Error and
+    /// <see cref="Faulted"/> fires, which is what the <see cref="CrashSupervisor"/> acts on. Does nothing unless the slot is running.
+    /// Doesn't take the lifecycle lock, so it is safe to call from the slot's own thread.</summary>
+    public void Fault(string reason)
+    {
+        lock (_faultGate)
+        {
+            if (State != SlotState.Running) return;
+            LastError = reason;
+            Log("Error", $"The program faulted: {reason}");
+            SetState(SlotState.Error);
+        }
+        Faulted?.Invoke(this, reason);
+    }
+
+    private readonly object _faultGate = new();
+
+    /// <summary>A running program faulted; see <see cref="Fault"/>. Handlers must not block.</summary>
+    public event Action<ProgramSlot, string>? Faulted;
+
     public void Fail(Exception e)
     {
         LastError = e.ToString();
@@ -379,7 +472,11 @@ public sealed class ProgramSlot : IDisposable
     }
 
     private SlotDispatcher NewDispatcher() =>
-        new($"slot{Number:00}", e => Log("Error", $"Unhandled exception in program: {e}"), () => Stepper.IsPaused, Processor.SlotSpinMicroseconds);
+        new($"slot{Number:00}", e =>
+        {
+            Log("Error", $"Unhandled exception in program: {e}");
+            if (_settings.Crash.FaultOnUnhandled) Fault($"unhandled {e.GetType().Name}: {e.Message}");
+        }, () => Stepper.IsPaused, Processor.SlotSpinMicroseconds);
 
     public void Dispose() => Unload();
 }

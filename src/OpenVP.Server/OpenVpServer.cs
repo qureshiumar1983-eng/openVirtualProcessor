@@ -109,11 +109,24 @@ public static class OpenVpServer
         var watches = new SourceWatch?[processor.Slots.Count];
 
         var recordings = new SlotRecordings(processor, new RecordingStore(processor.DataDirectory));
+        var trash = new Trash(processor.DataDirectory);
+        trash.Purge();
+        var recent = new RecentPrograms(processor.DataDirectory);
+        var crash = new CrashSupervisor(processor, stuckCheck: TimeSpan.FromSeconds(1));
+        // Deleted files, snapshots and recordings stay in data/trash for 24 hours so Undo works; purge what has aged out.
+        var trashTimer = new Timer(_ => { try { trash.Purge(); } catch { } }, null, TimeSpan.FromHours(1), TimeSpan.FromHours(1));
 
         object SlotDto(ProgramSlot s) => new
         {
             number = s.Number,
             roomId = s.RoomId,
+            name = s.Settings.Name,
+            color = s.Settings.Color,
+            autostart = s.Settings.Autostart,
+            startOrder = s.Settings.StartOrder ?? s.Number,
+            startDelaySeconds = s.Settings.StartDelaySeconds,
+            crash = CrashDto(s),
+            remembered = s.Settings.Program is { } m ? new { source = m.Source, file = m.File, path = m.FilePath, running = m.Running, watch = m.Watch } : null,
             state = s.State.ToString(),
             kind = s.Runtime?.Kind,
             program = s.Runtime?.ProgramName,
@@ -123,6 +136,18 @@ public static class OpenVpServer
             recording = recordings.Busy(s.Number),
             devices = s.Devices.OrderBy(d => d.IpId).Select(DeviceDto)
         };
+
+        object CrashDto(ProgramSlot s)
+        {
+            var c = s.Settings.Crash;
+            var st = crash.Status(s.Number);
+            return new
+            {
+                mode = c.Mode, maxRestarts = c.MaxRestarts, windowMinutes = c.WindowMinutes, stuckSeconds = c.StuckSeconds, faultOnUnhandled = c.FaultOnUnhandled,
+                restarts = st.RestartsInWindow,
+                last = st.LastTime is null ? null : new { time = st.LastTime, action = st.LastAction, reason = st.LastReason }
+            };
+        }
 
         object DeviceDto(JoinDevice d) => new
         {
@@ -246,11 +271,13 @@ public static class OpenVpServer
 
         // Save the slot's program, NVRAM and User files. Never throws: a failed snapshot is a warning, not a reason to
         // stop what the caller is doing. Returns false if it failed. Call with the slot locked.
-        bool TrySnapshot(ProgramSlot slot, string reason, string doing)
+        bool TrySnapshot(ProgramSlot slot, string reason, string doing, out SnapshotInfo? taken)
         {
+            taken = null;
             try
             {
                 var info = snapshots.Take(slot.Number, slot.Runtime?.ProgramName, slot.ProgramPath is null ? null : Path.GetFileName(slot.ProgramPath), reason);
+                taken = info;
                 if (info != null)
                 {
                     slot.Log("Notice", $"Saved a snapshot of {info.Program ?? "the slot"} (program, NVRAM and User files, {FormatSize(info.Size)}) {doing}");
@@ -269,7 +296,7 @@ public static class OpenVpServer
         object SnapshotDto(SnapshotInfo i) => new { id = i.Id, time = i.Time, program = i.Program, file = i.File, reason = i.Reason, size = i.Size, skipped = i.Skipped?.Length ?? 0 };
 
         // Replace the slot's program files and load the program, which is files[0]. Call with the slot's upload lock held.
-        IResult Install(int n, IReadOnlyList<(string Name, byte[] Data)> files, bool start)
+        IResult Install(int n, IReadOnlyList<(string Name, byte[] Data)> files, bool start, ProgramMemory? memory = null, string? fromPath = null, string[]? extra = null)
         {
             var dir = Path.Combine(uploads, $"slot{n:00}");
             var path = Path.Combine(dir, Path.GetFileName(files[0].Name));
@@ -277,13 +304,18 @@ public static class OpenVpServer
             // The slot stays locked throughout, so a start/stop/unload request waits instead of interleaving.
             return processor.WithSlotLocked(n, slot =>
             {
-                if (slot.Runtime != null) TrySnapshot(slot, SlotSnapshots.BeforeLoad, "before loading.");
+                if (slot.Runtime != null) TrySnapshot(slot, SlotSnapshots.BeforeLoad, "before loading.", out _);
                 slot.Unload();
                 if (Directory.Exists(dir)) Directory.Delete(dir, true);
                 Directory.CreateDirectory(dir);
                 foreach (var (name, data) in files) File.WriteAllBytes(Path.Combine(dir, Path.GetFileName(name)), data);
+                // The slot remembers what it was given, so it comes back after OpenVP restarts (even a program that failed to load: it then comes back in Error).
+                slot.RememberProgram(memory ?? new ProgramMemory { Source = ProgramMemory.Upload, File = Path.GetFileName(files[0].Name), Running = start });
+                crash.ClearHistory(n);
                 try { processor.LoadProgram(n, path, start); }
                 catch (Exception e) { return Results.UnprocessableEntity(new { error = e.Message, slot = SlotDto(slot) }); }
+                try { recent.Add(Path.GetFileName(files[0].Name), slot.Runtime?.Kind ?? "", n, fromPath, fromPath == null ? files : null, extra); }
+                catch (Exception e) { slot.Log("Warning", $"Couldn't add the program to Recent: {e.Message}"); }
                 return Results.Ok(SlotDto(slot));
             });
         }
@@ -302,11 +334,12 @@ public static class OpenVpServer
 
         // Load a program straight from disk with the files that belong with it (ProgramSource.Companions). They are
         // read before the slot is touched, so a file that can't be read leaves the running program alone.
-        IResult LoadFromDisk(int n, string program, string[] chosen, bool start)
+        IResult LoadFromDisk(int n, string program, string[] chosen, bool start, bool watch = false)
         {
             var files = ProgramSource.Companions(program, chosen);
             var data = files.Select(f => (f.Name, File.ReadAllBytes(f.Source))).ToList();
-            var result = Install(n, data, start);
+            var memory = new ProgramMemory { Source = ProgramMemory.Path, File = Path.GetFileName(data[0].Item1), FilePath = program, Files = chosen.Length == 0 ? null : chosen, Running = start, Watch = watch };
+            var result = Install(n, data, start, memory, program, chosen);
             var slot = processor.Slot(n);
             if (files.Count > 1)
                 slot.Log("Notice", $"Loaded from {Path.GetDirectoryName(program)} with " + string.Join(", ", files.Skip(1).Select(f =>
@@ -324,7 +357,7 @@ public static class OpenVpServer
                 lock (watches) if (watches[n - 1] != w) return;
                 var slot = processor.Slot(n);
                 slot.Log("Notice", $"{Path.GetFileName(w.Program)} changed on disk; reloading.");
-                LoadFromDisk(n, w.Program, chosen, slot.State != SlotState.Stopped);
+                LoadFromDisk(n, w.Program, chosen, slot.State != SlotState.Stopped, watch: true);
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
@@ -385,7 +418,7 @@ public static class OpenVpServer
                 // Made before the files are read, so a change while they're copied still triggers a reload.
                 var w = watch ? new SourceWatch(path, () => ProgramSource.Companions(path, chosen).Select(f => f.Source)) : null;
                 IResult result;
-                try { result = LoadFromDisk(n, path, chosen, start); }
+                try { result = LoadFromDisk(n, path, chosen, start, watch); }
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException)
                 {
                     w?.Dispose();
@@ -407,6 +440,7 @@ public static class OpenVpServer
         {
             var was = watches[n - 1]?.Program;
             StopWatching(n);
+            processor.Slot(n).RememberWatch(false);
             if (was != null) processor.Slot(n).Log("Notice", $"Stopped watching {was}.");
             return SlotDto(processor.Slot(n));
         });
@@ -437,8 +471,9 @@ public static class OpenVpServer
             finally { uploadLocks[n - 1].Release(); }
         });
 
-        slotApi.MapPost("/snapshots/{id}/restore", async (int n, string id) =>
+        slotApi.MapPost("/snapshots/{id}/restore", async (int n, string id, JsonElement? body) =>
         {
+            bool? startOverride = body is { ValueKind: JsonValueKind.Object } b0 && b0.TryGetProperty("start", out var st0) && st0.ValueKind is JsonValueKind.True or JsonValueKind.False ? st0.GetBoolean() : null;
             if (snapshots.Get(n, id) == null) return Results.NotFound(new { error = "There's no such snapshot." });
             await uploadLocks[n - 1].WaitAsync();
             try
@@ -447,10 +482,10 @@ public static class OpenVpServer
                 {
                     if (snapshots.Get(n, id) == null) return Results.NotFound(new { error = "There's no such snapshot." });
                     // The current state goes into a snapshot first, so a roll back can be undone. If that can't be done, stop here.
-                    if (!TrySnapshot(slot, SlotSnapshots.BeforeRollBack, "before rolling back."))
+                    if (!TrySnapshot(slot, SlotSnapshots.BeforeRollBack, "before rolling back.", out _))
                         return Results.Json(new { error = "Couldn't save a snapshot of the current state, so nothing was rolled back. See the slot log." }, statusCode: 500);
                     StopWatching(n);
-                    var wasRunning = slot.State == SlotState.Running;
+                    var wasRunning = startOverride ?? slot.State == SlotState.Running;
                     slot.Unload(); // the program lets go of its files before they are replaced
                     SnapshotInfo? info;
                     try { info = snapshots.Restore(n, id); }
@@ -463,6 +498,7 @@ public static class OpenVpServer
                     slot.Log("Notice", $"Rolled back to the snapshot of {info.Program ?? "the slot"} from {info.Time.ToLocalTime():yyyy-MM-dd HH:mm:ss} ({info.Reason}).");
                     if (snapshots.RestoredProgramPath(n, info) is { } path && File.Exists(path))
                     {
+                        slot.RememberProgram(new ProgramMemory { Source = ProgramMemory.Upload, File = Path.GetFileName(path), Running = wasRunning });
                         try { processor.LoadProgram(n, path, wasRunning); }
                         catch (Exception e) { return Results.UnprocessableEntity(new { error = e.Message, slot = SlotDto(slot) }); }
                     }
@@ -477,9 +513,54 @@ public static class OpenVpServer
             await uploadLocks[n - 1].WaitAsync();
             try
             {
-                try { return snapshots.Delete(n, id) ? Results.Ok(new { deleted = id }) : Results.NotFound(new { error = "There's no such snapshot." }); }
+                try { return snapshots.Delete(n, id, trash) is { } t ? Results.Ok(new { deleted = id, undo = t.Id }) : Results.NotFound(new { error = "There's no such snapshot." }); }
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException)
                 { return Results.Json(new { error = $"Couldn't delete the snapshot: {e.Message}" }, statusCode: 500); }
+            }
+            finally { uploadLocks[n - 1].Release(); }
+        });
+
+        // Name, colour, autostart, start order and delay, crash policy. Send only the fields to change; the console saves on every change.
+        slotApi.MapPut("/settings", (int n, JsonElement body) =>
+        {
+            try
+            {
+                var slot = processor.Slot(n);
+                slot.UpdateSettings(cur => cur.WithPatch(body));
+                return Results.Ok(SlotDto(slot));
+            }
+            catch (ArgumentException e) { return Results.BadRequest(new { error = e.Message }); }
+            catch (InvalidOperationException e) { return Results.Json(new { error = e.Message }, statusCode: 500); }
+        });
+
+        // Load a program from the Recent list into this slot: from its path when it was loaded from a file on this computer,
+        // else from the copy OpenVP kept of the upload.
+        slotApi.MapPost("/program/recent/{id}", async (int n, string id, HttpContext ctx) =>
+        {
+            var e = recent.Get(id);
+            if (e == null) return Results.NotFound(new { error = "That program is no longer in the Recent list." });
+            await uploadLocks[n - 1].WaitAsync();
+            try
+            {
+                StopWatching(n);
+                if (e.Path != null)
+                {
+                    if (!ApiAuth.IsDirectLocal(ctx))
+                        return Results.Json(new { error = "Loading from a path only works on the computer OpenVP runs on." }, statusCode: StatusCodes.Status403Forbidden);
+                    if (!File.Exists(e.Path)) return Results.NotFound(new { error = $"{e.Path} isn't there any more." });
+                    var chosen = (e.Files ?? Array.Empty<string>()).Where(File.Exists).ToArray();
+                    var w = new SourceWatch(e.Path, () => ProgramSource.Companions(e.Path, chosen).Select(f => f.Source));
+                    IResult result;
+                    try { result = LoadFromDisk(n, e.Path, chosen, true, watch: true); }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    { w.Dispose(); return Results.UnprocessableEntity(new { error = $"Couldn't read the program: {ex.Message}" }); }
+                    w.Changed += () => _ = ReloadAsync(n, w, chosen);
+                    lock (watches) watches[n - 1] = w;
+                    return result is IStatusCodeHttpResult { StatusCode: 200 } ? Results.Ok(SlotDto(processor.Slot(n))) : result;
+                }
+                var files = recent.ReadCopy(id);
+                if (files == null) return Results.NotFound(new { error = "OpenVP didn't keep a copy of this upload (it was too big, or has been cleared). Choose the file again." });
+                return Install(n, files, true);
             }
             finally { uploadLocks[n - 1].Release(); }
         });
@@ -497,17 +578,58 @@ public static class OpenVpServer
             catch (InvalidOperationException e) { return Results.Json(new { error = e.Message }, statusCode: 500); }
         });
 
-        slotApi.MapPost("/start", (int n) =>
+        // The slot as JSON plus "undo": {snapshot} when an unload left a snapshot that brings the program back.
+        JsonObject WithUndo(object dto, (string? Id, bool Running) undo)
         {
-            try { processor.Slot(n).Start(); return Results.Ok(SlotDto(processor.Slot(n))); }
+            var node = JsonSerializer.SerializeToNode(dto, json)!.AsObject();
+            if (undo.Id != null) node["undo"] = new JsonObject { ["snapshot"] = undo.Id, ["start"] = undo.Running };
+            return node;
+        }
+
+        // The same actions are used by the buttons, the keyboard, the command palette and the bulk endpoint.
+        void StartSlot(int n)
+        {
+            crash.ClearHistory(n);
+            var slot = processor.Slot(n);
+            // A slot in Error (a crash, or a failed start) is started afresh from its file; any other state just starts.
+            if (slot.State == SlotState.Error && slot.ProgramPath != null) processor.Restart(n); else slot.Start();
+            slot.RememberRunning(true);
+        }
+        void StopSlot(int n) { processor.Slot(n).Stop(); processor.Slot(n).RememberRunning(false); }
+        void RestartSlot(int n) { crash.ClearHistory(n); processor.Restart(n); processor.Slot(n).RememberRunning(true); }
+        // Unload keeps a snapshot first, so Undo can bring the program back. Returns that snapshot's id (null if there was nothing to keep).
+        (string? Id, bool Running) UnloadSlot(int n)
+        {
+            var slot = processor.Slot(n);
+            string? undo = null;
+            var running = slot.State == SlotState.Running;
+            StopWatching(n);
+            if (slot.Runtime != null && TrySnapshot(slot, SlotSnapshots.BeforeUnload, "before unloading.", out var snap)) undo = snap?.Id;
+            slot.Unload();
+            slot.RememberProgram(null);
+            return (undo, running);
+        }
+
+        slotApi.MapPost("/start", async (int n) =>
+        {
+            await uploadLocks[n - 1].WaitAsync();
+            try { StartSlot(n); return Results.Ok(SlotDto(processor.Slot(n))); }
             catch (Exception e) { return Results.UnprocessableEntity(new { error = e.Message }); }
+            finally { uploadLocks[n - 1].Release(); }
         });
-        slotApi.MapPost("/stop", (int n) => { processor.Slot(n).Stop(); return SlotDto(processor.Slot(n)); });
+        slotApi.MapPost("/stop", (int n) => { StopSlot(n); return SlotDto(processor.Slot(n)); });
+        slotApi.MapPost("/restart", async (int n) =>
+        {
+            await uploadLocks[n - 1].WaitAsync();
+            try { RestartSlot(n); return Results.Ok(SlotDto(processor.Slot(n))); }
+            catch (Exception e) { return Results.UnprocessableEntity(new { error = e.Message, slot = SlotDto(processor.Slot(n)) }); }
+            finally { uploadLocks[n - 1].Release(); }
+        });
         slotApi.MapPost("/unload", async (int n) =>
         {
             // Under the upload lock, so a reload of a watched slot that's already under way can't load it again afterwards.
             await uploadLocks[n - 1].WaitAsync();
-            try { StopWatching(n); processor.Slot(n).Unload(); return SlotDto(processor.Slot(n)); }
+            try { var undo = UnloadSlot(n); return Results.Ok(WithUndo(SlotDto(processor.Slot(n)), undo)); }
             finally { uploadLocks[n - 1].Release(); }
         });
 
@@ -636,7 +758,7 @@ public static class OpenVpServer
             recordings.Store.Rename(n, id, NameFrom(body)) is { } info ? Results.Ok(info) : Results.NotFound(new { error = "There's no such recording." })));
 
         slotApi.MapDelete("/recordings/{id}", (int n, string id) => Recordings(() =>
-            recordings.Store.Delete(n, id) ? Results.Ok(new { deleted = id }) : Results.NotFound(new { error = "There's no such recording." })));
+            recordings.Store.Delete(n, id, trash) is { } t ? Results.Ok(new { deleted = id, undo = t.Id }) : Results.NotFound(new { error = "There's no such recording." })));
 
         slotApi.MapPost("/recordings/{id}/replay", (int n, string id, JsonElement? body) => Recordings(() =>
         {
@@ -790,11 +912,73 @@ public static class OpenVpServer
         {
             var target = SlotFiles.Resolve(processor.Slot(n).Directory, root, path);
             if (target == SlotFiles.Resolve(processor.Slot(n).Directory, root, "")) return Results.BadRequest(new { error = "Can't delete the top folder." });
-            if (Directory.Exists(target)) Directory.Delete(target, true);
-            else if (File.Exists(target)) File.Delete(target);
-            else return Results.NotFound(new { error = "No such file or folder." });
-            return Results.Ok();
+            // Moved to the trash (24 hours), so the console can offer Undo.
+            var isDir = Directory.Exists(target);
+            if (!isDir && !File.Exists(target)) return Results.NotFound(new { error = "No such file or folder." });
+            var t = trash.Move(isDir ? "folder" : "file", $"{(isDir ? "folder" : "file")} {Path.GetFileName(target)}", n, target);
+            return Results.Ok(new { undo = t?.Id });
         }));
+
+        // ------------------------------------------------------------------ bulk actions, recent programs, trash
+
+        // {"slots":[1,2,3],"action":"start|stop|restart|unload"}: one result per slot, so one slot failing doesn't stop the rest.
+        // An unload returns each slot's snapshot id as "undo", which Undo restores.
+        app.MapPost("/api/slots/bulk", async (JsonElement body) =>
+        {
+            var action = body.ValueKind == JsonValueKind.Object && body.TryGetProperty("action", out var a) && a.ValueKind == JsonValueKind.String ? a.GetString() : null;
+            if (action is not ("start" or "stop" or "restart" or "unload")) return Results.BadRequest(new { error = "action must be start, stop, restart or unload." });
+            if (!(body.TryGetProperty("slots", out var arr) && arr.ValueKind == JsonValueKind.Array))
+                return Results.BadRequest(new { error = "Send the slot numbers as {\"slots\":[1,2]}." });
+            var numbers = arr.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.Number && e.TryGetInt32(out _)).Select(e => e.GetInt32()).Distinct().ToList();
+            if (numbers.Count == 0 || numbers.Any(x => !processor.IsValidSlot(x))) return Results.BadRequest(new { error = $"Slots must be numbers 1–{processor.Slots.Count}." });
+            var results = new List<object>();
+            foreach (var n in numbers)
+            {
+                await uploadLocks[n - 1].WaitAsync();
+                try
+                {
+                    (string? Id, bool Running) undo = default;
+                    switch (action)
+                    {
+                        case "start": if (processor.Slot(n).Runtime == null && processor.Slot(n).State != SlotState.Error) { results.Add(new { slot = n, ok = true, skipped = "no program" }); continue; } StartSlot(n); break;
+                        case "stop": StopSlot(n); break;
+                        case "restart": if (processor.Slot(n).ProgramPath == null) { results.Add(new { slot = n, ok = true, skipped = "no program" }); continue; } RestartSlot(n); break;
+                        case "unload": undo = UnloadSlot(n); break;
+                    }
+                    results.Add(new { slot = n, ok = true, undo = undo.Id == null ? null : new { snapshot = undo.Id, start = undo.Running } });
+                }
+                catch (Exception e) { results.Add(new { slot = n, ok = false, error = e.Message }); }
+                finally { uploadLocks[n - 1].Release(); }
+            }
+            return Results.Ok(new { action, results });
+        });
+
+        object RecentDto(RecentEntry e) => new
+        {
+            id = e.Id, name = e.Name, kind = e.Kind, slot = e.Slot, time = e.Time, path = e.Path, hasCopy = e.HasCopy, size = e.Size,
+            available = e.Path != null ? File.Exists(e.Path) : e.HasCopy
+        };
+        app.MapGet("/api/recent", () => recent.List().Select(RecentDto));
+        app.MapDelete("/api/recent/{id}", (string id) => recent.Remove(id) ? Results.Ok() : Results.NotFound());
+
+        app.MapGet("/api/trash", () => trash.List().Select(t => new { id = t.Id, kind = t.Kind, label = t.Label, slot = t.Slot, time = t.Time }));
+        app.MapPost("/api/trash/{id}/restore", async (string id) =>
+        {
+            var t = trash.Get(id);
+            if (t == null) return Results.NotFound(new { error = "That can't be undone any more (it was restored already, or has been in the trash for over 24 hours)." });
+            // Files go back into a slot's folders; hold the slot lock so a load in progress can't be mixed up with it.
+            var lockSlot = t.Slot is int sn && processor.IsValidSlot(sn) ? uploadLocks[sn - 1] : null;
+            if (lockSlot != null) await lockSlot.WaitAsync();
+            try
+            {
+                var back = trash.Restore(id);
+                if (back == null) return Results.NotFound(new { error = "That can't be undone any more." });
+                return Results.Ok(new { restored = back.Label, kind = back.Kind, slot = back.Slot });
+            }
+            catch (IOException e) { return Results.Conflict(new { error = e.Message }); }
+            catch (UnauthorizedAccessException e) { return Results.BadRequest(new { error = e.Message }); }
+            finally { lockSlot?.Release(); }
+        });
 
         // Inspect a compiled program (.lpz, optional .sig) without loading it.
         app.MapPost("/api/inspect", async (HttpRequest req) =>
@@ -977,14 +1161,50 @@ public static class OpenVpServer
 
         // ------------------------------------------------------------------ autoload
 
+        // At start-up: bring each slot's program back, in start order with each slot's delay, then log what happened. The
+        // Autoload setting wins for the slots it names. It runs in the background so the console is up straight away.
+        var autoload = new Dictionary<int, string>();
         foreach (var entry in cfg.GetSection("Autoload").GetChildren())
+            if (int.TryParse(entry.Key.Replace("slot", "", StringComparison.OrdinalIgnoreCase), out var an) && processor.IsValidSlot(an) && !string.IsNullOrEmpty(entry.Value))
+                autoload[an] = entry.Value;
+        var restorer = new StartupRestorer(processor);
+        restorer.Guard = (n, action) =>
         {
-            if (!int.TryParse(entry.Key.Replace("slot", "", StringComparison.OrdinalIgnoreCase), out var n) || string.IsNullOrEmpty(entry.Value)) continue;
-            try { processor.LoadProgram(n, entry.Value); }
-            catch (Exception e) { Console.WriteLine($"Autoload slot {n} failed: {e.Message}"); }
+            uploadLocks[n - 1].Wait();
+            try { return action(); } finally { uploadLocks[n - 1].Release(); }
+        };
+        // A program that was loaded from a file on this computer comes back from there, watched again if it was.
+        restorer.PathLoader = e =>
+        {
+            var m = e.Memory!;
+            var chosen = (m.Files ?? Array.Empty<string>()).Where(File.Exists).ToArray();
+            SourceWatch? w = m.Watch ? new SourceWatch(m.FilePath!, () => ProgramSource.Companions(m.FilePath!, chosen).Select(f => f.Source)) : null;
+            LoadFromDisk(e.Slot, m.FilePath!, chosen, m.Running, m.Watch);
+            if (w != null)
+            {
+                w.Changed += () => _ = ReloadAsync(e.Slot, w, chosen);
+                lock (watches) { watches[e.Slot - 1]?.Dispose(); watches[e.Slot - 1] = w; }
+                processor.Slot(e.Slot).Log("Notice", $"Watching {m.FilePath}: the slot reloads when it changes.");
+            }
+            processor.Slot(e.Slot).Log("Notice", $"Restored {Path.GetFileName(m.FilePath)} from {m.FilePath} ({(m.Running ? "started" : "left stopped, as it was")}).");
+            return true;
+        };
+        var plan = StartupRestorer.Plan(processor.Slots, autoload);
+        if (plan.Count > 0)
+        {
+            Console.WriteLine($"Restoring {plan.Count} slot{(plan.Count == 1 ? "" : "s")} in start order: {string.Join(", ", plan.Select(p => p.Slot))}");
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    var n = restorer.Run(plan);
+                    Console.WriteLine($"Restored {n} of {plan.Count} slot{(plan.Count == 1 ? "" : "s")}.");
+                }
+                catch (Exception e) { Console.WriteLine($"Restoring slots failed: {e.Message}"); }
+            });
         }
 
-        app.Lifetime.ApplicationStopping.Register(() => { for (var i = 1; i <= watches.Length; i++) StopWatching(i); tunnel?.Dispose(); cip?.Dispose(); recordings.Dispose(); processor.Dispose(); });
+        app.Lifetime.ApplicationStopping.Register(() => { for (var i = 1; i <= watches.Length; i++) StopWatching(i); tunnel?.Dispose(); cip?.Dispose(); crash.Dispose(); trashTimer.Dispose(); recordings.Dispose(); processor.Dispose(); });
         // If the process ends some other way (not a clean stop), still take cloudflared down with it.
         AppDomain.CurrentDomain.ProcessExit += (_, _) => tunnel?.Stop();
         return app;

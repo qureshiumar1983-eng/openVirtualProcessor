@@ -163,6 +163,24 @@ To let someone outside your network open a shared panel, turn on **Internet acce
 
 Each slot has a **Room ID**, like the Virtual Control Room ID of a VC-4 program. It defaults to `SLOT01`, `SLOT02`, and so on; change it with `PUT /api/slots/{n}/room` (1-64 letters, digits, `_`, `-` or `.`; unique across slots, not case-sensitive). It is saved in `slot.json` in the slot's folder and is what a program reads from `InitialParametersClass.RoomId` and `RoomName`. Browser panels can connect with `/ws/panel?ipid=03&room=ROOM2` and are routed to the slot with that Room ID (an unknown Room ID gets a 404). Panels connecting over CIP still route by IP ID only for now, binding to the lowest slot that has it; the log warns when two slots register the same IP ID.
 
+### Console features
+
+- **Drop anywhere.** Drop a `.cpz`, `.dll`, `.lpz` or `.smw` (with its `.sig` and sidecars) anywhere on the console to load it into the selected slot; an overlay names the slot. In the desktop app it loads from disk like **Load & start**. Dropping on the Files list still uploads files there.
+- **Recent.** The last 10 programs loaded (`data/recent/`). A path load is remembered by its path; an upload by name, with its files kept (up to 100 MB each, 400 MB in all). **Recent ▾** loads one into the selected slot.
+- **Search and shortcuts.** `Ctrl+K` / `Cmd+K` opens a fuzzy search over every action. Keys (never while typing in a box): `1`–`9`, `0` select a slot, `S` start, `X` stop, `R` restart, `U` unload, `D` debugger, `P` paths, `M` metrics, `N` snapshot, `L` log filter, `T` theme, `?` lists them. The debugger lists its F-keys with `?`.
+- **Settings save themselves.** Slot settings save as you change them (a "Saved" mark shows). Only the Room ID is edited in a dialog.
+- **Theme.** Auto, light or dark on every page, remembered per browser. The debugger waveform and the Paths map stay dark.
+- **Slot name and colour.** Saved in the slot's `slot.json`; shown on the board, the slot table, page titles and the debugger and metrics headers.
+- **Bulk actions.** Tick slots on the board or table, then Start, Stop, Restart or Unload them together (`POST /api/slots/bulk`). Stop, Restart and Unload ask once.
+- **Phone.** Sections collapse, a slot picker stays at the top, touch targets are bigger and tables become cards; no sideways scroll at 390 px.
+- **Undo.** Unload, deleting a file, folder, snapshot or recording, changing a Room ID and revoking a share show an Undo message for 10 seconds. Unload takes a snapshot first. Deleted files, snapshots and recordings wait in `data/trash` for 24 hours. A revoked link comes back (same token, PIN and expiry) if undone within 10 minutes; that is kept in memory only.
+
+### Autostart and crash policy
+
+Each slot remembers its program in `slot.json` (`program`: the uploaded copy, or the path of a file loaded from disk, plus whether it was running and whether auto-reload was on). When OpenVP starts it restores the slots in **start order** (lowest first, ties by slot number; default is the slot number), each after its **delay** in seconds, in the background. Slots with **autostart** off stay empty; `OpenVP:Autoload` entries always load and win over the remembered program. What was restored is in the slot log; a program that can't be restored puts only that slot in Error. Unload forgets the program; stopping OpenVP does not.
+
+The **crash policy** is per slot: stay stopped (default), restart, or restart up to N times in M minutes and then stay stopped. A crash is a running program that faults: an unhandled exception in an event handler (only if "Unhandled exception = crash" is on; otherwise it is only logged), or one event running for longer than "Stuck after" seconds (0 = never). A program that fails to load or start is not a crash, so a broken program is never restarted in a loop, and plain restart stops after 10 restarts in a minute. Each action is logged and shown on the slot's board tile. Restarting a stuck slot waits for its stuck thread, up to about 35 s.
+
 ### Status board
 
 The row of tiles at the top of the console shows every slot at a glance: program, state, panels online, events per second, and a red **problem** badge (hover it to read the problem) when the slot is in Error or the Metrics page would list a problem for it. Click a tile to select that slot. A slot that reloads when its file changes shows an **auto-reload** badge. The board refreshes every 2 seconds.
@@ -320,7 +338,7 @@ Traffic is plain HTTP. To use OpenVP across an untrusted network, put it behind 
 | `OpenVP:TunnelPort` | `8085` | Port of the second listener (on 127.0.0.1 only) that the internet tunnel points at. `0` switches Internet access off. Must differ from the console's port |
 | `OpenVP:CloudflaredPath` | | Path to `cloudflared`. If empty, OpenVP looks on the PATH, then in `data/tools` |
 | `OpenVP:TunnelAutoStart` | `false` | Start the tunnel when OpenVP starts (only if `cloudflared` is already installed; it never downloads by itself) |
-| `OpenVP:Autoload:slot1` | | Program file to load into slot 1 at startup |
+| `OpenVP:Autoload:slot1` | | Program file to load into slot 1 at startup. Wins over the slot's remembered program (see [Autostart](#autostart-and-crash-policy)) |
 | `Urls` | `http://0.0.0.0:8080` | Web console address |
 
 ## REST API
@@ -333,7 +351,15 @@ Every endpoint except `/api/info` and `/api/login` needs the access key (see [Se
 | POST | `/api/slots/{n}/program` | Multipart `file` (+ sidecar files); loads and starts |
 | POST | `/api/slots/{n}/program/path` | `{"path": "C:\\…\\Room.lpz", "watch": true, "start": true, "files": []}`: load a file on the OpenVP computer with its `.sig` and sidecars, and reload it when it changes. Only from that computer (403 otherwise) |
 | DELETE | `/api/slots/{n}/watch` | Stop reloading the slot when its file changes |
-| POST | `/api/slots/{n}/start` · `stop` · `unload` | |
+| POST | `/api/slots/{n}/start` · `stop` · `restart` | Start (a slot in Error is loaded again) · stop · load again from its file and start |
+| POST | `/api/slots/{n}/unload` | Unloads; returns the slot plus `undo: {snapshot, start}` (a snapshot taken first; restore it with `{"start": ...}` to undo) |
+| POST | `/api/slots/bulk` | `{"slots":[1,2],"action":"start"}` (or `stop`, `restart`, `unload`)`; one result per slot (`ok`, `error`, `undo`) |
+| PUT | `/api/slots/{n}/settings` | Any of `name`, `color` (`#3b82f6`), `autostart`, `startOrder`, `startDelaySeconds` and `crash` (`mode` of `stop`, `restart` or `limited`, plus `maxRestarts`, `windowMinutes`, `stuckSeconds`, `faultOnUnhandled`); saved in `slot.json`. `null` clears name, colour and start order |
+| GET · DELETE | `/api/recent` · `/api/recent/{id}` | The last 10 programs loaded · remove one |
+| POST | `/api/slots/{n}/program/recent/{id}` | Load a recent program into the slot (from its path, local only, or from the kept copy) |
+| GET | `/api/trash` | What can still be undone (kept 24 hours) |
+| POST | `/api/trash/{id}/restore` | Put a deleted file, folder, snapshot or recording back (409 if something is in the way). File, snapshot and recording DELETEs return `undo` with this id |
+| POST | `/api/shares/{id}/undo` | Bring back a link revoked in the last 10 minutes, with the same token |
 | PUT | `/api/slots/{n}/room` | `{"roomId":"ROOM2"}` sets the slot's Room ID (saved in `slot.json`); returns the slot, or 400 if the ID is invalid or another slot has it |
 | GET / POST | `/api/slots/{n}/signals` | List; set with `{"name":"...","value":1}` |
 | GET / POST | `/api/slots/{n}/step` | Step-through state; change with `{"enabled":true,"onlyBreakSignals":true,"breakSignals":["sig"]}` |
@@ -350,7 +376,7 @@ Every endpoint except `/api/info` and `/api/login` needs the access key (see [Se
 | GET | `/api/slots/{n}/files/download?root=user&path=config/rooms.json` | Download a file |
 | DELETE | `/api/slots/{n}/files?root=user&path=config` | Delete a file, or a folder and everything in it |
 | GET / POST | `/api/slots/{n}/snapshots` | List the slot's snapshots, newest first (id, time, program, file, reason, size) · save one now |
-| POST | `/api/slots/{n}/snapshots/{id}/restore` | Roll back: saves the current state first, replaces the program files, NVRAM and User with the snapshot's, loads the program, and starts it if it was running. Returns the slot, or 404 for an unknown id |
+| POST | `/api/slots/{n}/snapshots/{id}/restore` | Optional `{"start":true}` or `false` to override whether it starts. Roll back: saves the current state first, replaces the program files, NVRAM and User with the snapshot's, loads the program, and starts it if it was running. Returns the slot, or 404 for an unknown id |
 | DELETE | `/api/slots/{n}/snapshots/{id}` | Delete a snapshot |
 | GET | `/api/slots/{n}/recording/status` | What the slot is doing: `mode` (`idle`, `recording`, `replaying`), recording elapsed time and counts, replay progress and, once finished, its report. The console polls it |
 | POST | `/api/slots/{n}/recording/start` · `recording/stop` | Start recording · stop and save it, with an optional `{"name":"..."}` (409 if busy or there's no program) |

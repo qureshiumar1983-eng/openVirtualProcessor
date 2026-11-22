@@ -141,6 +141,18 @@ public sealed class RecordingStore
         }
     }
 
+    /// <summary>Moves the recording and its reports into <paramref name="trash"/> instead of deleting them. Null if there is no such recording.</summary>
+    public TrashEntry? Delete(int slot, string? id, Trash trash)
+    {
+        if (FilePath(slot, id) is not { } path) return null;
+        lock (_gate)
+        {
+            if (!File.Exists(path)) return null;
+            var name = Get(slot, id)?.Name ?? "recording";
+            return trash.Move("recording", $"recording \u201c{name}\u201d", slot, path, ReportsPath(slot, id)!);
+        }
+    }
+
     public bool Delete(int slot, string? id)
     {
         if (FilePath(slot, id) is not { } path) return false;

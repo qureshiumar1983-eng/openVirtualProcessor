@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script>(function(){var K="openvp.theme",m=matchMedia("(prefers-color-scheme: light)");function g(){try{var v=localStorage.getItem(K);return v==="light"||v==="dark"?v:"auto"}catch(e){return"auto"}}function a(){var p=g();document.documentElement.dataset.theme=p==="auto"?(m.matches?"light":"dark"):p;var b=document.getElementById("theme");if(b){b.textContent={auto:"\u25d0 Auto",light:"\u2600 Light",dark:"\u263e Dark"}[p];b.title="Theme: "+p+". Click to change."}}window.__theme={cycle:function(){var o=["auto","light","dark"];try{localStorage.setItem(K,o[(o.indexOf(g())+1)%3])}catch(e){}a()},apply:a};a();document.addEventListener("DOMContentLoaded",a);if(m.addEventListener)m.addEventListener("change",a)})()</script>
 <title>OpenVP test panel</title>
 <style>
   :root { --bg:#111418; --card:#1b2027; --line:#2c333d; --text:#e6e9ee; --muted:#8b95a3; --on:#2f9e6e; --accent:#4c8dff; }
@@ -24,6 +25,11 @@
   .srow { display:grid; grid-template-columns: 40px 1fr; gap:8px; align-items:center; margin-bottom:8px; }
   .fbtext { color:var(--muted); font-family: ui-monospace, monospace; font-size:12px; grid-column: 2; min-height:16px; }
   small { color:var(--muted); }
+  :root[data-theme="light"] { color-scheme:light; --bg:#f3f5f8; --card:#ffffff; --line:#d2d9e2; --text:#1b2330; --muted:#586374; --on:#1e7a52; --accent:#1d5fd6; }
+  :root[data-theme="light"] .btn { background:#e8edf3; }
+  :root[data-theme="light"] .btn.fb { color:#fff; }
+  :root[data-theme="light"] .dot { background:#c62828; } :root[data-theme="light"] .dot.ok { background:var(--on); }
+  #theme { font-size:12px; padding:3px 9px; white-space:nowrap; }
 </style>
 </head>
 <body>
@@ -37,7 +43,7 @@
   <button id="go" title="Reconnect using the IP ID, Slot and Room typed here">Connect</button>
   </span>
   <small>Hold a button to keep the join high. Green = feedback from the program.</small>
-  <span style="flex:1"></span><a id="helplink" href="help.html#panel" target="openvp-help" title="What every control on this page does" style="color:var(--accent)">Help</a>
+  <span style="flex:1"></span><button id="theme" onclick="__theme.cycle()"></button><a id="helplink" href="help.html#panel" target="openvp-help" title="What every control on this page does" style="color:var(--accent)">Help</a>
 </header>
 <main>
   <section><h2>Digital joins 1–20</h2><div class="grid" id="digitals"></div></section>

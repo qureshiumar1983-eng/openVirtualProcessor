@@ -172,12 +172,37 @@ public sealed class ShareStore
     /// <summary>True while the link still exists and has not expired. Open sockets poll this.</summary>
     public bool IsActive(string id) => FindById(id) != null;
 
+    /// <summary>How long a revoked link can still be brought back with <see cref="Undo"/>.</summary>
+    public static readonly TimeSpan UndoWindow = TimeSpan.FromMinutes(10);
+    private readonly Dictionary<string, (ShareLink Link, DateTimeOffset At)> _revoked = new();
+
+    /// <summary>Brings back a link revoked in the last <see cref="UndoWindow"/>, with the same token, PIN and expiry (kept in memory only).
+    /// Returns null if it wasn't revoked recently, has expired meanwhile, or was already brought back.</summary>
+    public ShareLink? Undo(string id)
+    {
+        lock (_lock)
+        {
+            if (!_revoked.TryGetValue(id, out var r)) return null;
+            _revoked.Remove(id);
+            if (_now() - r.At > UndoWindow || !Live(r.Link) || _links.Any(l => l.Id == id || l.Token == r.Link.Token)) return null;
+            _links.Add(r.Link);
+            SaveLocked();
+            return r.Link;
+        }
+    }
+
     public bool Revoke(string id)
     {
         lock (_lock)
         {
+            var gone = _links.FirstOrDefault(x => x.Id == id);
             var n = _links.RemoveAll(x => x.Id == id);
             if (n == 0) return false;
+            if (gone != null)
+            {
+                foreach (var k in _revoked.Where(k => _now() - k.Value.At > UndoWindow).Select(k => k.Key).ToList()) _revoked.Remove(k);
+                _revoked[id] = (gone, _now());
+            }
             _connections.Remove(id);
             foreach (var k in _clientFails.Keys.Where(k => k.Item1 == id).ToList()) _clientFails.Remove(k);
             _linkFails.Remove(id);

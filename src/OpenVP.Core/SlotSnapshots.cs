@@ -15,7 +15,7 @@ public sealed record SnapshotInfo(
 public sealed class SlotSnapshots
 {
     public const int DefaultKeep = 10;
-    public const string BeforeLoad = "before load", BeforeRollBack = "before roll back", Manual = "manual";
+    public const string BeforeLoad = "before load", BeforeRollBack = "before roll back", BeforeUnload = "before unload", Manual = "manual";
 
     private static readonly Regex IdPattern = new(@"^\d{8}T\d{6}Z-\d{3}$", RegexOptions.Compiled);
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
@@ -119,6 +119,17 @@ public sealed class SlotSnapshots
     /// <summary>The path of the program file inside the restored uploads folder, or null if the snapshot has none.</summary>
     public string? RestoredProgramPath(int slot, SnapshotInfo info) =>
         string.IsNullOrEmpty(info.File) ? null : Path.Combine(UploadsDir(slot), Path.GetFileName(info.File));
+
+    /// <summary>The snapshot's folder, or null if the id is invalid or unknown.</summary>
+    public string? PathOf(int slot, string? id) => SnapDir(slot, id) is { } d && Directory.Exists(d) ? d : null;
+
+    /// <summary>Moves the snapshot into <paramref name="trash"/> instead of deleting it. Null if there is no such snapshot.</summary>
+    public TrashEntry? Delete(int slot, string? id, Trash trash)
+    {
+        var info = Get(slot, id);
+        return info == null || PathOf(slot, id) is not { } dir ? null
+            : trash.Move("snapshot", $"snapshot of {info.Program ?? "the slot"} from {info.Time.ToLocalTime():yyyy-MM-dd HH:mm:ss}", slot, dir);
+    }
 
     public bool Delete(int slot, string? id)
     {

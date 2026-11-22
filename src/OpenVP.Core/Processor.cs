@@ -72,6 +72,17 @@ public sealed class Processor : IDisposable
         }
     }
 
+    /// <summary>Load the slot's program again from the file it was loaded from, and start it. Throws if the slot has none.</summary>
+    public void Restart(int slotNumber)
+    {
+        var slot = Slot(slotNumber);
+        lock (slot.Lifecycle)
+        {
+            var path = slot.ProgramPath ?? throw new InvalidOperationException($"Slot {slotNumber} has no program to restart.");
+            LoadProgram(slotNumber, path, true);
+        }
+    }
+
     /// <summary>
     /// Run <paramref name="action"/> while holding the slot's lifecycle lock, so nothing else can load,
     /// start, stop or unload that slot meanwhile (for example, replacing its program files).

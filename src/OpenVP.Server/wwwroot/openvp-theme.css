@@ -1,0 +1,21 @@
+/* Shared by the console pages. Dark is the default; the light values below replace the pages' own variables
+   (the selector is more specific than a page's :root, so the order of the files doesn't matter).
+   Contrast checked against WCAG AA (4.5:1 for text): --text #1b2330 on --card #fff is 15:1, --muted #586374 on --card is 6.2:1
+   and on --bg 5.6:1, --accent #1d5fd6 on white is 5.9:1, and each *-fg on its *-bg below is above 6:1. */
+:root {
+  color-scheme: dark;
+  --input:#111519; --well:#0b0e11; --tile:#12161b; --soft:#141a21; --hover:#1b222b; --selrow:#1f2630; --active:#1f2a3a; --chip:#252c36; --chip2:#2a2f37; --dim:#3a4350;
+  --ok:#2f9e6e; --ok-bg:#173a2c; --ok-fg:#7fe0b1; --err-bg:#3d1b1b; --err-fg:#ff9b9b; --warn-bg:#3a321a; --warn-fg:#f2cf7a; --info-bg:#1d2a44; --info-fg:#9ecbff;
+  --warn-line:#6b5a2a; --warn-box:#1d1a12; --text2:#cfd6df; --overlay:#0008; --ok-glow:#2f9e6e33; --menu:#1b2129; --inv:#fff;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg:#f3f5f8; --card:#ffffff; --pane:#ffffff; --head:#e9edf2; --line:#d2d9e2; --text:#1b2330; --muted:#586374; --accent:#1d5fd6;
+  --ok:#1e7a52; --warn:#9a6700; --err:#c62828; --on:#2f9e6e;
+  --sel:#d9e7ff; --hi:#146c43; --lo:#6b7280; --ana:#8a5a00; --ser:#1f5fae; --brk:#b25e00; --pause:#ffe9cc; --neon:#0a7f99; --loop:#b4008a;
+  --input:#ffffff; --well:#f6f8fb; --tile:#f8fafc; --soft:#eef3fa; --hover:#eef2f8; --selrow:#e3edff; --active:#dbe8ff; --chip:#e8edf3; --chip2:#e3e8ee; --dim:#b8c2d0;
+  --ok-bg:#d9f2e6; --ok-fg:#14633f; --err-bg:#fde2e2; --err-fg:#a31d1d; --warn-bg:#fdf0c9; --warn-fg:#6e4a00; --info-bg:#dbe8ff; --info-fg:#1a4fb0;
+  --warn-line:#d9b957; --warn-box:#fff7df; --text2:#2a3445; --overlay:#1b233355; --ok-glow:#1e7a5233; --menu:#ffffff; --inv:#1b2330;
+}
+.theme-btn { font:inherit; font-size:12px; padding:2px 9px; white-space:nowrap; }
+/* The debugger and Paths draw on a dark stage in both themes (a logic-analyzer style view); the rest of the page follows the theme. */

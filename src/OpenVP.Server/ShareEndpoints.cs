@@ -89,6 +89,9 @@ internal static class ShareEndpoints
 
         app.MapDelete("/api/shares/{id}", (string id) => shares.Revoke(id) ? Results.Ok() : Results.NotFound(new { error = "No such link (maybe it already expired)." }));
 
+        // Undo a revoke (the console's "Undo" toast): the same link, token and PIN come back, if it was revoked in the last few minutes.
+        app.MapPost("/api/shares/{id}/undo", (string id) => shares.Undo(id) is { } l ? Results.Ok(ShareDto(l)) : Results.NotFound(new { error = "That link can't be brought back (it was revoked too long ago, or has expired)." }));
+
         object Ch5Dto(Ch5Info i) => new { slot = i.Slot, ipId = $"{i.IpId:X2}", name = i.Name, uploadedAt = i.UploadedAt, files = i.Files, bytes = i.Bytes };
         app.MapGet("/api/panels", () => ch5.List().Select(Ch5Dto));
 
