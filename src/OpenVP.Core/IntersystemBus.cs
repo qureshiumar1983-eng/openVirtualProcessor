@@ -59,8 +59,8 @@ public sealed class IntersystemBus
                 Link(peer, endpoint);
                 Link(endpoint, peer);
                 // Bring the newcomer up to date with what the peer already set.
-                foreach (var (k, v) in peer.FeedbackSnapshot()) endpoint.ReceiveInput(k, v);
-                foreach (var (k, v) in endpoint.FeedbackSnapshot()) peer.ReceiveInput(k, v);
+                foreach (var (k, v) in peer.FeedbackSnapshot()) endpoint.ReceiveInput(k, v, InputSource.Eisc);
+                foreach (var (k, v) in endpoint.FeedbackSnapshot()) peer.ReceiveInput(k, v, InputSource.Eisc);
             }
             return list.Count - 1;
         }
@@ -94,6 +94,6 @@ public sealed class IntersystemBus
                 if (_peerLinks.TryGetValue((p, source), out var inLink)) { Interlocked.Increment(ref inLink.JoinsIn); inLink.RecordIn(0); }
             }
         }
-        foreach (var p in peers) p.ReceiveInput(key, value);
+        foreach (var p in peers) p.ReceiveInput(key, value, InputSource.Eisc);
     }
 }

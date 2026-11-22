@@ -138,6 +138,39 @@ public sealed class ProgramSlot : IDisposable
 
     public SlotDispatcher Dispatcher => _dispatcher;
 
+    /// <summary>The recorder capturing this slot right now, if any (see <see cref="SlotRecordings"/>).</summary>
+    internal volatile SlotRecorder? ActiveRecorder;
+
+    /// <summary>
+    /// Force a signal from the debugger (REST <c>POST /api/slots/{n}/signals</c> uses this). Does what
+    /// <see cref="IProgramRuntime.TrySetSignal"/> does, and writes the force into the slot's recording if one is running.
+    /// Returns false if there is no program or the signal is unknown.
+    /// </summary>
+    public bool ForceSignal(string name, object value)
+    {
+        var rt = Runtime;
+        if (rt == null) return false;
+        var rec = ActiveRecorder;
+        var t = rec?.Now() ?? 0;
+        bool ok;
+        using (ForceScope.Enter()) ok = rt.TrySetSignal(name, value);
+        if (ok) rec?.RecordForce(t, name, false, value);
+        return ok;
+    }
+
+    /// <summary>Pulse a digital signal from the debugger; see <see cref="ForceSignal"/> and <see cref="IProgramRuntime.TryPulseSignal"/>.</summary>
+    public bool ForcePulse(string name)
+    {
+        var rt = Runtime;
+        if (rt == null) return false;
+        var rec = ActiveRecorder;
+        var t = rec?.Now() ?? 0;
+        bool ok;
+        using (ForceScope.Enter()) ok = rt.TryPulseSignal(name);
+        if (ok) rec?.RecordForce(t, name, true, null);
+        return ok;
+    }
+
     /// <summary>Step-through debugging: pause the slot's logic on each signal change.</summary>
     public SignalStepper Stepper { get; } = new();
 

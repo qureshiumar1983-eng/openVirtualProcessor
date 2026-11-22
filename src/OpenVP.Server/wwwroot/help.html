@@ -90,6 +90,7 @@
     <dt>A tile</dt><dd>One per slot, across the top of the page, so you can see every slot without clicking into it. A tile shows the slot number and Room ID, the program and its kind (or "empty"), the state (green dot for Running, amber for Stopped, red for Error, dim for empty), how many of the slot's IP IDs have a panel online, and events per second. Click a tile to select that slot, the same as clicking its row below. The selected slot's tile is highlighted. The board refreshes every 2 seconds.</dd>
     <dt><span class="b">problem</span></dt><dd>A red badge on a tile. Hover it to read what's wrong. It shows when the slot is in the Error state or when <a href="#metrics">Metrics</a> lists a problem for it: the slot thread stuck in one event, events backing up, a thread left running from an unloaded program, or background work running for 30 s or more.</dd>
     <dt><span class="b">auto-reload</span></dt><dd>A blue badge on a tile whose program reloads when its file changes. Hover it to see the file.</dd>
+    <dt><span class="b">● recording</span> <span class="b">▶ replaying</span></dt><dd>A red or blue badge on a tile while that slot is recording, or while a recording is being replayed into it. See <a href="#recordings">Recordings</a>.</dd>
   </dl>
 
   <h3>Program slots</h3>
@@ -148,6 +149,19 @@
     <dt><span class="b">Snapshot now</span></dt><dd>Saves a snapshot of the slot as it is, without loading anything.</dd>
     <dt><span class="b">Roll back</span></dt><dd>Puts the slot back as it was at that time: program, NVRAM and User files are replaced, and the program is loaded again (and started, if it was running). The current state is saved first as a "before roll back" snapshot, so you can undo it. It asks you to confirm first.</dd>
     <dt><span class="b">Delete</span></dt><dd>Deletes that snapshot.</dd>
+  </dl>
+
+  <h3 id="recordings">Recordings</h3>
+  <p class="muted">Record what a person does to a room, then replay it after loading a new program version and get a PASS or FAIL: does the program still answer the same way? It captures everything coming into the program (panel presses, levels and text, EISC inputs, and signals you force in the <a href="#debugger">Debugger</a>) and the feedback the program sends back.</p>
+  <dl>
+    <dt><span class="b">● Record</span> · <span class="b">■ Stop</span></dt><dd>Starts and stops recording the selected slot. While it records, the button shows the time and how many inputs have been captured. Stop asks for a name (Cancel keeps the suggested one, program name and time) and saves the recording. Start recording when the room is in the state you want to test from, for example right after loading the program. A recording also ends, and is saved, if the program is unloaded or replaced meanwhile.</dd>
+    <dt><span class="b">Replay</span></dt><dd>Sends the recorded inputs into the slot's program with the same gaps between them (so timers and delays behave as they did), then compares the feedback with the recording. A bar shows progress; <span class="b">Cancel</span> stops it and gives no result.</dd>
+    <dt><span class="b">Replay fast</span></dt><dd>The same, but a gap between inputs longer than 1 second is shortened to 1 second. Shorter gaps stay as recorded, because programs often depend on press and release timing. The program's own timers still run in real time, so use Replay for programs that depend on long delays.</dd>
+    <dt>include EISC inputs</dt><dd>Also sends the inputs that came in over an EISC link from another slot. Turn it off if that other slot is running and drives the EISC itself while you replay. The result notes which you used.</dd>
+    <dt>PASS / FAIL and the table</dt><dd>PASS (green) means every recorded feedback change came back with the same value near the same time, and each device ended in the same state. FAIL (red) lists each difference: the device (IP ID), join, expected value, actual value, and the time in the recording where it was expected. Warnings (extra feedback that wasn't recorded, or a different starting state) are listed apart and don't change the result. <span class="b">Result</span> shows the latest result of a recording again.</dd>
+    <dt><span class="b">Download</span> · <span class="b">Upload</span></dt><dd>Save a recording as a file to keep with a project or share, and add one back (to any slot).</dd>
+    <dt><span class="b">Rename</span> · <span class="b">Delete</span></dt><dd>Rename a recording, or delete it with its results (it asks you to confirm first).</dd>
+    <dt>● recording · ▶ replaying</dt><dd>Badges on the slot's tile in the Status board.</dd>
   </dl>
 
   <h3>Console</h3>

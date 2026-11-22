@@ -108,6 +108,41 @@
     #hist-table td { border:none; padding:2px 6px; }
     #hist-table td.num, #hist-table td.act { text-align:left; }
   }
+  /* Recordings */
+  .bbadge.rec { background:#3d1b1b; color:#ff9b9b; } .bbadge.play { background:#1d2a44; color:#9ecbff; }
+  #rec-table td.act { text-align:left; padding-top:0; }
+  #rec-table tr.datarow td { border-bottom:none; }
+  #rec-table td.act button { padding:2px 7px; font-size:12px; }
+  #rec-table td.nm { overflow-wrap:anywhere; }
+  #rec-toggle.recording { background:#3d1b1b; border-color:var(--err); color:#ff9b9b; }
+  #rec-toggle:not(.recording) .rdot { color:var(--err); }
+  button:disabled { opacity:.45; cursor:default; } button:disabled:hover { border-color:var(--line); }
+  #rec-replay { margin:0 0 10px; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:#141a21; }
+  .pbar { height:8px; border-radius:4px; background:#0b0e11; border:1px solid var(--line); overflow:hidden; margin:6px 0 0; }
+  .pbar > div { height:100%; width:0; background:var(--accent); transition:width .3s linear; }
+  #rec-notice { margin:0 0 10px; padding:8px 10px; border:1px solid #6b5a2a; border-radius:6px; background:#1d1a12; overflow-wrap:anywhere; }
+  .rr { margin-top:12px; padding:10px 12px; border:1px solid var(--line); border-left:5px solid var(--line); border-radius:8px; background:#12161b; }
+  .rr.pass { border-left-color:var(--ok); } .rr.fail { border-left-color:var(--err); }
+  .rr-head { display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 12px; }
+  .rr-big { font-size:22px; font-weight:700; letter-spacing:.04em; }
+  .rr.pass .rr-big { color:#7fe0b1; } .rr.fail .rr-big { color:#ff9b9b; }
+  .rr-sum { margin:6px 0; color:var(--muted); overflow-wrap:anywhere; }
+  .rr ul { margin:6px 0; padding-left:18px; color:var(--muted); }
+  .rr details { margin-top:8px; }
+  .rr summary { cursor:pointer; color:var(--muted); }
+  table.diffs td, table.diffs th { font-size:13px; }
+  table.diffs .k { white-space:nowrap; }
+  table.diffs tr.warn td { color:var(--muted); }
+  .pill.pass { background:#173a2c; color:#7fe0b1; } .pill.fail { background:#3d1b1b; color:#ff9b9b; }
+  @media (max-width: 600px) {
+    #rec-table thead, table.diffs thead { display:none; }
+    #rec-table, #rec-table tbody, #rec-table tr, #rec-table td, table.diffs, table.diffs tbody, table.diffs tr, table.diffs td { display:block; }
+    #rec-table tr, table.diffs tr { border-bottom:1px solid var(--line); padding:6px 0; }
+    #rec-table td, table.diffs td { border:none; padding:2px 6px; }
+    #rec-table td.act, #rec-table td.num { text-align:left; white-space:normal; }
+    #rec-table tr.datarow { border-bottom:none; padding-bottom:0; }
+    table.diffs td::before { content:attr(data-l) " "; color:var(--muted); font-size:11px; }
+  }
   #files-missing .disk { flex-basis:100%; font-size:12px; overflow-wrap:anywhere; }
 </style>
 </head>
@@ -217,6 +252,25 @@
       <table id="hist-table"><thead><tr><th>Time</th><th>Program</th><th>Reason</th><th class="num">Size</th><th></th></tr></thead><tbody></tbody></table>
       <div id="hist-empty" class="muted" style="padding:10px 6px" hidden>No snapshots yet.</div>
     </section>
+    <section style="margin-top:16px" id="rec-sec">
+      <h2>Recordings · slot <span class="sel-num2">1</span></h2>
+      <div class="bar">
+        <button id="rec-toggle" title="Record every input to this slot's program (panels, EISC, forced signals) and the feedback it sends back"><span class="rdot">●</span> <span id="rec-toggle-label">Record</span></button>
+        <span id="rec-status" class="mono muted"></span>
+        <span style="flex:1"></span>
+        <label class="muted" title="Also send the inputs that came from the other end of an EISC link. Turn this off if the other slot is running and drives the EISC itself."><input type="checkbox" id="rec-eisc" checked> include EISC inputs</label>
+        <button id="rec-up" title="Add a recording file you downloaded earlier">Upload</button>
+        <input type="file" id="rec-pick" accept=".json,application/json" hidden>
+      </div>
+      <div id="rec-notice" hidden></div>
+      <div id="rec-replay" hidden>
+        <div class="bar" style="margin:0"><span id="rec-replay-text"></span><span style="flex:1"></span><button id="rec-cancel" title="Stop the replay now">Cancel</button></div>
+        <div class="pbar"><div id="rec-fill"></div></div>
+      </div>
+      <table id="rec-table"><thead><tr><th>Name</th><th>Recorded</th><th class="num">Length</th><th class="num">Inputs / feedback</th><th>Last replay</th></tr></thead><tbody></tbody></table>
+      <div id="rec-empty" class="muted" style="padding:10px 6px" hidden>No recordings yet. Press Record, use the room, then Stop.</div>
+      <div id="rec-result"></div>
+    </section>
     <div class="grid2" style="margin-top:16px">
       <section id="console-sec">
         <div class="sec-head">
@@ -303,6 +357,8 @@ function renderBoard() {
     const online = s.devices.filter(d => d.online).length;
     const eps = m ? `${m.eventsPerSecond.toFixed(1)} ev/s` : "– ev/s";
     const flags = (problems.length ? `<span class="bbadge" title="${esc(problems.join("\n"))}">${problems.length > 1 ? problems.length + " problems" : "problem"}</span>` : "")
+      + (s.recording === "recording" ? `<span class="bbadge rec" title="This slot is recording its inputs and feedback">● recording</span>` : "")
+      + (s.recording === "replaying" ? `<span class="bbadge play" title="A recording is being replayed into this slot">▶ replaying</span>` : "")
       + (s.watching ? `<span class="bbadge auto" title="${esc("Reloads when this file changes: " + s.watching)}">auto-reload</span>` : "");
     const label = `Slot ${s.number}${typeof s.roomId === "string" ? ", room " + s.roomId : ""}: ${s.program ?? "empty"}, ${st}`;
     return `<div class="btile st-${st}${s.number === sel ? " sel" : ""}" data-n="${s.number}" role="button" tabindex="0" aria-label="${esc(label)}" title="${esc("Select slot " + s.number)}">
@@ -524,6 +580,7 @@ function select(n) {
   if (n !== sel) iptSel = null;
   sel = n; $("#sel-num").textContent = n; document.querySelectorAll(".sel-num2").forEach(e => e.textContent = n);
   refreshSlots(); refreshIpTable(); connectLog(); loadLog(); fPath = ""; refreshFiles(); refreshHistory();
+  if (typeof resetRecordings === "function") resetRecordings();
 }
 
 $("#open-debugger").onclick = () => window.open(`debugger.html?slot=${sel}`, `openvp-debugger-${sel}`);
@@ -811,8 +868,163 @@ drop.ondrop = async e => {
   uploadFiles(out);
 };
 
+
+// ------------------------------------------------------------------ recordings (record and replay as a regression test)
+
+let recSt = null, recList = [], recShownKey = "";
+const recBase = () => `/api/slots/${sel}`;
+const fmtDur = ms => { const s = Math.max(0, ms) / 1000; return s >= 60 ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}` : `${s.toFixed(1)} s`; };
+const fmtAt = ms => { const s = Math.max(0, ms) / 1000, m = Math.floor(s / 60); return `${m}:${(s - m * 60).toFixed(2).padStart(5, "0")}`; };
+const fmtVal = v => typeof v === "boolean" ? (v ? "1" : "0") : typeof v === "string" ? JSON.stringify(v) : v == null ? "–" : String(v);
+const jsonPost = body => ({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body ?? {}) });
+
+try { $("#rec-eisc").checked = localStorage.getItem("openvp.replayEisc") !== "0"; } catch { }
+$("#rec-eisc").onchange = () => { try { localStorage.setItem("openvp.replayEisc", $("#rec-eisc").checked ? "1" : "0"); } catch { } };
+
+async function pollRecording() {
+  const n = sel;
+  let st;
+  try { st = await api(`/api/slots/${n}/recording/status`); } catch { return; }
+  if (n !== sel) return;
+  const prev = recSt; recSt = st;
+  renderRecStatus(st);
+  const was = prev?.mode, rp = st.replay;
+  if ((was === "recording" && st.mode !== "recording") || (st.notice && st.notice !== prev?.notice)) refreshRecordings();
+  if (rp && rp.state !== "running") {
+    const key = `${n}|${rp.recordingId}|${rp.state}|${rp.report?.id ?? ""}`;
+    if (key !== recShownKey) {
+      recShownKey = key;
+      if (rp.state === "done") showReport(rp.report);
+      else $("#rec-result").innerHTML = `<div class="rr fail"><div class="rr-head"><span class="rr-big">${rp.state === "cancelled" ? "CANCELLED" : rp.state === "aborted" ? "STOPPED" : "ERROR"}</span><b>${esc(rp.name)}</b></div><div class="rr-sum">${esc(rp.message || (rp.state === "cancelled" ? "The replay was cancelled, so there is no result." : ""))}</div></div>`;
+      refreshRecordings();
+    }
+  }
+}
+
+function renderRecStatus(st) {
+  const recording = st.mode === "recording", replaying = st.mode === "replaying";
+  const t = $("#rec-toggle");
+  t.classList.toggle("recording", recording);
+  $("#rec-toggle-label").textContent = recording ? "Stop" : "Record";
+  t.querySelector(".rdot").textContent = recording ? "■" : "●";
+  t.disabled = replaying;
+  $("#rec-status").textContent = recording
+    ? `${fmtDur(st.recording.elapsedMs)} · ${st.recording.inputs} input${st.recording.inputs === 1 ? "" : "s"} captured · ${st.recording.counts.feedback} feedback${st.recording.limitReached ? " · limit reached" : ""}`
+    : "";
+  const n = $("#rec-notice");
+  n.hidden = !st.notice; n.textContent = st.notice || "";
+  const rp = st.replay, box = $("#rec-replay");
+  box.hidden = !replaying;
+  if (replaying && rp) {
+    $("#rec-replay-text").textContent = `Replaying “${rp.name}”${rp.fast ? " (fast)" : ""} · ${fmtDur(rp.elapsedMs)} of ${rp.totalMs ? fmtDur(rp.totalMs) : "…"}`;
+    $("#rec-fill").style.width = `${Math.round(rp.progress * 100)}%`;
+  }
+  document.querySelectorAll("#rec-table button[data-needs-idle]").forEach(b => b.disabled = st.mode !== "idle");
+  $("#rec-up").disabled = recording;
+}
+
+async function refreshRecordings() {
+  const n = sel;
+  let list;
+  try { list = await api(`/api/slots/${n}/recordings`); }
+  catch (e) { if (n === sel) { $("#rec-table tbody").innerHTML = ""; $("#rec-empty").hidden = false; $("#rec-empty").textContent = e.message; } return; }
+  if (n !== sel) return;
+  recList = list;
+  const tb = $("#rec-table tbody"); tb.innerHTML = "";
+  $("#rec-empty").hidden = list.length > 0; $("#rec-empty").textContent = "No recordings yet. Press Record, use the room, then Stop.";
+  for (const r of list) {
+    const c = r.counts, tr = document.createElement("tr");
+    const last = r.lastPassed == null ? `<span class="muted">not replayed</span>` : `<span class="pill ${r.lastPassed ? "pass" : "fail"}">${r.lastPassed ? "PASS" : "FAIL"}</span> <span class="muted">${esc(new Date(r.lastReplayAt).toLocaleString())}</span>`;
+    tr.innerHTML = `<td class="nm"><b></b><div class="muted mono"></div></td><td>${esc(new Date(r.recordedAt).toLocaleString())}</td><td class="num">${fmtDur(r.durationMs)}</td>
+      <td class="num muted" title="Panel inputs + EISC inputs + forced signals, then feedback changes">${c.inputs + c.eiscInputs + c.forces} / ${c.feedback}</td><td>${last}</td></tr>`;
+    tr.className = "datarow";
+    const tr2 = document.createElement("tr"); tr2.innerHTML = `<td class="act" colspan="5"></td>`;
+    tr.querySelector("b").textContent = r.name;
+    tr.querySelector(".mono").textContent = r.program ? `${r.program}${r.endedBy !== "stopped" ? " · ended: " + r.endedBy : ""}` : "";
+    const act = tr2.querySelector(".act");
+    const btn = (label, title, fn, needsIdle) => { const b = document.createElement("button"); b.textContent = label; b.title = title; b.onclick = fn; if (needsIdle) b.dataset.needsIdle = "1"; act.appendChild(b); act.append(" "); };
+    btn("Replay", "Send the recorded inputs with their original timing and compare the feedback", () => startReplay(r, false), true);
+    btn("Replay fast", "Same, but idle gaps longer than 1 s are shortened to 1 s", () => startReplay(r, true), true);
+    if (r.lastPassed != null) btn("Result", "Show the latest replay result", async () => {
+      try { showReport(await api(`/api/slots/${sel}/recordings/${r.id}/report`)); } catch (e) { alert(e.message); }
+    });
+    btn("Download", "Save the recording as a file, to keep with a project or share", () => { location.href = `/api/slots/${sel}/recordings/${r.id}/download`; });
+    btn("Rename", "Rename this recording", async () => {
+      const name = await askName("Rename recording:", r.name); if (!name || name === r.name) return;
+      try { await api(`/api/slots/${sel}/recordings/${r.id}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) }); } catch (e) { alert(e.message); }
+      refreshRecordings();
+    });
+    btn("Delete", "Delete this recording and its results", async () => {
+      if (!confirm(`Delete the recording “${r.name}”?`)) return;
+      try { await api(`/api/slots/${sel}/recordings/${r.id}`, { method: "DELETE" }); } catch (e) { alert(e.message); }
+      refreshRecordings();
+    });
+    tb.appendChild(tr); tb.appendChild(tr2);
+  }
+  if (recSt) renderRecStatus(recSt);
+}
+
+$("#rec-toggle").onclick = async () => {
+  const n = sel;
+  try {
+    if (recSt?.mode === "recording") {
+      const s = boardSlots.find(x => x.number === n);
+      const stamp = new Date(); const p2 = x => String(x).padStart(2, "0");
+      const dflt = `${s?.program || "Recording"} ${stamp.getFullYear()}-${p2(stamp.getMonth() + 1)}-${p2(stamp.getDate())} ${p2(stamp.getHours())}:${p2(stamp.getMinutes())}:${p2(stamp.getSeconds())}`;
+      const name = await askName("Name this recording (Cancel keeps the suggested name):", dflt);
+      await api(`/api/slots/${n}/recording/stop`, jsonPost({ name: name || dflt }));
+    } else {
+      $("#rec-result").innerHTML = ""; recShownKey = "";
+      await api(`/api/slots/${n}/recording/start`, jsonPost());
+    }
+  } catch (e) { alert(e.message); }
+  await pollRecording(); refreshRecordings(); refreshBoard();
+};
+
+async function startReplay(r, fast) {
+  try {
+    await api(`${recBase()}/recordings/${r.id}/replay`, jsonPost({ fast, includeEisc: $("#rec-eisc").checked }));
+    $("#rec-result").innerHTML = ""; recShownKey = "";
+  } catch (e) { alert(e.message); }
+  await pollRecording(); refreshBoard();
+}
+
+$("#rec-cancel").onclick = async () => {
+  try { await api(`${recBase()}/replay/cancel`, jsonPost()); } catch (e) { alert(e.message); }
+  pollRecording();
+};
+
+$("#rec-up").onclick = () => $("#rec-pick").click();
+$("#rec-pick").onchange = async () => {
+  const f = $("#rec-pick").files[0]; $("#rec-pick").value = "";
+  if (!f) return;
+  const fd = new FormData(); fd.append("file", f);
+  try { await api(`${recBase()}/recordings`, { method: "POST", body: fd }); } catch (e) { alert(e.message); }
+  refreshRecordings();
+};
+
+function showReport(rep) {
+  const fails = rep.differences.filter(d => d.severity === "fail"), warns = rep.differences.filter(d => d.severity !== "fail");
+  const c = rep.counts;
+  const row = d => `<tr class="${d.severity}"><td class="k" data-l="Result">${esc(({ final: "final state", input: "not sent", baseline: "start state" })[d.kind] || d.kind)}${d.severity === "warn" ? " (warning)" : ""}</td><td class="k" data-l="Device">${d.ip == null ? "–" : "IP ID " + d.ip.toString(16).toUpperCase().padStart(2, "0")}</td><td class="k mono" data-l="Join">${esc(d.join ?? "–")}</td>
+    <td class="mono" data-l="Expected">${d.kind === "input" || d.kind === "baseline" ? esc(d.message) : esc(fmtVal(d.expected))}</td><td class="mono" data-l="Actual">${d.kind === "input" || d.kind === "baseline" ? "" : esc(fmtVal(d.actual))}</td>
+    <td class="k mono" data-l="Recording time">${d.timeMs != null ? fmtAt(d.timeMs) : d.actualTimeMs != null ? "replay " + fmtAt(d.actualTimeMs) : "–"}</td></tr>`;
+  const table = list => `<table class="diffs"><thead><tr><th>Difference</th><th>Device</th><th>Join</th><th>Expected</th><th>Actual</th><th>Recording time</th></tr></thead><tbody>${list.map(row).join("")}</tbody></table>`;
+  $("#rec-result").innerHTML = `<div class="rr ${rep.passed ? "pass" : "fail"}">
+    <div class="rr-head"><span class="rr-big">${rep.passed ? "PASS" : "FAIL"}</span><b>${esc(rep.recordingName)}</b><span class="muted">${esc(new Date(rep.startedAt).toLocaleString())} · ${rep.fast ? "fast" : "original timing"} · ${fmtDur(rep.replayMs)}</span></div>
+    <div class="rr-sum">${c.matched} of ${c.feedbackExpected} feedback changes matched · ${c.missing} missing · ${c.different} different · ${c.extra} extra · ${c.finalDifferences} final-state differences · sent ${c.inputsSent + c.eiscInputsSent} input${c.inputsSent + c.eiscInputsSent === 1 ? "" : "s"} and ${c.forcesSent} force${c.forcesSent === 1 ? "" : "s"}${c.undelivered ? ` · ${c.undelivered} couldn't be sent` : ""}${rep.program ? ` · program ${esc(rep.program)}` : ""}</div>
+    ${fails.length ? `<div class="scroll-x">${table(fails)}</div>` : ""}
+    ${warns.length ? `<details ${fails.length ? "" : "open"}><summary>${warns.length} warning${warns.length === 1 ? "" : "s"} (don't affect the result)</summary><div class="scroll-x">${table(warns)}</div></details>` : ""}
+    ${rep.notes.length ? `<ul>${rep.notes.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+    ${rep.truncated ? `<div class="muted">More differences than are listed here; the counts above are complete.</div>` : ""}
+  </div>`;
+}
+
+function resetRecordings() { recSt = null; recShownKey = ""; $("#rec-result").innerHTML = ""; $("#rec-notice").hidden = true; $("#rec-replay").hidden = true; refreshRecordings(); pollRecording(); }
+
 select(1);
 refreshHistory();
+setInterval(() => { if (!document.hidden) pollRecording(); }, 700);
 setInterval(refreshSlots, 3000);
 refreshBoard(); setInterval(refreshBoard, 2000);
 setInterval(() => { if (!document.hidden) refreshIpTable(); }, 2000);

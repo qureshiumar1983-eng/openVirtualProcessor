@@ -172,6 +172,39 @@ Before OpenVP loads a program into a slot that already has one, it saves a **sna
 
 **Roll back** puts the slot back as it was: the running program is unloaded, the program files, NVRAM and User folders are replaced with the snapshot's, and the program is loaded again (and started, if it was running). The current state is saved first as a `before roll back` snapshot, so a roll back can be undone. Rolling back stops "reload when the file changes" for the slot. The Room ID (`slot.json`) isn't saved or restored. Snapshots are in `data/snapshots/slotNN/`.
 
+### Record and replay
+
+Use a recording as a regression test for a slot: record what a person does to a room, load a new program version, replay it, and get PASS or FAIL for whether the program still answers the same way. In the console, the **Recordings** section of the selected slot has **● Record** / **■ Stop**, and a list with **Replay**, **Replay fast**, **Result**, **Download**, **Rename**, **Delete** and **Upload**.
+
+**What is recorded**, with its time since the start:
+
+- **Inputs** from devices: digital presses, analog levels and serial text from browser panels and CIP panels (source `panel`), and what arrives over an EISC link from another slot (source `eisc`). Each has the IP ID, join and value.
+- **Forces** from the debugger: set, clear, pulse, toggle and values, all of which go through `POST /api/slots/{n}/signals` (the debugger window and the Paths view use only that; nothing arrives over `/ws/trace`). A force is recorded once, as a force, even when it works by sending a device input.
+- **Feedback** the program sends to each device, as a change of join and value, so there is something to compare. Devices that register after recording started (or again after a reload) are followed too.
+- Each device's feedback when recording started and when it stopped.
+
+A recording is saved as JSON in `data/recordings/slotNN/<id>.json` with its name (by default the program name and time), the program name and file at the time, its length and counts. A replay needs a running program; only one recording or replay runs per slot at a time, and either ends cleanly, keeping what it has, if the program is unloaded or replaced. Recordings are only as repeatable as the room: start recording from a state you can get back to, such as right after loading, because a replay sends the inputs and nothing else. Before a replay, every input join the recording uses is set back to what it held when recording started (a level left at 40000 by the last session would otherwise swallow the recorded 40000); the report notes which. What the program itself remembers can't be reset: toggles, interlocks and counters keep their state, so for a program that holds state, load it fresh before recording and again before each replay. A replay warns when the starting feedback differs from when you recorded, or when the first recorded input to a join equals the value the device already holds (an unchanged value is not an input).
+
+**Replay timing.** *Replay* sends each input after the same gap as recorded, so timers and delays in the program behave as before. *Replay fast* shortens any gap longer than 1 s to 1 s and keeps shorter ones exactly. Feedback is expected at the same distance after the input before it as it had in the recording: a lamp that came on 2 s after a press is expected 2 s after the press, fast or not, because the program's timers run in real time. A program with long delays between inputs can therefore differ in fast mode; use the original timing for it. The replay ends 500 ms after the last expected feedback.
+
+**How the comparison works.** Each recorded feedback change (device, join, value, time) must have a replay change to the same join and value within ±500 ms of where it is expected, and each replay change matches only one.
+
+| Result | Meaning | Effect |
+|---|---|---|
+| matched | The value arrived in the window | |
+| different | The join changed in the window, but to another value | FAIL |
+| missing | Nothing arrived in the window | FAIL |
+| extra | The replay changed a join the recording didn't, or at another time | warning |
+| final state | A device ends with a different value for a join than the recording did (a join already listed as different or missing isn't listed again) | FAIL |
+| input | A recorded input or force couldn't be sent: its IP ID isn't registered, or the signal name is unknown | FAIL |
+| starting state | Feedback differs from when recording started, or an input wouldn't register | warning |
+
+Extra feedback is only a warning, unless the device also ends in a different state. The windows are wide on purpose, so a program that flips a join back and forth within half a second can match by accident; the final state check still catches a different outcome. The report lists each difference with the IP ID, join, expected value, actual value and the time in the recording where it was expected, and the last 5 reports of each recording are kept.
+
+**EISC.** Inputs that come in over an EISC from another slot are recorded as `eisc` inputs. On replay, *include EISC inputs* (on by default) sends them again, so the slot can be tested alone. If the other slot is running and drives that EISC itself, turn it off, or the inputs arrive twice (a value that is already there is not sent on, but timing can differ); the report notes which you chose. Feedback the slot sends out over its own EISC is compared like any other, and on a real replay it also reaches the other slot, which may react to it.
+
+Download a recording to keep it with a project, and Upload it into any slot (it gets a new ID); the IP IDs and signal names must match the program. Nothing else may press, force or drive the slot's panels during a replay, or the result will show it.
+
 ### Debugger
 
 Click **Open debugger** in the console (or go to `/debugger.html?slot=N`). It's laid out like the classic SIMPL Debugger:
@@ -273,6 +306,14 @@ Every endpoint except `/api/info` and `/api/login` needs the access key (see [Se
 | GET / POST | `/api/slots/{n}/snapshots` | List the slot's snapshots, newest first (id, time, program, file, reason, size) · save one now |
 | POST | `/api/slots/{n}/snapshots/{id}/restore` | Roll back: saves the current state first, replaces the program files, NVRAM and User with the snapshot's, loads the program, and starts it if it was running. Returns the slot, or 404 for an unknown id |
 | DELETE | `/api/slots/{n}/snapshots/{id}` | Delete a snapshot |
+| GET | `/api/slots/{n}/recording/status` | What the slot is doing: `mode` (`idle`, `recording`, `replaying`), recording elapsed time and counts, replay progress and, once finished, its report. The console polls it |
+| POST | `/api/slots/{n}/recording/start` · `recording/stop` | Start recording · stop and save it, with an optional `{"name":"..."}` (409 if busy or there's no program) |
+| GET / POST | `/api/slots/{n}/recordings` | List the slot's recordings (name, program, length, counts, last result) · upload one as multipart `file` (and optional `name`); it gets a new id |
+| GET / PUT / DELETE | `/api/slots/{n}/recordings/{id}` | The recording as JSON · `{"name":"..."}` renames it · delete it with its reports. Ids are the ones the list returns; anything else is a 404 |
+| GET | `/api/slots/{n}/recordings/{id}/download` | The recording as a file |
+| POST | `/api/slots/{n}/recordings/{id}/replay` | `{"fast":false,"includeEisc":true}`: replay it in the background (409 if the slot is busy or the program isn't running) |
+| POST | `/api/slots/{n}/replay/cancel` | Cancel the replay under way |
+| GET | `/api/slots/{n}/recordings/{id}/report` · `reports` | The latest replay report (404 if it has never been replayed) · the last 5 |
 | GET | `/api/unsupported` | Everything programs used that isn't supported yet, as the Markdown file (`?format=json` for JSON). See [Compatibility](#compatibility) |
 | GET | `/api/log?slot=n` · `/api/devices` | |
 | GET | `/api/metrics` | CPU, memory, threads and per-slot activity; `?history=false` leaves out the five-minute history. `/ws/metrics` sends the same once a second |

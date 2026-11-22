@@ -89,6 +89,8 @@ public static class OpenVpServer
         // Slots loaded from a file on this computer with "reload when it changes" on: the watch on that file.
         var watches = new SourceWatch?[processor.Slots.Count];
 
+        var recordings = new SlotRecordings(processor, new RecordingStore(processor.DataDirectory));
+
         object SlotDto(ProgramSlot s) => new
         {
             number = s.Number,
@@ -99,6 +101,7 @@ public static class OpenVpServer
             file = s.ProgramPath is null ? null : Path.GetFileName(s.ProgramPath),
             error = s.LastError,
             watching = watches[s.Number - 1]?.Program,
+            recording = recordings.Busy(s.Number),
             devices = s.Devices.OrderBy(d => d.IpId).Select(DeviceDto)
         };
 
@@ -532,18 +535,98 @@ public static class OpenVpServer
 
         slotApi.MapPost("/signals", (int n, JsonElement body) =>
         {
-            var rt = processor.Slot(n).Runtime;
-            if (rt == null) return Results.NotFound("No program in that slot.");
+            var slot = processor.Slot(n);
+            if (slot.Runtime == null) return Results.NotFound("No program in that slot.");
             if (!body.TryGetProperty("name", out var nameEl))
                 return Results.BadRequest("Send {\"name\": \"...\", \"value\": ...} or {\"name\": \"...\", \"pulse\": true}.");
             var name = nameEl.GetString() ?? "";
             // Pulse: high then low with nothing in between, like a processor's debugger.
             if (body.TryGetProperty("pulse", out var pulseEl) && pulseEl.ValueKind == JsonValueKind.True)
-                return rt.TryPulseSignal(name) ? Results.Ok() : Results.NotFound($"Unknown or non-digital signal '{name}'.");
+                return slot.ForcePulse(name) ? Results.Ok() : Results.NotFound($"Unknown or non-digital signal '{name}'.");
             if (!body.TryGetProperty("value", out var valueEl))
                 return Results.BadRequest("Send {\"name\": \"...\", \"value\": ...} or {\"name\": \"...\", \"pulse\": true}.");
-            return rt.TrySetSignal(name, ValueOf(valueEl)) ? Results.Ok() : Results.NotFound($"Unknown signal '{name}'.");
+            return slot.ForceSignal(name, ValueOf(valueEl)) ? Results.Ok() : Results.NotFound($"Unknown signal '{name}'.");
         });
+
+        // ---- Record and replay: a slot's inputs and the feedback they caused, replayed as a regression test.
+        // Forces from the debugger go through ProgramSlot.ForceSignal / ForcePulse (above), which is how they get recorded.
+        IResult Recordings(Func<IResult> action)
+        {
+            try { return action(); }
+            catch (ArgumentException e) { return Results.BadRequest(new { error = e.Message }); }
+            catch (RecordingFormatException e) { return Results.BadRequest(new { error = e.Message }); }
+            catch (KeyNotFoundException e) { return Results.NotFound(new { error = e.Message }); }
+            catch (InvalidOperationException e) { return Results.Json(new { error = e.Message }, statusCode: 409); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            { return Results.Json(new { error = $"Couldn't read or write the recording: {e.Message}" }, statusCode: 500); }
+        }
+
+        string? NameFrom(JsonElement body) =>
+            body.ValueKind == JsonValueKind.Object && body.TryGetProperty("name", out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
+        bool Flag(JsonElement body, string key, bool dflt) =>
+            body.ValueKind == JsonValueKind.Object && body.TryGetProperty(key, out var v) && v.ValueKind is JsonValueKind.True or JsonValueKind.False ? v.GetBoolean() : dflt;
+
+        slotApi.MapGet("/recording/status", (int n) => recordings.Status(n));
+
+        slotApi.MapPost("/recording/start", (int n) => Recordings(() =>
+        {
+            recordings.StartRecording(n);
+            processor.Slot(n).Log("Notice", "Recording started.");
+            return Results.Ok(recordings.Status(n));
+        }));
+
+        slotApi.MapPost("/recording/stop", (int n, JsonElement? body) => Recordings(() =>
+            Results.Ok(new { recording = recordings.StopRecording(n, body is { } b ? NameFrom(b) : null), status = recordings.Status(n) })));
+
+        slotApi.MapPost("/replay/cancel", (int n) =>
+            recordings.CancelReplay(n) ? Results.Ok(recordings.Status(n)) : Results.Json(new { error = "Nothing is being replayed." }, statusCode: 409));
+
+        slotApi.MapGet("/recordings", (int n) => recordings.Store.List(n));
+
+        slotApi.MapPost("/recordings", async (int n, HttpRequest req) =>
+        {
+            if (!req.HasFormContentType) return Results.BadRequest(new { error = "Send the recording as multipart/form-data field 'file'." });
+            var form = await req.ReadFormAsync();
+            var file = form.Files["file"] ?? form.Files.FirstOrDefault();
+            if (file == null) return Results.BadRequest(new { error = "No file." });
+            if (file.Length > RecordingStore.MaxFileBytes) return Results.BadRequest(new { error = "That file is too large to be a recording." });
+            var bytes = ReadAll(file);
+            var name = form["name"].ToString();
+            return Recordings(() => Results.Ok(recordings.Store.Import(n, bytes, string.IsNullOrWhiteSpace(name) ? null : name)));
+        });
+
+        slotApi.MapGet("/recordings/{id}", (int n, string id) =>
+            recordings.Store.ReadFile(n, id) is { } bytes ? Results.Bytes(bytes, "application/json") : Results.NotFound(new { error = "There's no such recording." }));
+
+        slotApi.MapGet("/recordings/{id}/download", (int n, string id) =>
+        {
+            var info = recordings.Store.Get(n, id);
+            var bytes = info == null ? null : recordings.Store.ReadFile(n, id);
+            if (info == null || bytes == null) return Results.NotFound(new { error = "There's no such recording." });
+            var safe = new string(info.Name.Select(c => char.IsLetterOrDigit(c) || c is ' ' or '-' or '_' or '.' ? c : '_').ToArray()).Trim();
+            return Results.File(bytes, "application/json", (safe.Length == 0 ? "recording" : safe) + ".openvp-recording.json");
+        });
+
+        slotApi.MapPut("/recordings/{id}", (int n, string id, JsonElement body) => Recordings(() =>
+            recordings.Store.Rename(n, id, NameFrom(body)) is { } info ? Results.Ok(info) : Results.NotFound(new { error = "There's no such recording." })));
+
+        slotApi.MapDelete("/recordings/{id}", (int n, string id) => Recordings(() =>
+            recordings.Store.Delete(n, id) ? Results.Ok(new { deleted = id }) : Results.NotFound(new { error = "There's no such recording." })));
+
+        slotApi.MapPost("/recordings/{id}/replay", (int n, string id, JsonElement? body) => Recordings(() =>
+        {
+            var b = body ?? default;
+            recordings.StartReplay(n, id, new ReplayOptions { Fast = Flag(b, "fast", false), IncludeEisc = Flag(b, "includeEisc", true) });
+            return Results.Ok(recordings.Status(n));
+        }));
+
+        slotApi.MapGet("/recordings/{id}/report", (int n, string id) =>
+            recordings.Store.Get(n, id) == null ? Results.NotFound(new { error = "There's no such recording." })
+            : recordings.Store.LatestReport(n, id) is { } r ? Results.Ok(r) : Results.NotFound(new { error = "This recording hasn't been replayed yet." }));
+
+        slotApi.MapGet("/recordings/{id}/reports", (int n, string id) =>
+            recordings.Store.Get(n, id) == null ? Results.NotFound(new { error = "There's no such recording." }) : Results.Ok(recordings.Store.Reports(n, id)));
 
         // Step-through debugging. GET the state; POST { enabled?, onlyBreakSignals?, breakSignals? } to change it.
         slotApi.MapGet("/step", (int n) => StepDto(processor.Slot(n)));
@@ -861,7 +944,7 @@ public static class OpenVpServer
             catch (Exception e) { Console.WriteLine($"Autoload slot {n} failed: {e.Message}"); }
         }
 
-        app.Lifetime.ApplicationStopping.Register(() => { for (var i = 1; i <= watches.Length; i++) StopWatching(i); cip?.Dispose(); processor.Dispose(); });
+        app.Lifetime.ApplicationStopping.Register(() => { for (var i = 1; i <= watches.Length; i++) StopWatching(i); cip?.Dispose(); recordings.Dispose(); processor.Dispose(); });
         return app;
     }
 
