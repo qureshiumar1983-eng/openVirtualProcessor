@@ -22,7 +22,8 @@ public static class SimplTests
     public static void Parser_reads_symbols_signals_and_groups()
     {
         var f = SmwFile.Load(SampleSmw);
-        Assert.Equal("OpenVP SIMPL sample", f.ProgramName, "program name");
+        Assert.Equal("SampleProgram", f.ProgramName, "program name (the file name)");
+        Assert.Equal("SampleProgram", f.ProgramIdTag, "no Program ID Tag: falls back to the program name");
         var panel = f.Symbols[21];
         Assert.Equal(13, panel.Inputs.Count, "panel input pins");
         Assert.Equal(10, panel.InputGroups[0], "digital inputs");

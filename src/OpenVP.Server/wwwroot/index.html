@@ -544,14 +544,14 @@ async function refreshFiles() {
   }
 }
 
-// SIMPL+ MakeProgramFilename("\\NVRAM\\x") reads \NVRAM\{program name}\x, so point at that folder.
+// SIMPL+ MakeProgramFilename("\\NVRAM\\x") reads \NVRAM\{Program ID Tag}\x, so point at that folder.
 function renderHint(d) {
   const h = $("#files-hint"), name = d.programFolder;
   if (!name || d.path) { h.hidden = true; return; }
   const label = fRoot === "nvram" ? "NVRAM" : "USER";
   const exists = d.entries.some(e => e.folder && e.name === name);
   h.hidden = false;
-  h.innerHTML = `Programs that use <span class="mono">MakeProgramFilename</span> read from <span class="mono">\\${label}\\${esc(name)}\\</span> (the Program Name in the program header). `;
+  h.innerHTML = `Programs that use <span class="mono">MakeProgramFilename</span> read from <span class="mono">\\${label}\\${esc(name)}\\</span> (the Program ID Tag in the program header). `;
   const b = document.createElement("button");
   b.textContent = exists ? `Open ${name}` : `Create ${name} folder`;
   b.onclick = async () => {

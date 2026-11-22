@@ -26,6 +26,13 @@ public interface IProgramRuntime : IDisposable
     /// <summary>Program name shown in the console.</summary>
     string ProgramName { get; }
 
+    /// <summary>
+    /// The Program ID Tag from the SIMPL Windows program header (falls back to <see cref="ProgramName"/>).
+    /// Names the program's own folders (<c>\NVRAM\{tag}\</c> via SIMPL+ MakeProgramFilename) and is what
+    /// <c>InitialParametersClass.ProgramIDTag</c> returns.
+    /// </summary>
+    string ProgramIdTag => ProgramName;
+
     void Start();
     void Stop();
 

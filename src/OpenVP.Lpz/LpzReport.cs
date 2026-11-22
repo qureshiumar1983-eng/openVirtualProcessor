@@ -10,6 +10,7 @@ public static class LpzReport
         var sb = new StringBuilder();
         var logic = pkg.Logic;
         sb.AppendLine($"Program:   {pkg.ProgramName}");
+        sb.AppendLine($"ID tag:    {pkg.ProgramIdTag}");
         sb.AppendLine($"Target:    {pkg.Target}   compiled {pkg.Boot.GetValueOrDefault("CompileDateTime")} with {pkg.Boot.GetValueOrDefault("SourceEnvironmentVersion")}");
         sb.AppendLine($"Logic:     {logic.Symbols.Count} compiled symbols (boot.bt says {pkg.Boot.GetValueOrDefault("NumberSymbols")}), " +
                       $"signals up to #{logic.MaxSignal} (boot.bt says {pkg.Boot.GetValueOrDefault("NumberSignals")})");

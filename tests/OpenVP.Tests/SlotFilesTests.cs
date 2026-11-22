@@ -89,14 +89,15 @@ public static class ProgramFolderTests
         Assert.Equal(@"\NVRAM\Program\c.txt", SlotFiles.ProgramFilename(@"\NVRAM\c.txt", null), "no program loaded");
     }
 
-    static string Lpz(string header, string? archivedSmw = null)
+    static string Lpz(string header, string? archivedSmw = null, string? friendlyName = null)
     {
         var path = Path.Combine(Paths.TempData(), "p.lpz");
         var bin = LpzTests.Record(31, "LeadingREM", [], [], LpzTests.Int(15, 1), LpzTests.Str(3, header));
         using (var zip = System.IO.Compression.ZipFile.Open(path, System.IO.Compression.ZipArchiveMode.Create))
         {
             void Put(string name, byte[] data) { using var s = zip.CreateEntry(name).Open(); s.Write(data); }
-            Put("boot.bt", System.Text.Encoding.ASCII.GetBytes("[LG_BOOT_DATA]\r\nBinFileName=p.bin\r\nSMWFileName=file_name.smw\r\n"));
+            Put("boot.bt", System.Text.Encoding.ASCII.GetBytes("[LG_BOOT_DATA]\r\nBinFileName=p.bin\r\nSMWFileName=file_name.smw\r\n"
+                + (friendlyName is null ? "" : $"FriendlyName={friendlyName}\r\n")));
             Put("p.bin", bin);
             if (archivedSmw != null)
             {
@@ -110,11 +111,24 @@ public static class ProgramFolderTests
     }
 
     [Test]
-    public static void LpzProgramNameComesFromTheHeader()
+    public static void LpzProgramIdTagComesFromTheHeader()
     {
-        Assert.Equal("Lobby AV", OpenVP.Lpz.LpzPackage.Open(Lpz("Program File: file_name.smw\r\nProgram Name: Lobby AV\r\n")).ProgramName, "compile header");
-        Assert.Equal("Board Room", OpenVP.Lpz.LpzPackage.Open(Lpz("Program File: file_name.smw", "[\r\nObjTp=Hd\r\nPgmNm=Board Room\r\n]\r\n")).ProgramName, "archived .smw");
-        Assert.Equal("file_name", OpenVP.Lpz.LpzPackage.Open(Lpz("Program File: file_name.smw")).ProgramName, "falls back to the file name");
+        var withBoot = OpenVP.Lpz.LpzPackage.Open(Lpz("Program File: file_name.smw", "[\r\nObjTp=Hd\r\nPIT=OTHER\r\n]\r\n", "SLOT01-LOBBY"));
+        Assert.Equal("SLOT01-LOBBY", withBoot.ProgramIdTag, "boot.bt FriendlyName wins");
+        Assert.Equal("file_name", withBoot.ProgramName, "program name is the .smw file name");
+        Assert.Equal("BOARD_ROOM", OpenVP.Lpz.LpzPackage.Open(Lpz("Program File: file_name.smw", "[\r\nObjTp=Hd\r\nPgmNm=Tim\r\nPIT=BOARD_ROOM\r\n]\r\n")).ProgramIdTag, "archived .smw PIT");
+        Assert.Equal("file_name", OpenVP.Lpz.LpzPackage.Open(Lpz("Program File: file_name.smw", "[\r\nObjTp=Hd\r\nPgmNm=Tim\r\n]\r\n")).ProgramIdTag, "PgmNm (the programmer) is ignored");
+        Assert.Equal("file_name", OpenVP.Lpz.LpzPackage.Open(Lpz("Program File: file_name.smw")).ProgramIdTag, "falls back to the file name");
+    }
+
+    [Test]
+    public static void SmwProgramIdTagComesFromTheHeader()
+    {
+        var f = OpenVP.Simpl.SmwFile.Parse("[\r\nObjTp=Hd\r\nPrNm=Lobby AV v2.smw\r\nPgmNm=Tim\r\nPIT=SLOT01-LOBBY\r\n]\r\n");
+        Assert.Equal("Lobby AV v2", f.ProgramName, "PrNm without extension");
+        Assert.Equal("SLOT01-LOBBY", f.ProgramIdTag, "PIT");
+        var noTag = OpenVP.Simpl.SmwFile.Parse("[\r\nObjTp=Hd\r\nPrNm=Lobby.smw\r\nPgmNm=Tim\r\n]\r\n");
+        Assert.Equal("Lobby", noTag.ProgramIdTag, "no PIT: the program name, never PgmNm");
     }
 }
 

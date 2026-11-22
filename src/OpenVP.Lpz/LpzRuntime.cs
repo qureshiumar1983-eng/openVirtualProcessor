@@ -160,6 +160,7 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
 
     public string Kind => "SIMPL Windows (compiled)";
     public string ProgramName => _pkg.ProgramName;
+    public string ProgramIdTag => _pkg.ProgramIdTag;
     public LpzPackage Package => _pkg;
 
     /// <summary>Record types present in the program that OpenVP can't run yet, with counts.</summary>
