@@ -17,7 +17,7 @@
   section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; }
   h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:0 0 10px; }
   .grid { display:grid; grid-template-columns: repeat(5, 1fr); gap:8px; }
-  .btn { padding:14px 0; text-align:center; border-radius:8px; user-select:none; touch-action:none; cursor:pointer; }
+  .btn { background:#232a33; padding:14px 0; text-align:center; border-radius:8px; user-select:none; touch-action:none; cursor:pointer; }
   .btn.fb { background:var(--on); border-color:var(--on); }
   .btn.down { outline:2px solid var(--accent); }
   .row { display:grid; grid-template-columns: 40px 1fr 60px; gap:8px; align-items:center; margin-bottom:8px; }
@@ -28,14 +28,16 @@
 </head>
 <body>
 <header>
-  <h1>OpenVP test panel</h1>
+  <h1 id="title">OpenVP test panel</h1>
   <span class="dot" id="dot"></span><span id="status">connecting…</span>
+  <span id="pickers" style="display:contents">
   <label title="The IP ID to connect as, in hex. It must be one the program registered.">IP ID <input id="ipid" size="3"></label>
   <label title="Program slot to connect to. Empty = any slot with that IP ID.">Slot <input id="slot" size="2" placeholder="any"></label>
   <label title="Connect by the slot's Room ID instead of its number. Usually left empty.">Room <input id="room" size="8" placeholder="any"></label>
   <button id="go" title="Reconnect using the IP ID, Slot and Room typed here">Connect</button>
+  </span>
   <small>Hold a button to keep the join high. Green = feedback from the program.</small>
-  <span style="flex:1"></span><a href="help.html#panel" target="openvp-help" title="What every control on this page does" style="color:var(--accent)">Help</a>
+  <span style="flex:1"></span><a id="helplink" href="help.html#panel" target="openvp-help" title="What every control on this page does" style="color:var(--accent)">Help</a>
 </header>
 <main>
   <section><h2>Digital joins 1–20</h2><div class="grid" id="digitals"></div></section>
@@ -44,6 +46,14 @@
 </main>
 <script src="openvp-crcomlib.js"></script>
 <script>
+  // Opened from a share link (/s/{token}): the slot and IP ID are fixed by the link, so there is nothing to pick.
+  const SHARE = window.OPENVP_CONFIG && window.OPENVP_CONFIG.share ? window.OPENVP_CONFIG : null;
+  if (SHARE) {
+    document.getElementById("pickers").style.display = "none";
+    document.getElementById("helplink").style.display = "none";
+    document.getElementById("title").textContent = SHARE.label || "Panel";
+    document.title = SHARE.label || "Panel";
+  }
   const q = new URLSearchParams(location.search);
   document.getElementById("ipid").value = q.get("ipid") || "03";
   document.getElementById("slot").value = q.get("slot") || "";
@@ -55,9 +65,9 @@
     location.search = p.toString();
   };
   const dot = document.getElementById("dot"), status = document.getElementById("status");
-  OpenVP.on("open", () => { dot.className = "dot ok"; status.textContent = "connected to IPID " + OpenVP.config.ipid; });
+  OpenVP.on("open", () => { dot.className = "dot ok"; status.textContent = SHARE ? "connected" : "connected to IPID " + OpenVP.config.ipid; });
   OpenVP.on("close", () => { dot.className = "dot"; status.textContent = "disconnected, retrying…"; });
-  OpenVP.on("hello", m => status.textContent = `IPID ${m.ipid.toString(16).padStart(2,"0").toUpperCase()} · slot ${m.slot} · ${m.type}`);
+  OpenVP.on("hello", m => status.textContent = SHARE ? (m.type && m.type.startsWith("Panel (waiting") ? "connected, waiting for the program" : "connected") : `IPID ${m.ipid.toString(16).padStart(2,"0").toUpperCase()} · slot ${m.slot} · ${m.type}`);
 
   const dg = document.getElementById("digitals");
   for (let j = 1; j <= 20; j++) {

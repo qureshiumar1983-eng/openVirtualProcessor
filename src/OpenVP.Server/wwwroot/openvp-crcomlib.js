@@ -8,6 +8,12 @@
  * Supported: publishEvent / subscribeState / unsubscribeState / getState for signal names that are
  * join numbers ("1", "27"). Types: "b" digital, "n" analog, "s" serial, "o" with {repeatdigital: bool}.
  * Contract-editor names and CH5 web components that need the full CrComLib are not covered.
+ *
+ * Shared panels (/s/{token}/...): OpenVP sets window.OPENVP_CONFIG = { wsPath, share: true, statusUrl } before
+ * this script. The page then always connects to wsPath (the slot and IP ID come from the share link, never from
+ * the address bar), and window.CrComLib is pinned to this shim, so a project that bundles its own CrComLib
+ * still publishes and subscribes through OpenVP. When the share link is revoked or expires the page reloads
+ * and shows the "expired" message.
  */
 (function (global) {
   "use strict";
@@ -18,7 +24,10 @@
   var room = cfg.room || params.get("room");
   var host = cfg.host || params.get("host") || global.location.host;
   var proto = global.location.protocol === "https:" ? "wss://" : "ws://";
-  var url = proto + host + "/ws/panel?ipid=" + encodeURIComponent(ipid) + (slot ? "&slot=" + encodeURIComponent(slot) : "") + (room ? "&room=" + encodeURIComponent(room) : "");
+  var shared = !!cfg.share;
+  var url = shared && cfg.wsPath
+    ? proto + global.location.host + cfg.wsPath
+    : proto + host + "/ws/panel?ipid=" + encodeURIComponent(ipid) + (slot ? "&slot=" + encodeURIComponent(slot) : "") + (room ? "&room=" + encodeURIComponent(room) : "");
 
   var state = { b: {}, n: {}, s: {} };
   var subs = { b: {}, n: {}, s: {} };
@@ -98,6 +107,13 @@
     ws.onclose = function () {
       clearInterval(pingTimer);
       fire("close");
+      if (shared && cfg.statusUrl) {
+        // Closed because the link was revoked or ran out? Then reload to show the expired page instead of retrying.
+        fetch(cfg.statusUrl, { cache: "no-store" }).then(function (r) {
+          if (r.status === 410 || r.status === 404) global.location.reload(); else setTimeout(connect, 2000);
+        }).catch(function () { setTimeout(connect, 2000); });
+        return;
+      }
       setTimeout(connect, 2000);
     };
   }
@@ -140,7 +156,13 @@
     config: { ipid: ipid, slot: slot, room: room, url: url }
   };
 
-  global.CrComLib = global.CrComLib || api;
+  if (shared) {
+    // A project's own CrComLib bundle assigns window.CrComLib when it loads; ignore that so the page keeps using OpenVP.
+    try { Object.defineProperty(global, "CrComLib", { get: function () { return api; }, set: function () { }, configurable: false }); }
+    catch (e) { global.CrComLib = api; }
+  } else {
+    global.CrComLib = global.CrComLib || api;
+  }
   global.OpenVP = api;
   connect();
 })(window);

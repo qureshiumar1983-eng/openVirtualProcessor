@@ -122,7 +122,27 @@
     <dt><span class="b">Re-identify</span></dt><dd>Tries again to work out what the connected device is (its hostname and model), using reverse DNS and Crestron autodiscovery. Takes a few seconds.</dd>
     <dt><span class="b">Log in &amp; read…</span></dt><dd>Shows a small login form. Enter the device's SSH username and password, then click <span class="b">Log in &amp; read</span>: OpenVP logs in to the device and reads its hostname, firmware, uptime, network settings and IP table. It only reads; it changes nothing on the device. The password is used once and never saved.</dd>
     <dt><b>open test panel</b></dt><dd>Opens a browser <a href="#panel">test panel</a> already connected to this IP ID and slot.</dd>
+    <dt><span class="b">Share…</span></dt><dd>On every row of the table and in the details. Opens the Share panel box, see <a href="#sharing">Share a panel</a> below.</dd>
+    <dt><span class="b">Upload .ch5z…</span> · <span class="b">Replace .ch5z…</span> · <span class="b">Remove</span></dt><dd>In the details. Puts an HTML5 (CH5) project on this IP ID, so shared links open it instead of the test panel. Remove goes back to the test panel. See <a href="#sharing">Share a panel</a>.</dd>
     <dt><span class="b">✕</span></dt><dd>Closes the details.</dd>
+  </dl>
+
+  <h3 id="sharing">Share a panel</h3>
+  <p class="muted">Give someone a link that opens one panel, and only that panel. They can press the buttons on that IP ID. They can't see the console, the debugger, the files or any other slot or IP ID.</p>
+  <dl>
+    <dt><span class="b">Share…</span> box</dt><dd>Choose a <b>Label</b> (only you see it), an optional <b>PIN</b> and when the link <b>Expires</b>, then click <span class="b">Create link</span>. The box then shows the link with a <span class="b">Copy link</span> button and a QR code for a phone camera.</dd>
+    <dt><b>PIN</b></dt><dd>4 to 8 digits. The person is asked for it before the panel opens. <span class="b">Random</span> fills in a 6-digit one. OpenVP keeps only a scrambled copy, so the PIN is shown once, when you create the link: write it down and send it separately from the link. Five wrong tries from one device lock it out for 5 minutes.</dd>
+    <dt><b>Address in the link</b></dt><dd>Where the link points. If you opened the console as <code>localhost</code>, that wouldn't work for anyone else, so this lists this computer's network addresses. Pick the one the other person can reach. Links on a network address only work for people on that network.</dd>
+    <dt>CH5 project</dt><dd>If this IP ID has an uploaded <code>.ch5z</code>, the link opens that. Otherwise it opens OpenVP's own test panel, with the IP ID fixed. The box has the same Upload / Replace / Remove buttons.</dd>
+  </dl>
+
+  <h3>Shared panels</h3>
+  <p class="muted">The links you have made.</p>
+  <dl>
+    <dt>A row</dt><dd>The label, the slot and IP ID, whether it opens a CH5 project or the test panel, when it expires, when someone last opened it, and how many people have it open right now.</dd>
+    <dt><span class="b">Copy</span></dt><dd>Copies the link.</dd>
+    <dt><span class="b">QR</span></dt><dd>Shows the link and its QR code again. A PIN can't be shown again: for a new PIN, make a new link.</dd>
+    <dt><span class="b">Revoke</span></dt><dd>Click it twice. The link stops working and anyone using it is disconnected within a few seconds; their page shows "This link has expired or was revoked".</dd>
   </dl>
 
   <h3>Debugger</h3>

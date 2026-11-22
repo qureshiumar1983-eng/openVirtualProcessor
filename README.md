@@ -119,6 +119,26 @@ To reach a real serial device through a serial device server, add `comports.json
 
 A panel can connect before its program loads. It binds to the IP ID and comes online when the program registers it.
 
+### Sharing a panel
+
+To let someone else use a panel, click **Share…** on an IP ID in the IP table. OpenVP makes a link for that slot and IP ID. Send it, and the person opens it in their browser (a phone works well; the box also shows a QR code) and controls the program straight away.
+
+- **What the link opens.** `/s/{token}` opens the panel for that slot and IP ID, and nothing else. The slot and IP ID are stored with the link, never taken from the address, so changing the address can't reach another one. The person can press joins on that IP ID and see its feedback. They can't open the console, the API, the debugger or trace streams, the files, other slots or other IP IDs. Their browser talks to OpenVP over a WebSocket at `/s/{token}/ws`, which does the same job as `/ws/panel` but only for that link.
+- **The link.** The token is 192 random bits. A link has a label (only you see it), an optional **PIN** (4 to 8 digits), and an expiry of 1 hour, 1 day, 1 week or never. The console shows when it was created and last used and how many people have it open now. Links are kept in `data/shares.json` (readable only by its owner on Linux and macOS, like `apikey.txt`).
+- **PIN.** Only a salted hash is stored (PBKDF2-SHA256), so a PIN can't be shown again; make a new link to change it. After a correct PIN the browser keeps a cookie for that link only (HttpOnly, SameSite=Strict, limited to `/s/{token}`). Wrong tries are limited: 5 wrong PINs from one address lock that address out of that link for 5 minutes, and 20 wrong PINs from all addresses together lock the link for 5 minutes.
+- **Revoke and expiry.** **Revoke** (in **Shared panels**) deletes the link. Anyone connected is disconnected within a few seconds and their page shows "This link has expired or was revoked". The same happens when a link expires.
+- **Which address goes in the link.** The address the console was opened with. If that is `localhost`, which means nothing to anyone else, the box offers this computer's network addresses instead. A link on a network address only works for people on that network.
+- **Test panel or CH5.** With no CH5 project for the IP ID, the link opens OpenVP's own test panel with the slot and IP ID fixed (no pickers). With a CH5 project, it opens that.
+
+**CH5 (HTML5) panels.** Upload a CH5 project archive (`.ch5z`, which is a zip) for an IP ID with **Upload .ch5z…** in the IP table's details (or in the Share box), or `POST /api/slots/{n}/panels/{ipid}/ch5`. It is unpacked to `data/panels/slotNN/ipidXX/` and served to link holders under `/s/{token}/app/`. The archive must contain an `index.html` (at the top, or inside one folder). Paths that would escape the folder (`../`, absolute paths, drive letters) are refused, an archive over 100 MB, 300 MB unpacked or 10,000 files is refused, and nothing is installed if any entry is bad. OpenVP ships no Crestron files.
+
+What works with CH5, and what doesn't:
+
+- OpenVP adds its `openvp-crcomlib.js` to every HTML page of the project, before the project's own scripts, and sets it up for that link. Pages that call the global `CrComLib.publishEvent(type, join, value)` and `CrComLib.subscribeState(type, join, callback)` with numeric join names (`"1"`, `"27"`, types `b`, `n`, `s`) work: presses reach the program, feedback comes back.
+- Projects normally bundle Crestron's own CrComLib. OpenVP pins `window.CrComLib` to its own version, so when the bundle loads and assigns `window.CrComLib` the assignment is ignored and the page keeps talking to OpenVP. A script that declares it with `let` or `const` at the top level would still fail.
+- **Not covered:** the CH5 web components (`ch5-button`, `ch5-slider`, and so on) and anything else that uses the bundled library's own internal signal system instead of the global `CrComLib` functions, contract-editor signal names, and the library's own connection code. A project made entirely of CH5 components with contract names will load but will not control the program. This has been tested with a small hand-made page, not with real Crestron CH5 Studio output.
+- Classic VT Pro-e XPanels are not CH5. They connect over CIP.
+
 ### Room ID
 
 Each slot has a **Room ID**, like the Virtual Control Room ID of a VC-4 program. It defaults to `SLOT01`, `SLOT02`, and so on; change it with `PUT /api/slots/{n}/room` (1-64 letters, digits, `_`, `-` or `.`; unique across slots, not case-sensitive). It is saved in `slot.json` in the slot's folder and is what a program reads from `InitialParametersClass.RoomId` and `RoomName`. Browser panels can connect with `/ws/panel?ipid=03&room=ROOM2` and are routed to the slot with that Room ID (an unknown Room ID gets a 404). Panels connecting over CIP still route by IP ID only for now, binding to the lowest slot that has it; the log warns when two slots register the same IP ID.
@@ -255,6 +275,7 @@ A SIMPL# program is .NET code that runs inside the OpenVP process, so anyone who
 - Requests from the same machine to `localhost` don't need the key, unless `OpenVP:LocalRequiresKey=true`. This exception never applies to requests that arrive through a reverse proxy (with `X-Forwarded-For`, `Forwarded` or `X-Real-IP` headers) or are addressed to a host name other than localhost, which also stops DNS-rebinding attacks.
 - Requests from a web page on another site are refused (403) even when the browser has the cookie, and even from localhost. So a malicious page open in your browser can't upload a program.
 - Panels (`/ws/panel` and CIP on 41794) don't need the key, because they can only press joins, like panels on a real processor. Set `OpenVP:PanelsRequireKey=true` to protect `/ws/panel` too. CIP has no way to send a key, so keep port 41794 on a trusted network.
+- **Shared panel links** (`/s/{token}`) don't need the key either: the secret token in the link is the credential. A link is for one slot and IP ID and can only press joins there. Treat it like a password: anyone who has it (and the PIN, if there is one) can use that panel until it expires or you revoke it. Links, their tokens and hashed PINs are stored in `data/shares.json`, owner-only on Linux and macOS. Pages under `/s/` are sent with `Referrer-Policy: no-referrer` so the link doesn't leak to other sites. A CH5 project you upload is your own code running in the link holder's browser, on the same address as the console, so only upload projects you trust.
 - `OpenVP:ApiKey=off` turns the key off. Only do that on a network you trust completely.
 
 Traffic is plain HTTP. To use OpenVP across an untrusted network, put it behind a reverse proxy that adds HTTPS.
@@ -318,6 +339,12 @@ Every endpoint except `/api/info` and `/api/login` needs the access key (see [Se
 | GET | `/api/log?slot=n` · `/api/devices` | |
 | GET | `/api/metrics` | CPU, memory, threads and per-slot activity; `?history=false` leaves out the five-minute history. `/ws/metrics` sends the same once a second |
 | GET | `/api/welcome` · POST `/api/welcome/dismiss` | `{"show":true}` until someone finishes or skips the first-run welcome screen; dismiss remembers that for everyone (kept in `data/welcome.json`) |
+| GET / POST | `/api/shares` | List the active share links (id, token, `path` (`/s/{token}`), label, slot, IP ID, `kind` `ch5` or `test`, `hasPin`, created, expires, last used, `connected`) · create one with `{"slot":2,"ipId":"03","label":"Client","pin":"482913","expires":"1d"}` (`pin` optional, 4-8 digits; `expires` is `1h`, `1d`, `1w` or `never`) |
+| DELETE | `/api/shares/{id}` | Revoke a link; open connections close within a few seconds |
+| GET | `/api/panels` | The uploaded CH5 projects (slot, IP ID, name, files, size) |
+| POST / DELETE | `/api/slots/{n}/panels/{ipid}/ch5` | Upload a `.ch5z` as multipart `file` (replaces any project there; 400 with the reason if it is refused) · remove the project |
+| GET | `/api/network` | This computer's LAN addresses, for building a link someone else can reach |
+| GET / WS | `/s/{token}` · `/s/{token}/ws` · `/s/{token}/app/…` · `/s/{token}/status` | What a link holder uses (no access key; the token and PIN are the credential). `410` once the link has expired or been revoked. `POST /s/{token}/pin` checks a PIN |
 | GET | `/api/info` | Version, slot count, and whether you're logged in |
 | POST | `/api/login` · `/api/logout` | `{"key":"..."}`; sets or clears the login cookie |
 

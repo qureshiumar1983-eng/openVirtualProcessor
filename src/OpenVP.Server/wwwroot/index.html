@@ -150,6 +150,33 @@
     table.diffs td::before { content:attr(data-l) " "; color:var(--muted); font-size:11px; }
   }
   #files-missing .disk { flex-basis:100%; font-size:12px; overflow-wrap:anywhere; }
+  /* Sharing */
+  #share-dlg { width:min(480px, calc(100vw - 24px)); max-height:calc(100dvh - 24px); overflow:auto; min-width:0; }
+  #share-dlg h2 { margin:0 0 4px; font-size:18px; text-transform:none; letter-spacing:0; color:var(--text); }
+  #share-dlg label.f { display:flex; flex-direction:column; gap:3px; font-size:12px; color:var(--muted); }
+  #share-dlg label.f input, #share-dlg label.f select { font-size:14px; color:var(--text); }
+  #share-dlg .pinrow { display:flex; gap:6px; } #share-dlg .pinrow input { flex:1; min-width:0; }
+  #share-dlg .what { margin:0; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:#141a21; overflow-wrap:anywhere; }
+  #share-dlg .err { color:#ff9b9b; min-height:18px; overflow-wrap:anywhere; }
+  #share-url { width:100%; }
+  #share-qr { display:grid; place-items:center; padding:10px; background:#fff; border-radius:8px; width:max-content; max-width:100%; margin:0 auto; }
+  #share-qr svg { width:min(220px, 60vw); height:auto; display:block; }
+  .warnbox { padding:8px 10px; border:1px solid #6b5a2a; border-radius:6px; background:#1d1a12; overflow-wrap:anywhere; }
+  #shares-table td.act { white-space:nowrap; text-align:right; }
+  #shares-table td.act button { padding:2px 7px; font-size:12px; }
+  #shares-table td.nm { overflow-wrap:anywhere; }
+  #ipt td.act { text-align:right; white-space:nowrap; }
+  #ipt td.act button { padding:2px 7px; font-size:12px; }
+  #d-ch5 { margin:6px 0; display:flex; gap:6px 10px; align-items:center; flex-wrap:wrap; }
+  @media (max-width: 600px) {
+    #shares-table thead { display:none; }
+    #shares-table, #shares-table tbody, #shares-table tr, #shares-table td { display:block; }
+    #shares-table tr { border-bottom:1px solid var(--line); padding:6px 0; }
+    #shares-table td { border:none; padding:2px 6px; }
+    #shares-table td.act { text-align:left; white-space:normal; }
+    #shares-table td::before { content:attr(data-l) " "; color:var(--muted); font-size:11px; }
+    #shares-table td.act::before, #shares-table td.nm::before { content:""; }
+  }
 </style>
 </head>
 <body>
@@ -199,7 +226,7 @@
       <h2>IP table · slot <span class="sel-num2">1</span><span class="room-tag"></span></h2>
       <div class="scroll-x">
       <table id="ipt">
-        <thead><tr><th>Connected client</th><th>Address</th><th>IP ID</th><th>Type</th><th>Status</th><th class="num">Connected</th><th class="num">Joins in / out</th></tr></thead>
+        <thead><tr><th>Connected client</th><th>Address</th><th>IP ID</th><th>Type</th><th>Status</th><th class="num">Connected</th><th class="num">Joins in / out</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
       </div>
@@ -209,6 +236,7 @@
           <b id="d-title"></b><span style="flex:1"></span>
           <button id="d-identify" title="Run reverse DNS and Crestron autodiscovery again">Re-identify</button>
           <button id="d-login-toggle" title="Log in over SSH and read hostname, firmware, uptime, network and IP table (read-only commands)">Log in &amp; read…</button>
+          <button id="d-share" title="Make a link that opens this panel for someone else">Share…</button>
           <a id="d-panel" target="_blank" title="Open a browser touch panel connected to this IP ID">open test panel</a>
           <button id="d-close" title="Close">✕</button>
         </div>
@@ -220,8 +248,17 @@
           <span class="muted">Used once for this login, never saved. Runs read-only commands: hostname, ver, uptime, ipconfig, ipt, time.</span>
         </form>
         <div id="d-status" class="muted" style="margin:6px 0"></div>
+        <div id="d-ch5" class="muted"></div>
         <div id="d-body" class="kv"></div>
       </div>
+    </section>
+    <section style="margin-top:16px" id="shares-sec">
+      <h2 title="Links you have given out. Revoke one and it stops working at once.">Shared panels</h2>
+      <div id="shares-empty" class="muted">No shared panels. Click <b>Share…</b> on an IP ID in the table above to make a link someone else can open.</div>
+      <div class="scroll-x"><table id="shares-table" hidden>
+        <thead><tr><th>Link</th><th>Slot · IP ID</th><th>Panel</th><th>Expires</th><th>Last used</th><th>Now</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table></div>
     </section>
     <section style="margin-top:16px">
       <h2>Debugger · slot <span class="sel-num2">1</span></h2>
@@ -305,6 +342,29 @@
   <input id="ask-in" class="mono" autocomplete="off">
   <div class="row"><button type="button" id="ask-cancel">Cancel</button><button value="ok" id="ask-ok">OK</button></div>
 </form></dialog>
+<dialog id="share-dlg" aria-labelledby="share-title"><form method="dialog" id="share-form" autocomplete="off">
+  <h2 id="share-title">Share panel</h2>
+  <div id="share-v1" style="display:flex;flex-direction:column;gap:10px">
+    <p class="what" id="share-what"></p>
+    <div id="share-ch5" class="muted"></div>
+    <label class="f">Label (only you see it)<input id="share-label" maxlength="80" placeholder="Client - boardroom"></label>
+    <label class="f">PIN (optional, 4 to 8 digits)
+      <span class="pinrow"><input id="share-pin" inputmode="numeric" maxlength="8" placeholder="none" autocomplete="off"><button type="button" id="share-pin-gen" title="Fill in a random 6-digit PIN">Random</button></span></label>
+    <label class="f">Expires<select id="share-exp"><option value="1h">in 1 hour</option><option value="1d" selected>in 1 day</option><option value="1w">in 1 week</option><option value="never">never</option></select></label>
+    <div class="err" id="share-err" role="alert"></div>
+    <div class="row"><button type="button" id="share-cancel">Cancel</button><button type="button" id="share-create">Create link</button></div>
+  </div>
+  <div id="share-v2" hidden style="display:flex;flex-direction:column;gap:10px">
+    <p class="what" id="share-what2"></p>
+    <label class="f" id="share-addr-l">Address in the link<select id="share-addr"></select></label>
+    <div class="warnbox" id="share-addr-note" hidden></div>
+    <input id="share-url" class="mono" readonly aria-label="Link">
+    <div class="row" style="justify-content:flex-start"><button type="button" id="share-copy">Copy link</button><span class="muted" id="share-copied"></span></div>
+    <div id="share-qr" aria-label="QR code for the link"></div>
+    <p class="muted" id="share-pin-note" style="margin:0"></p>
+    <div class="row"><button type="submit" value="ok" id="share-done">Done</button></div>
+  </div>
+</form></dialog>
 <dialog id="welcome" aria-labelledby="welcome-title"><form method="dialog">
   <h2 id="welcome-title">Welcome to OpenVP</h2>
   <p>OpenVP runs Crestron SIMPL# Pro (.cpz, .dll) and SIMPL Windows (.lpz, .smw) programs on any computer. There is no license server. You get up to 10 slots, browser test panels and a debugger. It is not affiliated with Crestron.</p>
@@ -324,6 +384,7 @@
   <div class="row"><button type="button" id="welcome-skip">Skip</button><button value="ok" id="welcome-go" autofocus>Get started</button></div>
 </form></dialog>
 <script src="openvp-auth.js"></script>
+<script src="qrcode.js"></script>
 <script>
 openvpAuth.init();
 const $ = s => document.querySelector(s);
@@ -424,6 +485,8 @@ function ago(t) {
 function bytes(n) { return n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`; }
 function when(t) { return t ? `${new Date(t).toLocaleString()} (${ago(t)} ago)` : "—"; }
 
+function shareCell(d) { return `<td class="act"><button class="share-btn" title="Make a link that opens this panel for someone else, with an optional PIN and expiry">Share…</button></td>`; }
+
 function whoCell(c) {
   // An EISC is about the slot on the other end; anything else is about the machine.
   const name = (c.transport === "EISC" ? c.peer : null) || c.hostname || c.model || c.peer || (c.transport === "Web panel" ? "Browser" : "Unknown client");
@@ -449,14 +512,15 @@ async function refreshIpTable() {
         tr.className = "client" + (iptSel && iptSel.ipId === d.ipId && iptSel.clientId === c.id ? " sel" : "");
         tr.innerHTML = `<td>${whoCell(c)}</td><td class="mono">${esc(c.endpoint || "—")}<br><small class="muted">${esc(c.transport)}</small></td>
           <td class="mono"><b>${d.ipId}</b></td><td>${esc(d.type)}</td><td>${status}</td>
-          <td class="num">${ago(c.connectedAt)}</td><td class="num">${c.joinsIn} / ${c.joinsOut}</td>`;
+          <td class="num">${ago(c.connectedAt)}</td><td class="num">${c.joinsIn} / ${c.joinsOut}</td>${shareCell(d)}`;
         tr.onclick = () => showDetail(d.ipId, c.id);
       } else {
         tr.className = "client nobody" + (iptSel && iptSel.ipId === d.ipId && !iptSel.clientId ? " sel" : "");
         tr.innerHTML = `<td><i>Nobody connected</i>${d.lastOffline ? `<br><small>last seen ${ago(d.lastOffline)} ago</small>` : ""}</td><td>—</td>
-          <td class="mono"><b>${d.ipId}</b></td><td>${esc(d.type)}</td><td>${status}</td><td class="num">—</td><td class="num">—</td>`;
+          <td class="mono"><b>${d.ipId}</b></td><td>${esc(d.type)}</td><td>${status}</td><td class="num">—</td><td class="num">—</td>${shareCell(d)}`;
         tr.onclick = () => showDetail(d.ipId, null);
       }
+      tr.querySelector(".share-btn")?.addEventListener("click", e => { e.stopPropagation(); openShare(d.slot, d.ipId); });
       tb.appendChild(tr);
     }
   }
@@ -485,6 +549,7 @@ function renderDetail() {
   box.style.display = "block";
   $("#d-title").textContent = c ? `${(c.transport === "EISC" ? c.peer : null) || c.hostname || c.model || c.peer || c.endpoint || "Client"} → IP ID ${d.ipId}` : `IP ID ${d.ipId}`;
   $("#d-panel").href = `panel.html?ipid=${d.ipId}&slot=${d.slot}`;
+  fillCh5($("#d-ch5"), d.slot, d.ipId);
   $("#d-login-toggle").style.display = c && c.transport !== "EISC" && c.address ? "" : "none";
   $("#d-identify").style.display = d.clients.some(x => x.transport !== "EISC") ? "" : "none";
 
@@ -1045,6 +1110,205 @@ function showReport(rep) {
 }
 
 function resetRecordings() { recSt = null; recShownKey = ""; $("#rec-result").innerHTML = ""; $("#rec-notice").hidden = true; $("#rec-replay").hidden = true; refreshRecordings(); pollRecording(); }
+
+// ------------------------------------------------------------------ shared panels
+// A link opens one slot + IP ID for someone else (CH5 project if one is uploaded, else the test panel).
+let sharesData = [], ch5List = [];
+
+function untilText(t) {
+  if (!t) return "never";
+  const s = (new Date(t) - Date.now()) / 1000;
+  if (s <= 0) return "expired";
+  if (s < 3600) return `in ${Math.ceil(s / 60)}m`;
+  if (s < 86400) return `in ${Math.floor(s / 3600)}h ${Math.floor(s % 3600 / 60)}m`;
+  return `in ${Math.floor(s / 86400)}d ${Math.floor(s % 86400 / 3600)}h`;
+}
+
+function ch5For(slot, ipId) { return ch5List.find(c => c.slot === slot && c.ipId.toUpperCase() === String(ipId).toUpperCase()); }
+
+// Where the link should point: the address this console was opened with; if that is localhost (useless to anyone
+// else), this computer's LAN addresses.
+async function shareBases() {
+  const out = [];
+  const host = location.hostname;
+  const isLocal = ["localhost", "127.0.0.1", "[::1]", "::1"].includes(host);
+  const port = location.port ? ":" + location.port : "";
+  if (!isLocal) out.push({ label: `This address (${location.host})`, base: location.origin, lan: true });
+  let net = { lan: [] };
+  try { net = await api("/api/network"); } catch { }
+  for (const a of net.lan) {
+    if (!isLocal && location.hostname === a.address) continue;
+    out.push({ label: `${a.address} (${a.name})`, base: `${location.protocol}//${a.address}${port}`, lan: true });
+  }
+  if (isLocal) out.push({ label: "localhost (only works on this computer)", base: location.origin, local: true });
+  return out;
+}
+
+async function refreshShares() {
+  try { [sharesData, ch5List] = await Promise.all([api("/api/shares"), api("/api/panels")]); } catch { return; }
+  renderShares();
+  renderCh5Rows();
+}
+
+function renderShares() {
+  const tb = $("#shares-table tbody");
+  $("#shares-empty").hidden = sharesData.length > 0;
+  $("#shares-table").hidden = !sharesData.length;
+  tb.innerHTML = "";
+  for (const l of sharesData) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="nm" data-l="Link"><b>${esc(l.label || "(no label)")}</b>${l.hasPin ? ' <span class="pill" title="Needs a PIN to open">PIN</span>' : ""}</td>
+      <td class="mono" data-l="Slot · IP ID">${l.slot} · ${esc(l.ipId)}</td>
+      <td data-l="Panel">${l.kind === "ch5" ? "CH5 project" : "Test panel"}</td>
+      <td data-l="Expires" title="${l.expiresAt ? esc(new Date(l.expiresAt).toLocaleString()) : ""}">${untilText(l.expiresAt)}</td>
+      <td data-l="Last used">${l.lastUsed ? ago(l.lastUsed) + " ago" : "never"}</td>
+      <td data-l="Connected now">${l.connected ? `<span class="pill ok">${l.connected} connected</span>` : "no"}</td>
+      <td class="act"><button data-a="copy" title="Copy the link">Copy</button> <button data-a="qr" title="Show the link and its QR code">QR</button> <button data-a="revoke" title="Stop this link working, and disconnect anyone using it">Revoke</button></td>`;
+    tr.querySelector('[data-a="copy"]').onclick = async e => {
+      const b = (await shareBases())[0];
+      await copyText(b.base + l.path, e.target);
+    };
+    tr.querySelector('[data-a="qr"]').onclick = () => showShareResult(l, null);
+    const rv = tr.querySelector('[data-a="revoke"]');
+    rv.onclick = async () => {
+      if (rv.dataset.armed !== "1") {   // two clicks, so a stray one doesn't cut someone off
+        rv.dataset.armed = "1"; rv.textContent = "Really revoke?";
+        setTimeout(() => { if (rv.isConnected) { rv.dataset.armed = ""; rv.textContent = "Revoke"; } }, 4000);
+        return;
+      }
+      try { await api(`/api/shares/${l.id}`, { method: "DELETE" }); } catch (e) { rv.textContent = e.message; return; }
+      refreshShares();
+    };
+    tb.appendChild(tr);
+  }
+}
+
+async function copyText(text, btn) {
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch { }
+  if (!ok) {   // plain http on a LAN address has no clipboard API; select-and-copy still works
+    const t = document.createElement("textarea");
+    t.value = text; t.style.position = "fixed"; t.style.opacity = "0"; document.body.appendChild(t);
+    t.select(); try { ok = document.execCommand("copy"); } catch { } t.remove();
+  }
+  if (btn) { const old = btn.dataset.t || btn.textContent; btn.dataset.t = old; btn.textContent = ok ? "Copied" : "Copy failed"; setTimeout(() => { btn.textContent = old; }, 1500); }
+  return ok;
+}
+
+// ----- CH5 upload / replace / remove for one IP ID
+const ch5Pick = document.createElement("input");
+ch5Pick.type = "file"; ch5Pick.accept = ".ch5z,.zip"; ch5Pick.hidden = true; document.body.appendChild(ch5Pick);
+let ch5Target = null;
+ch5Pick.onchange = async () => {
+  const f = ch5Pick.files[0], t = ch5Target; ch5Pick.value = "";
+  if (!f || !t) return;
+  const fd = new FormData(); fd.append("file", f);
+  setCh5Msg(t, "Uploading…");
+  try { await api(`/api/slots/${t.slot}/panels/${t.ipId}/ch5`, { method: "POST", body: fd }); setCh5Msg(t, ""); }
+  catch (e) { await refreshShares(); setCh5Msg(t, "Not installed: " + e.message, true); return; }
+  await refreshShares();
+};
+let ch5Msg = null;
+function setCh5Msg(t, text, bad) { ch5Msg = text ? { slot: t.slot, ipId: t.ipId, text, bad } : null; renderCh5Rows(); }
+
+function fillCh5(el, slot, ipId) {
+  const c = ch5For(slot, ipId);
+  el.innerHTML = "";
+  const what = document.createElement("span");
+  what.textContent = c ? `CH5 project: ${c.name || "uploaded"} (${c.files} files, ${bytes(c.bytes)})` : "No CH5 project: shared links open OpenVP's test panel.";
+  const up = document.createElement("button"); up.type = "button"; up.textContent = c ? "Replace .ch5z…" : "Upload .ch5z…";
+  up.title = "Upload a CH5 / HTML5 project (.ch5z). Shared links for this IP ID then open it instead of the test panel.";
+  up.onclick = () => { ch5Target = { slot, ipId }; ch5Pick.click(); };
+  el.append(what, up);
+  if (c) {
+    const rm = document.createElement("button"); rm.type = "button"; rm.textContent = "Remove";
+    rm.onclick = async () => { try { await api(`/api/slots/${slot}/panels/${ipId}/ch5`, { method: "DELETE" }); } catch { } refreshShares(); };
+    el.append(rm);
+  }
+  if (ch5Msg && ch5Msg.slot === slot && ch5Msg.ipId.toUpperCase() === String(ipId).toUpperCase()) {
+    const m = document.createElement("div"); m.textContent = ch5Msg.text; m.style.color = ch5Msg.bad ? "#ff9b9b" : ""; m.style.flexBasis = "100%"; el.append(m);
+  }
+}
+function renderCh5Rows() {
+  if (iptSel) { const d = iptData.find(x => x.ipId === iptSel.ipId); if (d) fillCh5($("#d-ch5"), d.slot, d.ipId); }
+  if ($("#share-dlg").open && shareCtx && !shareCtx.link) fillCh5($("#share-ch5"), shareCtx.slot, shareCtx.ipId);
+}
+
+// ----- the Share dialog
+let shareCtx = null;   // { slot, ipId } while making a link; { link, pin } while showing one
+
+function shareWhat(slot, ipId) {
+  const c = ch5For(slot, ipId);
+  return `Slot ${slot} · IP ID ${ipId}. The link opens ${c ? "the uploaded CH5 project" : "OpenVP's test panel"} for this IP ID and nothing else.`;
+}
+
+function openShare(slot, ipId) {
+  shareCtx = { slot, ipId };
+  const d = $("#share-dlg");
+  $("#share-title").textContent = "Share panel";
+  $("#share-v1").hidden = false; $("#share-v2").hidden = true;
+  $("#share-what").textContent = shareWhat(slot, ipId);
+  $("#share-label").value = ""; $("#share-pin").value = ""; $("#share-exp").value = "1d"; $("#share-err").textContent = "";
+  $("#share-create").disabled = false;
+  fillCh5($("#share-ch5"), slot, ipId);
+  d.returnValue = ""; if (!d.open) d.showModal();
+  $("#share-label").focus();
+  refreshShares();
+}
+
+$("#share-cancel").onclick = () => $("#share-dlg").close("cancel");
+$("#share-pin-gen").onclick = () => { const a = new Uint32Array(1); crypto.getRandomValues(a); $("#share-pin").value = String(a[0] % 1000000).padStart(6, "0"); };
+$("#share-pin").oninput = e => { e.target.value = e.target.value.replace(/\D/g, "").slice(0, 8); };
+$("#share-create").onclick = async () => {
+  const pin = $("#share-pin").value.trim();
+  if (pin && !/^\d{4,8}$/.test(pin)) { $("#share-err").textContent = "The PIN must be 4 to 8 digits, or empty for no PIN."; return; }
+  $("#share-create").disabled = true; $("#share-err").textContent = "";
+  try {
+    const link = await api("/api/shares", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slot: shareCtx.slot, ipId: shareCtx.ipId, label: $("#share-label").value.trim(), pin: pin || null, expires: $("#share-exp").value }) });
+    await showShareResult(link, pin || null);
+    refreshShares();
+  } catch (e) { $("#share-err").textContent = e.message; $("#share-create").disabled = false; }
+};
+
+function renderQr(el, text) {
+  try { const q = qrcode(0, "M"); q.addData(text); q.make(); el.innerHTML = q.createSvgTag({ cellSize: 4, margin: 3, scalable: true }); }
+  catch { el.textContent = "The link is too long for a QR code."; }
+}
+
+async function showShareResult(link, pin) {
+  shareCtx = { link, pin };
+  const d = $("#share-dlg");
+  $("#share-title").textContent = link.label ? `Link: ${link.label}` : "Share link";
+  $("#share-v1").hidden = true; $("#share-v2").hidden = false;
+  $("#share-what2").textContent = `${shareWhat(link.slot, link.ipId)} ${link.expiresAt ? "Expires " + new Date(link.expiresAt).toLocaleString() + "." : "It never expires."} Revoke it any time from Shared panels.`;
+  $("#share-pin-note").textContent = link.hasPin
+    ? (pin ? `PIN: ${pin}. Send it separately from the link. OpenVP doesn't keep it, so write it down now.` : "This link needs a PIN. OpenVP doesn't keep PINs, so for a different PIN make a new link.")
+    : "Anyone with this link can open the panel. There is no PIN.";
+  const bases = await shareBases();
+  const sel = $("#share-addr");
+  sel.innerHTML = "";
+  bases.forEach((b, i) => { const o = document.createElement("option"); o.value = i; o.textContent = b.label; sel.appendChild(o); });
+  $("#share-addr-l").hidden = bases.length < 2;
+  const draw = () => {
+    const b = bases[+sel.value] || bases[0];
+    const url = b.base + link.path;
+    $("#share-url").value = url;
+    renderQr($("#share-qr"), url);
+    const note = $("#share-addr-note");
+    note.hidden = !b.local && !b.lan;
+    note.textContent = b.local ? "This link only works on this computer. Open the console by this computer's network address to get one other people can use."
+      : b.lan ? "This address works for people on the same network." : "";
+  };
+  sel.onchange = draw; draw();
+  $("#share-copied").textContent = "";
+  $("#share-copy").onclick = async () => { await copyText($("#share-url").value, $("#share-copy")); };
+  $("#share-url").onfocus = e => e.target.select();
+  d.returnValue = ""; if (!d.open) d.showModal();
+}
+
+$("#d-share").onclick = () => { if (iptSel) { const d = iptData.find(x => x.ipId === iptSel.ipId); if (d) openShare(d.slot, d.ipId); } };
+refreshShares(); setInterval(() => { if (!document.hidden) refreshShares(); }, 3000);
 
 select(1);
 

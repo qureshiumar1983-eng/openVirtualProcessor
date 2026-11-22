@@ -940,6 +940,12 @@ public static class OpenVpServer
             await new WebPanelSession(ws, processor, ipid, slot, client).RunAsync(ctx.RequestAborted);
         });
 
+        // ------------------------------------------------------------------ shared panels
+
+        var shares = new ShareStore(processor.DataDirectory);
+        var ch5Panels = new Ch5Panels(processor.DataDirectory);
+        ShareEndpoints.Map(app, processor, shares, ch5Panels);
+
         // ------------------------------------------------------------------ autoload
 
         foreach (var entry in cfg.GetSection("Autoload").GetChildren())

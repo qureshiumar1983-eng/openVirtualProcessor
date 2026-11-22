@@ -137,7 +137,7 @@ public sealed class ApiAuth
         }
 
         // Opening /?key=KEY (or any page with ?key=) logs the browser in and strips the key from the address bar.
-        if (Enabled && HttpMethods.IsGet(ctx.Request.Method) && !path.StartsWithSegments("/api") && !path.StartsWithSegments("/ws")
+        if (Enabled && HttpMethods.IsGet(ctx.Request.Method) && !path.StartsWithSegments("/api") && !path.StartsWithSegments("/ws") && !path.StartsWithSegments("/s")
             && ctx.Request.Query.TryGetValue("key", out var qk))
         {
             var rest = string.Join('&', ctx.Request.Query.Where(q => q.Key != "key")
