@@ -98,6 +98,16 @@
   #files-missing li { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:4px 0; border-top:1px solid var(--line); }
   #files-missing li:first-child { border-top:none; }
   #files-missing .path { flex:1 1 220px; overflow-wrap:anywhere; }
+  #hist-table td.act { text-align:right; white-space:nowrap; }
+  #hist-table td.act button { padding:2px 7px; font-size:12px; }
+  #hist-table td.prog { overflow-wrap:anywhere; }
+  @media (max-width: 600px) {
+    #hist-table thead { display:none; }
+    #hist-table, #hist-table tbody, #hist-table tr, #hist-table td { display:block; }
+    #hist-table tr { border-bottom:1px solid var(--line); padding:6px 0; }
+    #hist-table td { border:none; padding:2px 6px; }
+    #hist-table td.num, #hist-table td.act { text-align:left; }
+  }
   #files-missing .disk { flex-basis:100%; font-size:12px; overflow-wrap:anywhere; }
 </style>
 </head>
@@ -197,6 +207,15 @@
         <table id="files-table"><thead><tr><th>Name</th><th class="num">Size</th><th>Modified</th><th></th></tr></thead><tbody></tbody></table>
         <div id="files-empty" class="muted" style="padding:10px 6px" hidden>Empty. Drop files here, or use Upload.</div>
       </div>
+    </section>
+    <section style="margin-top:16px">
+      <h2>History · slot <span class="sel-num2">1</span></h2>
+      <div class="bar">
+        <button id="hist-now" title="Save a copy of this slot's program, NVRAM and User files now">Snapshot now</button>
+        <span class="muted">A snapshot is saved before every load. The last 10 are kept.</span>
+      </div>
+      <table id="hist-table"><thead><tr><th>Time</th><th>Program</th><th>Reason</th><th class="num">Size</th><th></th></tr></thead><tbody></tbody></table>
+      <div id="hist-empty" class="muted" style="padding:10px 6px" hidden>No snapshots yet.</div>
     </section>
     <div class="grid2" style="margin-top:16px">
       <section id="console-sec">
@@ -467,6 +486,7 @@ function connectLog() {
       if (m.t === "log") {
         line($("#log"), `${t}  ${m.level}  ${m.message}`, "lv-" + m.level);
         if (/Loaded|started|stopped/.test(m.message)) refreshSlots();
+        if (/snapshot|Rolled back/i.test(m.message)) refreshHistorySoon();
         if (/^The program looked for /.test(m.message)) refreshFilesSoon();
       }
     }
@@ -503,7 +523,7 @@ async function loadLog() {
 function select(n) {
   if (n !== sel) iptSel = null;
   sel = n; $("#sel-num").textContent = n; document.querySelectorAll(".sel-num2").forEach(e => e.textContent = n);
-  refreshSlots(); refreshIpTable(); connectLog(); loadLog(); fPath = ""; refreshFiles();
+  refreshSlots(); refreshIpTable(); connectLog(); loadLog(); fPath = ""; refreshFiles(); refreshHistory();
 }
 
 $("#open-debugger").onclick = () => window.open(`debugger.html?slot=${sel}`, `openvp-debugger-${sel}`);
@@ -656,6 +676,40 @@ async function refreshFiles() {
   }
 }
 
+// History: snapshots of the selected slot (program files, NVRAM and User), taken before every load.
+let histTimer = 0;
+function refreshHistorySoon() { clearTimeout(histTimer); histTimer = setTimeout(refreshHistory, 300); }
+async function refreshHistory() {
+  const n = sel;
+  let list;
+  try { list = await api(`/api/slots/${n}/snapshots`); }
+  catch (e) { if (n === sel) { $("#hist-table tbody").innerHTML = ""; $("#hist-empty").hidden = false; $("#hist-empty").textContent = e.message; } return; }
+  if (n !== sel) return;
+  const tb = $("#hist-table tbody"); tb.innerHTML = "";
+  $("#hist-empty").hidden = list.length > 0; $("#hist-empty").textContent = "No snapshots yet.";
+  for (const i of list) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${esc(new Date(i.time).toLocaleString())}</td><td class="prog mono">${esc(i.program || "(files only)")}</td><td class="muted">${esc(i.reason)}${i.skipped ? ` · ${i.skipped} file${i.skipped === 1 ? "" : "s"} skipped` : ""}</td><td class="num muted">${fmtSize(i.size)}</td><td class="act"></td>`;
+    const act = tr.querySelector(".act");
+    const btn = (label, title, fn) => { const b = document.createElement("button"); b.textContent = label; b.title = title; b.onclick = fn; act.appendChild(b); act.append(" "); };
+    btn("Roll back", "Put the slot's program, NVRAM and User files back as they were then", async () => {
+      if (!confirm(`Roll back slot ${n} to ${new Date(i.time).toLocaleString()}?\n\nThe program, NVRAM and User files are replaced with the snapshot's. The current state is saved as a snapshot first, so you can undo this.`)) return;
+      try { await api(`/api/slots/${n}/snapshots/${i.id}/restore`, { method: "POST" }); } catch (e) { alert(e.message); }
+      refreshSlots(); refreshHistory(); if (n === sel) refreshFiles();
+    });
+    btn("Delete", "Delete this snapshot", async () => {
+      if (!confirm(`Delete the snapshot from ${new Date(i.time).toLocaleString()}?`)) return;
+      try { await api(`/api/slots/${n}/snapshots/${i.id}`, { method: "DELETE" }); } catch (e) { alert(e.message); }
+      refreshHistory();
+    });
+    tb.appendChild(tr);
+  }
+}
+$("#hist-now").onclick = async () => {
+  try { await api(`/api/slots/${sel}/snapshots`, { method: "POST" }); } catch (e) { alert(e.message); }
+  refreshHistory();
+};
+
 // SIMPL+ MakeProgramFilename("\\NVRAM\\x") reads \NVRAM\{Program ID Tag}\x, so point at that folder.
 function renderHint(d) {
   const h = $("#files-hint"), name = d.programFolder;
@@ -758,6 +812,7 @@ drop.ondrop = async e => {
 };
 
 select(1);
+refreshHistory();
 setInterval(refreshSlots, 3000);
 refreshBoard(); setInterval(refreshBoard, 2000);
 setInterval(() => { if (!document.hidden) refreshIpTable(); }, 2000);

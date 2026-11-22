@@ -208,6 +208,39 @@ public static class OpenVpServer
         // One upload per slot at a time; a second one waits instead of racing on the same folder.
         var uploadLocks = processor.Slots.Select(_ => new SemaphoreSlim(1, 1)).ToArray();
 
+        var snapshots = new SlotSnapshots(processor.DataDirectory);
+
+        static string FormatSize(long b) => b switch
+        {
+            < 1024 => $"{b} bytes",
+            < 1024 * 1024 => $"{b / 1024.0:0.#} KB",
+            _ => $"{b / 1048576.0:0.#} MB"
+        };
+
+        // Save the slot's program, NVRAM and User files. Never throws: a failed snapshot is a warning, not a reason to
+        // stop what the caller is doing. Returns false if it failed. Call with the slot locked.
+        bool TrySnapshot(ProgramSlot slot, string reason, string doing)
+        {
+            try
+            {
+                var info = snapshots.Take(slot.Number, slot.Runtime?.ProgramName, slot.ProgramPath is null ? null : Path.GetFileName(slot.ProgramPath), reason);
+                if (info != null)
+                {
+                    slot.Log("Notice", $"Saved a snapshot of {info.Program ?? "the slot"} (program, NVRAM and User files, {FormatSize(info.Size)}) {doing}");
+                    if (info.Skipped is { Length: > 0 })
+                        slot.Log("Warning", $"{info.Skipped.Length} file(s) couldn't be copied into the snapshot: {string.Join("; ", info.Skipped.Take(3))}{(info.Skipped.Length > 3 ? "; …" : "")}");
+                }
+                return true;
+            }
+            catch (Exception e)
+            {
+                slot.Log("Warning", $"Couldn't save a snapshot {doing.TrimEnd('.')}: {e.Message}");
+                return false;
+            }
+        }
+
+        object SnapshotDto(SnapshotInfo i) => new { id = i.Id, time = i.Time, program = i.Program, file = i.File, reason = i.Reason, size = i.Size, skipped = i.Skipped?.Length ?? 0 };
+
         // Replace the slot's program files and load the program, which is files[0]. Call with the slot's upload lock held.
         IResult Install(int n, IReadOnlyList<(string Name, byte[] Data)> files, bool start)
         {
@@ -217,6 +250,7 @@ public static class OpenVpServer
             // The slot stays locked throughout, so a start/stop/unload request waits instead of interleaving.
             return processor.WithSlotLocked(n, slot =>
             {
+                if (slot.Runtime != null) TrySnapshot(slot, SlotSnapshots.BeforeLoad, "before loading.");
                 slot.Unload();
                 if (Directory.Exists(dir)) Directory.Delete(dir, true);
                 Directory.CreateDirectory(dir);
@@ -348,6 +382,79 @@ public static class OpenVpServer
             StopWatching(n);
             if (was != null) processor.Slot(n).Log("Notice", $"Stopped watching {was}.");
             return SlotDto(processor.Slot(n));
+        });
+
+        // Snapshots: a copy of the slot's program files, NVRAM and User folders, taken before every load.
+        slotApi.MapGet("/snapshots", (int n) => snapshots.List(n).Select(SnapshotDto));
+
+        slotApi.MapPost("/snapshots", async (int n) =>
+        {
+            await uploadLocks[n - 1].WaitAsync();
+            try
+            {
+                return processor.WithSlotLocked(n, slot =>
+                {
+                    try
+                    {
+                        var info = snapshots.Take(n, slot.Runtime?.ProgramName, slot.ProgramPath is null ? null : Path.GetFileName(slot.ProgramPath), SlotSnapshots.Manual);
+                        if (info == null) return Results.BadRequest(new { error = "There's nothing in this slot to save: no program and no files." });
+                        slot.Log("Notice", $"Saved a snapshot of {info.Program ?? "the slot"} (program, NVRAM and User files, {FormatSize(info.Size)}).");
+                        return Results.Ok(SnapshotDto(info));
+                    }
+                    catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                    {
+                        return Results.Json(new { error = $"Couldn't save the snapshot: {e.Message}" }, statusCode: 500);
+                    }
+                });
+            }
+            finally { uploadLocks[n - 1].Release(); }
+        });
+
+        slotApi.MapPost("/snapshots/{id}/restore", async (int n, string id) =>
+        {
+            if (snapshots.Get(n, id) == null) return Results.NotFound(new { error = "There's no such snapshot." });
+            await uploadLocks[n - 1].WaitAsync();
+            try
+            {
+                return processor.WithSlotLocked(n, slot =>
+                {
+                    if (snapshots.Get(n, id) == null) return Results.NotFound(new { error = "There's no such snapshot." });
+                    // The current state goes into a snapshot first, so a roll back can be undone. If that can't be done, stop here.
+                    if (!TrySnapshot(slot, SlotSnapshots.BeforeRollBack, "before rolling back."))
+                        return Results.Json(new { error = "Couldn't save a snapshot of the current state, so nothing was rolled back. See the slot log." }, statusCode: 500);
+                    StopWatching(n);
+                    var wasRunning = slot.State == SlotState.Running;
+                    slot.Unload(); // the program lets go of its files before they are replaced
+                    SnapshotInfo? info;
+                    try { info = snapshots.Restore(n, id); }
+                    catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                    {
+                        slot.Log("Error", $"Rolling back failed: {e.Message}");
+                        return Results.Json(new { error = $"Couldn't restore the snapshot: {e.Message}", slot = SlotDto(slot) }, statusCode: 500);
+                    }
+                    if (info == null) return Results.NotFound(new { error = "There's no such snapshot." });
+                    slot.Log("Notice", $"Rolled back to the snapshot of {info.Program ?? "the slot"} from {info.Time.ToLocalTime():yyyy-MM-dd HH:mm:ss} ({info.Reason}).");
+                    if (snapshots.RestoredProgramPath(n, info) is { } path && File.Exists(path))
+                    {
+                        try { processor.LoadProgram(n, path, wasRunning); }
+                        catch (Exception e) { return Results.UnprocessableEntity(new { error = e.Message, slot = SlotDto(slot) }); }
+                    }
+                    return Results.Ok(SlotDto(slot));
+                });
+            }
+            finally { uploadLocks[n - 1].Release(); }
+        });
+
+        slotApi.MapDelete("/snapshots/{id}", async (int n, string id) =>
+        {
+            await uploadLocks[n - 1].WaitAsync();
+            try
+            {
+                try { return snapshots.Delete(n, id) ? Results.Ok(new { deleted = id }) : Results.NotFound(new { error = "There's no such snapshot." }); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                { return Results.Json(new { error = $"Couldn't delete the snapshot: {e.Message}" }, statusCode: 500); }
+            }
+            finally { uploadLocks[n - 1].Release(); }
         });
 
         // Virtual Control Room ID: panels can be routed to the slot by it (/ws/panel?room=).

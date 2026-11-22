@@ -142,6 +142,14 @@
     <dt><span class="b">Create … folder</span> / <span class="b">Open …</span></dt><dd>Appear in a yellow box when the program looked for a file and didn't find it. They create (or open) the exact folder the program expects, so you can upload the missing file into it.</dd>
   </dl>
 
+  <h3>History</h3>
+  <p class="muted">Before a new program is loaded into the slot, OpenVP saves a snapshot of what is there: the program files plus the NVRAM and User folders. The last 10 are kept. The Room ID isn't part of a snapshot.</p>
+  <dl>
+    <dt><span class="b">Snapshot now</span></dt><dd>Saves a snapshot of the slot as it is, without loading anything.</dd>
+    <dt><span class="b">Roll back</span></dt><dd>Puts the slot back as it was at that time: program, NVRAM and User files are replaced, and the program is loaded again (and started, if it was running). The current state is saved first as a "before roll back" snapshot, so you can undo it. It asks you to confirm first.</dd>
+    <dt><span class="b">Delete</span></dt><dd>Deletes that snapshot.</dd>
+  </dl>
+
   <h3>Console</h3>
   <dl>
     <dt>Command box and <span class="b">Run</span></dt><dd>Sends a console command to the slot, like the text console on a real processor. Type <code>help</code> to list the commands. Pressing <kbd>Enter</kbd> does the same as Run.</dd>

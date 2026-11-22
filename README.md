@@ -166,6 +166,12 @@ The Files section lists everything still missing, each with a button to create i
 
 The folder names match whatever case the program uses (`\USER`, `/user` and `\User` are the same folder, on Linux too). This works for SIMPL# (`Crestron.SimplSharp.CrestronIO`) and SIMPL+ file functions. A program can't reach outside its slot's folder. The files stay when you load a new program into the slot.
 
+### Snapshots and roll back
+
+Before OpenVP loads a program into a slot that already has one, it saves a **snapshot** of the slot: the program files plus its NVRAM and User folders. The **History** section of the console lists them, newest first, with the time, program, reason (`before load`, `before roll back` or `manual`) and size. Each slot keeps the last 10; older ones are deleted. **Snapshot now** saves one on demand. A snapshot never blocks a load: if it can't be saved, the slot log says so and the load carries on, and a file that can't be read is skipped and noted.
+
+**Roll back** puts the slot back as it was: the running program is unloaded, the program files, NVRAM and User folders are replaced with the snapshot's, and the program is loaded again (and started, if it was running). The current state is saved first as a `before roll back` snapshot, so a roll back can be undone. Rolling back stops "reload when the file changes" for the slot. The Room ID (`slot.json`) isn't saved or restored. Snapshots are in `data/snapshots/slotNN/`.
+
 ### Debugger
 
 Click **Open debugger** in the console (or go to `/debugger.html?slot=N`). It's laid out like the classic SIMPL Debugger:
@@ -264,6 +270,9 @@ Every endpoint except `/api/info` and `/api/login` needs the access key (see [Se
 | POST | `/api/slots/{n}/files/folder` · `files/rename` | `{"root":"user","path":"config","name":"rooms"}` creates `config/rooms` · renames `path` to `name` |
 | GET | `/api/slots/{n}/files/download?root=user&path=config/rooms.json` | Download a file |
 | DELETE | `/api/slots/{n}/files?root=user&path=config` | Delete a file, or a folder and everything in it |
+| GET / POST | `/api/slots/{n}/snapshots` | List the slot's snapshots, newest first (id, time, program, file, reason, size) · save one now |
+| POST | `/api/slots/{n}/snapshots/{id}/restore` | Roll back: saves the current state first, replaces the program files, NVRAM and User with the snapshot's, loads the program, and starts it if it was running. Returns the slot, or 404 for an unknown id |
+| DELETE | `/api/slots/{n}/snapshots/{id}` | Delete a snapshot |
 | GET | `/api/unsupported` | Everything programs used that isn't supported yet, as the Markdown file (`?format=json` for JSON). See [Compatibility](#compatibility) |
 | GET | `/api/log?slot=n` · `/api/devices` | |
 | GET | `/api/metrics` | CPU, memory, threads and per-slot activity; `?history=false` leaves out the five-minute history. `/ws/metrics` sends the same once a second |
