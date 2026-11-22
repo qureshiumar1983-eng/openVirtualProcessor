@@ -8,7 +8,7 @@
   :root { --bg:#0f1216; --card:#181d23; --line:#29303a; --text:#e6e9ee; --muted:#8b95a3; --ok:#2f9e6e; --warn:#d69e2e; --err:#e05252; --accent:#4c8dff; }
   * { box-sizing:border-box; }
   body { margin:0; font:14px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--text); }
-  header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; align-items:baseline; gap:12px; }
+  header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; align-items:baseline; gap:4px 12px; flex-wrap:wrap; }
   header h1 { margin:0; font-size:18px; }
   header small, .muted { color:var(--muted); }
   a { color:var(--accent); }
@@ -91,6 +91,12 @@
   dialog { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:16px; min-width:340px; }
   dialog::backdrop { background:#0008; }
   dialog form { display:flex; flex-direction:column; gap:10px; margin:0; }
+  #welcome { width:min(560px, calc(100vw - 24px)); max-height:calc(100dvh - 24px); box-sizing:border-box; overflow:auto; min-width:0; }
+  #welcome h2 { margin:0 0 8px; font-size:20px; }
+  #welcome h3 { margin:14px 0 4px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+  #welcome p, #welcome li { margin:0 0 6px; overflow-wrap:anywhere; }
+  #welcome ol, #welcome ul { margin:0; padding-left:22px; }
+  #welcome .row { margin-top:14px; flex-wrap:wrap; }
   dialog .row { display:flex; gap:8px; justify-content:flex-end; }
   #files-hint { margin:0 0 10px; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:#141a21; }
   #files-missing { margin:0 0 10px; padding:8px 10px; border:1px solid #6b5a2a; border-radius:6px; background:#1d1a12; }
@@ -149,7 +155,7 @@
 <body>
 <header>
   <h1>OpenVP</h1><small>open-source virtual control processor</small>
-  <span style="flex:1"></span><a href="metrics.html" target="openvp-metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="panel.html" target="_blank" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a>
+  <span style="flex:1"></span><a href="metrics.html" target="openvp-metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="panel.html" target="_blank" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a><a href="#welcome" id="welcome-link" title="Show the welcome screen again">Welcome</a>
 </header>
 <section id="board">
   <h2 title="Every slot at a glance. Click a tile to select that slot.">Status board</h2>
@@ -298,6 +304,24 @@
   <label id="ask-label" for="ask-in"></label>
   <input id="ask-in" class="mono" autocomplete="off">
   <div class="row"><button type="button" id="ask-cancel">Cancel</button><button value="ok" id="ask-ok">OK</button></div>
+</form></dialog>
+<dialog id="welcome" aria-labelledby="welcome-title"><form method="dialog">
+  <h2 id="welcome-title">Welcome to OpenVP</h2>
+  <p>OpenVP runs Crestron SIMPL# Pro (.cpz, .dll) and SIMPL Windows (.lpz, .smw) programs on any computer. There is no license server. You get up to 10 slots, browser test panels and a debugger. It is not affiliated with Crestron.</p>
+  <h3>What to do first</h3>
+  <ol>
+    <li>Pick a slot in <b>Program slots</b>.</li>
+    <li>Choose your program file and click <b>Load &amp; start</b>. In the desktop app the <code>.sig</code> comes along, and the slot can reload when you recompile.</li>
+    <li>In the <b>IP table</b>, click a device and open a test panel.</li>
+    <li>Click <b>Open debugger</b> to watch signals change.</li>
+  </ol>
+  <h3>Good to know</h3>
+  <ul>
+    <li>The <b>Status board</b> shows every slot at a glance.</li>
+    <li><b>History</b> takes snapshots of a slot and rolls back to them. <b>Recordings</b> record joins and replay them.</li>
+    <li>The <b>Help</b> link on every page explains each button.</li>
+  </ul>
+  <div class="row"><button type="button" id="welcome-skip">Skip</button><button value="ok" id="welcome-go" autofocus>Get started</button></div>
 </form></dialog>
 <script src="openvp-auth.js"></script>
 <script>
@@ -1023,6 +1047,31 @@ function showReport(rep) {
 function resetRecordings() { recSt = null; recShownKey = ""; $("#rec-result").innerHTML = ""; $("#rec-notice").hidden = true; $("#rec-replay").hidden = true; refreshRecordings(); pollRecording(); }
 
 select(1);
+
+// ------------------------------------------------------------------ welcome screen
+// Shown until someone finishes or skips it; that choice is kept on the server. Escape only closes it for now.
+{
+  const d = $("#welcome");
+  const dismiss = () => fetch("/api/welcome/dismiss", { method: "POST" }).catch(() => {});
+  function showWelcome() {
+    if (d.open) return;
+    d.returnValue = "";
+    d.onclose = () => { if (d.returnValue === "ok" || d.returnValue === "skip") dismiss(); };
+    d.showModal();
+    $("#welcome-go").focus();
+  }
+  $("#welcome-skip").onclick = () => d.close("skip");
+  $("#welcome-link").onclick = e => { e.preventDefault(); showWelcome(); };
+  const fromHash = () => { if (location.hash !== "#welcome") return false; history.replaceState(null, "", location.pathname + location.search); showWelcome(); return true; };
+  addEventListener("hashchange", fromHash);
+  (async () => {
+    try {
+      if (fromHash()) return;
+      const r = await fetch("/api/welcome");   // 401 before login: say nothing, the login box handles it
+      if (r.ok && (await r.json()).show) showWelcome();
+    } catch { }
+  })();
+}
 refreshHistory();
 setInterval(() => { if (!document.hidden) pollRecording(); }, 700);
 setInterval(refreshSlots, 3000);

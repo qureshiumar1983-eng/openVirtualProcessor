@@ -21,7 +21,7 @@ cd openVirtualProcessor
 dotnet run --project src/OpenVP.Server
 ```
 
-Open **http://localhost:8080**. From another machine you'll be asked for the access key, which the server prints when it starts (see [Security](#security)). Pick a slot, choose a `.cpz`, `.dll`, `.lpz` or `.smw` file, and click **Load & start**. Click **open test panel** next to a device to get a browser panel at that IP ID. Every page has a **Help** link that explains what each button on it does.
+Open **http://localhost:8080**. From another machine you'll be asked for the access key, which the server prints when it starts (see [Security](#security)). Pick a slot, choose a `.cpz`, `.dll`, `.lpz` or `.smw` file, and click **Load & start**. Click **open test panel** next to a device to get a browser panel at that IP ID. Every page has a **Help** link that explains what each button on it does. The first time, a short welcome screen explains what OpenVP is and what to do first; finish or skip it and it stays away for everyone. Reopen it from **Help**.
 
 ### Desktop app (Windows)
 
@@ -317,6 +317,7 @@ Every endpoint except `/api/info` and `/api/login` needs the access key (see [Se
 | GET | `/api/unsupported` | Everything programs used that isn't supported yet, as the Markdown file (`?format=json` for JSON). See [Compatibility](#compatibility) |
 | GET | `/api/log?slot=n` · `/api/devices` | |
 | GET | `/api/metrics` | CPU, memory, threads and per-slot activity; `?history=false` leaves out the five-minute history. `/ws/metrics` sends the same once a second |
+| GET | `/api/welcome` · POST `/api/welcome/dismiss` | `{"show":true}` until someone finishes or skips the first-run welcome screen; dismiss remembers that for everyone (kept in `data/welcome.json`) |
 | GET | `/api/info` | Version, slot count, and whether you're logged in |
 | POST | `/api/login` · `/api/logout` | `{"key":"..."}`; sets or clears the login cookie |
 

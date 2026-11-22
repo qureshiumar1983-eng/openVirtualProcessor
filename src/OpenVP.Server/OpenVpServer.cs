@@ -197,6 +197,11 @@ public static class OpenVpServer
         });
         app.MapPost("/api/logout", (HttpContext ctx) => { auth.ClearCookie(ctx); return Results.Ok(); });
 
+        // First-run Welcome screen: shown until someone finishes or skips it; remembered for everyone.
+        var welcome = new WelcomeState(processor.DataDirectory);
+        app.MapGet("/api/welcome", () => new { show = welcome.Show });
+        app.MapPost("/api/welcome/dismiss", () => { welcome.Dismiss(); return Results.Ok(new { show = false }); });
+
         app.MapGet("/api/slots", () => processor.Slots.Select(SlotDto));
 
         // Everything under /api/slots/{n}: an unknown slot is a 404, not a server error.
