@@ -173,6 +173,7 @@ public sealed class ConsoleConnection
         if (result.Ok)
         {
             Session.User = result.User;
+            Session.Access = result.Access;
             _stage = Stage.Shell;
             Log?.Invoke($"{Session.Transport} console: {result.User ?? "user"} logged in from {Session.Remote}");
             _write(_shell.Prompt(Session) + " ");

@@ -11,7 +11,7 @@ namespace OpenVP.Core;
 /// <param name="Text">What to show, e.g. "Loaded Room.lpz into slot 3".</param>
 /// <param name="Slot">The slot it was about, or null for the whole processor.</param>
 /// <param name="Who">Who did it, as far as OpenVP can tell: "this computer", an address, "share link Boardroom", or "auto".</param>
-/// <param name="User">A signed-in user name. Always null until OpenVP has user accounts; kept so the file format doesn't change then.</param>
+/// <param name="User">The signed-in user, the API token ("token CI") or "access key" that did it; null for a plain request from this computer and for what OpenVP does by itself.</param>
 /// <param name="Detail">Anything extra (a file name, a reason).</param>
 public sealed record ActivityEntry(DateTimeOffset Time, string Action, string Text, int? Slot, string Who, string? User = null, string? Detail = null);
 
@@ -81,7 +81,8 @@ public sealed class ActivityLog
 
     /// <summary>Adds an entry now. Never throws: a feed that can't be saved still works in memory.</summary>
     public ActivityEntry Add(string action, string text, int? slot = null, string? who = null, string? user = null, string? detail = null) =>
-        Add(new ActivityEntry(DateTimeOffset.UtcNow, action, text, slot, string.IsNullOrWhiteSpace(who) ? Actors.ThisComputer : who.Trim(), user, detail));
+        // With no user given, the signed-in caller of the request this runs in (if any) is the user: the server sets Principal.Current for every request.
+        Add(new ActivityEntry(DateTimeOffset.UtcNow, action, text, slot, string.IsNullOrWhiteSpace(who) ? Actors.ThisComputer : who.Trim(), user ?? Security.Principal.Current?.ActivityUser, detail));
 
     public ActivityEntry Add(ActivityEntry entry)
     {

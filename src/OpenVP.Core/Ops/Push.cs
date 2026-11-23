@@ -186,13 +186,13 @@ public sealed class PushClient
 
     private static async Task<string> ErrorText(HttpResponseMessage r)
     {
-        if (r.StatusCode == HttpStatusCode.Unauthorized) return "The other OpenVP refused the access key.";
+        if (r.StatusCode == HttpStatusCode.Unauthorized) return "The other OpenVP refused the access key or token.";
         var body = "";
         try { body = await r.Content.ReadAsStringAsync(); } catch { }
         try { if (JsonDocument.Parse(body).RootElement.TryGetProperty("error", out var e) && e.ValueKind == JsonValueKind.String) return e.GetString()!; } catch { }
         return r.StatusCode switch
         {
-            HttpStatusCode.Unauthorized => "The other OpenVP refused the access key.",
+            HttpStatusCode.Unauthorized => "The other OpenVP refused the access key or token.",
             HttpStatusCode.Forbidden => "The other OpenVP refused the request (403).",
             HttpStatusCode.NotFound => "The other OpenVP doesn't have that endpoint. It may be an older version.",
             _ => $"The other OpenVP answered {(int)r.StatusCode} {r.ReasonPhrase}."
@@ -215,9 +215,14 @@ public sealed class PushClient
             var slots = j.TryGetProperty("slots", out var s) && s.TryGetInt32(out var sn) ? sn : (int?)null;
             using var probe = await c.GetAsync("/api/slots", ct);
             if (probe.StatusCode == HttpStatusCode.Unauthorized)
-                return new TargetCheck(false, _targets.HasKey(t.Id) ? "OpenVP is there, but it refused the access key." : "OpenVP is there and needs an access key. Enter it for this target.", version, slots, false);
+                return new TargetCheck(false, _targets.HasKey(t.Id) ? "OpenVP is there, but it refused the access key or token." : "OpenVP is there and needs an access key or an API token. Enter one for this target.", version, slots, false);
             if (!probe.IsSuccessStatusCode) return new TargetCheck(false, "OpenVP is there, but: " + await ErrorText(probe), version, slots);
-            return new TargetCheck(true, $"Connected to OpenVP {version} with {slots} slots.", version, slots, true);
+            // A token only does what its scope allows; say so now rather than when a push is refused.
+            var weak = "";
+            if (j.TryGetProperty("me", out var me) && me.TryGetProperty("perms", out var perms) && perms.ValueKind == JsonValueKind.Array
+                && !perms.EnumerateArray().Any(p => p.GetString() == "LoadProgram"))
+                weak = " This key or token can only read or operate, so pushing a program will be refused: use a token with the programmer scope (an export needs admin).";
+            return new TargetCheck(true, $"Connected to OpenVP {version} with {slots} slots.{weak}", version, slots, true);
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or TimeoutException or OperationCanceledException) { return new TargetCheck(false, Explain(e)); }
     }

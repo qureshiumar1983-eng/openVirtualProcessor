@@ -12,6 +12,8 @@ public sealed class ConsoleSession
     public string? User { get; set; }
     /// <summary>The slot that <c>use N</c> selected; commands the shell doesn't know go to it. 0 = none.</summary>
     public int CurrentSlot { get; set; }
+    /// <summary>What this person may run; null means everything (the access key, or no accounts yet).</summary>
+    public IConsoleAccess? Access { get; set; }
 }
 
 public sealed record ConsoleResult(string Output, bool Close = false);
@@ -68,6 +70,12 @@ public sealed class ConsoleShell
         var space = line.IndexOf(' ');
         var name = (space < 0 ? line : line[..space]).ToLowerInvariant();
         var args = space < 0 ? "" : line[(space + 1)..].Trim();
+        if (session.Access != null)
+        {
+            var slotArg = name == "prog" ? (int.TryParse(args.Split(' ', 2)[0], out var ps) ? ps : 0) : TakeProgramOption(args).Slot;
+            if (slotArg == 0 && session.CurrentSlot > 0 && IsSlotCommand(name)) slotArg = session.CurrentSlot;
+            if (session.Access.Deny(name, slotArg) is { } why) return new(why + "\r\n");
+        }
         try
         {
             switch (name)
@@ -99,6 +107,8 @@ public sealed class ConsoleShell
             return new($"Error: {e.Message}\r\n");
         }
     }
+
+    private static bool IsSlotCommand(string name) => name is not ("exit" or "bye" or "quit" or "logout" or "help" or "?" or "ver" or "version" or "hostname" or "uptime" or "time" or "date" or "info" or "slots" or "progs" or "ipt" or "ipinfo" or "progreset" or "restartprog" or "progload" or "stopprog" or "startprog" or "cpuload" or "ramfree" or "taskstat" or "use" or "prog");
 
     private static string Lf(string s) => s.Replace("\r\n", "\n").Replace("\n", "\r\n") + (s.EndsWith('\n') ? "" : "\r\n");
 

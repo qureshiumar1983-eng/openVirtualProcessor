@@ -117,6 +117,9 @@ public sealed record ScheduleDef
     }
 }
 
+/// <summary>Throw from the action to record the run as skipped instead of failed (a locked slot, for instance).</summary>
+public sealed class ScheduleSkippedException(string message) : Exception(message);
+
 /// <summary>One run (or skipped run) in the history.</summary>
 public sealed record ScheduleRun(DateTimeOffset Time, string ScheduleId, string Name, string Status, string Message, string Action, int? Slot, string Trigger);
 
@@ -332,6 +335,7 @@ public sealed class Scheduler : IDisposable
         lock (_gate) { if (!_running.Add(d.Id)) return null; }
         string status, message;
         try { message = await _execute(d, trigger); status = "ok"; }
+        catch (ScheduleSkippedException e) { message = e.Message; status = "skipped"; }
         catch (Exception e) { message = e.Message; status = "failed"; }
         var now = _clock();
         var run = new ScheduleRun(now, d.Id, d.Name, status, message, d.Action.Type, d.Action.Slot, trigger);
@@ -341,7 +345,7 @@ public sealed class Scheduler : IDisposable
             var i = _defs.FindIndex(x => x.Id == d.Id);
             if (i >= 0)
             {
-                _defs[i] = _defs[i] with { LastRun = now, LastResult = message, LastOk = status == "ok", Runs = _defs[i].Runs + 1 };
+                _defs[i] = _defs[i] with { LastRun = now, LastResult = message, LastOk = status == "ok" ? true : status == "skipped" ? null : false, Runs = _defs[i].Runs + 1 };
                 Save();
             }
         }
