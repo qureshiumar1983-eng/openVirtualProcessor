@@ -35,6 +35,32 @@ Download the latest from the [Releases](https://github.com/qureshiumar1983-eng/o
 
 **Working on OpenVP** (needs the .NET 8 SDK and Node.js): double-click **`Start OpenVP.bat`**, or run `npm install` once and then `npm start` in `desktop/`. That opens the app on your source code: edits to the web pages (`src/OpenVP.Server/wwwroot`) show up in the window straight away, and C# changes rebuild and restart the server automatically (about 10–15 seconds) and the window reloads. To build a standalone `OpenVP.exe` on your PC, run **`publish-desktop.bat`** (or `npm run build` in `desktop/`); it writes `desktop\dist\OpenVP.exe`.
 
+### Linux and macOS packages
+
+The **Packages** workflow (`.github/workflows/packages.yml`) builds these when a tag like `v0.2.0` is pushed (they are attached to that tag's release, not marked *Latest*) or when started by hand under Actions > Packages (they are kept as artifacts of the run). Everything is self-contained: no .NET install needed.
+
+| What | Files |
+| --- | --- |
+| Server, Linux | `openvp_VERSION_amd64.deb`, `openvp-VERSION-1.x86_64.rpm`, `openvp-server-VERSION-linux-x64.tar.gz`, and the same for `arm64` (`aarch64`) |
+| Server, macOS | `openvp-server-VERSION-osx-arm64.tar.gz`, `openvp-server-VERSION-osx-x64.tar.gz` |
+| Desktop app, Linux (x64) | `OpenVP-VERSION-x86_64.AppImage`, `OpenVP-Desktop-VERSION-amd64.deb` |
+| Desktop app, macOS | `OpenVP-VERSION-arm64.dmg`, `OpenVP-VERSION-x64.dmg` |
+
+**Linux server (`.deb` / `.rpm`).** `sudo apt install ./openvp_*.deb` or `sudo dnf install ./openvp-*.rpm`. It installs the server in `/usr/lib/openvp` (with `/usr/bin/openvp`) and a systemd service, `openvp`, that runs as its own `openvp` user and restarts if it fails. The service is **enabled but not started** by the install, so you can set it up first:
+
+```bash
+sudo systemctl start openvp          # then open http://localhost:8080
+systemctl status openvp              # state
+journalctl -u openvp -f              # log
+sudo systemctl restart openvp        # after changing settings
+```
+
+The access key is printed in the log the first time (`journalctl -u openvp | grep -i "access key"`) and kept in `/var/lib/openvp/apikey.txt`. **Settings** go in `/etc/openvp/openvp.env` (`OpenVP__Slots=10`, `OpenVP__TelnetEnabled=true`, `Urls=http://127.0.0.1:8080`, see the comments in the file); it is a config file, so an upgrade keeps your edits. **Data** (programs, slot files, users and tokens, backups) is in `/var/lib/openvp`, owned by `openvp`, mode 0750. **Upgrading** with a newer package keeps the data and settings and restarts the service only if it was running. **Removing** the package stops and disables the service but keeps `/var/lib/openvp`, `/etc/openvp` and the user, because they hold your programs; to delete them as well: `sudo rm -rf /var/lib/openvp /etc/openvp && sudo userdel openvp`. The unit is hardened (`NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `PrivateDevices`, kernel and cgroup protection, only the data folder is writable, and only the capability to listen on ports below 1024, for the SSH console on port 22 if you turn it on). It needs `libicu`, OpenSSL and `ca-certificates`, which the package depends on. The package version is the release tag; the server's own version (in `/api/info`) is set from it too. The packages are made with [nfpm](https://nfpm.goreleaser.com) (MIT) from `packaging/linux/`; to make them yourself, publish the server (`dotnet publish src/OpenVP.Server -c Release -r linux-x64 --self-contained true -o /tmp/openvp`), then `packaging/linux/install-nfpm.sh /tmp/nfpm && NFPM=/tmp/nfpm/nfpm packaging/linux/build.sh 0.2.0 linux-x64 /tmp/openvp /tmp/out`. `packaging/linux/test-scripts.sh` checks the install, upgrade and removal scripts with stubbed commands.
+
+**`.tar.gz` (Linux and macOS).** Unpack, then run `./openvp/openvp`; the data folder is `data/` in the folder you run it from, and `--OpenVP:DataDirectory=/some/path` moves it. A macOS download carries the quarantine flag, so the first run is refused; clear it with `xattr -dr com.apple.quarantine openvp`.
+
+**Desktop app on Linux and macOS.** The same Electron app as the Windows one, with the server inside it; it works at `http://localhost:8080` with no login, like `OpenVP.exe`. Data and `openvp.log` are in `~/.config/OpenVP` (Linux) or `~/Library/Application Support/OpenVP` (macOS). On Linux make the AppImage executable and run it (`chmod +x OpenVP-*.AppImage && ./OpenVP-*.AppImage`; it needs `libicu` on the computer, and FUSE or `--appimage-extract-and-run`), or install the `.deb`. The built-in update check does not replace the file on Linux and macOS: it tells you a newer version exists and opens the download page. The **macOS `.dmg` is not signed** unless signing secrets are set on the repository, so macOS says the app is damaged or from an unidentified developer: right-click the app and choose Open, or run `xattr -cr /Applications/OpenVP.app`. To sign, add these under Settings > Secrets and variables > Actions; none is required, and the build never fails for lack of them: `MAC_CERTIFICATE_P12` (a Developer ID Application certificate as a base64 `.p12`) with `MAC_CERTIFICATE_PASSWORD` to sign, and also `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` to notarize. (A GitHub Actions `if:` cannot read a secret directly, so the workflow turns each set of secrets into a true/false value first and the signing steps ask that.) To build locally: publish the server for your platform into `desktop/server` (`dotnet publish src/OpenVP.Server -c Release -r osx-arm64 --self-contained true -o desktop/server`), then in `desktop/` run `npm ci && npm run dist:linux` or `npm run dist:mac -- --arm64 -c.mac.identity=null`.
+
 Or with Docker:
 
 ```bash
@@ -549,6 +575,10 @@ A **health report** covers the last 24 hours (daily) or 7 days (weekly) and says
 **Integrations ↗** in the console's top bar (or `/integrations.html`) connects slots to other systems. It has a tab for each of MQTT, Webhooks, OSC, Art-Net and Prometheus, each showing its status (connected or error, when the last message went, counts) and a form to set it up. Signals are chosen from a picker that lists what the slot's loaded program has, the same list the debugger uses. Connection settings (broker, ports) are for all of OpenVP and are saved in `data/integrations/global.json`; which signals a slot uses, and its outgoing webhooks, are saved with the slot in `data/programNN/devices/integrations.json`, so snapshots and roll backs include them. Each change is written to the [Activity](#console-features) feed.
 
 None of these can slow a program down. A slot listens for changes only to the signals you chose (a slot with no integrations is not traced at all), the listener only copies the change into a bounded queue, and the network work happens on other threads. If a broker, a webhook endpoint or an OSC target can't keep up, the oldest changes are dropped and counted, and the program carries on.
+
+#### Bitfocus Companion
+
+`tools/companion-module-openvp` is a [Companion](https://bitfocus.io/companion) module (Companion 3.x module format, MIT). It connects to the server's REST API and `/ws/trace` stream with an [API token](#api-tokens) as a Bearer token (scope `operator` is enough to press and set; `read-only` shows feedback only) and offers actions (press, release and pulse a digital signal, set analog, send serial, start/stop/restart a slot), feedbacks (digital signal high, analog compare, slot running or in a state) and variables (slot state and program, and the signals you list). The message building and parsing have node tests (`npm test` in that folder). It has been checked against a real OpenVP server with a script, but **not run inside Companion**; nothing is published. See its README.
 
 #### MQTT bridge
 

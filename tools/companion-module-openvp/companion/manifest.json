@@ -6,8 +6,8 @@
 	"description": "Control and monitor programs running on an OpenVP virtual control processor",
 	"version": "0.1.0",
 	"license": "MIT",
-	"repository": "git+https://github.com/openvp/openvp.git",
-	"bugs": "https://github.com/openvp/openvp/issues",
+	"repository": "git+https://github.com/qureshiumar1983-eng/openVirtualProcessor.git",
+	"bugs": "https://github.com/qureshiumar1983-eng/openVirtualProcessor/issues",
 	"maintainers": [
 		{
 			"name": "OpenVP contributors"

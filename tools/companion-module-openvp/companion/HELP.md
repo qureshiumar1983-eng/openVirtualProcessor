@@ -1,6 +1,6 @@
 # OpenVP
 
-Controls and monitors programs running on an [OpenVP](https://github.com/openvp/openvp) server.
+Controls and monitors programs running on an [OpenVP](https://github.com/qureshiumar1983-eng/openVirtualProcessor) server.
 
 ## Set up
 
