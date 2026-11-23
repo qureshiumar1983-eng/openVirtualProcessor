@@ -1,0 +1,294 @@
+name: Packages
+# Linux and macOS builds of OpenVP. (The Windows app is built by windows-app.yml.)
+#   Server, self-contained (no .NET install needed):
+#     - linux-x64 and linux-arm64: a .tar.gz, a .deb and an .rpm (systemd service, dedicated openvp user, data in /var/lib/openvp)
+#     - osx-x64 and osx-arm64: a .tar.gz
+#   Desktop app (Electron, with the server inside): Linux x64 AppImage and .deb, macOS x64 and arm64 .dmg
+# Runs when a tag like v0.2.0 is pushed (the packages are attached to that tag's GitHub release) and when started by hand
+# (Actions > Packages > Run workflow: the packages are kept as artifacts of the run, and nothing is released).
+# macOS signing and notarization happen only if the signing secrets named in the env block of the desktop-macos job (and in the
+# README section "Linux and macOS packages") are set; without them the .dmg is built unsigned, which is fine for testing.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to build (e.g. 0.2.0). Leave empty for a development number such as 0.1.0-dev.12.
+        required: false
+        default: ''
+concurrency:
+  group: packages-${{ github.ref }}
+  cancel-in-progress: false
+permissions:
+  contents: write
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pick the version
+        id: ver
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then v="${GITHUB_REF_NAME#v}"
+          elif [ -n "${INPUT_VERSION}" ]; then v="${INPUT_VERSION#v}"
+          else
+            base=$(node -p "require('./desktop/package.json').version")
+            v="${base}-dev.${GITHUB_RUN_NUMBER}"
+          fi
+          if ! echo "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then echo "Not a version: $v" >&2; exit 1; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Version: $v"
+
+  server-linux:
+    needs: version
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rid: [linux-x64, linux-arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Publish the server (self-contained)
+        run: dotnet publish src/OpenVP.Server -c Release -r ${{ matrix.rid }} --self-contained true -p:Version=${{ needs.version.outputs.version }} -o stage/openvp
+      - name: Make the tarball
+        run: |
+          mkdir -p out
+          tar -C stage -czf out/openvp-server-${{ needs.version.outputs.version }}-${{ matrix.rid }}.tar.gz openvp
+      - name: Get nfpm (MIT; SHA-256 checked)
+        run: packaging/linux/install-nfpm.sh "$RUNNER_TEMP/nfpm"
+      - name: Check the maintainer scripts
+        if: matrix.rid == 'linux-x64'
+        run: packaging/linux/test-scripts.sh
+      - name: Make the .deb and .rpm
+        run: NFPM="$RUNNER_TEMP/nfpm/nfpm" packaging/linux/build.sh "${{ needs.version.outputs.version }}" ${{ matrix.rid }} stage/openvp out
+      - name: Look inside the packages
+        run: |
+          sudo apt-get install -y --no-install-recommends rpm
+          for f in out/*.deb; do dpkg-deb -I "$f"; dpkg-deb -c "$f" | grep -E 'systemd|/etc/|/usr/bin/|/usr/lib/openvp/openvp$'; done
+          for f in out/*.rpm; do rpm -qpi "$f"; rpm -qpR "$f"; rpm -qp --scripts "$f" | head -40; rpm -qpl "$f" | grep -E 'systemd|/etc/|/usr/bin/'; done
+      - name: Install the .deb, start it, upgrade it, remove it (x64 only)
+        if: matrix.rid == 'linux-x64'
+        run: |
+          sudo apt-get install -y ./out/openvp_*_amd64.deb
+          getent passwd openvp
+          systemctl is-enabled openvp
+          if systemctl is-active --quiet openvp; then echo "it was started by the install, and should not be"; exit 1; fi
+          sudo systemctl start openvp
+          curl -fsS --retry 30 --retry-delay 1 --retry-connrefused http://127.0.0.1:8080/healthz
+          echo
+          curl -fsS http://127.0.0.1:8080/api/info
+          echo
+          echo kept | sudo -u openvp tee /var/lib/openvp/keep-me.txt
+          # the upgrade path: installing over itself passes the old version to the scripts
+          sudo apt-get install --reinstall -y ./out/openvp_*_amd64.deb
+          sudo test -f /var/lib/openvp/keep-me.txt
+          curl -fsS --retry 30 --retry-delay 1 --retry-connrefused http://127.0.0.1:8080/healthz
+          echo
+          sudo apt-get remove -y openvp
+          sudo test -f /var/lib/openvp/keep-me.txt
+          if systemctl is-enabled openvp 2>/dev/null; then echo "still enabled after removal"; exit 1; fi
+          echo "install, upgrade and removal work; the data was kept"
+      - name: Service log (if that failed)
+        if: failure()
+        run: sudo journalctl -u openvp --no-pager | tail -80
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openvp-server-${{ matrix.rid }}
+          path: out/*
+          if-no-files-found: error
+
+  server-macos:
+    needs: version
+    # Built on a Mac so the .NET SDK can ad-hoc sign the program (Apple Silicon will not run an unsigned one).
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rid: [osx-arm64, osx-x64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Publish the server (self-contained)
+        run: dotnet publish src/OpenVP.Server -c Release -r ${{ matrix.rid }} --self-contained true -p:Version=${{ needs.version.outputs.version }} -o stage/openvp
+      - name: Make the tarball
+        run: |
+          mkdir -p out
+          tar -C stage -czf out/openvp-server-${{ needs.version.outputs.version }}-${{ matrix.rid }}.tar.gz openvp
+      - name: Smoke test (start it, check /healthz, stop it)
+        # The runner is Apple Silicon, so the x64 build is not run here.
+        if: matrix.rid == 'osx-arm64'
+        run: |
+          mkdir -p smoke
+          (cd smoke && OpenVP__DataDirectory="$PWD/data" OpenVP__CipEnabled=false OpenVP__TunnelPort=0 OpenVP__Mdns=false Urls=http://127.0.0.1:8080 ../stage/openvp/openvp > ../server.log 2>&1 &)
+          ok=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1; then ok=1; break; fi
+            sleep 1
+          done
+          cat server.log
+          pkill -x openvp || true
+          [ "$ok" = 1 ] || { echo "the server did not answer"; exit 1; }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openvp-server-${{ matrix.rid }}
+          path: out/*
+          if-no-files-found: error
+
+  desktop-linux:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Publish the server into the app
+        run: dotnet publish src/OpenVP.Server -c Release -r linux-x64 --self-contained true -p:Version=${{ needs.version.outputs.version }} -o desktop/server
+      - name: Build the AppImage and .deb
+        working-directory: desktop
+        run: |
+          npm ci --no-audit --no-fund
+          npm pkg set version=${{ needs.version.outputs.version }}
+          npm run dist:linux
+      - name: Smoke test (start the app, check the console answers, close it)
+        run: |
+          sudo apt-get install -y --no-install-recommends xvfb
+          (cd desktop/dist/linux-unpacked && xvfb-run -a ./openvp-desktop --no-sandbox > "$RUNNER_TEMP/app.log" 2>&1 &)
+          ok=0
+          for i in $(seq 1 90); do
+            if curl -fsS http://localhost:8080/api/info 2>/dev/null | grep -q OpenVP; then ok=1; break; fi
+            sleep 1
+          done
+          curl -fsS http://localhost:8080/ | grep -q OpenVP || ok=0
+          pkill -f openvp-desktop || true
+          pkill -x openvp || true
+          tail -20 "$RUNNER_TEMP/app.log" || true
+          [ "$ok" = 1 ] || { echo "the app did not serve the console"; exit 1; }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenVP-desktop-linux
+          path: |
+            desktop/dist/*.AppImage
+            desktop/dist/*.deb
+          if-no-files-found: error
+
+  desktop-macos:
+    needs: version
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            rid: osx-arm64
+          - arch: x64
+            rid: osx-x64
+    env:
+      # Secrets cannot be tested in a step's `if:`, so each is turned into a true or false here, and the steps ask that.
+      # Add them under Settings > Secrets and variables > Actions to sign (MAC_CERTIFICATE_P12, MAC_CERTIFICATE_PASSWORD) and
+      # notarize as well (APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID). None of them is required.
+      HAVE_MAC_CERT: ${{ secrets.MAC_CERTIFICATE_P12 != '' && secrets.MAC_CERTIFICATE_PASSWORD != '' }}
+      HAVE_NOTARY: ${{ secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Publish the server into the app
+        run: dotnet publish src/OpenVP.Server -c Release -r ${{ matrix.rid }} --self-contained true -p:Version=${{ needs.version.outputs.version }} -o desktop/server
+      - name: Install the build tools
+        working-directory: desktop
+        run: |
+          npm ci --no-audit --no-fund
+          npm pkg set version=${{ needs.version.outputs.version }}
+      - name: Build the .dmg (unsigned)
+        if: env.HAVE_MAC_CERT != 'true'
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run dist:mac -- --${{ matrix.arch }} -c.mac.identity=null
+      - name: Build, sign and notarize the .dmg
+        if: env.HAVE_MAC_CERT == 'true'
+        working-directory: desktop
+        env:
+          CSC_LINK: ${{ secrets.MAC_CERTIFICATE_P12 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARIZE: ${{ env.HAVE_NOTARY }}
+        run: |
+          extra=""
+          if [ "$NOTARIZE" = "true" ]; then extra="-c.mac.notarize=true"; fi
+          npm run dist:mac -- --${{ matrix.arch }} $extra
+      - name: Smoke test (the server inside the app answers)
+        # The runner is Apple Silicon, so the x64 app is not run here.
+        if: matrix.arch == 'arm64'
+        run: |
+          app=$(ls -d desktop/dist/mac-arm64/*.app | head -1)
+          server="$app/Contents/Resources/server/openvp"
+          test -x "$server"
+          mkdir -p smoke
+          (cd smoke && OpenVP__DataDirectory="$PWD/data" OpenVP__CipEnabled=false OpenVP__TunnelPort=0 OpenVP__Mdns=false Urls=http://127.0.0.1:8080 "../$server" > ../server.log 2>&1 &)
+          ok=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1; then ok=1; break; fi
+            sleep 1
+          done
+          cat server.log
+          pkill -x openvp || true
+          [ "$ok" = 1 ] || { echo "the server inside the app did not answer"; exit 1; }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenVP-desktop-macos-${{ matrix.arch }}
+          path: desktop/dist/*.dmg
+          if-no-files-found: error
+
+  release:
+    needs: [version, server-linux, server-macos, desktop-linux, desktop-macos]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          cd dist
+          ls -l
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          notes="Linux and macOS packages for OpenVP ${VERSION}: the server as .deb, .rpm and .tar.gz (Linux) and .tar.gz (macOS), and the desktop app as AppImage, .deb and .dmg. The macOS builds are unsigned unless the maintainers added signing secrets: see the Packages section of the README. SHA-256 sums are in SHA256SUMS.txt. The Windows app is released separately (OpenVP.exe)."
+          flags="--latest=false"
+          case "$VERSION" in *-*) flags="$flags --prerelease" ;; esac
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --verify-tag --title "OpenVP $TAG" --notes "$notes" $flags
+          fi
+          gh release upload "$TAG" dist/* --clobber
