@@ -77,7 +77,7 @@ public static class OpenVpServer
         processor.AddLoader(new SimplLoader(Path.Combine(processor.DataDirectory, "symbols.json")));
         processor.AddLoader(new LpzLoader(Path.Combine(processor.DataDirectory, "primitives.json")));
         var unsupportedPath = UnsupportedLogPath(cfg["UnsupportedLog"], processor.DataDirectory);
-        processor.Unsupported.SetSupportCheck(OpenVP.Lpz.SupportedSymbols.IsSupported); // rows for symbols added since are dropped
+        processor.Unsupported.SetSupportCheck((kind, name) => OpenVP.Lpz.SupportedSymbols.IsSupported(kind, name) || OpenVP.SimplSharpHost.ShimSupport.IsSupported(kind, name)); // rows for symbols, types and members added since are dropped
         if (unsupportedPath != null)
         {
             processor.Unsupported.UseFile(unsupportedPath);
