@@ -35,6 +35,11 @@ public sealed record LogicSymbol(
     /// <summary>For the .smw engine: whether an unconnected input pin reads as the constant 1 instead of 0
     /// (what the compiler ties it to). AND and NAND ignore unconnected inputs; Equate's enable defaults on.</summary>
     public Func<int, bool> UnwiredHigh { get; init; } = static _ => false;
+
+    /// <summary>The primitives take the compiled record's pin order. Where the .smw symbol's pins sit differently, this
+    /// says how: given the .smw input and output counts, the .smw pin (1-based) for each compiled input pin in turn,
+    /// 0 for a pin the compiled record ties to constant 0. Read off a real program's .smw against its compiled records.</summary>
+    public Func<int, int, int[]>? SmwPinOrder { get; init; }
 }
 
 /// <summary>
@@ -56,6 +61,17 @@ public static class LogicSymbolCatalog
 
     private static readonly Func<int, bool> AllHigh = static _ => true;
 
+    /// <summary>Interlock in a real .smw: pin 1 clears, pin 2 is a spare (never wired in programs seen), pins 3.. are the
+    /// inputs, so a symbol with N outputs has N + 2 pins. Hand-written .smw files with N + 1 pins (clear, then inputs) work too.</summary>
+    private static int[] InterlockSmwOrder(int inputs, int outputs)
+    {
+        var first = inputs >= outputs + 2 ? 3 : 2;
+        var order = new List<int>();
+        for (int p = first; p <= inputs; p++) order.Add(p);
+        order.Add(1);
+        return [.. order];
+    }
+
     public static readonly IReadOnlyList<LogicSymbol> All =
     [
         // ---------------------------------------------------------------- digital
@@ -71,9 +87,9 @@ public static class LogicSymbolCatalog
         C("Truth Table", "Digital", () => new TruthTablePrim(), "in: i1..iN · out: o1..oM · params: rows", [28], [19]),
         C("Transition Gate", "Digital", () => new TransitionPrim(false), "in: i1..iN · out: pulse on any rising edge", [6], [6]),
         C("Transition Gate (falling)", "Digital", () => new TransitionPrim(true), "in: i1..iN · out: pulse on any falling edge", [], [7]),
-        C("Set/Reset Latch", "Digital", () => new SrLatchPrim(), "in: set, reset · out: out, out*", [12], [9], "SR Latch"),
-        C("Toggle", "Digital", () => new TogglePrim(), "in: clock, reset, set · out: out, out*", [13], [10]),
-        C("Interlock", "Digital", () => new InterlockPrim(), "in: clear, i1..iN · out: o1..oN", [19], [11]),
+        C("Set/Reset Latch", "Digital", () => new SrLatchPrim(), "in: reset, set (the .smw lists set, reset) · out: out, out*", [12], [9], "SR Latch") with { SmwPinOrder = static (_, _) => [2, 1] },
+        C("Toggle", "Digital", () => new TogglePrim(), "in: clock, reset, set (the .smw lists set, reset, clock) · out: out, out*", [13], [10]) with { SmwPinOrder = static (_, _) => [3, 2, 1] },
+        C("Interlock", "Digital", () => new InterlockPrim(), "in: i1..iN, clear (the .smw lists clear, a spare pin, then i1..iN) · out: o1..oN", [19], [11]) with { SmwPinOrder = static (inputs, outputs) => InterlockSmwOrder(inputs, outputs) },
         C("Interlock-Toggle", "Digital", () => new InterlockTogglePrim(), "in: i1..iN, clear · out: o1..oN", [419], [207]),
         C("Ring Counter", "Digital", () => new RingCounterPrim(), "in: clock, reset · out: o1..oN", [17, 451], [23]),
         C("Decade", "Digital", () => new DecadePrim(), "in: analog · out: units 0-9, tens 0-9, hundreds 0-9", [78], [52]),
@@ -92,7 +108,7 @@ public static class LogicSymbolCatalog
         C("Delay", "Timers", () => new DelayPrim(), "in: i · out: o · params: time", [16], [27]),
         I("Delay (Analog Time)", "Timers", () => new AnalogTimeDelayPrim(), "in: start, cancel, time (analog, 1/100 s) · out: o", [], [200]),
         D("Long Delay", "Timers", () => new DelayPrim(), "in: i · out: o · params: time"),
-        C("Multiple One Shots", "Timers", () => new MultiOneShotPrim(), "in: t1..tN · out: o1..oN · params: time", [21], [29]),
+        C("Multiple One Shots", "Timers", () => new MultiOneShotPrim(), "in: t1..tN, spare (the .smw lists the spare pin first) · out: o1..oN · params: time", [21], [29]) with { SmwPinOrder = static (inputs, outputs) => inputs == outputs + 1 ? [.. Enumerable.Range(2, outputs), 1] : [.. Enumerable.Range(1, inputs)] },
         C("Debounce", "Timers", () => new DebouncePrim(), "in: i · out: o · params: time", [50], [56]),
         C("Stepper", "Timers", () => new StepperPrim(), "in: start · out: busy, o1..oN · params: delay, duration, ...", [98], [139]),
         C("Stepper with Progress & Reset", "Timers", () => new StepperProgressPrim(), "in: start, reset · out: running, ...", [777], [241]),

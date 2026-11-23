@@ -26,9 +26,9 @@ Every symbol has one implementation, used both for `.smw` source and compiled `.
 | Truth Table | compiled | 28 | 19 | in: i1..iN · out: o1..oM · params: rows |
 | Transition Gate | compiled | 6 | 6 | in: i1..iN · out: pulse on any rising edge |
 | Transition Gate (falling) | compiled | ? | 7 | in: i1..iN · out: pulse on any falling edge |
-| Set/Reset Latch (also: SR Latch) | compiled | 12 | 9 | in: set, reset · out: out, out* |
-| Toggle | compiled | 13 | 10 | in: clock, reset, set · out: out, out* |
-| Interlock | compiled | 19 | 11 | in: clear, i1..iN · out: o1..oN |
+| Set/Reset Latch (also: SR Latch) | compiled | 12 | 9 | in: reset, set (the .smw lists set, reset) · out: out, out* |
+| Toggle | compiled | 13 | 10 | in: clock, reset, set (the .smw lists set, reset, clock) · out: out, out* |
+| Interlock | compiled | 19 | 11 | in: i1..iN, clear (the .smw lists clear, a spare pin, then i1..iN) · out: o1..oN |
 | Interlock-Toggle | compiled | 419 | 207 | in: i1..iN, clear · out: o1..oN |
 | Ring Counter | compiled | 17, 451 | 23 | in: clock, reset · out: o1..oN |
 | Decade | compiled | 78 | 52 | in: analog · out: units 0-9, tens 0-9, hundreds 0-9 |
@@ -49,7 +49,7 @@ Every symbol has one implementation, used both for `.smw` source and compiled `.
 | Delay | compiled | 16 | 27 | in: i · out: o · params: time |
 | Delay (Analog Time) | inferred | ? | 200 | in: start, cancel, time (analog, 1/100 s) · out: o |
 | Long Delay | documented | ? | ? | in: i · out: o · params: time |
-| Multiple One Shots | compiled | 21 | 29 | in: t1..tN · out: o1..oN · params: time |
+| Multiple One Shots | compiled | 21 | 29 | in: t1..tN, spare (the .smw lists the spare pin first) · out: o1..oN · params: time |
 | Debounce | compiled | 50 | 56 | in: i · out: o · params: time |
 | Stepper | compiled | 98 | 139 | in: start · out: busy, o1..oN · params: delay, duration, ... |
 | Stepper with Progress & Reset | compiled | 777 | 241 | in: start, reset · out: running, ... |

@@ -28,7 +28,7 @@ namespace Crestron.Logos.SplusObjects
 
         // Program-wide start-up barrier (this assembly is loaded once per program): events and
         // WaitForInitializationComplete wait until every module's Function Main has got going, i.e. has
-        // called WaitForInitializationComplete, returned, or run for two seconds.
+        // called WaitForInitializationComplete, handed over (Delay, ProcessLogic, a WAIT), returned, or run for two seconds.
         private static int _modulesStarting;
         private static readonly ManualResetEventSlim AllStarted = new ManualResetEventSlim(false);
         private int _readyFlag;
@@ -69,6 +69,45 @@ namespace Crestron.Logos.SplusObjects
                     Monitor.Wait(TurnGate, 100);
                 }
             }
+        }
+
+        // Event order. Handlers that one change of the logic starts, in different modules, begin in the order the logic
+        // delivered the change, and each runs until it finishes or first hands over (Delay, ProcessLogic, a WAIT, a wait for
+        // an event) before the next one starts, so a module that reads what an earlier module's handler is still writing
+        // (two modules sharing one SIMPL# library, say) sees it finished. A handler that holds its turn for a quarter of
+        // a second without handing over loses it, so one blocked handler can't stall the rest.
+        private static readonly object EventGate = new object();
+        private static readonly SortedSet<long> EventPending = new SortedSet<long>();
+        private static long _eventSeq, _eventHead = -1, _eventSince;
+        private const int EventTurnTimeoutMs = 250;
+        [ThreadStatic] private static long _eventTicket;
+
+        private static long TakeEventTicket()
+        {
+            var t = Interlocked.Increment(ref _eventSeq);
+            lock (EventGate) EventPending.Add(t);
+            return t;
+        }
+
+        private void WaitForEventTurn(long ticket)
+        {
+            lock (EventGate)
+            {
+                while (!_stopped && EventPending.Contains(ticket) && EventPending.Min != ticket)
+                {
+                    var head = EventPending.Min;
+                    var now = Environment.TickCount64;
+                    if (head != _eventHead) { _eventHead = head; _eventSince = now; }
+                    else if (now - _eventSince > EventTurnTimeoutMs) { EventPending.Remove(head); Monitor.PulseAll(EventGate); continue; }
+                    Monitor.Wait(EventGate, 20);
+                }
+            }
+        }
+
+        private static void SettleEvent(long ticket)
+        {
+            if (ticket == 0) return;
+            lock (EventGate) { if (EventPending.Remove(ticket)) Monitor.PulseAll(EventGate); }
         }
 
         /// <summary>This module's Main has handed over, returned or stopped: the next module in order may go on.</summary>
@@ -171,7 +210,8 @@ namespace Crestron.Logos.SplusObjects
             // Function Main handing the baton over (Delay, ProcessLogic, a WAIT in progress...) is the point at
             // which the module's event handlers may start, and the next module's Main its turn.
             // WaitForInitializationComplete is neither: see there.
-            if (releaseEvents && _isMainThread) { ReleaseEvents(); PassTurn(); }
+            if (releaseEvents && _isMainThread) { ReleaseEvents(); PassTurn(); MarkReady(); }
+            SettleEvent(_eventTicket);
             var held = _current == this ? _batonDepth : 0;
             if (held > 0) { _batonDepth = 0; _current = null; _baton.Release(); }
             try { wait(); }
@@ -564,13 +604,22 @@ namespace Crestron.Logos.SplusObjects
             if (TraceOn) Log("Info", $"[S+ {InstanceName}] fire {handlers.Count} handler(s)");
             if (handlers.Count == 0 || _stopped) return;
             foreach (var h in HandlerSnapshot.Of(handlers, ref snapshot))
+            {
+                var ticket = TakeEventTicket();
                 QueueHandler("S+ event", h.Handler, () =>
                 {
-                    if (!AllStarted.IsSet) AllStarted.Wait(TimeSpan.FromSeconds(10));
-                    if (_stopped) return;
-                    try { h.Handler(args); }
-                    catch (Exception e) { ObjectCatchHandler(e); }
+                    try
+                    {
+                        if (!AllStarted.IsSet) AllStarted.Wait(TimeSpan.FromSeconds(10));
+                        if (_stopped) return;
+                        WaitForEventTurn(ticket);
+                        _eventTicket = ticket;
+                        try { h.Handler(args); }
+                        catch (Exception e) { ObjectCatchHandler(e); }
+                    }
+                    finally { SettleEvent(ticket); _eventTicket = 0; }
                 });
+            }
         }
 
         void ISplusModule.StartMain()

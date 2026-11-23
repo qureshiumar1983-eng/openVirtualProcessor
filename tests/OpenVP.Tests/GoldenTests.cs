@@ -161,7 +161,7 @@ public static partial class GoldenTests
         var fb = Enumerable.Range(10 + W, W).ToArray();
         var bin = Header("interlock");
         bin.AddRange(DigitalPanel(3, fb, presses));
-        bin.AddRange(Record(11, "S-1", [0, .. presses], fb));
+        bin.AddRange(Record(11, "S-1", [.. presses, 0], fb));
         var (p, slot, panel, rec) = Run(Pack("interlock", bin, Dip03));
         using var _ = p;
         var slots = new[] { slot };
@@ -219,14 +219,14 @@ public static partial class GoldenTests
         bin.AddRange(Record(3, "S-3 NOR", [10, 11], [42]));
         bin.AddRange(Record(4, "S-4 XOR", [10, 11, 12], [43]));
         bin.AddRange(Record(10, "S-5 Toggle", [13, 14, 15], [44, 45]));
-        bin.AddRange(Record(9, "S-6 SR latch", [16, 17], [46, 47]));
+        bin.AddRange(Record(9, "S-6 SR latch", [17, 16], [46, 47])); // compiled order: reset, set
         bin.AddRange(Record(18, "S-7 Buffer", [18, 10, 11], [48, 49]));
         bin.AddRange(Record(67, "S-8 Analog buffer", [18, 23], [50]));
         bin.AddRange(Record(88, "S-9 Serial buffer", [18, 25], [51]));
         bin.AddRange(Record(38, "S-10 Analog init", [19], [52, 53], Int(15, 2), Int(2, 111), Int(2, 222)));
         bin.AddRange(Record(38, "S-11 Serial init", [19], [54], Int(15, 1), Str(3, "init-text")));
         bin.AddRange(Record(51, "S-12 Equate", [23], [55, 56], Int(15, 2), Int(2, 5), Int(2, 10)));
-        bin.AddRange(Record(11, "S-13 Interlock", [20, 21, 22], [57, 58]));
+        bin.AddRange(Record(11, "S-13 Interlock", [21, 22, 20], [57, 58]));
         bin.AddRange(Record(38, "S-14 Analog init at start", [1], [59], Int(15, 1), Int(2, 7)));
         bin.AddRange(Record(38, "S-15 Serial init at start", [1], [60], Int(15, 1), Str(3, "boot")));
 

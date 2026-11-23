@@ -58,6 +58,23 @@ Across the 101 programs there are **99 distinct types**. Types are identified by
 
 Pins appear in the same order as on the SIMPL symbol. Unconnected pins point at signal 0 or 1. Times are in 1/100 s.
 
+### Pin order: compiled records and the .smw differ
+
+The compiled record's pins are not the .smw symbol's pins for four symbols. Read off one real program's source against its compiled records (every instance of these symbols in it agreed):
+
+| Symbol | Compiled type | Compiled order | .smw order |
+|---|---|---|---|
+| Set/Reset Latch | 9 | reset, set (reset wins) | set, reset |
+| Toggle | 10 | clock, reset, set | set, reset, clock |
+| Interlock | 11 | i1..iN, clear | clear, a spare pin, i1..iN (N + 2 pins) |
+| Multiple One Shots | 29 | t1..tN, then one spare | one spare, then t1..tN |
+
+The primitives take the compiled order; the .smw engine maps its pins with `LogicSymbol.SmwPinOrder`. A .smw symbol that has a compiled record in the `.lpz` beside it runs from that record, so it gets the compiled order directly. A Delay (type 27) can have several outputs: output k goes high after parameter k.
+
+### Processor System Control
+
+The System Monitor card is the top-level hardware record `Slot-08` (type -12, no IP ID); the processor's built-in System Control symbol (SmC 6543 on an RMC4, matched in a .smw by a library name containing "System Control") is its child `Slot-01`, and System Information is `Slot-02`. Only wired pins are compiled: field 11 counts the digital outputs up to the highest wired one. OpenVP drives output 1, the program-start feedback, high when the program starts and holds it while the program runs; programs feed it to a one-shot to run their start-up chain. The other outputs stay low, its inputs (reboot, restart a program) are ignored, and System Information is not modelled. What the other outputs mean is not documented publicly; the slot number 8 and the output meaning were confirmed on one RMC4 program only.
+
 ### IP devices
 
 Records of type −12 named `IP-ID-xx` are the program's IP devices. Inputs are feedback to the device and outputs come from it. Field 10 is the number of digital inputs and field 12 the end of the analog inputs, so serial inputs follow. Fields 11 and 13 split the outputs the same way. Within each group, position n is join n.

@@ -20,6 +20,9 @@ public static partial class SupportedSymbols
     /// are never counted as supported here.</summary>
     public static bool IsSupported(string kind, string name)
     {
+        // Older builds filed the processor's System Control as unsupported hardware.
+        if (kind is "SIMPL hardware" or "SIMPL symbol" && SymbolName().Match(name) is { Success: true } sc && ProcessorSymbols.IsSystemControlName(sc.Groups["name"].Value))
+            return true;
         if (kind.Equals("SIMPL symbol", StringComparison.OrdinalIgnoreCase) && SymbolName().Match(name) is { Success: true } m)
             return LogicSymbolCatalog.ByName(m.Groups["name"].Value) != null
                 || (int.TryParse(m.Groups["code"].Value, out var code) && LogicSymbolCatalog.BySmc(code) != null);
