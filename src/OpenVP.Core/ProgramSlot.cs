@@ -332,7 +332,10 @@ public sealed class ProgramSlot : IDisposable
     public void UnregisterDevice(uint ipId)
     {
         if (_ipTable.TryRemove(ipId, out var d))
+        {
+            Processor.Bus.Detach(d); // a runtime that forgot to leave the EISC bus mustn't leave a stale link behind
             Processor.NotifyDeviceUnregistered(d);
+        }
     }
 
     /// <summary>The "ipt" console command: each IP ID, then who is connected to it.</summary>
