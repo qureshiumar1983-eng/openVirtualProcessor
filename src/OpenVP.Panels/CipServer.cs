@@ -307,12 +307,18 @@ public static class Cip
     }
 
     /// <summary>
-    /// IP ID from a connect request. Panels send "00 00 00 00 00 [IPID] 40 FF FF F1 01" (11 bytes); some
-    /// clients send one leading zero fewer. The IP ID is the byte just before the 0x40.
+    /// IP ID from a connect request. Two forms, both from public community clients and servers
+    /// (acaprojects/ruby-cresip, moty66/node-red-contrib-cip, zhuld/CIP-Server, rdriscoll/Crestron-CIP):
+    ///   0x01, the long sign-on panels send: "00 00 00 00 00 [IPID] 40 FF FF F1 01", or the older
+    ///         "7F 00 00 01 00 [IPID] 40". The IP ID is the byte just before the 0x40.
+    ///   0x0A, the short sign-on XPanels, apps and other processors send: "00 [IPID] A3 42 40 02 00 00 00 00".
+    ///         The IP ID is the second byte.
+    /// Neither carries a Room ID: how a panel set up for a VC-4 room sends it over CIP isn't publicly documented.
     /// </summary>
     public static uint? DecodeConnectIpId(byte type, ReadOnlySpan<byte> p)
     {
-        if (type is not (ConnectRequest or ConnectRequestAlt)) return null;
+        if (type == ConnectRequestAlt) return p.Length > 1 ? p[1] : null;
+        if (type != ConnectRequest) return null;
         if (p.Length > 6 && p[6] == 0x40) return p[5];
         if (p.Length > 5 && p[5] == 0x40) return p[4];
         if (p.Length >= 11) return p[5];
@@ -346,6 +352,8 @@ internal sealed class CipSession
     private long _whoAreYouAt;   // Stopwatch timestamp of the WhoAreYou we sent, until the first connect request
     private Task? _probe;
     private long _probeAt;       // Stopwatch timestamp of the heartbeat request in flight, 0 = none
+    private int _strays;         // packets logged from this client before it registered
+    private const int MaxStraysLogged = 4;
 
     public CipSession(TcpClient client, Processor processor, CipServer server)
     {
@@ -425,6 +433,16 @@ internal sealed class CipSession
             _device.AttachConnection(_conn);
             Send(Cip.ConnectOk(ipId));
             return;
+        }
+        // A client that says something other than a sign-on before it has an IP ID is using a handshake OpenVP
+        // doesn't know (a panel set up with a Room ID, for one). That is always logged, with the bytes, so it
+        // shows in the slot log without turning packet logging on and can be reported.
+        if (_device == null && type is not (Cip.HeartbeatRequest or Cip.HeartbeatResponse or Cip.Disconnect) && _strays < MaxStraysLogged)
+        {
+            _strays++;
+            var hex = Convert.ToHexString(payload.AsSpan(0, Math.Min(payload.Length, 400))) + (payload.Length > 400 ? "..." : "");
+            _server.Event(1, $"{(_conn.RemoteAddress.Length > 0 ? _conn.RemoteAddress : "client")} sent packet type {type:X2} before signing on with an IP ID, which OpenVP doesn't understand, so it is not connected: {type:X2} {hex}"
+                + (_strays == 1 ? ". If this panel has a Room ID set, clear it and connect by IP ID only: Room IDs aren't supported over CIP yet. Please report these bytes." : ""));
         }
         switch (type)
         {

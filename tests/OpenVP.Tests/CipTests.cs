@@ -207,6 +207,54 @@ public static class CipTests
     }
 
     [Test]
+    public static void Connect_request_ip_id_is_read_from_both_sign_on_forms()
+    {
+        Assert.Equal((uint?)0x03, Cip.DecodeConnectIpId(Cip.ConnectRequest, new byte[] { 0, 0, 0, 0, 0, 0x03, 0x40, 0xFF, 0xFF, 0xF1, 0x01 }), "long sign-on");
+        Assert.Equal((uint?)0x04, Cip.DecodeConnectIpId(Cip.ConnectRequest, new byte[] { 0x7F, 0, 0, 1, 0, 0x04, 0x40 }), "older long sign-on");
+        // Short sign-on (XPanels, apps): the IP ID is the second byte, not the one before the 0x40.
+        Assert.Equal((uint?)0x05, Cip.DecodeConnectIpId(Cip.ConnectRequestAlt, new byte[] { 0x00, 0x05, 0xA3, 0x42, 0x40, 0x02, 0, 0, 0, 0 }), "short sign-on, 10 bytes");
+        Assert.Equal((uint?)0x06, Cip.DecodeConnectIpId(Cip.ConnectRequestAlt, new byte[] { 0x00, 0x06, 0xA3, 0x42, 0x40, 0x02, 0, 0, 0xD1, 0x01, 0 }), "short sign-on, 11 bytes");
+        Assert.True(Cip.DecodeConnectIpId(Cip.Data, new byte[] { 0, 0, 3, 0, 0, 0 }) == null, "data is not a sign-on");
+    }
+
+    [Test]
+    public static void Short_sign_on_binds_to_the_right_ip_id()
+    {
+        using var p = new Processor(Paths.TempData());
+        p.Slot(1).RegisterDevice(0x05, "XPanel", "x");
+        using var server = new CipServer(p, 0, IPAddress.Loopback);
+        server.Start();
+        using var client = new TcpClient();
+        client.Connect(IPAddress.Loopback, server.Port);
+        var s = client.GetStream();
+        s.ReadTimeout = 3000;
+        Read(s);
+        s.Write(Cip.Frame(Cip.ConnectRequestAlt, 0x00, 0x05, 0xA3, 0x42, 0x40, 0x02, 0x00, 0x00, 0x00, 0x00));
+        Assert.Equal(Cip.ConnectResponse, Read(s).type, "connect response");
+        Assert.Eventually(() => p.Slot(1).FindDevice(0x05)!.Online, "IP ID 05 online");
+        Assert.True(p.Slot(1).FindDevice(0x40) == null, "nothing bound to the 0x40 marker byte");
+    }
+
+    [Test]
+    public static void An_unknown_handshake_is_logged_with_its_bytes()
+    {
+        using var p = new Processor(Paths.TempData());
+        using var server = new CipServer(p, 0, IPAddress.Loopback); // packet logging off
+        server.Start();
+        using var client = new TcpClient();
+        client.Connect(IPAddress.Loopback, server.Port);
+        var s = client.GetStream();
+        s.ReadTimeout = 3000;
+        Read(s);
+        for (int i = 0; i < 10; i++) s.Write(Cip.Frame(0x26, 0x00, 0x03, 0x40, 0xAB));
+        s.Write(Cip.Frame(Cip.HeartbeatRequest, 0x00, 0x00));
+        Assert.Equal(Cip.HeartbeatResponse, Read(s).type, "still answers heartbeats");
+        var lines = p.RecentLog(1).Where(e => e.Message.Contains("26 000340AB")).ToList();
+        Assert.Equal(4, lines.Count, "logged, but only the first few");
+        Assert.True(lines[0].Message.Contains("Room ID"), "first line says what to do");
+    }
+
+    [Test]
     public static void Unknown_data_sub_types_are_reported()
     {
         var unknown = new List<(byte sub, byte[] raw)>();
