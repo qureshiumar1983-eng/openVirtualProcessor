@@ -57,4 +57,17 @@ public static class ShimSupportTests
         log.Report("SIMPL# type", "Crestron.SimplSharp.CrestronSockets.UDPServer", null, "P");
         Assert.True(log.Items.All(i => i.Name != "Crestron.SimplSharp.CrestronSockets.UDPServer"), "and a supported type is not reported again");
     }
+
+    [Test]
+    public static void Small_helpers_programs_use_for_addresses_and_logging_exist()
+    {
+        Assert.True(Crestron.SimplSharp.IPAddress.TryParse("10.1.2.3", out var a) && a.ToString() == "10.1.2.3", "TryParse");
+        Assert.True(!Crestron.SimplSharp.IPAddress.TryParse("not an address", out var b) && b == null, "TryParse fails cleanly");
+        Assert.True(Crestron.SimplSharp.IPAddress.Parse("10.1.2.3").Equals(a) && Crestron.SimplSharp.IPAddress.Parse("10.1.2.3").GetHashCode() == a.GetHashCode(), "value equality");
+        Assert.True(Crestron.SimplSharp.IPAddress.IsLoopback(Crestron.SimplSharp.IPAddress.Loopback), "IsLoopback");
+        var local = Crestron.SimplSharp.Dns.GetHostAddresses("127.0.0.1");
+        Assert.True(local.Length == 1 && local[0].ToString() == "127.0.0.1", "GetHostAddresses of a literal address");
+        Assert.True(Crestron.SimplSharp.Dns.GetHostName().Length > 0, "GetHostName");
+        Crestron.SimplSharp.ErrorLog.Ok("fine {0}", 1); // no slot: nothing to write to, and nothing thrown
+    }
 }

@@ -41,6 +41,14 @@ namespace Crestron.SimplSharp
         public IPAddress(byte[] address) { Inner = new System.Net.IPAddress(address); }
         public IPAddress(long address) { Inner = new System.Net.IPAddress(address); }
         public static IPAddress Parse(string s) => new IPAddress(System.Net.IPAddress.Parse(s));
+        public static bool TryParse(string s, out IPAddress address)
+        {
+            if (System.Net.IPAddress.TryParse(s, out var a)) { address = new IPAddress(a); return true; }
+            address = null; return false;
+        }
+        public static bool IsLoopback(IPAddress address) => address != null && System.Net.IPAddress.IsLoopback(address.Inner);
+        public override bool Equals(object obj) => obj is IPAddress o && Inner.Equals(o.Inner);
+        public override int GetHashCode() => Inner.GetHashCode();
         public static IPAddress Any => new IPAddress(System.Net.IPAddress.Any);
         public static IPAddress Loopback => new IPAddress(System.Net.IPAddress.Loopback);
         public static IPAddress None => new IPAddress(System.Net.IPAddress.None);
@@ -60,6 +68,7 @@ namespace Crestron.SimplSharp
     public class IPHostEntry
     {
         public IPAddress[] AddressList { get; set; } = Array.Empty<IPAddress>();
+        public string[] Aliases { get; set; } = Array.Empty<string>();
         public string HostName { get; set; } = string.Empty;
     }
 
@@ -68,8 +77,11 @@ namespace Crestron.SimplSharp
         public static IPHostEntry GetHostEntry(string host)
         {
             var e = System.Net.Dns.GetHostEntry(host);
-            return new IPHostEntry { HostName = e.HostName, AddressList = e.AddressList.Select(a => new IPAddress(a)).ToArray() };
+            return new IPHostEntry { HostName = e.HostName, Aliases = e.Aliases, AddressList = e.AddressList.Select(a => new IPAddress(a)).ToArray() };
         }
+        public static IPHostEntry GetHostEntry(IPAddress address) => GetHostEntry(address.ToString());
+        public static IPAddress[] GetHostAddresses(string host) => System.Net.Dns.GetHostAddresses(host).Select(a => new IPAddress(a)).ToArray();
+        public static string GetHostName() => System.Net.Dns.GetHostName();
     }
 
     public enum eEthernetAdapterParameter { }

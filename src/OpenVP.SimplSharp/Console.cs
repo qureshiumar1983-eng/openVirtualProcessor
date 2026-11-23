@@ -81,6 +81,8 @@ namespace Crestron.SimplSharp
         public static void Warn(string format, params object[] args) => OpenVPBridge.Log("Warning", CrestronConsole.SafeFormat(format, args));
         public static void Notice(string message) => OpenVPBridge.Log("Notice", message);
         public static void Notice(string format, params object[] args) => OpenVPBridge.Log("Notice", CrestronConsole.SafeFormat(format, args));
+        public static void Ok(string message) => OpenVPBridge.Log("Notice", message);
+        public static void Ok(string format, params object[] args) => OpenVPBridge.Log("Notice", CrestronConsole.SafeFormat(format, args));
         public static void Info(string message) => OpenVPBridge.Log("Info", message);
         public static void Info(string format, params object[] args) => OpenVPBridge.Log("Info", CrestronConsole.SafeFormat(format, args));
         public static void Exception(string message, Exception ex) => OpenVPBridge.Log("Error", message + ": " + ex);
