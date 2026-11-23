@@ -239,15 +239,15 @@ public static partial class GoldenTests
         var s2 = OutD(); var s3 = OutD(); var s4 = OutD();
         r.Add(Record(139, "S-1 Stepper", [start], [0, s2.sig, s3.sig, s4.sig], Int(15, 7),
             Int(2, 10), Int(2, 10), Int(2, 10), Int(2, 10), Int(2, 10), Int(2, 10), Int(2, 0)));
-        // Stepper with Progress, steps traced (progress and text outputs left unconnected): 100 ms, then three
+        // Stepper with Progress, steps traced (progress outputs left unconnected; steps start at output 5): 100 ms, then three
         // 100 ms steps with 100 ms between, and 100 ms before the end.
         var run = OutD(); var t1 = OutD(); var t2 = OutD(); var t3 = OutD();
         var prog = new[] { 10, 10, 10, 10, 10, 10, 10 };
         byte[][] pp = prog.Select(v => Int(2, v)).ToArray();
-        r.Add(Record(241, "S-2 Stepper with progress (steps)", [pStart, pReset], [run.sig, 0, 0, 0, 0, t1.sig, t2.sig, t3.sig], [Int(15, 7), .. pp]));
-        // The same, progress and text traced, steps unconnected.
-        var run2 = OutD(); var pct = OutA(); var txt = OutS();
-        r.Add(Record(241, "S-3 Stepper with progress (progress)", [qStart, qReset], [run2.sig, pct.sig, 0, 0, txt.sig, 0, 0, 0], [Int(15, 7), .. pp]));
+        r.Add(Record(241, "S-2 Stepper with progress (steps)", [pStart, pReset], [run.sig, 0, 0, 0, t1.sig, t2.sig, t3.sig], [Int(15, 7), .. pp]));
+        // The same, progress traced, steps unconnected.
+        var run2 = OutD(); var pct = OutA();
+        r.Add(Record(241, "S-3 Stepper with progress (progress)", [qStart, qReset], [run2.sig, pct.sig, 0, 0, 0, 0, 0], [Int(15, 7), .. pp]));
 
         var (p, slots, panel, rec) = Start(r.Build("timers_steppers"));
         using var _ = p;
@@ -276,7 +276,7 @@ public static partial class GoldenTests
         // Stepper with Progress, progress
         TStep(rec, slots, panel, "progress start", w.Fall(run2.join), (D(4), true));
         TStep(rec, slots, panel, "progress start release", null, (D(4), false));
-        var at42 = w.Saw(S(txt.join), "42%");
+        var at42 = w.Saw(A(pct.join), (ushort)27524); // 42%
         Step(rec, slots, panel, "progress start again", (D(4), true));
         Assert.Eventually(at42, "progress 42%", 4000);
         TStep(rec, slots, panel, "progress reset part way", null, (D(5), true));

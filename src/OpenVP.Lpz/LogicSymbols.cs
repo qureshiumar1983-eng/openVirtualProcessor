@@ -111,7 +111,7 @@ public static class LogicSymbolCatalog
         C("Multiple One Shots", "Timers", () => new MultiOneShotPrim(), "in: t1..tN, spare (the .smw lists the spare pin first) · out: o1..oN · params: time", [21], [29]) with { SmwPinOrder = static (inputs, outputs) => inputs == outputs + 1 ? [.. Enumerable.Range(2, outputs), 1] : [.. Enumerable.Range(1, inputs)] },
         C("Debounce", "Timers", () => new DebouncePrim(), "in: i · out: o · params: time", [50], [56]),
         C("Stepper", "Timers", () => new StepperPrim(), "in: start · out: busy, o1..oN · params: delay, duration, ...", [98], [139]),
-        C("Stepper with Progress & Reset", "Timers", () => new StepperProgressPrim(), "in: start, reset · out: running, ...", [777], [241]),
+        C("Stepper with Progress & Reset", "Timers", () => new StepperProgressPrim(), "in: start, reset · out: running, progress, 2 analog, steps from output 5", [777], [241]),
 
         // ---------------------------------------------------------------- analog
         C("Analog Initialize", "Analog", () => new InitPrim(), "in: trigger(s) · out: value(s) · params: values", [32], [38], "Analog Init", "Serial Initialize"),
