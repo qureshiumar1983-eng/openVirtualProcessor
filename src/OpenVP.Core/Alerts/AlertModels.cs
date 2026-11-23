@@ -10,7 +10,7 @@ public static class AlertKinds
 {
     public const string SlotFault = "slot.fault", SlotStuck = "slot.stuck", SlotBacklog = "slot.backlog", CrashRestart = "crash.restart",
         CrashGiveUp = "crash.giveup", DeviceOffline = "device.offline", Oscillation = "oscillation", Watch = "watch",
-        RestoreFailed = "restore.failed", TunnelStopped = "tunnel.stopped", DiskLow = "disk.low", Threshold = "threshold", Test = "test";
+        RestoreFailed = "restore.failed", TunnelStopped = "tunnel.stopped", DiskLow = "disk.low", Threshold = "threshold", BackupFailed = "backup.failed", ScheduleFailed = "schedule.failed", Test = "test";
 
     public static readonly (string Id, string Label)[] All =
     [
@@ -26,6 +26,8 @@ public static class AlertKinds
         (TunnelStopped, "The internet tunnel stopped by itself"),
         (DiskLow, "Disk space is low in the data folder"),
         (Threshold, "A metric threshold was crossed"),
+        (BackupFailed, "A backup failed"),
+        (ScheduleFailed, "A scheduled action failed"),
     ];
 
     public static bool IsKnown(string id) => id == Test || All.Any(k => k.Id == id);

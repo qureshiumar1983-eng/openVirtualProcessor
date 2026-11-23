@@ -69,6 +69,9 @@ public sealed class IncomingHooks : IDisposable
 
     private sealed class HookFile { public List<IncomingHook> Hooks { get; set; } = new(); }
 
+    /// <summary>Reads the hooks from disk again (after an import).</summary>
+    public void Reload() { lock (_gate) _hooks = IntegrationFiles.Load<HookFile>(_file).Hooks; }
+
     public IReadOnlyList<IncomingHook> List() { lock (_gate) return _hooks.ToList(); }
 
     public IncomingHook? Find(string id) { lock (_gate) return _hooks.FirstOrDefault(h => h.Id == id); }

@@ -86,6 +86,12 @@ public sealed class ShareStore
 
     public string FilePath => _path;
 
+    /// <summary>Reads the links from disk again (after an import).</summary>
+    public void Reload()
+    {
+        lock (_lock) { _links.Clear(); Load(); }
+    }
+
     /// <summary>"1h", "1d", "1w" or "never" (null/empty also means never). Throws ArgumentException for anything else.</summary>
     public static TimeSpan? ParseExpiry(string? s) => (s ?? "").Trim().ToLowerInvariant() switch
     {

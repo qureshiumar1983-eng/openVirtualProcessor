@@ -43,6 +43,27 @@ public sealed class SecretStore
         }
     }
 
+    /// <summary>Every saved secret with its value, for an export that the person protects with a password. Names whose value can't be read are left out.</summary>
+    public Dictionary<string, string> Snapshot()
+    {
+        lock (_gate)
+        {
+            var all = new Dictionary<string, string>();
+            foreach (var name in _values.Keys)
+            {
+                var v = Get(name);
+                if (!string.IsNullOrEmpty(v)) all[name] = v;
+            }
+            return all;
+        }
+    }
+
+    /// <summary>Reads the file again (after an import replaced it).</summary>
+    public void Reload()
+    {
+        lock (_gate) _values = IntegrationFiles.Load<Dictionary<string, string>>(_file);
+    }
+
     /// <summary>Saves a value; null or empty removes it.</summary>
     public void Set(string name, string? value)
     {

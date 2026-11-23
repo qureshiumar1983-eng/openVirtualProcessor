@@ -30,6 +30,13 @@ public sealed class IntegrationStore
     /// <summary>Raised (outside the lock) after a slot's integration file changed or was reloaded.</summary>
     public event Action<int>? SlotChanged;
 
+    /// <summary>Reads the global settings from disk again (after an import) and tells the services to apply them.</summary>
+    public void ReloadGlobal()
+    {
+        lock (_gate) _global = IntegrationFiles.Load<GlobalIntegrations>(_globalFile);
+        foreach (var section in new[] { "mqtt", "osc", "artnet" }) GlobalChanged?.Invoke(section);
+    }
+
     private void SaveGlobal(GlobalIntegrations g)
     {
         try { IntegrationFiles.Save(_globalFile, g); }

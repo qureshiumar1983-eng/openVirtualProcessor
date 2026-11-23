@@ -8,7 +8,8 @@ namespace OpenVP.Core;
 /// <param name="Items">Where each piece came from (full paths) and whether it was a folder.</param>
 public sealed record TrashEntry(string Id, string Kind, string Label, int? Slot, DateTimeOffset Time, TrashItem[] Items);
 
-public sealed record TrashItem(string Original, bool IsDirectory);
+/// <param name="Replace">Restoring overwrites what is at <paramref name="Original"/> (the earlier content of a file that was edited), instead of refusing.</param>
+public sealed record TrashItem(string Original, bool IsDirectory, bool Replace = false);
 
 /// <summary>
 /// A short-lived trash folder (<c>data/trash</c>) so a delete in the console can be undone. Deleted files, snapshots and
@@ -78,6 +79,36 @@ public sealed class Trash
         }
     }
 
+    /// <summary>
+    /// Keeps a copy of a file's current content in the trash, without moving the file, so that an edit can be undone: restoring the entry puts this
+    /// content back over whatever is there then. Returns null if the file doesn't exist.
+    /// </summary>
+    public TrashEntry? Keep(string kind, string label, int? slot, string file)
+    {
+        lock (_lock)
+        {
+            Purge();
+            var src = Path.GetFullPath(file);
+            if (!File.Exists(src)) return null;
+            var now = _now();
+            var id = now.UtcDateTime.ToString("yyyyMMddHHmmss") + "-" + Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(4)).ToLowerInvariant();
+            var dir = Path.Combine(_root, id);
+            Directory.CreateDirectory(dir);
+            try
+            {
+                File.Copy(src, Path.Combine(dir, "0"));
+                var entry = new TrashEntry(id, kind, label, slot, now, [new TrashItem(src, false, true)]);
+                File.WriteAllText(Path.Combine(dir, "trash.json"), JsonSerializer.Serialize(entry, Json));
+                return entry;
+            }
+            catch
+            {
+                try { Directory.Delete(dir, true); } catch { }
+                throw;
+            }
+        }
+    }
+
     public TrashEntry? Get(string? id)
     {
         if (!IsValidId(id)) return null;
@@ -109,7 +140,7 @@ public sealed class Trash
                 var full = Path.GetFullPath(it.Original);
                 if (!full.StartsWith(_data + Path.DirectorySeparatorChar, StringComparison.Ordinal))
                     throw new UnauthorizedAccessException("That item doesn't belong to this data folder.");
-                if (File.Exists(full) || Directory.Exists(full))
+                if (!it.Replace && (File.Exists(full) || Directory.Exists(full)))
                     throw new IOException($"There is already something called '{Path.GetFileName(full)}' where this was. Rename or delete it first.");
             }
             var moved = new List<int>();
@@ -120,7 +151,7 @@ public sealed class Trash
                     var it = entry.Items[i];
                     Directory.CreateDirectory(Path.GetDirectoryName(it.Original)!);
                     var src = Path.Combine(dir, i.ToString());
-                    if (it.IsDirectory) Directory.Move(src, it.Original); else File.Move(src, it.Original);
+                    if (it.IsDirectory) Directory.Move(src, it.Original); else File.Move(src, it.Original, it.Replace);
                     moved.Add(i);
                 }
             }

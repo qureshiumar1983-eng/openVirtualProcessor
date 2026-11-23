@@ -107,6 +107,22 @@ public sealed class MonitorLoop : IDisposable
         _engine.Raise(new AlertCandidate(AlertKinds.RestoreFailed, $"restore.failed:{e.Slot}", AlertSeverity.Critical, $"{Label(s)}: the program didn't come back at start-up", error, e.Slot));
     }
 
+    /// <summary>A backup finished (see <see cref="Ops.BackupService.Result"/>). A failure is a Critical alert; the next good backup clears it.</summary>
+    public void OnBackup(bool ok, string message)
+    {
+        if (ok) _engine.Resolve("backup.failed", "The latest backup worked.");
+        else _engine.Raise(new AlertCandidate(AlertKinds.BackupFailed, "backup.failed", AlertSeverity.Critical, "A backup failed", message));
+    }
+
+    /// <summary>A scheduled action ran (see <see cref="Ops.Scheduler.Ran"/>). A failed run is a Warning for that schedule; its next good run clears it.</summary>
+    public void OnScheduleRun(Ops.ScheduleRun run)
+    {
+        var key = $"schedule.failed:{run.ScheduleId}";
+        if (run.Status == "ok") _engine.Resolve(key, $"“{run.Name}” ran fine.");
+        else if (run.Status == "failed")
+            _engine.Raise(new AlertCandidate(AlertKinds.ScheduleFailed, key, AlertSeverity.Warning, $"Scheduled action “{run.Name}” failed", run.Message, run.Slot));
+    }
+
     /// <summary>The internet tunnel changed state. Going from on to error (cloudflared died) is an alert; stopping it yourself is not.</summary>
     public void OnTunnel(TunnelState state, string? message)
     {

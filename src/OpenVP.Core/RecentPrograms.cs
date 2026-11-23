@@ -113,6 +113,25 @@ public sealed class RecentPrograms
         }
     }
 
+    /// <summary>Adds entries from an export (their paths only, no kept copies) that the list doesn't have yet. Returns how many.</summary>
+    public int MergePaths(IEnumerable<RecentEntry> entries)
+    {
+        lock (_lock)
+        {
+            var added = 0;
+            foreach (var e in entries.Where(e => e.Path != null).OrderBy(e => e.Time))
+            {
+                if (_items.Any(i => Key(i.Name, i.Path) == Key(e.Name, e.Path))) continue;
+                var id = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(6)).ToLowerInvariant();
+                _items.Add(e with { Id = id, HasCopy = false });
+                added++;
+            }
+            while (_items.Count > _max) RemoveLocked(_items.OrderBy(i => i.Time).First());
+            if (added > 0) Save();
+            return added;
+        }
+    }
+
     private static string Key(string name, string? path) => path != null ? "p:" + path.ToLowerInvariant() : "n:" + name.ToLowerInvariant();
 
     private void RemoveLocked(RecentEntry e)

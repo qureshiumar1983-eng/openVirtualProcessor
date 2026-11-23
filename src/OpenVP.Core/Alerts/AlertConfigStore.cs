@@ -41,6 +41,13 @@ public sealed class AlertConfigStore
         return AlertConfig.Default();
     }
 
+    /// <summary>Reads the settings from disk again (after an import).</summary>
+    public void Reload()
+    {
+        lock (_gate) _config = Load();
+        try { Changed?.Invoke(); } catch { }
+    }
+
     /// <summary>Validates and saves <paramref name="next"/>. <paramref name="secretChanges"/> maps a secret name to its new value (null or empty removes it).</summary>
     public AlertConfig Save(AlertConfig next, IReadOnlyDictionary<string, string?>? secretChanges = null)
     {
