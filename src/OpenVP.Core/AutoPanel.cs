@@ -40,6 +40,7 @@ public static class AutoPanel
         var named = new List<SignalInfo>();
         foreach (var s in signals)
         {
+            if (s.Name is "0" or "1") continue;   // SIMPL Windows' constant-low and constant-high signals, not something to press
             var m = DeviceJoin.Match(s.Name);
             if (!m.Success) { named.Add(s); continue; }
             var ip = Convert.ToUInt32(m.Groups["ip"].Value, 16);
@@ -56,7 +57,6 @@ public static class AutoPanel
         // Device joins: one group per IP ID (and smart object), joins in numeric order, digital then analog then serial.
         foreach (var byIp in order.Select(k => (key: k, j: joins[k])).GroupBy(x => x.j.Ip).OrderBy(g => g.Key))
         {
-            deviceTypes?.TryGetValue(byIp.Key, out var type);
             var title = $"IP ID {byIp.Key:X2}";
             var sub = deviceTypes != null && deviceTypes.TryGetValue(byIp.Key, out var t) ? t : null;
             var list = new List<AutoControl>();

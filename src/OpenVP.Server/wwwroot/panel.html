@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-openvp-page>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -30,10 +30,14 @@
   :root[data-theme="light"] .btn.fb { color:#fff; }
   :root[data-theme="light"] .dot { background:#c62828; } :root[data-theme="light"] .dot.ok { background:var(--on); }
   #theme { font-size:12px; padding:3px 9px; white-space:nowrap; }
+  .lat { font:11px ui-monospace, Menlo, Consolas, monospace; padding:1px 7px; border-radius:10px; background:var(--card); border:1px solid var(--line); color:var(--muted); white-space:nowrap; }
+  .lat.good { color:var(--on); border-color:var(--on); } .lat.mid { color:#d69e2e; border-color:#d69e2e; } .lat.bad { color:#e05252; border-color:#e05252; }
+  header a { color:var(--accent); }
+  @media (max-width:700px) { header { padding:10px 16px; } main { padding:12px 16px; } }
 </style>
 </head>
 <body>
-<header>
+<header data-chrome>
   <h1 id="title">OpenVP test panel</h1>
   <span class="dot" id="dot"></span><span id="status">connecting…</span>
   <span id="pickers" style="display:contents">
@@ -42,10 +46,11 @@
   <label title="Connect by the slot's Room ID instead of its number. Usually left empty.">Room <input id="room" size="8" placeholder="any"></label>
   <button id="go" title="Reconnect using the IP ID, Slot and Room typed here">Connect</button>
   </span>
+  <span class="lat" id="lat" title="Round-trip time to OpenVP (the server pings this page every few seconds)">-- ms</span>
   <small>Hold a button to keep the join high. Green = feedback from the program.</small>
-  <span style="flex:1"></span><button id="theme" onclick="__theme.cycle()"></button><a id="helplink" href="help.html#panel" target="openvp-help" title="What every control on this page does" style="color:var(--accent)">Help</a>
+  <span style="flex:1"></span><a id="kiosklink" href="#" title="Full screen with no menus, screen kept awake. Tap the top-left corner 5 times to leave.">Kiosk</a><button id="theme" onclick="__theme.cycle()"></button><a id="helplink" href="help.html#panel" target="openvp-help" title="What every control on this page does" style="color:var(--accent)">Help</a>
 </header>
-<main>
+<main id="panel-main">
   <section><h2>Digital joins 1–20</h2><div class="grid" id="digitals"></div></section>
   <section><h2>Analog joins 1–4, 10</h2><div id="analogs"></div></section>
   <section><h2>Serial joins 1–4, 10</h2><div id="serials"></div></section>
@@ -70,6 +75,10 @@
     const rm = document.getElementById("room").value.trim(); if (rm) p.set("room", rm);
     location.search = p.toString();
   };
+  document.getElementById("kiosklink").onclick = e => { e.preventDefault(); const u = new URL(location.href); u.searchParams.set("kiosk", "1"); location.href = u.toString(); };
+  const lat = document.getElementById("lat");
+  OpenVP.on("latency", l => { lat.textContent = Math.round(l.ms) + " ms"; lat.title = `Round trip to OpenVP: ${Math.round(l.ms)} ms (min ${Math.round(l.min)}, avg ${Math.round(l.avg)}, max ${Math.round(l.max)} over the last ${l.history.length})`; lat.className = "lat " + (l.ms < 50 ? "good" : l.ms < 200 ? "mid" : "bad"); });
+  OpenVP.on("close", () => { lat.textContent = "-- ms"; lat.className = "lat"; });
   const dot = document.getElementById("dot"), status = document.getElementById("status");
   OpenVP.on("open", () => { dot.className = "dot ok"; status.textContent = SHARE ? "connected" : "connected to IPID " + OpenVP.config.ipid; });
   OpenVP.on("close", () => { dot.className = "dot"; status.textContent = "disconnected, retrying…"; });

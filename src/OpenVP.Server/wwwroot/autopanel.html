@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en" data-openvp-page>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<link rel="stylesheet" href="openvp-ops.css">
+<script src="openvp-theme.js"></script>
+<title>OpenVP generated panel</title>
+<style>
+  main { max-width:1500px; padding-bottom:40px; }
+  header select { max-width:210px; }
+  header input[type=search] { min-width:150px; flex:1 1 150px; max-width:280px; }
+  .lat { font:11px ui-monospace, Menlo, Consolas, monospace; padding:1px 7px; border-radius:10px; background:var(--card); border:1px solid var(--line); color:var(--muted); white-space:nowrap; }
+  .lat.good { color:var(--ok-fg); border-color:var(--ok); } .lat.mid { color:var(--warn-fg); border-color:var(--warn-line); } .lat.bad { color:var(--err-fg); border-color:var(--err); }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--err); display:inline-block; vertical-align:middle; } .dot.ok { background:var(--ok); }
+  .grp { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px 12px; }
+  .grp > h2 { margin:0 0 8px; font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .grp > h2 .sub { text-transform:none; letter-spacing:0; font-size:12px; }
+  .grp > h2 .tools { margin-left:auto; display:none; gap:4px; }
+  body.edit .grp > h2 .tools { display:flex; }
+  .grp.collapsed .grid { display:none; }
+  .grp.ghost { opacity:.5; }
+  .grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); grid-auto-rows:54px; gap:8px; position:relative; }
+  body.edit .grid { background-image:linear-gradient(to right, var(--line) 1px, transparent 1px); background-size:calc((100% + 8px) / 12) 100%; }
+  .ctl { grid-column:var(--gc); grid-row:var(--gr); min-width:0; min-height:0; position:relative; border:1px solid var(--line); border-radius:8px; background:var(--tile); display:flex; align-items:stretch; overflow:hidden; }
+  .ctl .lab { position:absolute; left:8px; top:2px; font-size:11px; color:var(--muted); max-width:calc(100% - 16px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none; z-index:1; }
+  .ctl.digital { cursor:pointer; user-select:none; -webkit-user-select:none; touch-action:none; justify-content:center; align-items:center; text-align:center; font-weight:500; padding:0 8px; }
+  .ctl.digital .lab { position:static; color:inherit; font-size:13px; max-width:100%; pointer-events:none; }
+  .ctl.digital.on { background:var(--ok); border-color:var(--ok); color:#fff; }
+  .ctl.digital.down { outline:2px solid var(--accent); }
+  .ctl.analog { padding:18px 8px 6px; gap:10px; align-items:center; }
+  .ctl.analog input[type=range] { flex:1; min-width:0; padding:0; border:0; background:none; }
+  .ctl.analog .val { font:12px ui-monospace, Menlo, Consolas, monospace; min-width:5ch; text-align:right; color:var(--text2); }
+  .ctl.serial { padding:18px 8px 6px; gap:6px; align-items:center; }
+  .ctl.serial input { flex:1; min-width:0; padding:3px 7px; }
+  .ctl.serial .now { position:absolute; right:8px; top:2px; max-width:55%; font:11px ui-monospace, Menlo, Consolas, monospace; color:var(--text2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ctl.serial button { padding:3px 9px; }
+  .ctl .eb { display:none; position:absolute; top:2px; right:2px; gap:2px; z-index:3; }
+  body.edit .ctl .eb { display:flex; }
+  .ctl .eb button { font-size:11px; padding:0 5px; line-height:18px; background:var(--card); }
+  body.edit .ctl { cursor:move; touch-action:none; }
+  body.edit .ctl > *:not(.eb):not(.lab):not(.rz) { pointer-events:none; }
+  body.edit .ctl.digital .lab { pointer-events:none; }
+  body.edit .ctl.sel { outline:2px solid var(--accent); z-index:2; }
+  .ctl .rz { display:none; position:absolute; right:0; bottom:0; width:16px; height:16px; cursor:nwse-resize; z-index:3; background:linear-gradient(135deg, transparent 50%, var(--accent) 50%); border-bottom-right-radius:7px; touch-action:none; }
+  body.edit .ctl .rz { display:block; }
+  .ctl.hid { opacity:.4; border-style:dashed; display:none; }
+  body.edit.showhid .ctl.hid { display:flex; }
+  .ctl.hit { outline:2px solid var(--warn); }
+  .toolbar { display:flex; flex-wrap:wrap; gap:6px 8px; align-items:center; }
+  .toolbar .sp { flex:1; }
+  #empty { padding:30px 10px; text-align:center; }
+  #why .note { margin-top:6px; }
+  .editonly { display:none; } body.edit .editonly { display:inline-flex; }
+  .unsaved { color:var(--warn-fg); font-size:12px; }
+  .toast { position:fixed; left:50%; transform:translateX(-50%); bottom:14px; z-index:50; max-width:min(560px, 92vw); }
+  @media (max-width:700px) {
+    header { padding:10px 16px; } main { padding:10px 16px 30px; }
+    .grid { grid-template-columns:repeat(2, minmax(0, 1fr)); grid-auto-rows:minmax(54px, auto); }
+    .ctl { grid-column:auto !important; grid-row:auto !important; min-height:54px; }
+    .ctl.analog, .ctl.serial { grid-column:span 2 !important; }
+    #edit-btn, .editonly { display:none !important; }
+  }
+</style>
+</head>
+<body>
+<header data-chrome>
+  <h1>Generated panel</h1>
+  <select id="slot" aria-label="Slot" title="The slot whose program this panel is made from"></select>
+  <input id="q" type="search" placeholder="Search controls ( / )" aria-label="Search controls" autocomplete="off" title="Finds controls by label, signal name or group (press / to jump here)">
+  <span class="lat" id="lat" title="Round trip to the OpenVP server (a small request every few seconds)">-- ms</span>
+  <span id="conn" title="Live updates from the program"><span class="dot" id="dot"></span> <span id="connt" class="muted">connecting…</span></span>
+  <span class="sp"></span>
+  <span id="saved" role="status" aria-live="polite"></span>
+  <span id="who-chip"></span>
+  <button class="theme-btn" data-theme-toggle></button>
+  <a href="#" id="kiosk-link" title="Full screen with no menus, screen kept awake. Tap the top-left corner 5 times to leave.">Kiosk</a>
+  <a href="emulate.html" title="Run a CH5 or smart-graphics project against a slot">Emulate</a>
+  <a href="rack.html" title="The processor as a rack, with every panel's status and latency">Rack</a>
+  <a href="/">Console</a>
+  <a href="help.html#autopanel" target="openvp-help">Help</a>
+</header>
+<main>
+  <div id="fail" class="note toast" role="alert" hidden></div>
+  <div class="card toolbar" data-chrome id="layoutbar">
+    <label class="inline" title="A saved arrangement of this panel: where each control sits, its label and what is hidden">Layout
+      <select id="layout"><option value="">Default</option></select></label>
+    <button id="save-btn" class="primary" data-perm="LoadProgram" data-perm-why="Saving a layout needs the Programmer role" title="Save the layout under its current name">Save</button>
+    <button id="saveas-btn" data-perm="LoadProgram" data-perm-why="Saving a layout needs the Programmer role" title="Save the layout under a new name">Save as…</button>
+    <button id="del-btn" class="danger" data-perm="LoadProgram" data-perm-why="Deleting a layout needs the Programmer role" title="Delete the chosen layout from the server">Delete</button>
+    <button id="export-btn" title="Download the layout as a JSON file">Export</button>
+    <button id="import-btn" title="Load a layout from a JSON file (it is only applied here until you Save)">Import…</button>
+    <input type="file" id="import-file" accept=".json,application/json" hidden>
+    <span class="unsaved" id="unsaved" hidden>unsaved changes</span>
+    <span class="sp"></span>
+    <label class="inline editonly"><input type="checkbox" id="showhid"> show hidden</label>
+    <button id="reset-btn" class="editonly" title="Forget every move, resize, rename and hide in this layout">Reset layout</button>
+    <button id="edit-btn" title="Drag controls to move them, drag the corner to resize, ✎ to rename, ✕ to hide">Edit layout</button>
+  </div>
+  <div id="why"></div>
+  <div id="count" class="muted" aria-live="polite"></div>
+  <div id="groups" class="stack"></div>
+  <div id="empty" class="muted" hidden></div>
+</main>
+<dialog id="in-dlg"><form method="dialog" id="in-form"><h2 id="in-title"></h2><label><span id="in-label"></span><input id="in-text" maxlength="60"></label><div class="row"><button type="button" data-close>Cancel</button><button class="primary" value="ok" id="in-ok">Save</button></div></form></dialog>
+<dialog id="cf-dlg"><form method="dialog" id="cf-form"><h2 id="cf-title"></h2><p id="cf-text"></p><div class="row"><button type="button" data-close>Cancel</button><button class="primary" value="ok" id="cf-ok">OK</button></div></form></dialog>
+<script src="openvp-auth.js"></script>
+<script src="openvp-ops.js"></script>
+<script>window.OPENVP_CONFIG = { connect: false };</script>
+<script src="openvp-crcomlib.js"></script>
+<script>
+"use strict";
+const qs = new URLSearchParams(location.search);
+let slot = +qs.get("slot") || 0;
+let model = null;                 // GET /autopanel
+let layout = blankLayout();       // the working layout
+let layoutName = qs.get("layout") || "";
+let dirty = false, edit = false, sel = null;
+const ctls = new Map();           // control id -> { c, el, ... }
+const byFeedback = new Map();     // feedback signal name -> [ctl records]
+const COLS = 12, DEFAULT = { digital: [3, 1], analog: [6, 1], serial: [6, 1] };
+
+function blankLayout() { return { controls: {}, groups: {}, extras: [] }; }
+const perm = p => !window.openvpAuth || openvpAuth.can(p);
+
+// ------------------------------------------------------------------ slots and the model
+async function loadSlots() {
+  const slots = await api("/api/slots");
+  const sel = $("#slot");
+  sel.innerHTML = "";
+  const usable = slots.filter(s => s.program);
+  for (const s of (usable.length ? usable : slots)) sel.add(new Option(slotLabel(s), s.number));
+  if (!slot || ![...sel.options].some(o => +o.value === slot)) slot = +(sel.options[0]?.value || 0);
+  sel.value = slot;
+}
+
+async function loadModel() {
+  $("#why").innerHTML = "";
+  ctls.clear(); byFeedback.clear(); values.clear();
+  if (!slot) { model = null; render(); return; }
+  try { model = await api(`/api/slots/${slot}/autopanel`); }
+  catch (e) { model = null; $("#why").innerHTML = `<div class="note">${esc(e.status === 404 ? "This slot has no program loaded. Load one in the console and this page draws a panel for it." : e.message)}</div>`; }
+  await loadLayoutList();
+  if (layoutName) { await applyLayoutByName(layoutName, true); }
+  render();
+  if (model) resync();
+}
+
+// ------------------------------------------------------------------ layouts
+async function loadLayoutList() {
+  const sel = $("#layout");
+  let list = [];
+  try { list = slot ? await api(`/api/slots/${slot}/layouts`) : []; } catch { }
+  sel.innerHTML = "";
+  sel.add(new Option("Default", ""));
+  for (const l of list) sel.add(new Option(l.name + (l.program && model && l.program !== model.program ? " (made for " + l.program + ")" : ""), l.name));
+  if (layoutName && ![...sel.options].some(o => o.value === layoutName)) sel.add(new Option(layoutName + " (not saved)", layoutName));
+  sel.value = layoutName;
+}
+
+async function applyLayoutByName(name, quiet) {
+  if (!name) { layout = blankLayout(); layoutName = ""; setDirty(false); return; }
+  try {
+    const l = await api(`/api/slots/${slot}/layouts/${encodeURIComponent(name)}`);
+    layout = { controls: l.controls || {}, groups: l.groups || {}, extras: l.extras || [], title: l.title };
+    layoutName = name; setDirty(false);
+    if (l.program && model && l.program !== model.program) $("#why").innerHTML = `<div class="note">This layout was made for “${esc(l.program)}”; this slot now runs “${esc(model.program)}”. Controls that don't exist here are ignored.</div>`;
+  } catch (e) { if (!quiet) fail(e.message); layoutName = ""; layout = blankLayout(); }
+}
+
+function setDirty(v) { dirty = v; $("#unsaved").hidden = !v; }
+
+function currentLayoutJson() {
+  const controls = {};
+  for (const [id, o] of Object.entries(layout.controls)) if (ctls.has(id) && Object.keys(o).length) controls[id] = o;
+  const groups = {};
+  for (const [id, o] of Object.entries(layout.groups)) if (Object.keys(o).length) groups[id] = o;
+  return { controls, groups, extras: layout.extras || [] };
+}
+
+async function saveLayout(name) {
+  try {
+    await api(`/api/slots/${slot}/layouts/${encodeURIComponent(name)}`, "PUT", currentLayoutJson());
+    layoutName = name; setDirty(false); await loadLayoutList(); flash("Layout saved");
+  } catch (e) { fail(e.message); }
+}
+
+$("#save-btn").onclick = async () => { if (!layoutName) return $("#saveas-btn").click(); saveLayout(layoutName); };
+$("#saveas-btn").onclick = async () => {
+  const n = await askText("Save layout", "Name for this layout", layoutName || "", "Save");
+  if (n && n.trim()) saveLayout(n.trim());
+};
+$("#del-btn").onclick = async () => {
+  if (!layoutName) return;
+  if (!(await confirmBox("Delete layout", `Delete the layout “${layoutName}” from the server?`, "Delete", true))) return;
+  try { await api(`/api/slots/${slot}/layouts/${encodeURIComponent(layoutName)}`, "DELETE"); layoutName = ""; layout = blankLayout(); setDirty(false); await loadLayoutList(); render(); flash("Deleted"); }
+  catch (e) { fail(e.message); }
+};
+$("#layout").onchange = async e => {
+  if (dirty && !(await confirmBox("Unsaved changes", "Switching layouts drops the changes you haven't saved.", "Switch"))) { e.target.value = layoutName; return; }
+  await applyLayoutByName(e.target.value);
+  render();
+};
+$("#export-btn").onclick = () => {
+  const out = { openvpLayout: 1, name: layoutName || "layout", slot, program: model?.program || null, ...currentLayoutJson() };
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 2)], { type: "application/json" }));
+  a.download = `openvp-layout-slot${slot}-${(layoutName || "layout").replace(/[^\w.-]+/g, "_")}.json`;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+};
+$("#import-btn").onclick = () => $("#import-file").click();
+$("#import-file").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  try {
+    if (f.size > 600 * 1024) throw new Error("That file is too big to be a layout.");
+    const j = JSON.parse(await f.text());
+    if (!j || typeof j !== "object" || Array.isArray(j) || (!j.controls && !j.groups)) throw new Error("That file isn't an OpenVP layout.");
+    const controls = {};
+    let unknown = 0;
+    for (const [id, o] of Object.entries(j.controls || {})) { if (ctls.has(id)) controls[id] = pickControl(o); else unknown++; }
+    layout = { controls, groups: pickGroups(j.groups), extras: (Array.isArray(j.extras) ? j.extras : []).filter(x => x && /^IPID[0-9A-F]{2}$/i.test(x.device) && ["digital", "analog", "serial"].includes(x.kind) && Number.isInteger(x.join) && x.join > 0).slice(0, 500) };
+    layoutName = ""; setDirty(true); await loadLayoutList(); render();
+    $("#why").innerHTML = `<div class="note">Imported${j.name ? " “" + esc(j.name) + "”" : ""}: ${Object.keys(controls).length} controls placed${unknown ? `, ${unknown} not in this program were ignored` : ""}. Use <b>Save as…</b> to keep it on the server.</div>`;
+  } catch (err) { fail(err.message); }
+};
+function pickControl(o) {
+  const r = {};
+  if (!o || typeof o !== "object") return r;
+  for (const k of ["x", "y", "w", "h"]) if (Number.isFinite(o[k])) r[k] = Math.max(k === "x" || k === "y" ? 0 : 1, Math.min(10000, Math.round(o[k])));
+  if (typeof o.label === "string") r.label = o.label.slice(0, 120);
+  if (o.hidden === true) r.hidden = true;
+  return r;
+}
+function pickGroups(g) {
+  const r = {};
+  for (const [id, o] of Object.entries(g || {})) { if (!o || typeof o !== "object") continue; const x = {}; if (typeof o.title === "string") x.title = o.title.slice(0, 120); if (o.hidden === true) x.hidden = true; if (o.collapsed === true) x.collapsed = true; r[id] = x; }
+  return r;
+}
+
+// Joins added by hand become controls too: IPID03 + digital 5 drives IPID03.out.d5 and reads IPID03.in.d5.
+function withExtras() {
+  if (!model) return;
+  for (const g of model.groups) g.controls = g.controls.filter(c => !c.extra);
+  for (const x of layout.extras || []) {
+    const dev = x.device.toUpperCase(), L = x.kind[0];
+    const id = `${dev}.${L}${x.join}`;
+    let g = model.groups.find(g => g.id === dev.toLowerCase());
+    if (!g) { g = { id: dev.toLowerCase(), title: "IP ID " + dev.slice(4), subtitle: null, controls: [] }; model.groups.push(g); }
+    if (g.controls.some(c => c.id === id)) continue;
+    g.controls.push({ id, extra: true, label: `${x.kind[0].toUpperCase() + x.kind.slice(1)} ${x.join}`, kind: x.kind, group: g.id, driveName: `${dev}.out.${L}${x.join}`, feedbackName: `${dev}.in.${L}${x.join}`, value: x.kind === "digital" ? false : x.kind === "analog" ? 0 : "", device: dev });
+  }
+  model.controlCount = model.groups.reduce((n, g) => n + g.controls.length, 0);
+}
+
+// ------------------------------------------------------------------ drawing
+function ov(c) { return layout.controls[c.id] || {}; }
+function setOv(c, patch) {
+  const o = layout.controls[c.id] = { ...(layout.controls[c.id] || {}), ...patch };
+  for (const k of Object.keys(o)) if (o[k] === undefined || (k === "hidden" && !o[k])) delete o[k];
+  setDirty(true);
+}
+
+// Default positions: controls left to right, top to bottom, at their default size; those with a saved position keep it.
+function place(group) {
+  const placed = new Map();
+  let x = 0, y = 0, rowH = 1;
+  for (const c of group.controls) {
+    const o = ov(c), d = DEFAULT[c.kind] || [3, 1];
+    const w = Math.min(COLS, o.w || d[0]), h = o.h || d[1];
+    if (o.x != null && o.y != null) { placed.set(c.id, { x: Math.min(o.x, COLS - 1), y: o.y, w: Math.min(w, COLS - Math.min(o.x, COLS - 1)), h }); continue; }
+    if (o.hidden && !edit) continue;
+    if (x + w > COLS) { x = 0; y += rowH; rowH = 1; }
+    placed.set(c.id, { x, y, w, h });
+    x += w; rowH = Math.max(rowH, h);
+  }
+  return placed;
+}
+
+function groupOv(g) { return layout.groups[g.id] || {}; }
+function setGroupOv(g, patch) {
+  const o = layout.groups[g.id] = { ...(layout.groups[g.id] || {}), ...patch };
+  for (const k of Object.keys(o)) if (o[k] === undefined || o[k] === false) delete o[k];
+  setDirty(true);
+}
+
+function render() {
+  const root = $("#groups");
+  root.innerHTML = ""; ctls.clear(); byFeedback.clear();
+  document.body.classList.toggle("edit", edit);
+  withExtras();
+  if (!model) { $("#count").textContent = ""; $("#empty").hidden = true; return; }
+  let total = 0, hidden = 0;
+  for (const g of model.groups) {
+    const go = groupOv(g);
+    if (go.hidden && !edit) continue;
+    const sec = document.createElement("section");
+    sec.className = "grp" + (go.collapsed ? " collapsed" : "") + (go.hidden ? " ghost" : "");
+    sec.dataset.gid = g.id;
+    const h = document.createElement("h2");
+    const title = go.title || g.title;
+    h.innerHTML = `<span class="gt">${esc(title)}</span>${g.subtitle ? `<span class="sub muted">${esc(g.subtitle)}</span>` : ""}<span class="muted sub" data-n></span><span class="tools">${g.id.startsWith("ipid") ? `<button class="small" data-act="addjoin" title="Add a join this program hasn't used yet, such as d12, a3 or s4">+ join</button>` : ""}<button class="small" data-act="rename" title="Rename this group">✎</button><button class="small" data-act="ghide" title="${go.hidden ? "Show" : "Hide"} this group">${go.hidden ? "show" : "✕"}</button></span>`;
+    h.querySelector(".gt").onclick = () => { setGroupOv(g, { collapsed: !groupOv(g).collapsed }); sec.classList.toggle("collapsed"); };
+    h.querySelector(".gt").style.cursor = "pointer"; h.querySelector(".gt").title = "Click to collapse or expand";
+    h.querySelector('[data-act="rename"]').onclick = async () => { const n = await askText("Rename group", "Group title", title, "OK"); if (n != null) { setGroupOv(g, { title: n.trim() && n.trim() !== g.title ? n.trim() : undefined }); render(); applyFilter(); } };
+    h.querySelector('[data-act="addjoin"]')?.addEventListener("click", async () => {
+      const t = await askText("Add a join", "Kind and number: d12 (digital), a3 (analog) or s4 (serial)", "", "Add");
+      const m = /^\s*([das])\s*(\d{1,5})\s*$/i.exec(t || "");
+      if (t == null) return;
+      if (!m || +m[2] < 1) return fail("Type d, a or s and a join number, like d12.");
+      layout.extras = [...(layout.extras || []), { device: g.id.toUpperCase(), kind: { d: "digital", a: "analog", s: "serial" }[m[1].toLowerCase()], join: +m[2] }];
+      setDirty(true); render(); resync();
+    });
+    h.querySelector('[data-act="ghide"]').onclick = () => { setGroupOv(g, { hidden: !groupOv(g).hidden }); render(); applyFilter(); };
+    sec.appendChild(h);
+    const grid = document.createElement("div");
+    grid.className = "grid";
+    const pos = place(g);
+    for (const c of g.controls) {
+      total++;
+      const o = ov(c);
+      if (o.hidden) hidden++;
+      const p = pos.get(c.id);
+      if (!p && !(o.hidden)) continue;
+      const rec = makeControl(c, g, grid);
+      if (p) { rec.el.style.setProperty("--gc", `${p.x + 1} / span ${p.w}`); rec.el.style.setProperty("--gr", `${p.y + 1} / span ${p.h}`); }
+      if (o.hidden) rec.el.classList.add("hid");
+      grid.appendChild(rec.el);
+      ctls.set(c.id, rec);
+      for (const n of new Set([c.feedbackName, c.driveName])) { if (!byFeedback.has(n)) byFeedback.set(n, []); byFeedback.get(n).push(rec); }
+    }
+    sec.appendChild(grid);
+    root.appendChild(sec);
+  }
+  $("#showhid").parentElement.title = hidden ? `${hidden} hidden control${hidden === 1 ? "" : "s"}` : "";
+  if (model.truncated) $("#why").insertAdjacentHTML("beforeend", `<div class="note">This program has more than ${model.controlCount} signals; only the first ${model.controlCount} are drawn. Use the console's debugger for the rest.</div>`);
+  applyFilter();
+}
+
+function makeControl(c, g, grid) {
+  const o = ov(c);
+  const el = document.createElement("div");
+  el.className = "ctl " + c.kind;
+  el.dataset.id = c.id;
+  el.title = c.id;
+  const label = o.label ?? c.label;
+  const rec = { c, g, el, value: values.has(c.feedbackName) ? values.get(c.feedbackName) : c.value, drag: false };
+  const lab = document.createElement("span"); lab.className = "lab"; lab.textContent = label; el.appendChild(lab); rec.lab = lab;
+  if (c.kind === "digital") {
+    el.setAttribute("role", "button"); el.tabIndex = 0;
+    const down = e => { if (edit) return; e.preventDefault(); try { el.setPointerCapture(e.pointerId); } catch { } el.classList.add("down"); sendSignal(c.driveName, true); };
+    const up = () => { if (!el.classList.contains("down")) return; el.classList.remove("down"); sendSignal(c.driveName, false); };
+    el.addEventListener("pointerdown", down);
+    for (const t of ["pointerup", "pointercancel", "lostpointercapture"]) el.addEventListener(t, up);
+    el.addEventListener("keydown", e => { if (edit || (e.key !== " " && e.key !== "Enter") || e.repeat) return; e.preventDefault(); el.classList.add("down"); sendSignal(c.driveName, true); });
+    el.addEventListener("keyup", e => { if (e.key === " " || e.key === "Enter") up(); });
+    el.addEventListener("contextmenu", e => e.preventDefault());
+  } else if (c.kind === "analog") {
+    const r = document.createElement("input"); r.type = "range"; r.min = 0; r.max = 65535; r.value = 0; r.setAttribute("aria-label", label);
+    const v = document.createElement("span"); v.className = "val"; v.textContent = "0";
+    r.oninput = () => { rec.drag = true; v.textContent = r.value; sendAnalog(c.driveName, +r.value); };
+    r.onchange = () => { rec.drag = false; sendSignal(c.driveName, +r.value); };
+    el.append(r, v); rec.range = r; rec.val = v;
+  } else {
+    const i = document.createElement("input"); i.placeholder = "type and press Enter"; i.setAttribute("aria-label", label);
+    const b = document.createElement("button"); b.textContent = "Send";
+    const now = document.createElement("span"); now.className = "now";
+    const go = () => { sendSignal(c.driveName, i.value); i.select(); };
+    i.onkeydown = e => { if (e.key === "Enter") go(); };
+    b.onclick = go;
+    el.append(i, b, now); rec.input = i; rec.now = now;
+  }
+  // Edit tools
+  const eb = document.createElement("span"); eb.className = "eb";
+  eb.innerHTML = `<button class="small" data-act="rename" title="Rename">✎</button><button class="small" data-act="hide" title="${o.hidden ? "Show" : "Hide"}">${o.hidden ? "show" : "✕"}</button>`;
+  eb.addEventListener("pointerdown", e => e.stopPropagation());
+  eb.querySelector('[data-act="rename"]').onclick = async () => { const n = await askText("Rename control", `Label for ${c.id}`, rec.lab.textContent, "OK"); if (n != null) { setOv(c, { label: n.trim() && n.trim() !== c.label ? n.trim() : undefined }); rec.lab.textContent = n.trim() || c.label; } };
+  eb.querySelector('[data-act="hide"]').onclick = () => { setOv(c, { hidden: !ov(c).hidden }); render(); applyFilter(); };
+  el.appendChild(eb);
+  const rz = document.createElement("span"); rz.className = "rz"; el.appendChild(rz);
+  wireEdit(rec, grid, rz);
+  update(rec);
+  return rec;
+}
+
+// ------------------------------------------------------------------ edit: drag and resize on the 12-column grid
+function freeze(group) {
+  const pos = place(group);
+  for (const c of group.controls) { const p = pos.get(c.id); if (p && ov(c).x == null) setOv(c, { x: p.x, y: p.y, w: p.w, h: p.h }); }
+}
+function wireEdit(rec, grid, rz) {
+  const { el, c, g } = rec;
+  function begin(e, mode) {
+    if (!edit || e.button > 0) return;
+    e.preventDefault(); e.stopPropagation();
+    freeze(g);
+    const o = ov(c), r = grid.getBoundingClientRect();
+    const cw = (r.width + 8) / COLS, ch = 54 + 8;
+    const start = { x: e.clientX, y: e.clientY, ox: o.x, oy: o.y, ow: o.w, oh: o.h };
+    selectCtl(rec);
+    el.setPointerCapture(e.pointerId);
+    const move = ev => {
+      const dx = Math.round((ev.clientX - start.x) / cw), dy = Math.round((ev.clientY - start.y) / ch);
+      let p;
+      if (mode === "move") p = { x: Math.max(0, Math.min(COLS - start.ow, start.ox + dx)), y: Math.max(0, start.oy + dy) };
+      else p = { w: Math.max(1, Math.min(COLS - start.ox, start.ow + dx)), h: Math.max(1, start.oh + dy) };
+      setOv(c, p);
+      const n = ov(c);
+      el.style.setProperty("--gc", `${n.x + 1} / span ${n.w}`); el.style.setProperty("--gr", `${n.y + 1} / span ${n.h}`);
+    };
+    const end = () => { el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", end); el.removeEventListener("pointercancel", end); };
+    el.addEventListener("pointermove", move); el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
+  }
+  el.addEventListener("pointerdown", e => { if (e.target === rz) return begin(e, "resize"); begin(e, "move"); });
+}
+function selectCtl(rec) { sel?.el.classList.remove("sel"); sel = rec; rec.el.classList.add("sel"); }
+
+$("#edit-btn").onclick = () => {
+  edit = !edit;
+  $("#edit-btn").textContent = edit ? "Done editing" : "Edit layout";
+  $("#edit-btn").classList.toggle("primary", edit);
+  document.body.classList.toggle("showhid", edit && $("#showhid").checked);
+  render();
+};
+$("#showhid").onchange = () => { document.body.classList.toggle("showhid", edit && $("#showhid").checked); };
+$("#reset-btn").onclick = async () => {
+  if (!(await confirmBox("Reset layout", "Forget every move, resize, rename and hide in the layout on screen? (Saved layouts on the server aren't touched until you save.)", "Reset", true))) return;
+  layout = blankLayout(); setDirty(true); render();
+};
+
+// ------------------------------------------------------------------ values
+function update(rec) {
+  const v = rec.value;
+  if (rec.c.kind === "digital") rec.el.classList.toggle("on", v === true || v === 1);
+  else if (rec.c.kind === "analog") { const n = Number(v) || 0; if (!rec.drag) { rec.range.value = n; } rec.val.textContent = String(rec.drag ? rec.range.value : n); }
+  else { rec.now.textContent = v == null || v === "" ? "" : String(v); rec.now.title = String(v ?? ""); }
+}
+
+const pendingUp = new Set(), values = new Map();   // values: the last known value of every signal seen, kept across redraws
+function setValue(name, value) {
+  values.set(name, value);
+  const list = byFeedback.get(name);
+  if (!list) return;
+  for (const rec of list) { if (name === rec.c.feedbackName) { rec.value = value; pendingUp.add(rec); } }
+  if (pendingUp.size) requestAnimationFrame(flushUp);
+}
+function flushUp() { for (const r of pendingUp) update(r); pendingUp.clear(); }
+
+async function resync() {
+  if (!slot) return;
+  try {
+    const sigs = await api(`/api/slots/${slot}/signals`);
+    for (const s of sigs) setValue(s.name, s.value);
+  } catch { }
+}
+
+// ------------------------------------------------------------------ sending
+const sendLast = new Map();
+function sendAnalog(name, value) {
+  const now = performance.now(), t = sendLast.get(name) || { at: 0, timer: 0 };
+  clearTimeout(t.timer);
+  if (now - t.at > 60) { t.at = now; sendSignal(name, value); } else t.timer = setTimeout(() => { t.at = performance.now(); sendSignal(name, value); }, 60);
+  sendLast.set(name, t);
+}
+async function sendSignal(name, value) {
+  try {
+    const r = await fetch(`/api/slots/${slot}/signals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, value }) });
+    if (openvpAuth.check(r)) return;
+    if (r.ok) return;
+    const j = await r.json().catch(() => ({}));
+    fail(r.status === 403 ? "Your account can't drive signals." : r.status === 423 ? (j.error || "This slot is locked.") : (j.error || (typeof j === "string" ? j : "") || `Couldn't send (${r.status}).`));
+  } catch (e) { fail("Couldn't reach OpenVP: " + e.message); }
+}
+
+// ------------------------------------------------------------------ live updates
+let ws = null, retry = 0, wsTimer = 0;
+function live() {
+  clearTimeout(wsTimer);
+  if (ws) { ws.onclose = null; try { ws.close(); } catch { } }
+  if (!slot) return;
+  const s = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws/trace?slot=" + slot);
+  ws = s;
+  s.onopen = () => { retry = 0; $("#dot").className = "dot ok"; $("#connt").textContent = "live"; resync(); };
+  s.onmessage = ev => {
+    let m; try { m = JSON.parse(ev.data); } catch { return; }
+    for (const e of Array.isArray(m) ? m : [m]) if (e.t === "trace" && e.slot === slot) setValue(e.signal, e.value);
+  };
+  s.onclose = () => { $("#dot").className = "dot"; $("#connt").textContent = "reconnecting…"; wsTimer = setTimeout(live, Math.min(10000, 1000 * 2 ** retry++)); };
+}
+
+// ------------------------------------------------------------------ search
+function applyFilter() {
+  const q = $("#q").value.trim().toLowerCase();
+  let shown = 0, total = 0;
+  for (const sec of $$("#groups .grp")) {
+    const gid = sec.dataset.gid, g = model.groups.find(x => x.id === gid);
+    const gMatch = q && (g.title.toLowerCase().includes(q) || (groupOv(g).title || "").toLowerCase().includes(q));
+    let any = 0;
+    for (const el of sec.querySelectorAll(".ctl")) {
+      const rec = ctls.get(el.dataset.id);
+      total++;
+      const hit = !q || gMatch || [rec.c.id, rec.lab.textContent, rec.c.label].some(t => t.toLowerCase().includes(q));
+      el.style.display = hit ? "" : "none";
+      el.classList.toggle("hit", !!q && hit);
+      if (hit && (!rec.el.classList.contains("hid") || document.body.classList.contains("showhid"))) { any++; shown++; }
+    }
+    sec.hidden = q && !any;
+    if (q && any) sec.classList.remove("collapsed");
+    sec.querySelector("[data-n]").textContent = `· ${any}`;
+  }
+  const hidden = Object.values(layout.controls).filter(o => o.hidden).length;
+  $("#count").textContent = model ? (q ? `${shown} of ${model.controlCount} controls match “${$("#q").value.trim()}”` : `${model.controlCount} controls${hidden ? `, ${hidden} hidden` : ""} · ${model.program}`) : "";
+  $("#empty").hidden = !(model && q && !shown);
+  $("#empty").textContent = q && !shown ? "Nothing matches. Search looks at labels, signal names and group titles." : "";
+}
+$("#q").addEventListener("input", applyFilter);
+addEventListener("keydown", e => { if (e.key === "/" && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); $("#q").focus(); } });
+
+// ------------------------------------------------------------------ latency (round trip to the server, as HTTP)
+async function pingServer() {
+  const t = performance.now();
+  try { await fetch("/healthz", { cache: "no-store" }); OpenVP.setLatency(performance.now() - t); } catch { }
+}
+const lat = $("#lat");
+OpenVP.on("latency", l => { lat.textContent = Math.round(l.ms) + " ms"; lat.title = `Round trip to OpenVP: ${Math.round(l.ms)} ms (min ${Math.round(l.min)}, avg ${Math.round(l.avg)}, max ${Math.round(l.max)})`; lat.className = "lat " + (l.ms < 50 ? "good" : l.ms < 200 ? "mid" : "bad"); });
+setInterval(pingServer, 5000); pingServer();
+
+$("#kiosk-link").onclick = e => { e.preventDefault(); const u = new URL(location.href); u.searchParams.set("kiosk", "1"); location.href = u.toString(); };
+$("#slot").onchange = async e => {
+  if (dirty && !(await confirmBox("Unsaved changes", "Switching slots drops the layout changes you haven't saved.", "Switch"))) { e.target.value = slot; return; }
+  slot = +e.target.value; layoutName = ""; layout = blankLayout(); setDirty(false);
+  history.replaceState(null, "", `?slot=${slot}`);
+  await loadModel(); live();
+};
+addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
+
+(async () => {
+  await openvpAuth.init();
+  await loadSlots();
+  await loadModel();
+  live();
+  // Keep the picture current when programs are loaded or unloaded.
+  setInterval(async () => { if (!slot || edit || dirty) return; try { const m = await api(`/api/slots/${slot}/autopanel`); if (!model || m.controlCount !== model.controlCount || m.program !== model.program) { model = m; render(); resync(); } } catch { } }, 8000);
+})();
+</script>
+</body>
+</html>

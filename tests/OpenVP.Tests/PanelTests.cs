@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using OpenVP.Core;
 using OpenVP.Core.Security;
+using System.Net.Sockets;
 using OpenVP.Panels;
 using OpenVP.Server;
 
@@ -50,6 +51,7 @@ public static class PanelTests
         Assert.Equal(1, m.Groups.First(g => g.Title == "Other").Controls.Count, "a lone signal goes under Other");
         Assert.Equal("Lobby_Light_On", lobby.Controls.First(c => c.Label == "Light On").DriveName, "the full name is what gets driven");
         Assert.Equal(7, m.ControlCount, "every signal is a control");
+        Assert.Equal(7, AutoPanel.Build(2, "P", sigs.Append(D("0")).Append(D("1")).ToList(), null, name => name == "DSP_Mute" ? "Biamp DSP" : null).ControlCount, "the constant signals 0 and 1 are not controls");
     }
 
     [Test]
@@ -190,13 +192,26 @@ public static class PanelTests
     {
         var dir = Directory.CreateTempSubdirectory("openvp-sg").FullName;
         var st = new SmartGraphicsStore(dir);
-        st.Install(2, 0x0A, Zip(("room.xml", B(SampleXml)), ("logo.png", [137, 80]), ("unused.png", [1])), "Room.vtz");
+        st.Install(2, 0x0A, Zip(("a/room.xml", B(SampleXml)), ("z/logo.png", [137, 80]), ("z/unused.png", [1])), "Room.vtz");   // the XML sorts before its image, as in real archives
         Assert.Equal(1, st.List().Count, "listed");
         Assert.True(st.Get(2, 0x0A) != null && st.Get(2, 0x0B) == null, "by slot and IP ID");
         Assert.True(st.AssetPath(2, 0x0A, "img1.png") != null, "the used image is kept");
         Assert.True(st.AssetPath(2, 0x0A, "img2.png") == null, "the unused one is not");
         Assert.True(st.AssetPath(2, 0x0A, "../model.json") == null && st.AssetPath(2, 0x0A, "model.json") == null, "no path tricks, and the model is not an asset");
         Assert.True(st.Remove(2, 0x0A) && !st.Remove(2, 0x0A), "removed");
+    }
+
+    [Test]
+    public static void The_unsupported_file_keeps_the_panel_notes_and_still_round_trips_its_rows()
+    {
+        var path = Path.Combine(Directory.CreateTempSubdirectory("openvp-unsup").FullName, "unsupported.md");
+        using (var log = new UnsupportedLog(path)) { log.Report("SIMPL symbol", "Foo (SmC 1)", "pins in=1 out=1", "P"); }
+        var text = File.ReadAllText(path);
+        Assert.True(text.Contains("## Panels: what is and isn't supported") && text.Contains("ch5-list") && text.Contains(".vtp"), "panel notes are in the file");
+        Assert.True(text.Contains("| SIMPL symbol | Foo (SmC 1) |"), "rows still written");
+        using var again = new UnsupportedLog(path);
+        Assert.Equal(1, again.Items.Count, "the notes aren't mistaken for rows");
+        Assert.True(File.ReadAllText(Path.Combine(Paths.RepoRoot, "docs", "unsupported.md")).Contains("## Panels: what is and isn't supported"), "docs/unsupported.md has the notes");
     }
 
     // ------------------------------------------------------------------ latency
@@ -336,5 +351,82 @@ public static class PanelTests
         Assert.Equal(Perm.View, EndpointPolicy.For("GET", "/api/rack")!.Perm, "rack is View");
         Assert.Equal(Perm.LoadProgram, EndpointPolicy.For("PUT", "/api/slots/{n:int}/layouts/{name}")!.Perm, "saving a layout needs Programmer");
         Assert.Equal(Perm.LoadProgram, EndpointPolicy.For("POST", "/api/slots/{n:int}/panels/{ipid}/sg")!.Perm, "uploading a project needs Programmer");
+    }
+}
+
+public static class CipLatencyTests
+{
+    private static (byte type, byte[] payload) ReadFrame(NetworkStream s)
+    {
+        var h = new byte[3];
+        var got = 0;
+        while (got < 3) { var n = s.Read(h, got, 3 - got); if (n == 0) throw new IOException("closed"); got += n; }
+        var len = (h[1] << 8) | h[2];
+        var p = new byte[len];
+        got = 0;
+        while (got < len) { var n = s.Read(p, got, len - got); if (n == 0) throw new IOException("closed"); got += n; }
+        return (h[0], p);
+    }
+
+    private static NetworkStream Connect(CipServer server, TcpClient client)
+    {
+        client.Connect(System.Net.IPAddress.Loopback, server.Port);
+        var s = client.GetStream();
+        s.ReadTimeout = 3000;
+        Assert.Equal(Cip.WhoAreYou, ReadFrame(s).type, "who are you");
+        Thread.Sleep(30);
+        s.Write(Cip.Frame(Cip.ConnectRequest, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x40, 0xFF, 0xFF, 0xF1, 0x01));
+        Assert.Equal(Cip.ConnectResponse, ReadFrame(s).type, "connect response");
+        return s;
+    }
+
+    [Test]
+    public static void The_connect_handshake_gives_a_round_trip_time_for_a_CIP_panel()
+    {
+        using var p = new Processor(Paths.TempData());
+        p.AddLoader(new OpenVP.SimplSharpHost.SimplSharpLoader());
+        p.LoadProgram(1, Paths.SampleDll);
+        using var server = new CipServer(p, 0, System.Net.IPAddress.Loopback);
+        server.Start();
+        using var client = new TcpClient();
+        Connect(server, client);
+        Assert.Eventually(() => p.Slot(1).FindDevice(0x03)!.Online, "online");
+        var c = p.Slot(1).FindDevice(0x03)!.Connections.Single();
+        Assert.Eventually(() => c.LatencyMs >= 0, "handshake latency recorded");
+        Assert.Equal("CIP handshake", c.LatencySource ?? "", "and says where it came from");
+    }
+
+    [Test]
+    public static void The_heartbeat_probe_is_off_by_default_and_times_the_answer_when_on()
+    {
+        using var p = new Processor(Paths.TempData());
+        p.AddLoader(new OpenVP.SimplSharpHost.SimplSharpLoader());
+        p.LoadProgram(1, Paths.SampleDll);
+        // Off: nothing but feedback comes our way, no 0x0D.
+        using (var off = new CipServer(p, 0, System.Net.IPAddress.Loopback) { ProbeInterval = TimeSpan.FromMilliseconds(80) })
+        {
+            off.Start();
+            using var client = new TcpClient();
+            var s = Connect(off, client);
+            s.ReadTimeout = 500;
+            var sawProbe = false;
+            try { while (true) if (ReadFrame(s).type == Cip.HeartbeatRequest) { sawProbe = true; break; } } catch (IOException) { }
+            Assert.True(!sawProbe, "no heartbeat request unless asked for");
+        }
+        // On: the server asks, we answer, it records the time.
+        using var on = new CipServer(p, 0, System.Net.IPAddress.Loopback) { ProbeHeartbeats = true, ProbeInterval = TimeSpan.FromMilliseconds(80) };
+        on.Start();
+        using var client2 = new TcpClient();
+        var s2 = Connect(on, client2);
+        var asked = false;
+        for (var i = 0; i < 100 && !asked; i++)
+        {
+            if (ReadFrame(s2).type != Cip.HeartbeatRequest) continue;
+            asked = true;
+            s2.Write(Cip.Frame(Cip.HeartbeatResponse, 0x00, 0x00));
+        }
+        Assert.True(asked, "the server sent a heartbeat request");
+        var c = p.Slot(1).FindDevice(0x03)!.Connections.Last();
+        Assert.Eventually(() => c.LatencySource == "CIP heartbeat", "the answer was timed");
     }
 }

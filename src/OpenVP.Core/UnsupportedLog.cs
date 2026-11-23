@@ -142,6 +142,7 @@ public sealed class UnsupportedLog : IDisposable
         sb.Append("Only symbol names are recorded, never program names.\n\n");
         sb.Append("When you implement one, delete its row. If a program still needs it, it comes back on the next run.\n\n");
         sb.Append("Merging: if two people's edits clash, keep both rows; for the same row, add the Programs counts and keep the earliest First seen and latest Last seen.\n\n");
+        sb.Append(PanelSupportNotes.Markdown).Append("\n\n## Unsupported symbols and types seen in programs\n\n");
         sb.Append(Header).Append('\n');
         foreach (var i in Sorted(items))
             sb.Append($"| {Cell(i.Kind)} | {Cell(i.Name)} | {Cell(i.Detail)} | {i.Seen} | {i.FirstSeen:yyyy-MM-dd} | {i.LastSeen:yyyy-MM-dd} |\n");

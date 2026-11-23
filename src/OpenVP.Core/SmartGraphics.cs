@@ -87,7 +87,7 @@ public static class SmartGraphics
         {
             if (NativeProject != null) return NativeProject with { Name = string.IsNullOrWhiteSpace(NativeProject.Name) ? name : NativeProject.Name };
             if (DefaultPage is { Objects.Count: > 0 }) Pages.Insert(0, DefaultPage.Build());
-            var unsup = Unsupported.OrderByDescending(k => k.Value).Select(k => $"{k.Key} ×{k.Value}: not drawn").ToList();
+            var unsup = Unsupported.OrderByDescending(k => k.Value).Select(k => k.Value > 1 ? $"{k.Key} (×{k.Value})" : k.Key).ToList();
             if (Pages.Count == 0)
             {
                 unsup.Insert(0, "No pages or objects could be found in this project. If it is a binary VT Pro-e file, OpenVP can't read it: export the project as XML or JSON, or use a CH5 project instead.");
@@ -116,7 +116,8 @@ public static class SmartGraphics
             long total = 0;
             var binary = new List<string>();
             var imgIndex = 0;
-            foreach (var e in zip.Entries.OrderBy(e => e.FullName, StringComparer.OrdinalIgnoreCase))
+            // Images first, so the XML/JSON that names them can be matched to the files.
+            foreach (var e in zip.Entries.OrderBy(e => ImageExt.Contains(Path.GetExtension(e.FullName).ToLowerInvariant()) ? 0 : 1).ThenBy(e => e.FullName, StringComparer.OrdinalIgnoreCase))
             {
                 if (e.FullName.EndsWith('/') || e.Length == 0) continue;
                 var lower = e.FullName.ToLowerInvariant();
@@ -136,16 +137,16 @@ public static class SmartGraphics
                 }
                 if (x is ".xml" or ".json" or ".vtpx" or ".openvp-sg" or ".cse2j")
                 {
-                    if (e.Length > MaxTextBytes) { ctx.Skip($"file {Path.GetFileName(e.FullName)} (too big to read)"); continue; }
+                    if (e.Length > MaxTextBytes) { ctx.Skip($"file {Path.GetFileName(e.FullName)} is too big to read"); continue; }
                     var text = ReadText(ReadAll(e, ref total));
-                    if (!ReadText(e.FullName, text, ctx)) ctx.Skip($"file {Path.GetFileName(e.FullName)} (not XML or JSON OpenVP understands)");
+                    if (!ReadText(e.FullName, text, ctx)) ctx.Skip($"file {Path.GetFileName(e.FullName)} isn't XML or JSON OpenVP can read");
                     continue;
                 }
                 if (x is ".vtp" or ".sgd" or ".dat" or ".bin" or ".db" or ".sg" or ".cpz" or ".pck") binary.Add(Path.GetFileName(e.FullName));
-                else if (x is ".svg" or ".ttf" or ".otf" or ".wav" or ".mp3" or ".mp4" or ".css" or ".js" or ".html") ctx.Skip($"{x} file ({Path.GetFileName(e.FullName)})");
+                else if (x is ".svg" or ".ttf" or ".otf" or ".wav" or ".mp3" or ".mp4" or ".css" or ".js" or ".html") ctx.Skip($"{x} file {Path.GetFileName(e.FullName)} isn't used");
             }
             if (binary.Count > 0)
-                ctx.Skip("binary project file" + (binary.Count > 1 ? "s" : "") + " (" + string.Join(", ", binary.Take(4)) + (binary.Count > 4 ? ", …" : "") + ") can't be decoded; the pages in it are not shown unless the archive also holds XML or JSON");
+                ctx.Skip("binary project file" + (binary.Count > 1 ? "s" : "") + " (" + string.Join(", ", binary.Take(4)) + (binary.Count > 4 ? ", …" : "") + ") can't be decoded, so the pages in it are not shown unless the archive also holds XML or JSON");
         }
     }
 
@@ -391,7 +392,7 @@ public static class SmartGraphics
             ?? (K(n.Tag) is "object" or "item" or "control" or "element" or "node" or "root" or "child" or "children" or "objects" or "controls" ? null : n.Tag);
         if (typeName != null && HasGeometry(n) && K(typeName).Length > 0 && !K(typeName).All(char.IsDigit))
         {
-            ctx.Skip($"object type “{typeName}”");
+            ctx.Skip($"object type “{typeName}” isn't drawn (shown as a placeholder)");
             (page ?? ctx.Default).Objects.Add(new SgObject("unsupported", Pick(n, "name", "objectname", "id") ?? typeName, Num(n, "x", "left") ?? 0, Num(n, "y", "top") ?? 0, Num(n, "width", "w") ?? 100, Num(n, "height", "h") ?? 40, typeName, new SgJoins(), null, "Not supported: " + typeName));
         }
         foreach (var c in n.Children) Walk(c, page, ctx, fileName, depth + 1);

@@ -89,6 +89,20 @@ public sealed class PanelLayouts
             }
             o["groups"] = go;
         }
+        // Joins added by hand (a SIMPL# program doesn't list the joins it uses, only the ones it has touched so far).
+        if (body.TryGetProperty("extras", out var ex) && ex.ValueKind == JsonValueKind.Array)
+        {
+            var list = new JsonArray();
+            foreach (var x in ex.EnumerateArray().Take(500))
+            {
+                if (x.ValueKind != JsonValueKind.Object || !x.TryGetProperty("device", out var dv) || dv.ValueKind != JsonValueKind.String
+                    || !System.Text.RegularExpressions.Regex.IsMatch(dv.GetString()!, @"^IPID[0-9A-Fa-f]{2}$")
+                    || !x.TryGetProperty("kind", out var kv) || kv.ValueKind != JsonValueKind.String || kv.GetString() is not ("digital" or "analog" or "serial")
+                    || !x.TryGetProperty("join", out var jv) || !jv.TryGetInt32(out var jn) || jn is < 1 or > 65535) continue;
+                list.Add(new JsonObject { ["device"] = dv.GetString()!.ToUpperInvariant(), ["kind"] = kv.GetString(), ["join"] = jn });
+            }
+            o["extras"] = list;
+        }
         var controls = new JsonObject();
         if (body.TryGetProperty("controls", out var cs))
         {
