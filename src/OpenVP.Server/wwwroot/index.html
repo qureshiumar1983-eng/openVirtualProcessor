@@ -115,6 +115,17 @@
   #welcome ol, #welcome ul { margin:0; padding-left:22px; }
   #welcome .row { margin-top:14px; flex-wrap:wrap; }
   dialog .row { display:flex; gap:8px; justify-content:flex-end; }
+  #ed-dlg { width:min(900px, calc(100vw - 24px)); max-width:none; padding:12px; }
+  #ed-dlg .bar { align-items:center; }
+  .ed-wrap { display:flex; border:1px solid var(--line); border-radius:6px; background:var(--well); height:min(60dvh, 560px); min-height:180px; overflow:hidden; }
+  #ed-gutter { margin:0; padding:8px 6px; width:4.2em; flex:none; text-align:right; color:var(--muted); font:12px/18px ui-monospace, Menlo, Consolas, monospace; overflow:hidden; border-right:1px solid var(--line); user-select:none; background:var(--soft); }
+  #ed-gutter .bad { color:var(--err-fg); background:var(--err-bg); display:block; }
+  #ed-gutter span { display:block; }
+  #ed-text { flex:1; min-width:0; border:0; border-radius:0; resize:none; white-space:pre; overflow:auto; padding:8px; font:12px/18px ui-monospace, Menlo, Consolas, monospace; background:transparent; color:var(--text); tab-size:2; }
+  #ed-banner { padding:6px 8px; border:1px solid var(--warn-line); background:var(--warn-box); border-radius:6px; font-size:13px; display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
+  #ed-banner.err { border-color:var(--err); background:var(--err-bg); }
+  #ed-banner.ok { border-color:var(--ok); background:var(--ok-bg); color:var(--ok-fg); }
+  #ed-status.bad { color:var(--err-fg); } #ed-status.good { color:var(--ok-fg); }
   #files-hint { margin:0 0 10px; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:var(--soft); }
   #files-missing { margin:0 0 10px; padding:8px 10px; border:1px solid var(--warn-line); border-radius:6px; background:var(--warn-box); }
   #files-missing ul { margin:6px 0 0; padding:0; list-style:none; }
@@ -351,7 +362,7 @@
 <body>
 <header>
   <h1>OpenVP</h1><small>open-source virtual control processor</small>
-  <span style="flex:1"></span><span id="saved" role="status" aria-live="polite"></span><span id="sigfind-wrap"><input id="sigfind" type="search" placeholder="Find a signal in all slots" aria-label="Find a signal by name in every loaded slot" autocomplete="off" title="Finds signals by name across all loaded slots and opens that slot's debugger on the one you pick (press F)" data-help="signal-search"><div id="sigfind-res" hidden></div></span><button class="hbtn" id="pal-open" title="Search every action and every help topic (Ctrl+K or Cmd+K)" data-help="palette">Search ⌘K</button><button class="hbtn" id="keys-open" title="Keyboard shortcuts (?)" data-help="palette">?</button><button class="hbtn" id="tpl-open" title="Starter projects to download: a SIMPL# Pro program and a CH5 panel" data-help="templates">Templates</button><button class="theme-btn" data-theme-toggle data-help="top-bar"></button><a href="devices.html" id="devices-link" target="openvp-devices" data-help="devices" title="Device simulators, COM terminal, socket sniffer, network redirects and discovery for the selected slot">Devices ↗</a><a href="metrics.html" target="openvp-metrics" data-help="metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="alerts.html" id="alerts-link" target="openvp-alerts" data-help="alerts" title="Alerts to email, Teams, Slack and your phone; thresholds and health reports">Alerts ↗<span class="abadge" id="alerts-badge" hidden></span></a><a href="integrations.html" id="integrations-link" target="openvp-integrations" data-help="integrations" title="MQTT and Home Assistant, webhooks, OSC, Art-Net and Prometheus for the selected slot">Integrations ↗</a><a href="panel.html" target="_blank" data-help="panel" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a><a href="#welcome" id="welcome-link" title="Show the welcome screen again">Welcome</a>
+  <span style="flex:1"></span><span id="saved" role="status" aria-live="polite"></span><span id="sigfind-wrap"><input id="sigfind" type="search" placeholder="Find a signal in all slots" aria-label="Find a signal by name in every loaded slot" autocomplete="off" title="Finds signals by name across all loaded slots and opens that slot's debugger on the one you pick (press F)" data-help="signal-search"><div id="sigfind-res" hidden></div></span><button class="hbtn" id="pal-open" title="Search every action and every help topic (Ctrl+K or Cmd+K)" data-help="palette">Search ⌘K</button><button class="hbtn" id="keys-open" title="Keyboard shortcuts (?)" data-help="palette">?</button><button class="hbtn" id="tpl-open" title="Starter projects to download: a SIMPL# Pro program and a CH5 panel" data-help="templates">Templates</button><button class="theme-btn" data-theme-toggle data-help="top-bar"></button><a href="devices.html" id="devices-link" target="openvp-devices" data-help="devices" title="Device simulators, COM terminal, socket sniffer, network redirects and discovery for the selected slot">Devices ↗</a><a href="metrics.html" target="openvp-metrics" data-help="metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="alerts.html" id="alerts-link" target="openvp-alerts" data-help="alerts" title="Alerts to email, Teams, Slack and your phone; thresholds and health reports">Alerts ↗<span class="abadge" id="alerts-badge" hidden></span></a><a href="integrations.html" id="integrations-link" target="openvp-integrations" data-help="integrations" title="MQTT and Home Assistant, webhooks, OSC, Art-Net and Prometheus for the selected slot">Integrations ↗</a><a href="backup.html" id="backup-link" target="openvp-backup" data-help="backups" title="Export the whole processor, daily backups, and Git-backed config">Backups ↗</a><a href="schedules.html" target="openvp-schedules" data-help="schedules" title="Restart a slot nightly, load a program, run a backup or set a signal at a time">Schedules ↗</a><a href="targets.html" target="openvp-push" data-help="push" title="Push programs and exports to other OpenVP machines">Push ↗</a><a href="panel.html" target="_blank" data-help="panel" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a><a href="#welcome" id="welcome-link" title="Show the welcome screen again">Welcome</a>
 </header>
 <div id="slot-strip" aria-label="Selected slot"><select id="strip-slot" aria-label="Slot"></select><button id="strip-start" title="Start">▶</button><button id="strip-stop" title="Stop">■</button><button id="strip-restart" title="Restart">↻</button></div>
 <div id="net-bar" data-help="internet">
@@ -501,6 +512,7 @@
       <h2 class="sec-t">History · slot <span class="sel-num2">1</span></h2>
       <div class="bar">
         <button id="hist-now" data-help="snapshot-now" title="Save a copy of this slot's program, NVRAM and User files now">Snapshot now</button>
+        <button id="hist-versions" data-help="versions" title="Every program loaded into this slot: load an older one, download it, add a note or compare two">Versions…</button>
         <span class="muted">A snapshot is saved before every load. The last 10 are kept.</span>
       </div>
       <table id="hist-table"><thead><tr><th>Time</th><th>Program</th><th>Reason</th><th class="num">Size</th><th></th></tr></thead><tbody></tbody></table>
@@ -573,6 +585,16 @@
   <dl id="keys-list"></dl>
   <div id="keys-foot">Shortcuts don't fire while you are typing in a box. Esc or ? closes this.</div>
 </div></div>
+<dialog id="ed-dlg" aria-labelledby="ed-title"><form method="dialog" onsubmit="return false">
+  <div class="bar"><h2 id="ed-title" style="margin:0;font-size:15px;text-transform:none;letter-spacing:0;color:var(--text)">Edit file</h2><span class="muted mono" id="ed-path" style="overflow-wrap:anywhere"></span><span style="flex:1"></span><span id="ed-dirty" class="muted"></span></div>
+  <div id="ed-banner" role="alert" hidden></div>
+  <div class="ed-wrap"><pre id="ed-gutter" aria-hidden="true"></pre><textarea id="ed-text" spellcheck="false" wrap="off" autocomplete="off" aria-label="File content"></textarea></div>
+  <div class="bar"><span id="ed-status" class="mono muted" role="status" aria-live="polite"></span><span style="flex:1"></span><button type="button" id="ed-reload" title="Read the file from disk again, dropping what you typed">Reload from disk</button><button type="button" id="ed-close">Close</button><button type="button" id="ed-save" class="primary" title="Save (Ctrl+S). The old content is kept for Undo.">Save</button></div>
+</form></dialog>
+<dialog id="edq-dlg" aria-labelledby="edq-text"><form method="dialog">
+  <div id="edq-text"></div>
+  <div class="row"><button type="button" id="edq-no">Cancel</button><button value="ok" id="edq-ok" class="primary">OK</button></div>
+</form></dialog>
 <dialog id="ask"><form method="dialog">
   <label id="ask-label" for="ask-in"></label>
   <input id="ask-in" class="mono" autocomplete="off">
@@ -671,7 +693,7 @@ async function api(path, opts) {
   if (openvpAuth.check(r)) throw new Error("Log in with the access key first.");
   const ct = r.headers.get("content-type") || "";
   const body = ct.includes("json") ? await r.json() : await r.text();
-  if (!r.ok) throw new Error(body.error || body || r.statusText);
+  if (!r.ok) { const err = new Error(body.error || body || r.statusText); err.data = body; err.status = r.status; throw err; }
   return body;
 }
 
@@ -1203,6 +1225,7 @@ async function refreshFiles() {
     else nameCell.textContent = e.name;
     const act = tr.querySelector(".act");
     const btn = (label, title, fn) => { const b = document.createElement("button"); b.textContent = label; b.title = title; b.onclick = fn; act.appendChild(b); act.append(" "); };
+    if (!e.folder && e.editable) btn("Edit", "Edit this text file in the browser (up to 2 MB). The old content is kept for Undo.", () => openEditor(sel, fRoot, path, e.name));
     if (!e.folder) btn("⤓", "Download this file", () => { location.href = `/api/slots/${sel}/files/download?${q({ root: fRoot, path })}`; });
     btn("Rename", "Rename this file or folder", async () => {
       const name = await askName(`Rename '${e.name}' to:`, e.name); if (!name || name === e.name) return;
@@ -1222,6 +1245,105 @@ async function refreshFiles() {
     tb.appendChild(tr);
   }
 }
+
+// ---- File editor: a textarea with line numbers, JSON/XML checks that name the line, a "changed on disk" warning, and Undo for each save.
+const ED = { n: 0, root: "", path: "", name: "", kind: "text", tag: "", text: "", size: 0, modified: 0, dirty: false, vT: 0, pollT: 0, badLine: 0, lines: 0 };
+const edText = () => $("#ed-text");
+function edGutter() {
+  const n = edText().value.split("\n").length;
+  if (n === ED.lines && !ED.gutterDirty) return;
+  ED.lines = n; ED.gutterDirty = false;
+  let h = ""; for (let i = 1; i <= n; i++) h += i === ED.badLine ? `<span class="bad">${i}</span>` : `<span>${i}</span>`;
+  $("#ed-gutter").innerHTML = h; $("#ed-gutter").scrollTop = edText().scrollTop;
+}
+function edCursor() {
+  const ta = edText(), before = ta.value.slice(0, ta.selectionStart), line = before.split("\n").length, col = ta.selectionStart - before.lastIndexOf("\n");
+  return { line, col };
+}
+function edStatus(text, cls = "") { const s = $("#ed-status"); s.textContent = text; s.className = "mono " + (cls || "muted"); }
+function edUpdateStatus() { const c = edCursor(); if (ED.problem) return; edStatus(`Line ${c.line}, column ${c.col} · ${edText().value.length.toLocaleString()} characters${ED.kind !== "text" ? " · valid " + ED.kind.toUpperCase() : ""}`, ED.kind !== "text" ? "good" : ""); }
+function edBanner(html, kind = "") { const b = $("#ed-banner"); b.hidden = !html; b.className = kind === true ? "err" : kind || ""; b.innerHTML = html || ""; }
+function edGoto(line) { const ta = edText(); const lines = ta.value.split("\n"); let idx = 0; for (let i = 0; i < line - 1 && i < lines.length; i++) idx += lines[i].length + 1; ta.focus(); ta.setSelectionRange(idx, idx + (lines[line - 1]?.length || 0)); ta.scrollTop = Math.max(0, (line - 4) * 18); }
+function edSetProblem(p) {
+  ED.problem = p; const old = ED.badLine; ED.badLine = p ? p.line : 0; if (old !== ED.badLine) ED.gutterDirty = true; edGutter();
+  if (p) edStatus(`Line ${p.line}: ${p.error.replace(/^Line \d+: /, "")}`, "bad"); else edUpdateStatus();
+}
+function edDirty() { ED.dirty = edText().value !== ED.text; $("#ed-dirty").textContent = ED.dirty ? "● unsaved changes" : ""; }
+function edValidateSoon() {
+  clearTimeout(ED.vT);
+  if (ED.kind === "text") return;
+  ED.vT = setTimeout(async () => {
+    try { const r = await api(`/api/slots/${ED.n}/files/validate`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: ED.name, text: edText().value }) }); edSetProblem(r.ok ? null : { line: r.line, error: r.error }); }
+    catch { /* leave the last answer */ }
+  }, 450);
+}
+async function openEditor(n, root, path, name) {
+  let d;
+  try { d = await api(`/api/slots/${n}/files/text?${q({ root, path })}`); } catch (e) { toast(e.message, { error: true }); return; }
+  Object.assign(ED, { n, root, path, name, kind: d.kind, tag: d.tag, text: d.text, size: d.size, modified: new Date(d.modified).getTime(), dirty: false, badLine: 0, lines: 0, problem: null, gutterDirty: true });
+  $("#ed-title").textContent = `Edit ${name}`; $("#ed-path").textContent = `slot ${n} · ${root.toUpperCase()}\\${path.replace(/\//g, "\\")}`;
+  edText().value = d.text; edBanner(""); edGutter(); edDirty(); edStatus(""); edUpdateStatus(); edValidateSoon();
+  const dlg = $("#ed-dlg"); if (!dlg.open) dlg.showModal(); edText().focus(); edText().setSelectionRange(0, 0); edText().scrollTop = 0;
+  clearInterval(ED.pollT); ED.pollT = setInterval(edCheckDisk, 4000);
+}
+async function edCheckDisk() {
+  if (!$("#ed-dlg").open || ED.checking) return; ED.checking = true;
+  try {
+    const dir = ED.path.includes("/") ? ED.path.slice(0, ED.path.lastIndexOf("/")) : "";
+    const d = await api(`/api/slots/${ED.n}/files?${q({ root: ED.root, path: dir })}`);
+    const e = d.entries.find(x => x.name === ED.name);
+    if (!e) edBanner(`This file was deleted or renamed on disk after you opened it. Saving will create it again.`);
+    else if (e.size !== ED.size || Math.abs(new Date(e.modified).getTime() - ED.modified) > 1500)
+      edBanner(`This file changed on disk after you opened it. <button type="button" id="ed-b-reload">Reload from disk</button> <button type="button" id="ed-b-keep">Keep my version</button>`);
+    wireBanner();
+  } catch { /* the page's other calls report problems */ } finally { ED.checking = false; }
+}
+function wireBanner() {
+  const r = $("#ed-b-reload"), k = $("#ed-b-keep"), f = $("#ed-b-force"), a = $("#ed-b-anyway");
+  if (r) r.onclick = () => edReload(true); if (k) k.onclick = () => edBanner("");
+  if (f) f.onclick = () => edSave({ force: true }); if (a) a.onclick = () => edSave({ allowInvalid: true });
+}
+// A question in a dialog of our own (the editor is itself a dialog, and window.confirm doesn't suit the desktop app).
+function edConfirm(text, ok = "OK") {
+  return new Promise(res => {
+    const d = $("#edq-dlg"); $("#edq-text").textContent = text; $("#edq-ok").textContent = ok;
+    d.onclose = () => res(d.returnValue === "ok"); d.returnValue = ""; $("#edq-no").onclick = () => d.close("cancel"); d.showModal();
+  });
+}
+async function edReload(ask) {
+  if (ask && ED.dirty && !await edConfirm("Drop what you typed and read the file from disk again?", "Reload")) return;
+  await openEditor(ED.n, ED.root, ED.path, ED.name);
+}
+async function edSave(opts = {}) {
+  const text = edText().value, n = ED.n, name = ED.name;
+  $("#ed-save").disabled = true;
+  try {
+    const r = await api(`/api/slots/${n}/files/text?${q({ root: ED.root, path: ED.path })}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, tag: ED.tag, force: !!opts.force, allowInvalid: !!opts.allowInvalid }) });
+    ED.tag = r.tag; ED.text = text; ED.size = r.size; ED.modified = new Date(r.modified).getTime(); edDirty(); edSetProblem(null);
+    // The Undo toast sits behind this dialog, so the dialog offers Undo itself too.
+    edBanner(`Saved ${esc(name)}. <button type="button" id="ed-b-undo">Undo this save</button>`, "ok");
+    $("#ed-b-undo").onclick = async () => {
+      try { await restoreTrash(r.undo); } catch (e) { edBanner(esc(e.message), true); return; }
+      await openEditor(n, ED.root, ED.path, name); edBanner("Undone: the earlier content is back.", "ok"); if (n === sel) refreshFiles();
+    };
+    toast(`Saved ${name}.`, { undo: async () => { await restoreTrash(r.undo); if (n === sel) refreshFiles(); } });
+    if (n === sel) refreshFiles();
+  } catch (e) {
+    const d = e.data || {};
+    if (d.conflict) edBanner(`${esc(e.message)} <button type="button" id="ed-b-reload">Reload from disk</button> <button type="button" id="ed-b-force">Save anyway</button>`, true);
+    else if (d.invalid) { edSetProblem({ line: d.line, error: e.message }); edBanner(`${esc(e.message)} <button type="button" id="ed-b-go">Go to the line</button> <button type="button" id="ed-b-anyway">Save anyway</button>`, true); const g = $("#ed-b-go"); if (g) g.onclick = () => edGoto(d.line); edGoto(d.line); }
+    else edBanner(esc(e.message), true);
+    wireBanner();
+  }
+  $("#ed-save").disabled = false;
+}
+async function edClose() { if (ED.dirty && !await edConfirm("Close without saving what you typed?", "Close")) return; clearInterval(ED.pollT); $("#ed-dlg").close(); }
+edText().addEventListener("input", () => { edGutter(); edDirty(); edUpdateStatus(); edValidateSoon(); });
+edText().addEventListener("scroll", () => { $("#ed-gutter").scrollTop = edText().scrollTop; });
+for (const ev of ["keyup", "click"]) edText().addEventListener(ev, edUpdateStatus);
+edText().addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); edSave(); } });
+$("#ed-save").onclick = () => edSave(); $("#ed-close").onclick = edClose; $("#ed-reload").onclick = () => edReload(true);
+$("#ed-dlg").addEventListener("cancel", e => { if (ED.dirty) { e.preventDefault(); edClose(); } else clearInterval(ED.pollT); });
 
 // History: snapshots of the selected slot (program files, NVRAM and User), taken before every load.
 let histTimer = 0;
@@ -1254,6 +1376,7 @@ async function refreshHistory() {
     tb.appendChild(tr);
   }
 }
+$("#hist-versions").onclick = () => window.open(`versions.html?slot=${sel}`, "openvp-versions");
 $("#hist-now").onclick = async () => {
   try { await api(`/api/slots/${sel}/snapshots`, { method: "POST" }); } catch (e) { alert(e.message); }
   refreshHistory();
@@ -2062,6 +2185,15 @@ function paletteItems() {
   add("MQTT: connect a broker", "Integrations", () => window.open(`integrations.html?slot=${sel}#mqtt`, "openvp-integrations"), "mqtt broker home assistant publish");
   add("Webhooks: send and receive", "Integrations", () => window.open(`integrations.html?slot=${sel}#hooks`, "openvp-integrations"), "webhook http post incoming outgoing");
   add("Prometheus and Grafana", "Integrations", () => window.open(`integrations.html?slot=${sel}#prom`, "openvp-integrations"), "metrics scrape grafana dashboard");
+  add("Export the whole processor to a file", "Backups", () => window.open("backup.html#export", "openvp-backup"), "backup download save copy migrate");
+  add("Import a processor export", "Backups", () => window.open("backup.html#export", "openvp-backup"), "restore upload move");
+  add("Back up now / daily backups", "Backups", () => window.open("backup.html#backups", "openvp-backup"), "backup restore daily retention");
+  add("Git-backed config", "Backups", () => window.open("backup.html#git", "openvp-backup"), "git commit repository config history");
+  add(`Program versions of slot ${sel}`, "Versions", () => window.open(`versions.html?slot=${sel}`, "openvp-versions"), "history older program load again compare diff");
+  add("Schedules: restart a slot nightly, run a backup", "Schedules", () => window.open("schedules.html", "openvp-schedules"), "cron timer nightly daily weekly");
+  add("New schedule", "Schedules", () => window.open("schedules.html#new", "openvp-schedules"), "cron timer nightly");
+  add("Push a program or export to other OpenVP machines", "Push", () => window.open(`targets.html?slot=${sel}#push`, "openvp-push"), "deploy send other server targets");
+  add("Push targets", "Push", () => window.open("targets.html", "openvp-push"), "other openvp servers");
   add("Open help", "new window", () => window.open("help.html#console", "openvp-help"), "docs");
   add("Open the test panel", "new window", () => window.open("panel.html", "_blank"), "browser touch panel");
   add(`Take a snapshot of slot ${sel}`, "History", snapshotNow, "snapshot now save history");

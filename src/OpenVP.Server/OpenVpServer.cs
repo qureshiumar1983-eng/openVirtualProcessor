@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Channels;
 using OpenVP.Core;
 using OpenVP.Core.Alerts;
+using OpenVP.Core.Ops;
 using OpenVP.Lpz;
 using OpenVP.Panels;
 using OpenVP.Simpl;
@@ -25,6 +26,8 @@ public static class OpenVpServer
         // The data folder stays relative to the working directory.
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = args, ContentRootPath = AppContext.BaseDirectory });
         builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = 512L * 1024 * 1024);
+        // Uploads (programs, whole-processor exports) can be large; the default form limit is 128 MB.
+        builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o => o.MultipartBodyLengthLimit = 512L * 1024 * 1024);
         var cfg = builder.Configuration.GetSection("OpenVP");
 
         // The internet tunnel gets its own listener on 127.0.0.1, never the console's port (see TunnelGate).
@@ -317,6 +320,8 @@ public static class OpenVpServer
         var uploadLocks = processor.Slots.Select(_ => new SemaphoreSlim(1, 1)).ToArray();
 
         var snapshots = new SlotSnapshots(processor.DataDirectory);
+        // Every program that goes into a slot is kept as a version (data/versions), so it can be loaded again, downloaded and compared.
+        var versions = new ProgramVersions(processor.DataDirectory);
 
         static string FormatSize(long b) => b switch
         {
@@ -352,8 +357,9 @@ public static class OpenVpServer
         object SnapshotDto(SnapshotInfo i) => new { id = i.Id, time = i.Time, program = i.Program, file = i.File, reason = i.Reason, size = i.Size, skipped = i.Skipped?.Length ?? 0 };
 
         // Replace the slot's program files and load the program, which is files[0]. Call with the slot's upload lock held.
-        IResult Install(int n, IReadOnlyList<(string Name, byte[] Data)> files, bool start, ProgramMemory? memory = null, string? fromPath = null, string[]? extra = null, string who = Actors.ThisComputer, string? logAs = "load")
+        IResult Install(int n, IReadOnlyList<(string Name, byte[] Data)> files, bool start, ProgramMemory? memory = null, string? fromPath = null, string[]? extra = null, string who = Actors.ThisComputer, string? logAs = "load", string? how = null)
         {
+            how ??= logAs == "auto-reload" ? "auto-reload" : fromPath != null ? "path" : "upload";
             var dir = Path.Combine(uploads, $"slot{n:00}");
             var path = Path.Combine(dir, Path.GetFileName(files[0].Name));
             // Unload first so the old program lets go of its files, then replace them and load the new one.
@@ -371,9 +377,12 @@ public static class OpenVpServer
                 try { processor.LoadProgram(n, path, start); }
                 catch (Exception e)
                 {
+                    try { versions.Record(n, files, how, who, null); } catch (Exception ve) { slot.Log("Warning", $"Couldn't keep this program as a version: {ve.Message}"); }
                     if (logAs != null) activity.Add(logAs, $"Couldn't load {Path.GetFileName(files[0].Name)} into slot {n}: {Readiness.Explain(e)}", n, who);
                     return Results.UnprocessableEntity(new { error = e.Message, slot = SlotDto(slot) });
                 }
+                try { versions.Record(n, files, how, who, slot.Runtime?.Kind); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { slot.Log("Warning", $"Couldn't keep this program as a version: {e.Message}"); }
                 if (logAs != null)
                     activity.Add(logAs, logAs == "auto-reload" ? $"Reloaded {Path.GetFileName(files[0].Name)} in slot {n} because the file changed" : $"Loaded {Path.GetFileName(files[0].Name)} into slot {n}{(start ? "" : " (not started)")}",
                         n, who, null, slot.Runtime?.Kind);
@@ -449,8 +458,9 @@ public static class OpenVpServer
             foreach (var extra in form.Files.Where(f => f != file))
                 files.Add((extra == sigFor ? Path.ChangeExtension(name, ".sig") : Path.GetFileName(extra.FileName), ReadAll(extra)));
 
+            var how = string.Equals(form["how"], "push", StringComparison.OrdinalIgnoreCase) ? "push" : "upload";
             await uploadLocks[n - 1].WaitAsync();
-            try { StopWatching(n); return Install(n, files, start, who: Who(ctx)); }
+            try { StopWatching(n); return Install(n, files, start, who: Who(ctx), how: how); }
             finally { uploadLocks[n - 1].Release(); }
         });
 
@@ -567,6 +577,7 @@ public static class OpenVpServer
                     Note(ctx, "rollback", $"Rolled slot {n} back to the snapshot of {info.Program ?? "the slot"} from {info.Time.ToLocalTime():yyyy-MM-dd HH:mm:ss} ({info.Reason})", n);
                     if (snapshots.RestoredProgramPath(n, info) is { } path && File.Exists(path))
                     {
+                        try { versions.RecordFolder(n, Path.GetDirectoryName(path)!, Path.GetFileName(path), "roll back", Who(ctx)); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
                         slot.RememberProgram(new ProgramMemory { Source = ProgramMemory.Upload, File = Path.GetFileName(path), Running = wasRunning });
                         try { processor.LoadProgram(n, path, wasRunning); }
                         catch (Exception e) { return Results.UnprocessableEntity(new { error = e.Message, slot = SlotDto(slot) }); }
@@ -636,7 +647,7 @@ public static class OpenVpServer
                 }
                 var files = recent.ReadCopy(id);
                 if (files == null) return Results.NotFound(new { error = "OpenVP didn't keep a copy of this upload (it was too big, or has been cleared). Choose the file again." });
-                return Install(n, files, true, who: Who(ctx));
+                return Install(n, files, true, who: Who(ctx), how: "recent");
             }
             finally { uploadLocks[n - 1].Release(); }
         });
@@ -715,6 +726,130 @@ public static class OpenVpServer
             }
             finally { uploadLocks[n - 1].Release(); }
         });
+
+
+        // ------------------------------------------------------------------ export and import, backups, versions, schedules, push, git (OpenVP.Core.Ops)
+
+        var secretStore = integrations.Store.Secrets;
+        var previews = new ImportPreviews(processor.DataDirectory);
+        var profiler = new ProgramProfiler(processor.DataDirectory);
+        var pushTargets = new TargetStore(processor.DataDirectory, secretStore);
+        var pushClient = new PushClient(pushTargets);
+        var pushManager = new PushManager(pushClient);
+        var reloaders = new Dictionary<string, Action>(); // settings that live in a store; each is read again after an import replaced its file
+        var exporter = new ProcessorExporter(processor.DataDirectory, processor.Slots.Count, secretStore, n => processor.Slot(n).Runtime?.ProgramName,
+            () => new
+            {
+                telnetEnabled = cfg.GetValue("TelnetEnabled", false), telnetPort = cfg.GetValue("TelnetPort", 41795), sshEnabled = cfg.GetValue("SshEnabled", false), sshPort = cfg.GetValue("SshPort", 22),
+                mdns = cfg.GetValue<bool?>("Mdns"), mdnsName = cfg["MdnsName"], consoleMaxConnections = cfg.GetValue("ConsoleMaxConnections", 5)
+            }, recent);
+        var backups = new BackupService(processor.DataDirectory, (path, opts) =>
+        {
+            using var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
+            return exporter.Export(fs, opts);
+        }, secretStore);
+        backups.Result += (ok, message, reason) => { if (!ok || reason != "manual") activity.Add("backup", ok ? "Backed up the processor: " + message : "Backup failed: " + message, null, Actors.Auto); };
+        if (alerts != null) backups.Result += (ok, message, _) => alerts.Monitor.OnBackup(ok, message);
+
+        async Task<string> ExecuteSchedule(ScheduleDef d, string trigger)
+        {
+            var a = d.Action;
+            if (a.Type == ScheduleAction.Backup)
+            {
+                var info = await Task.Run(() => backups.RunNow("scheduled"));
+                if (info == null) throw new InvalidOperationException(backups.Settings.LastOk == false ? backups.Settings.LastMessage ?? "The backup failed." : "A backup is already running.");
+                return $"Backed up to {info.File}";
+            }
+            var n = a.Slot ?? 0;
+            if (!processor.IsValidSlot(n)) throw new InvalidOperationException($"Slot {n} doesn't exist.");
+            await uploadLocks[n - 1].WaitAsync();
+            try
+            {
+                switch (a.Type)
+                {
+                    case ScheduleAction.Restart:
+                        if (processor.Slot(n).ProgramPath == null) throw new InvalidOperationException($"Slot {n} has no program to restart.");
+                        RestartSlot(n);
+                        return $"Restarted {Prog(n)} in slot {n}";
+                    case ScheduleAction.Start:
+                        if (processor.Slot(n).Runtime == null && processor.Slot(n).State != SlotState.Error) throw new InvalidOperationException($"Slot {n} has no program to start.");
+                        StartSlot(n);
+                        return $"Started {Prog(n)} in slot {n}";
+                    case ScheduleAction.Stop:
+                        StopSlot(n);
+                        return $"Stopped {Prog(n)} in slot {n}";
+                    case ScheduleAction.LoadVersion:
+                    {
+                        var files = versions.ReadFiles(n, a.VersionId) ?? throw new InvalidOperationException("That program version isn't kept any more.");
+                        StopWatching(n);
+                        if (Install(n, files, a.StartAfter, who: Actors.Auto, how: "schedule") is IStatusCodeHttpResult { StatusCode: not 200 })
+                            throw new InvalidOperationException(processor.Slot(n).LastError ?? "The program didn't load. See the slot log.");
+                        return $"Loaded {files[0].Name} into slot {n}{(a.StartAfter ? "" : " (not started)")}";
+                    }
+                    case ScheduleAction.LoadPath:
+                    {
+                        if (string.IsNullOrEmpty(a.Path) || !File.Exists(a.Path)) throw new InvalidOperationException($"There's no file at {a.Path}.");
+                        StopWatching(n);
+                        if (LoadFromDisk(n, a.Path, Array.Empty<string>(), a.StartAfter, false, Actors.Auto, "load") is IStatusCodeHttpResult { StatusCode: not 200 })
+                            throw new InvalidOperationException(processor.Slot(n).LastError ?? "The program didn't load. See the slot log.");
+                        return $"Loaded {Path.GetFileName(a.Path)} into slot {n}{(a.StartAfter ? "" : " (not started)")}";
+                    }
+                    case ScheduleAction.SetSignal:
+                    case ScheduleAction.Pulse:
+                    {
+                        var text = a.Type == ScheduleAction.Pulse ? "pulse" : a.Value ?? "";
+                        integrations.Directory.TrySetFromText(n, a.Signal!, text, out var error);
+                        if (error != null) throw new InvalidOperationException(error);
+                        return a.Type == ScheduleAction.Pulse ? $"Pulsed {a.Signal} in slot {n}" : $"Set {a.Signal} to {a.Value} in slot {n}";
+                    }
+                    default: throw new InvalidOperationException("Unknown action.");
+                }
+            }
+            finally { uploadLocks[n - 1].Release(); }
+        }
+        var scheduler = new Scheduler(processor.DataDirectory, ExecuteSchedule);
+        scheduler.Ran += run => activity.Add("schedule",
+            run.Status == "ok" ? $"Schedule “{run.Name}” ran: {run.Message}" : run.Status == "failed" ? $"Schedule “{run.Name}” failed: {run.Message}" : $"Schedule “{run.Name}” skipped: {run.Message}",
+            run.Slot, Actors.Auto, null, run.Trigger == "schedule" ? null : run.Trigger);
+        if (alerts != null) scheduler.Ran += alerts.Monitor.OnScheduleRun;
+
+        var git = new GitConfigSync(processor.DataDirectory, processor.Slots.Count, () => secretStore.Snapshot().Values.Append(auth.Key ?? ""));
+        var gitQuiet = new HashSet<string> { "git", "backup", "backup.delete", "report", "start", "stop", "restart", "crash", "export", "push", "internet.on", "internet.off", "undo" };
+        activity.Added += e => { if (!gitQuiet.Contains(e.Action) && !e.Action.StartsWith("share") && !e.Action.StartsWith("target")) git.RequestCommit(e.Text); };
+        git.Committed += r => { if (r.Committed) activity.Add("git", "Committed the config to git: " + r.Message, null, Actors.Auto); else if (r.Hash == null && !r.Message.StartsWith("Nothing")) activity.Add("git", "Couldn't commit the config to git: " + r.Message, null, Actors.Auto); };
+
+        var importer = new ProcessorImporter(processor, snapshots, secretStore, versions)
+        {
+            BeforeSlot = StopWatching,
+            AfterSlotFiles = n => { processor.Slot(n).Io.Reload(); integrations.Store.ReloadSlot(n); crash.ClearHistory(n); },
+            Loader = (n, path, start) => { try { processor.LoadProgram(n, path, start); return null; } catch (Exception e) { return Readiness.Explain(e); } },
+            RecentRestored = list => recent.MergePaths(list),
+            SettingsReplaced = what =>
+            {
+                foreach (var w in what)
+                    switch (w)
+                    {
+                        case "integrations": integrations.Store.ReloadGlobal(); break;
+                        case "alerts": alerts?.Config.Reload(); break;
+                        case "schedules": scheduler.Reload(); break;
+                        case "targets": pushTargets.Reload(); break;
+                        case "backups": backups.Reload(); break;
+                        case "versions": versions.ReloadSettings(); break;
+                        case "hooks": integrations.Hooks.Reload(); break;
+                        case "secrets": secretStore.Reload(); break;
+                        case "shares": if (reloaders.TryGetValue("shares", out var rs)) rs(); break;
+                    }
+            }
+        };
+        var ops = new OpsServices
+        {
+            Processor = processor, Activity = activity, Trash = trash, Snapshots = snapshots, Versions = versions, Profiler = profiler, Backups = backups, Scheduler = scheduler,
+            Targets = pushTargets, PushClient = pushClient, Push = pushManager, Git = git, Exporter = exporter, Importer = importer, Secrets = secretStore, SlotLocks = uploadLocks,
+            Who = Who, Previews = previews, StopWatching = StopWatching,
+            Install = (n, files, start, who, how) => Install(n, files, start, who: who, how: how)
+        };
+        OpsEndpoints.Map(app, slotApi, ops);
+        app.MapGet("/healthz", () => Results.Text("ok"));
 
         // IP table: every IP ID in the slot with who is connected to it and what is known about them.
         slotApi.MapGet("/iptable", (int n) => processor.Slot(n).Devices.OrderBy(d => d.IpId).Select(DeviceDto));
@@ -940,9 +1075,9 @@ public static class OpenVpServer
             var r = root!.Trim().ToLowerInvariant();
             var info = new DirectoryInfo(dir);
             var entries = info.EnumerateDirectories().OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(d => new { name = d.Name, folder = true, size = (long?)null, modified = d.LastWriteTimeUtc })
+                .Select(d => new { name = d.Name, folder = true, size = (long?)null, modified = d.LastWriteTimeUtc, editable = false })
                 .Concat(info.EnumerateFiles().OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
-                    .Select(f => new { name = f.Name, folder = false, size = (long?)f.Length, modified = f.LastWriteTimeUtc }));
+                    .Select(f => new { name = f.Name, folder = false, size = (long?)f.Length, modified = f.LastWriteTimeUtc, editable = TextFileEditor.IsEditableName(f.Name) && f.Length <= TextFileEditor.MaxBytes }));
             // The folder SIMPL+ MakeProgramFilename uses: \NVRAM\{Program ID Tag}\.
             var programTag = processor.Slot(n).Runtime?.ProgramIdTag;
             var programFolder = programTag is null ? null : SlotFiles.FolderName(programTag);
@@ -959,7 +1094,7 @@ public static class OpenVpServer
 
         slotApi.MapGet("/files/missing", (int n) => Results.Ok(Missing(n)));
 
-        slotApi.MapPost("/files/folder", (int n, JsonElement body) => Files(() =>
+        slotApi.MapPost("/files/folder", (int n, HttpContext ctx, JsonElement body) => Files(() =>
         {
             string? Str(string k) => body.TryGetProperty(k, out var v) ? v.GetString() : null;
             var name = Str("name");
@@ -967,13 +1102,15 @@ public static class OpenVpServer
             var dir = Path.Combine(SlotFiles.Resolve(processor.Slot(n).Directory, Str("root"), Str("path")), name!);
             if (File.Exists(dir)) return Results.Conflict(new { error = $"A file called '{name}' is already there." });
             Directory.CreateDirectory(dir);
+            Note(ctx, "file.folder", $"Created the folder {name} in the {Str("root")?.ToUpperInvariant()} files of slot {n}", n);
             return Results.Ok();
         }));
 
         // Upload into a folder: any number of multipart files. A file name may carry sub-folders
         // (a whole folder dragged in from the browser), which are created as needed.
-        slotApi.MapPost("/files", async (int n, string? root, string? path, HttpRequest req) =>
+        slotApi.MapPost("/files", async (int n, string? root, string? path, HttpContext ctx) =>
         {
+            var req = ctx.Request;
             if (!req.HasFormContentType) return Results.BadRequest(new { error = "Send the files as multipart/form-data." });
             var form = await req.ReadFormAsync();
             if (form.Files.Count == 0) return Results.BadRequest(new { error = "No files." });
@@ -992,6 +1129,7 @@ public static class OpenVpServer
                     using (var fs = File.Create(target)) f.CopyTo(fs);
                     saved.Add(Path.GetRelativePath(dir, target).Replace('\\', '/'));
                 }
+                Note(ctx, "file.upload", $"Uploaded {(saved.Count == 1 ? saved[0] : saved.Count + " files")} to the {root?.ToUpperInvariant()} files of slot {n}", n);
                 return Results.Ok(new { saved });
             });
         });
@@ -1003,7 +1141,7 @@ public static class OpenVpServer
             return Results.File(File.OpenRead(file), "application/octet-stream", Path.GetFileName(file));
         }));
 
-        slotApi.MapPost("/files/rename", (int n, JsonElement body) => Files(() =>
+        slotApi.MapPost("/files/rename", (int n, HttpContext ctx, JsonElement body) => Files(() =>
         {
             string? Str(string k) => body.TryGetProperty(k, out var v) ? v.GetString() : null;
             var name = Str("name");
@@ -1014,11 +1152,12 @@ public static class OpenVpServer
             if (Directory.Exists(from)) Directory.Move(from, to);
             else if (File.Exists(from)) File.Move(from, to);
             else return Results.NotFound(new { error = "No such file or folder." });
+            Note(ctx, "file.rename", $"Renamed {Path.GetFileName(from)} to {name} in the {Str("root")?.ToUpperInvariant()} files of slot {n}", n);
             return Results.Ok();
         }));
 
         // Deletes a file, or a folder and everything in it. The NVRAM and user folders themselves stay.
-        slotApi.MapDelete("/files", (int n, string? root, string? path) => Files(() =>
+        slotApi.MapDelete("/files", (int n, string? root, string? path, HttpContext ctx) => Files(() =>
         {
             var target = SlotFiles.Resolve(processor.Slot(n).Directory, root, path);
             if (target == SlotFiles.Resolve(processor.Slot(n).Directory, root, "")) return Results.BadRequest(new { error = "Can't delete the top folder." });
@@ -1026,6 +1165,7 @@ public static class OpenVpServer
             var isDir = Directory.Exists(target);
             if (!isDir && !File.Exists(target)) return Results.NotFound(new { error = "No such file or folder." });
             var t = trash.Move(isDir ? "folder" : "file", $"{(isDir ? "folder" : "file")} {Path.GetFileName(target)}", n, target);
+            Note(ctx, "file.delete", $"Deleted the {(isDir ? "folder" : "file")} {Path.GetFileName(target)} from the {root?.ToUpperInvariant()} files of slot {n}", n);
             return Results.Ok(new { undo = t?.Id });
         }));
 
@@ -1085,7 +1225,7 @@ public static class OpenVpServer
             {
                 var back = trash.Restore(id);
                 if (back == null) return Results.NotFound(new { error = "That can't be undone any more." });
-                Note(ctx, "undo", $"Undid a delete: restored {back.Label}", back.Slot);
+                Note(ctx, "undo", back.Kind == "edit" ? $"Undid a file edit: restored the {back.Label}" : $"Undid a delete: restored {back.Label}", back.Slot);
                 return Results.Ok(new { restored = back.Label, kind = back.Kind, slot = back.Slot });
             }
             catch (IOException e) { return Results.Conflict(new { error = e.Message }); }
@@ -1220,7 +1360,7 @@ public static class OpenVpServer
                 try
                 {
                     StopWatching(set.Slot);
-                    var r = Install(set.Slot, set.Files, true, who: who);
+                    var r = Install(set.Slot, set.Files, true, who: who, how: "demo");
                     if (r is not IStatusCodeHttpResult { StatusCode: 200 })
                         return Results.Json(new { error = $"Couldn't load the demo into slot {set.Slot}: {processor.Slot(set.Slot).LastError ?? "see the slot log"}" }, statusCode: 422);
                 }
@@ -1387,6 +1527,7 @@ public static class OpenVpServer
         // ------------------------------------------------------------------ shared panels and the internet tunnel
 
         var shares = new ShareStore(processor.DataDirectory);
+        reloaders["shares"] = shares.Reload;
         var ch5Panels = new Ch5Panels(processor.DataDirectory);
         TunnelManager? tunnel = null;
         if (tunnelUnavailable == null)
@@ -1514,7 +1655,7 @@ public static class OpenVpServer
         }, (c, a, t, sl) => Note(c, a, t, sl));
 
         app.Lifetime.ApplicationStarted.Register(() => { try { integrations.Start(); } catch (Exception e) { Console.WriteLine("Integrations not started: " + e.Message); } });
-        app.Lifetime.ApplicationStopping.Register(() => { alerts?.Dispose(); integrations.Dispose(); telnet?.Dispose(); ssh?.Dispose(); mdns?.Dispose(); for (var i = 1; i <= watches.Length; i++) StopWatching(i); tunnel?.Dispose(); cip?.Dispose(); crash.Dispose(); trashTimer.Dispose(); recordings.Dispose(); processor.Dispose(); });
+        app.Lifetime.ApplicationStopping.Register(() => { scheduler.Dispose(); backups.Dispose(); git.Dispose(); alerts?.Dispose(); integrations.Dispose(); telnet?.Dispose(); ssh?.Dispose(); mdns?.Dispose(); for (var i = 1; i <= watches.Length; i++) StopWatching(i); tunnel?.Dispose(); cip?.Dispose(); crash.Dispose(); trashTimer.Dispose(); recordings.Dispose(); processor.Dispose(); });
         // If the process ends some other way (not a clean stop), still take cloudflared down with it.
         AppDomain.CurrentDomain.ProcessExit += (_, _) => tunnel?.Stop();
         return app;

@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<link rel="stylesheet" href="openvp-ops.css">
+<script src="openvp-theme.js"></script>
+<title>OpenVP backups</title>
+</head>
+<body>
+<header>
+  <h1>Backups and export</h1>
+  <span id="saved" role="status" aria-live="polite"></span>
+  <span class="sp"></span>
+  <button class="theme-btn" data-theme-toggle></button>
+  <a href="/">Console</a>
+  <a href="help.html#backups" target="openvp-help">Help</a>
+</header>
+<main>
+  <div id="fail" class="note" role="alert" hidden></div>
+  <div class="tabs" role="tablist">
+    <button id="t-export" class="active" role="tab" title="Export the whole processor to one file, or import such a file">Export and import</button><button id="t-backups" role="tab" title="Daily backups and Back up now">Backups</button><button id="t-git" role="tab" title="Keep the configuration in a git repository">Git-backed config</button>
+  </div>
+
+  <!-- ============================================================ export and import -->
+  <section id="pane-export" class="pane on">
+    <div class="card">
+      <h2>Export processor</h2>
+      <p class="muted">One <code>.openvp</code> file with every slot (program files, NVRAM and User files, settings, simulators, integrations, recordings, bookmarks and watches) and the processor settings (integrations, alerts, thresholds, reports, schedules, push targets, recent programs). The access key is never included.</p>
+      <div class="stack" style="margin-top:8px">
+        <div class="checks" id="ex-slots"></div>
+        <label class="inline"><input type="checkbox" id="ex-hist"> Include history (uptime, metrics, activity, saved traces)</label>
+        <label class="inline"><input type="checkbox" id="ex-snap"> Include snapshots and program versions (can be large)</label>
+        <label class="inline"><input type="checkbox" id="ex-sec"> Include secrets and share links, protected by a password</label>
+        <div id="ex-pw-box" class="form" hidden>
+          <label>Export password (at least 8 characters)<input id="ex-pw" type="password" autocomplete="new-password"></label>
+          <label>Type it again<input id="ex-pw2" type="password" autocomplete="new-password"></label>
+        </div>
+        <div class="note" id="ex-pw-note" hidden>Passwords for email, MQTT, webhook signing secrets, share-link tokens and push-target keys are encrypted (AES-256-GCM, key from your password). Without the password they can't be read, and nobody can recover it for you.</div>
+        <div class="bar"><button class="primary" id="ex-go">Export processor</button><span class="muted" id="ex-status"></span></div>
+        <div class="err" id="ex-err"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Import processor</h2>
+      <p class="muted">Choose an <code>.openvp</code> file to see what is in it first. Nothing changes until you click Import. A snapshot of each slot that is replaced is taken first, so it can be rolled back.</p>
+      <div class="bar" style="margin-top:6px"><input type="file" id="im-file" accept=".openvp,.zip" aria-label="Export file to import"><span class="muted" id="im-status"></span></div>
+      <div class="err" id="im-err"></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ backups -->
+  <section id="pane-backups" class="pane">
+    <div class="card">
+      <h2>Daily backup <span id="bk-pill" class="pill"></span></h2>
+      <p class="muted">Backs up the whole processor in the export format every day, and keeps them for a number of days. The newest backup is always kept.</p>
+      <form id="bk-form" class="form" style="margin-top:8px;align-items:center" autocomplete="off">
+        <label class="inline"><input type="checkbox" id="bk-on"> Back up every day</label>
+        <label>At (this computer's time)<input type="time" id="bk-time" value="03:00"></label>
+        <label>Keep for (days)<input type="number" id="bk-keep" min="1" max="3650" value="14"></label>
+        <label style="grid-column:1/-1"><span>Folder (leave empty for <code>data/backups</code>; a network share path works)</span><input id="bk-folder" placeholder="" maxlength="500"></label>
+        <label class="inline"><input type="checkbox" id="bk-hist"> Include history</label>
+        <label class="inline"><input type="checkbox" id="bk-snap"> Include snapshots and program versions</label>
+        <label class="inline"><input type="checkbox" id="bk-sec"> Include secrets (encrypted with this password)</label>
+        <label id="bk-pw-l" hidden>Backup password<input id="bk-pw" type="password" autocomplete="new-password" placeholder=""></label>
+        <div class="bar" style="grid-column:1/-1"><button class="primary" id="bk-save">Save</button><button type="button" id="bk-now" title="Make a backup right now, with these settings">Back up now</button></div>
+      </form>
+      <div class="err" id="bk-err"></div>
+      <div id="bk-status" class="muted"></div>
+    </div>
+    <div class="card">
+      <h2>Backups <span class="muted" id="bk-count"></span></h2>
+      <div class="muted mono" id="bk-folder-shown"></div>
+      <div class="scroll-x"><table id="bk-tbl" class="cards"><thead><tr><th>Made</th><th>File</th><th>Why</th><th class="num">Size</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div id="bk-empty" class="muted" hidden>No backups yet. Click <b>Back up now</b>.</div>
+    </div>
+  </section>
+
+  <!-- ============================================================ git -->
+  <section id="pane-git" class="pane">
+    <div class="note" id="git-missing" hidden>git isn't installed on this computer (or isn't on the PATH), so Git-backed config is switched off. Install git and reload this page.</div>
+    <div class="card">
+      <h2>Git-backed config <span id="git-pill" class="pill"></span></h2>
+      <p class="muted">After each change (a program load, settings, files) OpenVP writes a text-friendly copy to a git repository on this computer and commits it, with the Activity entry as the message. Commits are gathered: at most one every 30 seconds. Copied: slot settings, simulators, integrations (secrets removed), watches, the text files in NVRAM and User, the program files, and the alert, integration and schedule settings. <b>Never</b> copied: the access key, saved secrets, share-link and webhook tokens, push-target keys, binary NVRAM files, and any file that has a saved secret in it.</p>
+      <form id="git-form" class="form" style="margin-top:8px;align-items:center" autocomplete="off">
+        <label style="grid-column:1/-1">Repository folder on this computer (outside the data folder)<input id="git-repo" class="mono" placeholder="/home/me/openvp-config  or  C:\Config\openvp" maxlength="500"></label>
+        <label style="grid-column:1/-1">Remote to push to (optional)<input id="git-remote" class="mono" placeholder="git@github.com:me/openvp-config.git" maxlength="500"></label>
+        <label class="inline"><input type="checkbox" id="git-push"> Push after each commit</label>
+        <label>Branch<input id="git-branch" value="main" maxlength="60"></label>
+        <label class="inline"><input type="checkbox" id="git-prog"> Include program files</label>
+        <label>Largest program file (MB)<input type="number" id="git-max" min="1" max="500" value="50"></label>
+        <label class="inline"><input type="checkbox" id="git-on"> Commit changes to this repository</label>
+        <div class="bar" style="grid-column:1/-1"><button class="primary" id="git-save">Save</button><button type="button" id="git-init" title="Make the folder and run git init in it">Create repository</button><button type="button" id="git-commit" title="Write the copy and commit it now">Commit now</button><button type="button" id="git-pushnow">Push now</button></div>
+      </form>
+      <div class="muted small">Pushing uses your own git setup (an SSH key or a credential helper). OpenVP never asks for or stores a git password.</div>
+      <div class="err" id="git-err"></div>
+      <div id="git-status" class="muted"></div>
+    </div>
+    <div class="card">
+      <h2>Recent commits</h2>
+      <div class="scroll-x"><table id="git-tbl" class="cards"><thead><tr><th>When</th><th>Commit</th><th>Message</th></tr></thead><tbody></tbody></table></div>
+      <div id="git-empty" class="muted" hidden>No commits yet.</div>
+    </div>
+  </section>
+</main>
+
+<dialog id="imp-dlg" class="wide" aria-labelledby="imp-title"><form method="dialog" id="imp-form" onsubmit="return false">
+  <h2 id="imp-title">Import</h2>
+  <div id="imp-from" class="muted"></div>
+  <div id="imp-warn"></div>
+  <div class="scroll-x"><table id="imp-slots" class="cards"><thead><tr><th></th><th>Slot</th><th>In the file</th><th>What's in it</th><th>In the slot now</th></tr></thead><tbody></tbody></table></div>
+  <div id="imp-noslots" class="muted" hidden>The file has no slots.</div>
+  <label class="inline"><input type="checkbox" id="imp-settings"><span>Replace the processor settings <span class="muted" id="imp-settings-list"></span></span></label>
+  <div id="imp-sec" class="stack" hidden>
+    <label class="inline"><input type="checkbox" id="imp-secrets"><span>Restore secrets and share links (the file has <span id="imp-seccount"></span>)</span></label>
+    <label>Export password<input id="imp-pw" type="password" autocomplete="off"></label>
+    <div class="muted" id="imp-pwstate"></div>
+  </div>
+  <label class="inline" id="imp-hist-l" hidden><input type="checkbox" id="imp-hist"> Also restore the history, snapshots and program versions in the file</label>
+  <div class="note" id="imp-explain"></div>
+  <div class="err" id="imp-err"></div>
+  <div id="imp-result"></div>
+  <div class="row"><button type="button" id="imp-cancel">Close</button><button type="button" class="primary" id="imp-go">Import</button></div>
+</form></dialog>
+<dialog id="cf-dlg" aria-labelledby="cf-title"><form method="dialog" id="cf-form">
+  <h2 id="cf-title"></h2><div id="cf-text" style="white-space:pre-wrap"></div>
+  <div class="row"><button type="button" data-close>Cancel</button><button value="ok" id="cf-ok" class="primary">OK</button></div>
+</form></dialog>
+<script src="openvp-auth.js"></script>
+<script src="openvp-ops.js"></script>
+<script>
+openvpAuth.init();
+const TABS = { export: "t-export", backups: "t-backups", git: "t-git" };
+let tab = (location.hash || "#export").slice(1);
+function showTab(t, push = true) {
+  if (!TABS[t]) t = "export"; tab = t;
+  for (const [k, id] of Object.entries(TABS)) { $("#" + id).classList.toggle("active", k === t); $("#pane-" + k).classList.toggle("on", k === t); }
+  if (push) history.replaceState(null, "", "#" + t);
+  if (t === "backups") loadBackups(); if (t === "git") loadGit();
+}
+for (const [k, id] of Object.entries(TABS)) $("#" + id).onclick = () => showTab(k);
+
+// ------------------------------------------------------------ export
+async function loadSlots() {
+  const slots = await api("/api/slots");
+  $("#ex-slots").innerHTML = slots.filter(s => s.program || s.remembered).map(s => `<label><input type="checkbox" class="ex-slot" value="${s.number}" checked> ${esc(slotLabel(s))}</label>`).join("") || `<span class="muted">No slot has a program yet. Slots with files in them are still exported.</span>`;
+}
+$("#ex-sec").onchange = () => { $("#ex-pw-box").hidden = $("#ex-pw-note").hidden = !$("#ex-sec").checked; };
+$("#ex-go").onclick = async () => {
+  const err = $("#ex-err"); err.textContent = "";
+  const secrets = $("#ex-sec").checked;
+  if (secrets) {
+    if ($("#ex-pw").value.length < 8) { err.textContent = "Use an export password of at least 8 characters."; return; }
+    if ($("#ex-pw").value !== $("#ex-pw2").value) { err.textContent = "The two passwords don't match."; return; }
+  }
+  const chosen = $$(".ex-slot").filter(c => c.checked).map(c => Number(c.value)), all = $$(".ex-slot");
+  const body = { history: $("#ex-hist").checked, snapshots: $("#ex-snap").checked, secrets, password: secrets ? $("#ex-pw").value : undefined, slots: chosen.length && chosen.length < all.length ? chosen : undefined };
+  $("#ex-go").disabled = true; $("#ex-status").textContent = "Exporting…";
+  try {
+    const r = await api("/api/export", "POST", body, true);
+    const size = await downloadBlob(r, "openvp-export.openvp");
+    $("#ex-status").textContent = `Downloaded ${fmtSize(size)}.`;
+  } catch (e) { err.textContent = e.message; $("#ex-status").textContent = ""; }
+  $("#ex-go").disabled = false;
+};
+
+// ------------------------------------------------------------ import preview and import (also used to restore a backup)
+let prev = null;
+async function openPreview(p, how) {
+  prev = { p, how, passwordOk: p.passwordOk };
+  $("#imp-title").textContent = how === "restore" ? "Restore a backup" : "Import processor";
+  $("#imp-go").textContent = how === "restore" ? "Restore" : "Import";
+  $("#imp-from").textContent = `Made ${when(p.created)}${p.machine ? " on " + p.machine : ""}${p.reason ? " (" + p.reason + ")" : ""} · export format ${p.formatVersion} · ${fmtSize(p.size)}${p.includesHistory ? " · has history" : ""}${p.includesSnapshots ? " · has snapshots and versions" : ""}`;
+  $("#imp-warn").innerHTML = (p.warnings || []).map(w => `<div class="note" style="margin-bottom:6px">${esc(w)}</div>`).join("");
+  const tb = $("#imp-slots tbody"); tb.innerHTML = "";
+  $("#imp-noslots").hidden = p.slots.length > 0; $("#imp-slots").hidden = p.slots.length === 0;
+  for (const s of p.slots) {
+    const tr = document.createElement("tr");
+    const what = [`${s.programFiles} program file${s.programFiles === 1 ? "" : "s"} (${fmtSize(s.programBytes)})`, s.nvramFiles ? `${s.nvramFiles} NVRAM` : "", s.userFiles ? `${s.userFiles} User` : "", s.simulators ? `${s.simulators} simulator${s.simulators === 1 ? "" : "s"}` : "", s.recordings ? `${s.recordings} recording${s.recordings === 1 ? "" : "s"}` : "", s.integrations ? "integrations" : "", s.watches ? "watches" : ""].filter(Boolean).join(", ");
+    tr.innerHTML = `<td><input type="checkbox" class="imp-slot" value="${s.slot}" checked aria-label="Import slot ${s.slot}"></td><td data-l="Slot">${s.slot}</td><td class="wrap" data-l="In the file"><b>${esc(s.program || s.file || "(files only)")}</b>${s.name ? ` · ${esc(s.name)}` : ""}<br><span class="muted">${s.autostart ? (s.running ? "starts when imported" : "loads stopped") : "autostart is off: files only, not loaded"}</span></td><td class="wrap muted" data-l="Contents">${esc(what)}</td><td class="wrap" data-l="Now">${s.current ? `<span class="pill warn">replaces ${esc(s.current)}</span>` : `<span class="muted">empty</span>`}</td>`;
+    tb.appendChild(tr);
+  }
+  const hasSet = (p.settings || []).filter(x => x !== "history").length > 0;
+  $("#imp-settings").checked = false; $("#imp-settings").disabled = !hasSet;
+  $("#imp-settings-list").textContent = hasSet ? "(" + p.settings.filter(x => x !== "history").join(", ") + ")" : "(none in this file)";
+  $("#imp-sec").hidden = !p.hasSecrets; $("#imp-secrets").checked = false; $("#imp-pw").value = ""; $("#imp-seccount").textContent = `${p.secretCount} secret${p.secretCount === 1 ? "" : "s"}`; $("#imp-pwstate").textContent = "";
+  $("#imp-hist-l").hidden = !(p.includesHistory || p.includesSnapshots); $("#imp-hist").checked = false;
+  $("#imp-err").textContent = ""; $("#imp-result").innerHTML = ""; $("#imp-go").disabled = false; $("#imp-go").hidden = false;
+  explain();
+  $("#imp-dlg").showModal();
+}
+function explain() {
+  const n = $$(".imp-slot").filter(c => c.checked).length;
+  $("#imp-explain").textContent = `${n} slot${n === 1 ? "" : "s"} will be replaced. A snapshot of each is taken first (History, roll back to undo). Programs are loaded and started as each slot's autostart setting and its state when exported say; a slot with autostart off gets its files back and stays unloaded.${$("#imp-settings").checked ? " The processor settings in the file replace the ones here." : ""}`;
+}
+$("#imp-slots").addEventListener("change", explain); $("#imp-settings").onchange = explain;
+$("#imp-pw").oninput = () => { $("#imp-pwstate").textContent = ""; };
+$("#imp-pw").onchange = async () => {
+  if (!prev?.p.hasSecrets || !$("#imp-pw").value) return;
+  try { const r = await api("/api/import/preview", "POST", { previewId: prev.p.previewId, password: $("#imp-pw").value }); $("#imp-pwstate").innerHTML = r.passwordOk ? pill("ok", "Password is right") : pill("err", "That password doesn't open the secrets"); if (r.passwordOk) $("#imp-secrets").checked = true; }
+  catch (e) { $("#imp-pwstate").textContent = e.message; }
+};
+$("#imp-cancel").onclick = () => { if (prev && !$("#imp-go").hidden) api("/api/import/" + prev.p.previewId, "DELETE").catch(() => {}); $("#imp-dlg").close(); };
+$("#imp-go").onclick = async () => {
+  const err = $("#imp-err"); err.textContent = "";
+  const slots = $$(".imp-slot").filter(c => c.checked).map(c => Number(c.value));
+  const wantSecrets = prev.p.hasSecrets && $("#imp-secrets").checked;
+  if (!slots.length && !$("#imp-settings").checked && !wantSecrets) { err.textContent = "Choose a slot to import, or tick the processor settings."; return; }
+  if (wantSecrets && !$("#imp-pw").value) { err.textContent = "Enter the export password to restore the secrets."; return; }
+  if (!await confirmBox(prev.how === "restore" ? "Restore this backup?" : "Import this file?", $("#imp-explain").textContent, prev.how === "restore" ? "Restore" : "Import", true)) return;
+  $("#imp-go").disabled = true; $("#imp-result").innerHTML = `<div class="muted">Importing…</div>`;
+  try {
+    const r = await api("/api/import", "POST", { previewId: prev.p.previewId, slots, replaceSettings: $("#imp-settings").checked, restoreSecrets: wantSecrets, password: wantSecrets ? $("#imp-pw").value : undefined, restoreHistory: $("#imp-hist").checked, how: prev.how });
+    $("#imp-result").innerHTML = `<h3 style="margin:8px 0 4px;font-size:13px">Done</h3><ul style="margin:0;padding-left:18px">` + r.slots.map(s => `<li>${pill(s.ok ? (s.loaded ? "ok" : "info") : "err", `slot ${s.slot}`)} ${esc(s.message)}</li>`).join("") + (r.settingsReplaced ? `<li>Processor settings replaced.</li>` : "") + (r.secretsRestored ? `<li>Secrets restored.</li>` : "") + `</ul>` + (r.warnings || []).map(w => `<div class="note" style="margin-top:6px">${esc(w)}</div>`).join("");
+    $("#imp-go").hidden = true; $("#imp-cancel").textContent = "Close"; flash("Imported");
+  } catch (e) { err.textContent = e.message; $("#imp-result").innerHTML = ""; $("#imp-go").disabled = false; if (e.status === 404) $("#imp-go").hidden = true; }
+};
+$("#im-file").onchange = async () => {
+  const f = $("#im-file").files[0]; if (!f) return;
+  $("#im-err").textContent = ""; $("#im-status").textContent = "Reading…";
+  try {
+    const fd = new FormData(); fd.append("file", f);
+    const p = await api("/api/import/preview", "POST", fd);
+    $("#im-status").textContent = ""; await openPreview(p, "import");
+  } catch (e) { $("#im-err").textContent = e.message; $("#im-status").textContent = ""; }
+  $("#im-file").value = "";
+};
+
+// ------------------------------------------------------------ backups
+async function loadBackups() {
+  let d; try { d = await api("/api/backups"); } catch (e) { fail(e.message); return; }
+  const s = d.settings;
+  $("#bk-on").checked = s.enabled; $("#bk-time").value = s.time; $("#bk-keep").value = s.keepDays; $("#bk-folder").value = s.folder || ""; $("#bk-folder").placeholder = "data/backups";
+  $("#bk-hist").checked = s.includeHistory; $("#bk-snap").checked = s.includeSnapshots; $("#bk-sec").checked = s.includeSecrets;
+  $("#bk-pw-l").hidden = !s.includeSecrets; $("#bk-pw").placeholder = s.hasPassword ? "saved; leave empty to keep it" : "";
+  const pl = $("#bk-pill"); pl.className = "pill " + (!s.enabled ? "" : d.last && d.last.ok === false ? "err" : "ok"); pl.textContent = !s.enabled ? "off" : d.last && d.last.ok === false ? "last backup failed" : "on";
+  $("#bk-status").innerHTML = [d.next ? `Next backup: ${esc(when(d.next))}.` : "", d.last ? `Last: ${pill(d.last.ok ? "ok" : "err", d.last.ok ? "worked" : "failed")} ${esc(when(d.last.time))} · ${esc(d.last.message || "")}` : "No backup has run yet."].filter(Boolean).join("<br>");
+  $("#bk-folder-shown").textContent = d.folder;
+  $("#bk-count").textContent = d.backups.length ? `(${d.backups.length})` : "";
+  $("#bk-empty").hidden = d.backups.length > 0; $("#bk-tbl").hidden = d.backups.length === 0;
+  const tb = $("#bk-tbl tbody"); tb.innerHTML = "";
+  for (const b of d.backups) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td data-l="Made">${esc(when(b.time))} <span class="muted">(${esc(ago(b.time))})</span></td><td class="mono wrap" data-l="File">${esc(b.file)}</td><td class="muted" data-l="Why">${esc(b.reason)}</td><td class="num muted" data-l="Size">${fmtSize(b.size)}</td><td class="act"></td>`;
+    const act = tr.querySelector(".act");
+    const btn = (label, title, fn, cls = "") => { const x = document.createElement("button"); x.textContent = label; x.title = title; x.className = "small " + cls; x.onclick = fn; act.appendChild(x); act.append(" "); };
+    btn("Restore…", "See what is in this backup, then choose what to restore", async () => { try { await openPreview(await api(`/api/backups/${b.id}/preview`, "POST"), "restore"); } catch (e) { fail(e.message); } });
+    btn("Download", "Download this backup", async () => { try { await downloadBlob(await api(`/api/backups/${b.id}/download`, "GET", undefined, true), b.file); } catch (e) { fail(e.message); } });
+    btn("Delete", "Delete this backup", async () => { if (!await confirmBox("Delete this backup?", `${b.file} will be deleted. This can't be undone.`, "Delete", true)) return; try { await api(`/api/backups/${b.id}`, "DELETE"); loadBackups(); } catch (e) { fail(e.message); } }, "danger");
+    tb.appendChild(tr);
+  }
+}
+$("#bk-sec").onchange = () => { $("#bk-pw-l").hidden = !$("#bk-sec").checked; };
+$("#bk-form").onsubmit = async e => {
+  e.preventDefault(); $("#bk-err").textContent = "";
+  try {
+    await api("/api/backups/settings", "PUT", { enabled: $("#bk-on").checked, time: $("#bk-time").value, keepDays: Number($("#bk-keep").value), folder: $("#bk-folder").value.trim() || null, includeHistory: $("#bk-hist").checked, includeSnapshots: $("#bk-snap").checked, includeSecrets: $("#bk-sec").checked, password: $("#bk-pw").value || undefined });
+    $("#bk-pw").value = ""; flash(); loadBackups();
+  } catch (x) { $("#bk-err").textContent = x.message; }
+};
+$("#bk-now").onclick = async () => {
+  $("#bk-err").textContent = ""; $("#bk-now").disabled = true; const t = $("#bk-now").textContent; $("#bk-now").textContent = "Backing up…";
+  try { await api("/api/backups/run", "POST"); flash("Backup made"); } catch (x) { $("#bk-err").textContent = x.message; }
+  $("#bk-now").disabled = false; $("#bk-now").textContent = t; loadBackups();
+};
+
+// ------------------------------------------------------------ git
+async function loadGit() {
+  let d; try { d = await api("/api/git"); } catch (e) { fail(e.message); return; }
+  $("#git-missing").hidden = d.available;
+  for (const id of ["git-save", "git-init", "git-commit", "git-pushnow"]) $("#" + id).disabled = !d.available;
+  const g = d.settings;
+  $("#git-repo").value = g.repo || ""; $("#git-remote").value = g.remote || ""; $("#git-push").checked = g.push; $("#git-branch").value = g.branch; $("#git-prog").checked = g.includePrograms; $("#git-max").value = g.maxProgramMb; $("#git-on").checked = g.enabled && d.available; $("#git-on").disabled = !d.available;
+  const pl = $("#git-pill"); pl.className = "pill " + (!d.available ? "warn" : g.enabled ? (d.error ? "err" : "ok") : ""); pl.textContent = !d.available ? "git missing" : g.enabled ? (d.error ? "error" : "on") : "off";
+  $("#git-status").innerHTML = [d.version ? esc(d.version) : "", g.enabled && !d.isRepo ? `<span class="pill warn">The folder isn't a git repository yet. Click Create repository.</span>` : "", d.last ? `Last commit ${esc(ago(d.last.time))}: <code>${esc((d.last.hash || "").slice(0, 7))}</code> ${esc(d.last.message)}` : "", d.error ? `<span class="pill err">${esc(d.error)}</span>` : "", d.lastPush ? `Push ${esc(ago(d.lastPush.time))}: ${esc(d.lastPush.result)}` : ""].filter(Boolean).join("<br>");
+  const tb = $("#git-tbl tbody"); tb.innerHTML = "";
+  $("#git-empty").hidden = (d.commits || []).length > 0; $("#git-tbl").hidden = !(d.commits || []).length;
+  for (const c of d.commits || []) { const tr = document.createElement("tr"); tr.innerHTML = `<td data-l="When">${esc(when(c.time))}</td><td class="mono" data-l="Commit">${esc(c.hash.slice(0, 7))}</td><td class="wrap" data-l="Message">${esc(c.subject)}</td>`; tb.appendChild(tr); }
+}
+const gitBody = () => ({ enabled: $("#git-on").checked, repo: $("#git-repo").value.trim() || null, remote: $("#git-remote").value.trim() || null, push: $("#git-push").checked, branch: $("#git-branch").value.trim() || "main", includePrograms: $("#git-prog").checked, maxProgramMb: Number($("#git-max").value) });
+$("#git-form").onsubmit = async e => { e.preventDefault(); $("#git-err").textContent = ""; try { await api("/api/git", "PUT", gitBody()); flash(); loadGit(); } catch (x) { $("#git-err").textContent = x.message; } };
+$("#git-init").onclick = async () => { $("#git-err").textContent = ""; try { const r = await api("/api/git/init", "POST", { repo: $("#git-repo").value.trim() }); flash(r.message); loadGit(); } catch (x) { $("#git-err").textContent = x.message; } };
+$("#git-commit").onclick = async () => { $("#git-err").textContent = ""; $("#git-commit").disabled = true; try { await api("/api/git", "PUT", gitBody()); const r = await api("/api/git/commit", "POST", {}); flash(r.committed ? "Committed" : r.message); loadGit(); } catch (x) { $("#git-err").textContent = x.message; } $("#git-commit").disabled = false; };
+$("#git-pushnow").onclick = async () => { $("#git-err").textContent = ""; try { const r = await api("/api/git/push", "POST"); flash(r.message); loadGit(); } catch (x) { $("#git-err").textContent = x.message; } };
+
+loadSlots().catch(e => fail(e.message));
+showTab(tab, false);
+</script>
+</body>
+</html>

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<link rel="stylesheet" href="openvp-ops.css">
+<script src="openvp-theme.js"></script>
+<title>OpenVP push targets</title>
+<style>
+  .pt-row > label:first-child { flex:1 1 14em; min-width:0; overflow-wrap:anywhere; }
+  .pt-row .mono { overflow-wrap:anywhere; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Push to other machines</h1>
+  <span id="saved" role="status" aria-live="polite"></span>
+  <span class="sp"></span>
+  <button class="theme-btn" data-theme-toggle></button>
+  <a href="/">Console</a>
+  <a href="help.html#push" target="openvp-help">Help</a>
+</header>
+<main>
+  <div id="fail" class="note" role="alert" hidden></div>
+  <div class="card">
+    <h2>Targets <span class="sp" style="flex:1"></span><button class="primary small" id="add">Add target…</button></h2>
+    <p class="muted">Other OpenVP servers you can send programs and whole exports to. Each target is its address and its access key (kept in the secret store, never shown again). It works through the other machine's REST API, so it needs a version of OpenVP with the same API.</p>
+    <div class="scroll-x"><table id="tbl" class="cards"><thead><tr><th>Name</th><th>Address</th><th>Key</th><th>Last test</th><th></th></tr></thead><tbody></tbody></table></div>
+    <div id="empty" class="muted" hidden>No targets yet. Click <b>Add target…</b>.</div>
+  </div>
+
+  <div class="card" id="push">
+    <h2>Push</h2>
+    <div class="stack">
+      <div class="checks"><label><input type="radio" name="what" value="version" checked> A program version</label><label><input type="radio" name="what" value="export"> A whole-processor export</label></div>
+
+      <div id="p-version" class="form">
+        <label>From slot<select id="p-slot"></select></label>
+        <label>Version<select id="p-ver"></select></label>
+        <label class="inline"><input type="checkbox" id="p-start" checked> Start it on the target</label>
+      </div>
+      <div id="p-export" class="stack" hidden>
+        <div class="checks" id="p-exslots"></div>
+        <label class="inline"><input type="checkbox" id="p-replace"> Also replace the target's processor settings (integrations, alerts, schedules, push targets)</label>
+        <label class="inline"><input type="checkbox" id="p-sec"> Include secrets, protected by a password</label>
+        <label id="p-pw-l" hidden>Export password (at least 8 characters; the target needs the same to restore them)<input id="p-pw" type="password" autocomplete="new-password"></label>
+        <div class="muted">The target takes a snapshot of every slot it replaces, and loads and starts the programs as each slot's autostart setting says.</div>
+      </div>
+
+      <h3 style="margin:6px 0 0;font-size:13px">To these targets</h3>
+      <div id="p-targets" class="stack"></div>
+      <div class="bar"><button class="primary" id="p-go">Push</button><span class="muted" id="p-note"></span></div>
+      <div class="err" id="p-err"></div>
+      <div id="p-prog"></div>
+    </div>
+  </div>
+</main>
+
+<dialog id="tg-dlg" aria-labelledby="tg-title"><form method="dialog" id="tg-form" onsubmit="return false" class="stack" autocomplete="off">
+  <h2 id="tg-title">Add target</h2>
+  <label>Name<input id="tg-name" maxlength="60" placeholder="Boardroom 2"></label>
+  <label>Address<input id="tg-url" class="mono" maxlength="300" placeholder="http://192.168.1.20:8080  or  https://openvp.example.com"></label>
+  <label>Access key<input id="tg-key" type="password" autocomplete="new-password" placeholder=""></label>
+  <div id="tg-http" class="note" hidden>This address uses plain http, so the access key and the programs cross the network unencrypted. Use it on a network you trust, or put the other OpenVP behind https.</div>
+  <div id="tg-tls" class="stack" hidden>
+    <div class="muted">https certificates are checked. If the other OpenVP uses a certificate nobody trusts (self-signed), fetch it and choose to trust that one certificate by its fingerprint.</div>
+    <div class="bar"><button type="button" id="tg-fetch" class="small">Fetch certificate</button><span class="muted" id="tg-cert"></span></div>
+    <label>Trusted certificate fingerprint (SHA-256)<input id="tg-fp" class="mono" maxlength="100" placeholder="leave empty to require a normal trusted certificate"></label>
+  </div>
+  <div class="err" id="tg-err"></div>
+  <div class="row"><button type="button" data-close>Cancel</button><button type="button" id="tg-test">Save and test</button><button type="button" class="primary" id="tg-save">Save</button></div>
+</form></dialog>
+<dialog id="cf-dlg" aria-labelledby="cf-title"><form method="dialog" id="cf-form">
+  <h2 id="cf-title"></h2><div id="cf-text" style="white-space:pre-wrap"></div>
+  <div class="row"><button type="button" data-close>Cancel</button><button value="ok" id="cf-ok" class="primary">OK</button></div>
+</form></dialog>
+<script src="openvp-auth.js"></script>
+<script src="openvp-ops.js"></script>
+<script>
+openvpAuth.init();
+const q = new URLSearchParams(location.search);
+let targets = [], slots = [], editingId = null, job = null, poll = 0;
+
+async function loadTargets() {
+  try { targets = await api("/api/targets"); } catch (e) { fail(e.message); return; }
+  const tb = $("#tbl tbody"); tb.innerHTML = "";
+  $("#empty").hidden = targets.length > 0; $("#tbl").hidden = targets.length === 0;
+  for (const t of targets) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="wrap" data-l="Name"><b>${esc(t.name)}</b></td><td class="mono wrap" data-l="Address">${esc(t.url)}${t.fingerprint ? `<br><span class="muted" title="${esc(t.fingerprint)}">pinned certificate ${esc(t.fingerprint.slice(0, 12))}…</span>` : ""}</td><td data-l="Key">${t.hasKey ? pill("ok", "saved") : pill("warn", "none")}</td>
+      <td class="wrap" data-l="Last test">${t.lastTest ? `${pill(t.lastOk ? "ok" : "err", t.lastOk ? "ok" : "failed")} <span class="muted">${esc(ago(t.lastTest))}</span><br><span class="muted">${esc(t.lastMessage || "")}</span>` : `<span class="muted">never</span>`}</td><td class="act"></td>`;
+    const act = tr.querySelector(".act");
+    const btn = (label, title, fn, cls = "") => { const x = document.createElement("button"); x.textContent = label; x.title = title; x.className = "small " + cls; x.onclick = fn; act.appendChild(x); act.append(" "); };
+    btn("Test", "Connect and check the access key", async e => { e.target.disabled = true; try { const r = await api(`/api/targets/${t.id}/test`, "POST"); flash(r.ok ? "Connected" : r.message); } catch (x) { fail(x.message); } loadTargets(); });
+    btn("Edit…", "Change this target", () => openTarget(t));
+    btn("Delete", "Remove this target and its saved key", async () => { if (!await confirmBox("Remove this target?", `“${t.name}” and its saved access key are removed.`, "Remove", true)) return; try { await api(`/api/targets/${t.id}`, "DELETE"); loadTargets(); renderPushTargets(); } catch (x) { fail(x.message); } }, "danger");
+    tb.appendChild(tr);
+  }
+  renderPushTargets();
+}
+function openTarget(t) {
+  editingId = t?.id || null; $("#tg-title").textContent = t ? "Edit target" : "Add target"; $("#tg-err").textContent = "";
+  $("#tg-name").value = t?.name || ""; $("#tg-url").value = t?.url || ""; $("#tg-key").value = ""; $("#tg-key").placeholder = t?.hasKey ? "saved; leave empty to keep it" : ""; $("#tg-fp").value = t?.fingerprint || ""; $("#tg-cert").textContent = "";
+  tlsHints(); $("#tg-dlg").showModal(); $("#tg-name").focus();
+}
+function tlsHints() { const u = $("#tg-url").value.trim().toLowerCase(); $("#tg-tls").hidden = !u.startsWith("https://"); $("#tg-http").hidden = !u.startsWith("http://"); }
+$("#tg-url").oninput = tlsHints;
+$("#add").onclick = () => openTarget(null);
+$("#tg-fetch").onclick = async () => {
+  $("#tg-err").textContent = ""; $("#tg-cert").textContent = "Connecting…";
+  try { const c = await api("/api/targets/certificate", "POST", { url: $("#tg-url").value.trim() });
+    $("#tg-fp").value = c.fingerprint;
+    $("#tg-cert").innerHTML = `${esc(c.subject)} · valid ${esc(when(c.notBefore))} to ${esc(when(c.notAfter))} · ${c.trusted ? pill("ok", "already trusted") : pill("warn", "not trusted by this computer" + (c.problem ? ": " + c.problem : ""))}<br>Compare this fingerprint with the other machine's certificate before you save it.`; }
+  catch (e) { $("#tg-cert").textContent = ""; $("#tg-err").textContent = e.message; }
+};
+async function saveTarget(test) {
+  $("#tg-err").textContent = "";
+  const body = { name: $("#tg-name").value, url: $("#tg-url").value, fingerprint: $("#tg-fp").value.trim() || null };
+  if (!editingId || $("#tg-key").value) body.key = $("#tg-key").value;
+  try {
+    const t = await api(editingId ? `/api/targets/${editingId}` : "/api/targets", editingId ? "PUT" : "POST", body);
+    if (test) { const r = await api(`/api/targets/${t.id}/test`, "POST"); if (!r.ok) { $("#tg-err").textContent = "Saved, but: " + r.message; editingId = t.id; loadTargets(); return; } }
+    $("#tg-dlg").close(); flash(test ? "Saved and connected" : "Saved"); loadTargets();
+  } catch (e) { $("#tg-err").textContent = e.message; }
+}
+$("#tg-save").onclick = () => saveTarget(false); $("#tg-test").onclick = () => saveTarget(true);
+
+// ---- push
+const what = () => document.querySelector("input[name=what]:checked").value;
+for (const r of $$("input[name=what]")) r.onchange = () => { $("#p-version").hidden = what() !== "version"; $("#p-export").hidden = what() !== "export"; renderPushTargets(); };
+$("#p-sec").onchange = () => { $("#p-pw-l").hidden = !$("#p-sec").checked; };
+function renderPushTargets() {
+  const box = $("#p-targets"); const keep = Object.fromEntries($$(".pt").map(c => [c.value, { on: c.checked, slots: c.closest(".pt-row").querySelector(".pt-slots")?.value }]));
+  box.innerHTML = targets.length ? "" : `<div class="muted">Add a target first.</div>`;
+  for (const t of targets) {
+    const k = keep[t.id], row = document.createElement("div"); row.className = "pt-row bar";
+    row.innerHTML = `<label class="inline" style="flex:1;min-width:12em"><input type="checkbox" class="pt" value="${t.id}" ${k ? (k.on ? "checked" : "") : "checked"}> <b>${esc(t.name)}</b> <span class="muted mono">${esc(t.url)}</span></label>` +
+      (what() === "version" ? `<label class="muted">into slots <input class="pt-slots" style="width:7em" value="${esc(k?.slots ?? String($("#p-slot").value || 1))}" aria-label="Slots on ${esc(t.name)} to load into, like 1,2" title="Slot numbers on that machine, like 1,2"></label>` : "");
+    box.appendChild(row);
+  }
+}
+async function fillVersions() {
+  const n = Number($("#p-slot").value) || 1;
+  try { const v = await api(`/api/slots/${n}/versions`); $("#p-ver").innerHTML = `<option value="loaded">The program loaded now</option>` + v.versions.map(x => `<option value="${x.id}">${esc(x.name)} · ${esc(when(x.loadedAt))} · ${esc(x.id.slice(0, 7))}${x.note ? " · " + esc(x.note.slice(0, 30)) : ""}</option>`).join(""); if (q.get("version")) { $("#p-ver").value = q.get("version"); } }
+  catch (e) { $("#p-ver").innerHTML = `<option value="loaded">The program loaded now</option>`; }
+}
+$("#p-slot").onchange = () => { fillVersions(); for (const i of $$(".pt-slots")) i.value = $("#p-slot").value; };
+$("#p-go").onclick = async () => {
+  const err = $("#p-err"); err.textContent = "";
+  const chosen = $$(".pt").filter(c => c.checked);
+  if (!chosen.length) { err.textContent = "Choose at least one target."; return; }
+  let body;
+  if (what() === "version") {
+    const list = chosen.map(c => ({ id: c.value, slots: c.closest(".pt-row").querySelector(".pt-slots").value.split(/[,\s]+/).map(Number).filter(n => n > 0) }));
+    if (list.some(t => !t.slots.length)) { err.textContent = "Give the slot numbers to load into on each target, like 1 or 1,2."; return; }
+    body = { what: "version", slot: Number($("#p-slot").value), version: $("#p-ver").value, start: $("#p-start").checked, targets: list };
+  } else {
+    if ($("#p-sec").checked && $("#p-pw").value.length < 8) { err.textContent = "Use an export password of at least 8 characters."; return; }
+    const sl = $$(".px-slot").filter(c => c.checked).map(c => Number(c.value)), all = $$(".px-slot");
+    body = { what: "export", targets: chosen.map(c => c.value), slots: sl.length && sl.length < all.length ? sl : undefined, replaceSettings: $("#p-replace").checked, secrets: $("#p-sec").checked, password: $("#p-sec").checked ? $("#p-pw").value : undefined };
+  }
+  const names = chosen.map(c => targets.find(t => t.id === c.value).name).join(", ");
+  if (!await confirmBox("Push now?", what() === "version" ? `Send the program to ${names}. The program running in each chosen slot there is stopped and replaced (a snapshot is saved there first).` : `Send a whole-processor export to ${names}. Each slot it replaces there is snapshotted first, then loaded and started as its autostart setting says.${$("#p-replace").checked ? " Their processor settings are replaced too." : ""}`, "Push")) return;
+  $("#p-go").disabled = true;
+  try { job = await api("/api/push", "POST", body); showJob(); clearInterval(poll); poll = setInterval(pollJob, 1000); }
+  catch (e) { err.textContent = e.message; $("#p-go").disabled = false; }
+};
+async function pollJob() {
+  try { job = await api("/api/push/" + job.id); showJob(); if (job.done) { clearInterval(poll); $("#p-go").disabled = false; loadTargets(); } } catch (e) { clearInterval(poll); fail(e.message); $("#p-go").disabled = false; }
+}
+function showJob() {
+  const done = job.targets.filter(t => t.state === "ok" || t.state === "failed").length;
+  $("#p-prog").innerHTML = `<div class="muted" style="margin:6px 0 4px">Pushing ${esc(job.what)}: ${done} of ${job.targets.length} target${job.targets.length === 1 ? "" : "s"} finished${job.done ? " · " + pill(job.targets.every(t => t.state === "ok") ? "ok" : "err", job.targets.every(t => t.state === "ok") ? "all ok" : "some failed") : ""}</div><div class="prog"><div style="width:${job.targets.length ? done * 100 / job.targets.length : 0}%"></div></div>
+  <div class="scroll-x"><table class="cards" style="margin-top:6px"><thead><tr><th>Target</th><th>State</th><th>Result</th></tr></thead><tbody>${job.targets.map(t => `<tr><td class="wrap" data-l="Target"><b>${esc(t.name)}</b><br><span class="muted mono">${esc(t.url)}</span></td><td data-l="State">${pill(t.state === "ok" ? "ok" : t.state === "failed" ? "err" : t.state === "running" ? "info" : "", t.state)}</td><td class="wrap" data-l="Result">${esc(t.message)}${t.slots.map(s => `<div>${pill(s.state === "ok" ? "ok" : s.state === "failed" ? "err" : s.state === "running" ? "info" : "", "slot " + s.slot)} ${esc(s.message)}</div>`).join("")}</td></tr>`).join("")}</tbody></table></div>`;
+}
+(async () => {
+  try {
+    slots = await api("/api/slots");
+    $("#p-slot").innerHTML = slots.map(s => `<option value="${s.number}">${esc(slotLabel(s))}</option>`).join("");
+    const n = Number(q.get("slot")); if (slots.some(s => s.number === n)) $("#p-slot").value = n; else { const first = slots.find(s => s.program); if (first) $("#p-slot").value = first.number; }
+    $("#p-exslots").innerHTML = slots.filter(s => s.program || s.remembered).map(s => `<label><input type="checkbox" class="px-slot" value="${s.number}" checked> ${esc(slotLabel(s))}</label>`).join("") || `<span class="muted">No slot has a program.</span>`;
+    await fillVersions();
+  } catch (e) { fail(e.message); }
+  await loadTargets();
+  if (location.hash === "#push") $("#push").scrollIntoView();
+})();
+</script>
+</body>
+</html>

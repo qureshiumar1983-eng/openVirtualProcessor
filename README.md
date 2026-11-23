@@ -42,7 +42,7 @@ docker build -t openvp .
 docker run -p 8080:8080 -p 41794:41794 -v $PWD/data:/app/data openvp
 ```
 
-The container prints its access key at startup (`docker logs <container>`), and it's saved in `data/apikey.txt`. To choose your own, add `-e OpenVP__ApiKey=your-long-random-key`.
+The container prints its access key at startup (`docker logs <container>`), and it's saved in `data/apikey.txt`. To choose your own, add `-e OpenVP__ApiKey=your-long-random-key`. For a long-running install use Docker Compose or the Helm chart, see [Deploying with Docker Compose and Helm](#deploying-with-docker-compose-and-helm).
 
 ### Try the samples
 
@@ -213,7 +213,7 @@ Each slot has a **Room ID**, like the Virtual Control Room ID of a VC-4 program.
 - **Slot name and colour.** Saved in the slot's `slot.json`; shown on the board, the slot table, page titles and the debugger and metrics headers.
 - **Bulk actions.** Tick slots on the board or table, then Start, Stop, Restart or Unload them together (`POST /api/slots/bulk`). Stop, Restart and Unload ask once.
 - **Phone.** Sections collapse, a slot picker stays at the top, touch targets are bigger and tables become cards; no sideways scroll at 390 px.
-- **Undo.** Unload, deleting a file, folder, snapshot or recording, changing a Room ID and revoking a share show an Undo message for 10 seconds. Unload takes a snapshot first. Deleted files, snapshots and recordings wait in `data/trash` for 24 hours. A revoked link comes back (same token, PIN and expiry) if undone within 10 minutes; that is kept in memory only.
+- **Undo.** Unload, deleting a file, folder, snapshot or recording, saving an edit in the [file editor](#file-editor), changing a Room ID and revoking a share show an Undo message for 10 seconds. Unload takes a snapshot first. A saved file edit also shows Undo. Deleted files, snapshots and recordings, and the earlier content of an edited file, wait in `data/trash` for 24 hours. A revoked link comes back (same token, PIN and expiry) if undone within 10 minutes; that is kept in memory only.
 
 ### Autostart and crash policy
 
@@ -273,11 +273,87 @@ The Files section lists everything still missing, each with a button to create i
 
 The folder names match whatever case the program uses (`\USER`, `/user` and `\User` are the same folder, on Linux too). This works for SIMPL# (`Crestron.SimplSharp.CrestronIO`) and SIMPL+ file functions. A program can't reach outside its slot's folder. The files stay when you load a new program into the slot.
 
+### File editor
+
+**Edit** on a text file in the Files section opens it in an in-browser editor: a plain textarea with line numbers (no editor library, nothing from a CDN). It opens `.json`, `.xml`, `.txt`, `.csv`, `.tsv`, `.ini`, `.cfg`, `.conf`, `.usp`, `.smw` and similar text types up to **2 MB**; programs and binary files (any file with a zero byte in it) are refused. The engine is `TextFileEditor` in `OpenVP.Core`, with unit tests.
+
+- **Validation.** JSON and XML are checked as you type and again on save, and the status line names the line and the problem (`Line 3: ',' is an invalid start of a value`), with that line number in red. A save of invalid JSON or XML is refused with the line; **Save anyway** overrides it. XML with a DTD is refused, so no entity can read a file from the computer.
+- **Undo.** Every save first copies the old content into the trash (`data/trash`, 24 hours), and the Saved message offers **Undo** for 10 seconds, which puts the earlier content back over the new one.
+- **Changed on disk.** The editor remembers a hash of what it opened. If the file changes on disk meanwhile (the program rewrote it, someone uploaded a new one), a yellow bar says so within a few seconds and offers **Reload from disk** or **Keep my version**; and a save over a changed file is refused with **Save anyway**. A file deleted meanwhile is the same.
+- **Line endings and encoding.** A file with CRLF line endings keeps them, a UTF-8 byte order mark is kept, and a file that isn't valid UTF-8 is read and written as Latin-1.
+
+Edits, uploads, renames and deletes in Files are written to [Activity](#console-features) (and so to [Git-backed config](#git-backed-config)).
+
 ### Snapshots and roll back
 
 Before OpenVP loads a program into a slot that already has one, it saves a **snapshot** of the slot: the program files plus its NVRAM and User folders. The **History** section of the console lists them, newest first, with the time, program, reason (`before load`, `before roll back` or `manual`) and size. Each slot keeps the last 10; older ones are deleted. **Snapshot now** saves one on demand. A snapshot never blocks a load: if it can't be saved, the slot log says so and the load carries on, and a file that can't be read is skipped and noted.
 
 **Roll back** puts the slot back as it was: the running program is unloaded, the program files, NVRAM and User folders are replaced with the snapshot's, and the program is loaded again (and started, if it was running). The current state is saved first as a `before roll back` snapshot, so a roll back can be undone. Rolling back stops "reload when the file changes" for the slot. The Room ID (`slot.json`) isn't saved or restored. Snapshots are in `data/snapshots/slotNN/`.
+
+### Backups and export
+
+**Backups ↗** in the console's top bar (or `/backup.html`) has three tabs. The logic is in `OpenVP.Core.Ops` (`ProcessorExporter`, `ProcessorImporter`, `BackupService`), with unit tests and tests against real servers.
+
+**Export processor** downloads one `.openvp` file: a zip with a `manifest.json` (format name, format version, when, which computer, a summary of every slot) and, for every slot, its program files (`slots/NN/program`), `slot.json`, NVRAM and User folders, device simulators, redirects and IP ID remap, integrations (`devices/integrations.json`), watches (`debug.json`), recordings and bookmarks; and the processor-wide settings: integrations, alerts (channels, rules, thresholds and the report schedule), schedules, push targets, backup and version settings, symbol and primitive maps, the console and mDNS options as they are configured, and the recent programs list (paths only, no copies).
+
+| Included | When |
+|---|---|
+| Programs, NVRAM and User, slot settings, simulators, integrations, recordings, bookmarks, watches, processor settings | Always |
+| History: uptime and metrics files, the activity feed, alert history, saved traces | Tick **Include history** |
+| Snapshots and kept program versions | Tick **Include snapshots and program versions** |
+| Secrets (email, MQTT and webhook passwords and signing secrets, auth headers of outgoing webhooks, share-link and incoming-webhook tokens, push-target keys) | Tick **Include secrets** and type an export password |
+| The access key | **Never** |
+
+Secrets are only ever written inside `secrets.enc`: the secret store's values, share links and incoming webhooks, and the unredacted integration files, encrypted with **AES-256-GCM** under a key derived from your password by **PBKDF2-SHA256 (210,000 iterations, random salt)**, with the header authenticated too. A password has to be at least 8 characters; nothing can recover a lost one. Left out, none of them are in the file at all (the exporter also cuts webhook secrets and `Authorization`-like headers out of any `integrations.json` it copies, including those inside snapshots).
+
+**Import processor.** Choosing a file shows a preview and changes nothing: who made it and when, the format version, each slot (its program, name, files, whether it starts, and what the slot holds now, which it will replace), the processor settings in the file, and whether it has secrets (type the password and the box says whether it is right). You choose all or some slots, and whether to **replace the processor settings**. Then, for each slot, OpenVP:
+
+1. unpacks everything chosen into a staging folder first, checking as it goes. A bad file is refused before anything live is touched: a different format version (`wrong-version`), an entry name that would land outside the data folder (`..`, absolute paths, drive letters: zip-slip, `unsafe-path`), more than 100,000 entries, one file over 2 GB or more than 8 GB unpacked, a ratio that looks like a zip bomb, or a duplicate name (`too-big`, `bad-archive`). The byte counts are checked on what is actually read, not on what the header claims;
+2. takes a **snapshot** of the slot (`before import`), stops its program, and swaps in the files;
+3. restores the slot's settings, remembering the program as an uploaded copy (a path on the other computer means nothing here). A Room ID another slot already holds isn't used;
+4. loads the program and **starts it as the slot's autostart setting and its state when exported say**: autostart on and running when exported loads and starts it; autostart on and stopped loads it stopped; autostart off restores the files and settings but leaves the slot unloaded, as after a restart;
+5. keeps the program as a [version](#versions-and-diff) (`import`).
+
+Replacing processor settings copies the old files to `data/tmp/settings-before-import-<time>` first. Console and mDNS options are configuration (command line, environment, `appsettings.json`), not data, so they are saved as `imported-options.json` for you to read and are not applied. A wrong password stops the whole import before anything changes. Snapshots, versions and history in the file are only added if you tick **restore history**, and they are added to, never replacing the snapshot just taken.
+
+**Daily backups.** The **Backups** tab backs the whole processor up in the same export format at a time you choose (this computer's time zone, daily; on by default at 03:00), plus **Back up now**, into `data/backups` or any folder you type, such as a mounted network share. They are named `openvp-backup-yyyyMMdd-HHmmss.openvp` (UTC) and kept for N days (default 14); older ones are deleted after each backup, and the newest is always kept. A backup is written to a `.partial` file and renamed when done. If OpenVP wasn't running at the daily time, the backup runs **once when it starts**. The settings (`data/backups.json`) can also tick history, snapshots and secrets; with secrets, the password is kept in the secret store (`backup.password`) and every backup's secrets are encrypted with it. **If a backup fails** (folder not writable, share gone, disk full) a Critical `backup.failed` [alert](#alerts) is raised through your rules and the activity feed, and the next good backup clears it. **Restore…** opens the same preview as an import, so you choose the slots and settings; **Download** and **Delete** do what they say.
+
+### Versions and diff
+
+Every program loaded into a slot is kept as a **version** in `data/versions/slotNN/`: the program and the files that came with it (`.sig`, `.openvp.json`, the `.lpz` behind a `.smw`), by any route: upload, load from a path, auto-reload, roll back, import, a push from another machine, or loading an older version. A version has the program name, file, SHA-256 over the names and contents of its files (its id is the first 12 digits), size, when it was first and last loaded, how many times, how and by whom (`upload`, `path`, `auto-reload`, `roll back`, `import`, `push`, `version`, `schedule`, `demo`, `recent`) and an optional note you add. **The same files loaded again are the same version** (matched by hash): it only gets a new load time and count, so reloading on every compile doesn't fill the disk. Each slot keeps its newest **N** versions (default 30, **1 to 1000** on the page); older ones and their files are deleted, never the one loaded last. A bundle over 400 MB isn't kept.
+
+**Versions…** in the History section (or `/versions.html?slot=N`) lists them. **Load this version** loads and starts it after a snapshot of what is there; **Download** gives the program, or a zip when it comes with other files; **Note…** adds a note; **Push…** sends it to other machines (see [Push](#push-to-other-machines)); **Delete** forgets one (not the loaded one).
+
+**Compare…** reads two programs, or a version and the program loaded now, **without starting anything** (it loads a copy into a throwaway one-slot processor that is never started, the way [Will it run?](#console-features) does) and writes a report: devices and IP IDs added, removed or changed; signals added, removed or changed kind; for a SIMPL Windows `.smw`, the **symbols** by name and type (added, removed, or changed in parameters or in the signals wired to them: *Serial Send — parameters "Hello from SIMPL" to "Hello again"*, *AND — wiring: outputs no longer both_pressed, now both_pressed_v2*); SIMPL+ modules and, for a compiled program, its IP table; and which files changed. A compiled `.lpz` has no symbol list, and a SIMPL# program creates its devices and signals when it runs, so those are compared by what they do have, with a note saying so. `POST /api/slots/{n}/versions/diff` returns the report as JSON and as text (`ProgramDiff` in `OpenVP.Core`, `ProgramProfiler` in the server).
+
+### Schedules
+
+**Schedules ↗** runs an action at a time, per slot or for the processor: restart a slot (load its program again and start it), start, stop, load a program version into a slot, load a program file from this computer (only when set up from this computer), set a signal to a value, pulse a digital signal, or run a backup. The engine (`Scheduler`, `CronExpression` in `OpenVP.Core.Ops`) has unit tests including daylight saving changes and downtime.
+
+- **When.** Once (a date and time), every day at a time, certain days of the week at a time, or advanced: a five-field cron expression (`minute hour day-of-month month day-of-week`, with lists `1,15`, ranges `mon-fri`, steps `*/10`, names, `@daily` and friends; as in cron, if both day fields are restricted a day matches when either does). The page shows the next few run times as you type, and each schedule's **next run**, **last run** and result, with a **Run now** button, an on/off switch and a history of the last 500 runs (`data/schedules.json`, `data/schedules-history.jsonl`).
+- **Time zone and daylight saving.** Times are the processor's local time zone (the container's `TZ`, shown at the top of the page). When the clocks go **forward**, a time that doesn't exist (02:30 on the night 02:00 becomes 03:00) runs once, just after the gap. When they go **back**, a time that happens twice (01:30) runs the first time only, except a schedule whose hour field is a wildcard (`0 * * * *`, `*/15 * * * *`), which keeps running every hour or quarter hour through the repeated hour.
+- **Runs missed while OpenVP wasn't running** (stopped, or the computer asleep): by default a missed run is **skipped** and the history says so ("OpenVP wasn't running at 03:00, so this run was skipped"), because restarting a slot at 10:00 for a 03:00 job is usually worse than missing it. Tick *run once if OpenVP wasn't running* on a schedule and it runs **once, when OpenVP starts**, if the missed time was within the last 24 hours (labelled "missed" in the history); several missed times count as one. A run counts as missed when it is more than two minutes late. Turning a schedule back on doesn't catch up. The daily backup always runs once when missed.
+- A schedule that is still running when its next time comes is skipped for that time. A failed run (a slot with no program, an unknown signal, a path that isn't there) is a Warning `schedule.failed` [alert](#alerts) for that schedule, cleared by its next good run. Runs go to the activity feed as **auto**.
+
+### Push to other machines
+
+**Push ↗** (`/targets.html`) keeps a list of **targets**: other OpenVP servers, each an address (`http://192.168.1.20:8080`) and its access key. The key is saved in the secret store (`target.<id>.key`), never in `targets.json` and never shown again. It uses the other machine's own REST API: `POST /api/slots/{n}/program` to load a program, `POST /api/import` to import an export. **Test** connects, checks it is OpenVP and that the key is accepted.
+
+- **A program version** (the loaded one or any kept version) is sent to the slot numbers you choose on each target, which stops the program there, snapshots it, loads the new one and starts it (or not). **A whole-processor export** (the slots you tick, optionally with the processor settings and secrets under a password) is imported there like an [import](#backups-and-export).
+- **Many targets at once.** Targets run in parallel; the page shows each one's state and each slot's result as it goes (`queued`, `running`, `ok`, `failed` with the reason), and one failing (wrong key, unreachable, an older OpenVP without the endpoint) doesn't stop the others. A pushed program is a `push` version on the target.
+- **TLS.** For an `https` target the certificate is verified: valid, trusted and matching the host name. For a self-signed certificate, **Fetch certificate** shows its fingerprint (SHA-256); typing or accepting it **pins that one certificate**: only a certificate with exactly that fingerprint is accepted for the target, whatever the chain says, and any other is refused. Plain `http` works but is marked in the form: the key and programs are not encrypted.
+- Tested against second OpenVP servers started in the test process, including one serving https with a self-signed certificate (`PushTests`).
+
+### Git-backed config
+
+Optional. **Backups ↗ → Git-backed config** points OpenVP at a folder on this computer (outside the data folder; **Create repository** makes it and runs `git init`). It uses the `git` command line; if `git` isn't installed, the page says so and the feature stays off. After each change (a program load, settings, file edits and uploads: anything that is written to the activity feed except start, stop, restart, backups and the like), OpenVP writes a text-friendly copy of the configuration into the repository and commits it, with the **activity entry as the commit message**:
+
+- `slots/NN/slot.json`, `slots/NN/devices/` (simulators, redirects, IP ID remap, integrations), `slots/NN/debug.json`, the text files in `slots/NN/nvram` and `slots/NN/user`, and the program files in `slots/NN/program` (up to a size you set, 50 MB by default);
+- `processor/`: the integration, alert, schedule, push-target, backup and version settings and the symbol maps.
+
+**Debounced:** the first change is committed about 3 seconds later, and never more than one commit every **30 seconds**; changes in between are gathered into one commit (subject: the last change plus "and N more changes", with all of them listed in the body). A commit that would change nothing isn't made. Files removed from the data folder leave the repository on the next commit.
+
+**Never committed:** the access key; the secret store; share links and incoming-webhook tokens; push-target keys; webhook signing secrets and auth headers (cut out of `integrations.json`); binary NVRAM files; files whose name looks like a secret (`password`, `token`, `.key`, `.pem` ...); and any text file that contains a saved secret or the access key. **Commit now** says what was skipped and why. Optionally set a **remote** and **Push after each commit** (or **Push now**): it pushes `HEAD` to `origin` in the background using your own git authentication (SSH keys or a credential helper); OpenVP never asks for or stores a git password. The unit tests check the whole history for every secret (`GitSyncTests`).
 
 ### Record and replay
 
@@ -382,6 +458,8 @@ The same numbers are available from the slot console: `cpuload`, `ramfree`, `tas
 | `tunnel.stopped` | The internet tunnel stopped by itself (not when you turn it off) | Warning |
 | `disk.low` | Less than 1000 MB (settable) free on the drive of the data folder; Critical below a quarter of that | Warning |
 | `threshold` | A [threshold](#thresholds) was crossed | Warning / Critical |
+| `backup.failed` | A [backup](#backups-and-export) couldn't be written; clears with the next good backup | Critical |
+| `schedule.failed` | A [scheduled action](#schedules) failed; clears with that schedule's next good run | Warning |
 
 **Channels.** Add as many as you like, each with a **Test** button that sends one message, once, and shows what happened:
 
@@ -578,9 +656,42 @@ A SIMPL# program is .NET code that runs inside the OpenVP process, so anyone who
 - **Incoming webhooks (`POST /hooks/{token}`) are the one other open endpoint.** They need no access key: the token in the address is the credential (192 random bits, one per hook, scoped to one slot and optionally to a list of its signals, revocable, rate limited, and wrong guesses are limited per address). They are not served on the internet tunnel's port. See [Webhooks](#webhooks). `GET /metrics` needs the access key unless `OpenVP:MetricsPublic=true`, and is never on the tunnel port either. The MQTT password is stored apart (DPAPI on Windows, an owner-only file elsewhere) and is never returned by the API. OSC and Art-Net listeners have no authentication and are off by default; each only sets signals you have ticked **Receive** for.
 - `OpenVP:ApiKey=off` turns the key off. Only do that on a network you trust completely.
 
+- **Exported secrets.** A [processor export](#backups-and-export) leaves out the access key, every saved password and signing secret, share links and push-target keys unless you tick *Include secrets*, and then they are only in `secrets.enc`, encrypted (AES-256-GCM, PBKDF2-SHA256 210,000 iterations) with your export password. Whoever has the file and the password has your SMTP and MQTT passwords and can use your share links, so treat both like keys, and use a long password. The access key is never exported. Backups with secrets keep their password in the secret store (DPAPI on Windows, an owner-only file elsewhere). The same applies to anything you commit to a [git repository](#git-backed-config), which never gets the secrets, but gets your programs and your NVRAM and User text files: don't push that repository anywhere you wouldn't put the programs. Importing a file replaces slots and can replace settings, so only import files you trust; it refuses names that would write outside the data folder and archives that unpack to too much.
+- **Push targets.** A [target's](#push-to-other-machines) access key lets this OpenVP load programs (which are .NET code) onto the other machine, so it is kept in the secret store and the target list is behind the access key. An `http` target sends that key and the programs unencrypted: use `https`, and for a self-signed certificate pin its fingerprint, which then accepts only that certificate. Scheduled actions that load a program from a path can only be created from the OpenVP computer itself, like loading from a path.
+- **`/healthz`** answers `ok` to anyone who can reach the console port and tells them nothing else. It is not served on the internet tunnel's port.
 - **Internet access (tunnel)** exposes only shared panels, through a separate listener that serves nothing but `/s/{token}…` (not `/hooks`, not `/metrics`); see [Internet access (tunnel)](#internet-access-tunnel). The console, API and debugger are never reachable through it.
 
 Traffic is plain HTTP. To use OpenVP across an untrusted network, put it behind a reverse proxy that adds HTTPS. Through the internet tunnel, Cloudflare provides HTTPS between the visitor and Cloudflare.
+
+## Deploying with Docker Compose and Helm
+
+**Docker Compose** (`deploy/docker-compose.yml`):
+
+```bash
+cd deploy
+cp .env.example .env              # set OPENVP_API_KEY (or leave it empty: the key is made on first start and printed in the log)
+docker compose up -d --build
+docker compose logs openvp        # the access key, if you didn't set one
+```
+
+It builds the repository's `Dockerfile` and publishes ports **8080** (web console and REST API) and **41794** (CIP; experimental). The telnet (41795) and SSH (22) ports are in the file, commented out, because those consoles are off unless you set `OpenVP__TelnetEnabled` / `OpenVP__SshEnabled`. Data is the `openvp-data` volume at `/app/data` (programs, NVRAM and User files, settings, `data/backups`, the access key). It has `restart: unless-stopped` and a **healthcheck**: `dotnet openvp.dll --healthcheck` asks the server's own port for `/healthz` (an unauthenticated `ok`) and exits 0 or 1, because the image has no `curl`. `OPENVP_API_KEY` goes to `OpenVP__ApiKey`; `TZ` sets the time zone for [schedules](#schedules) and daily backups. A commented `network_mode: host` option is there for **mDNS (`openvp.local`) and device discovery**, which a bridge network can't do (Linux only; remove `ports:` and set `OpenVP__Mdns` to `true`). `docker compose config` checks the file. The image includes `git` for [Git-backed config](#git-backed-config) (`--build-arg WITH_GIT=false` leaves it out) and the `samples/` and `templates/` folders, which the project file copies into the publish output, so **Try the demo** and **Templates** work in the container.
+
+**Helm** (`deploy/helm/openvp`; `helm lint` and `helm template` are clean):
+
+```bash
+docker build -t registry.example.com/openvp:0.1.0 . && docker push registry.example.com/openvp:0.1.0
+helm install openvp ./deploy/helm/openvp \
+  --set image.repository=registry.example.com/openvp --set image.tag=0.1.0 \
+  --set apiKey="$(openssl rand -base64 24)"
+kubectl port-forward svc/openvp-openvp 8080:8080     # then open http://localhost:8080
+```
+
+- **Deployment** with one replica and the `Recreate` strategy (one pod owns the data), a **PersistentVolumeClaim** for `/app/data` (`persistence.*`; kept on `helm uninstall` unless `keepOnUninstall: false`), liveness, readiness and startup **probes on `/api/info`**, resources, and every OpenVP setting you are likely to need as a value (`openvp.slots`, `localRequiresKey`, `metricsPublic`, `timeZone`, ...; anything else through `extraEnv`).
+- **Service** (`ClusterIP`, port 8080) for the console. A second **Service for CIP**, off by default (`devices.enabled`), is a **LoadBalancer** (or NodePort) on TCP 41794 for real touch panels, with the telnet and SSH ports added when you enable those consoles.
+- An optional **Ingress** (`ingress.enabled`, with class, annotations, hosts and TLS) for the web console. It carries WebSockets (the debugger, panels), so set long proxy timeouts and a large body size for uploads; the values file has the nginx annotations.
+- A **Secret** for the access key: from `apiKey`, from your own `existingSecret`, or a random one made the first time and kept on upgrades. `values.yaml` documents every value.
+
+`/healthz` is on the console port and needs no key; the Helm probes use the older `/api/info`, which also needs none.
 
 ## Configuration
 
@@ -609,6 +720,9 @@ Traffic is plain HTTP. To use OpenVP across an untrusted network, put it behind 
 | `OpenVP:Alerts` | `true` | `false` turns off the alert engine, uptime and metrics history, thresholds and reports (the pages then say so). Settings and history are in `data/alerts` and `data/history`; see [Alerts](#alerts) |
 | `OpenVP:Autoload:slot1` | | Program file to load into slot 1 at startup. Wins over the slot's remembered program (see [Autostart](#autostart-and-crash-policy)) |
 | `Urls` | `http://0.0.0.0:8080` | Web console address |
+| `--healthcheck` | | A command-line flag, not a setting: `openvp --healthcheck` asks the console port of the OpenVP already running (same `Urls`) for `/healthz` and exits 0 or 1. For containers, see [Deploying](#deploying-with-docker-compose-and-helm) |
+
+The backups, schedules, push targets, git sync and program versions are set on their pages and saved in the data folder: `backups.json`, `schedules.json` (and `schedules-history.jsonl`), `targets.json` (the keys are in `integrations/secrets.json`), `git.json`, `versions/` (the kept programs and `settings.json`), `backups/` (the default backup folder) and `tmp/` (uploads waiting to be imported, which are cleared at start-up).
 
 ## REST API
 
@@ -617,7 +731,7 @@ Every endpoint except `/api/info`, `/api/login` and `POST /hooks/{token}` needs 
 | Method | Path | |
 |---|---|---|
 | GET | `/api/slots` | All slots with state and devices |
-| POST | `/api/slots/{n}/program` | Multipart `file` (+ sidecar files); loads and starts |
+| POST | `/api/slots/{n}/program` | Multipart `file` (+ sidecar files, and `start=false`, and `how=push` for a program sent by another OpenVP); loads and starts |
 | POST | `/api/slots/{n}/program/path` | `{"path": "C:\\…\\Room.lpz", "watch": true, "start": true, "files": []}`: load a file on the OpenVP computer with its `.sig` and sidecars, and reload it when it changes. Only from that computer (403 otherwise) |
 | DELETE | `/api/slots/{n}/watch` | Stop reloading the slot when its file changes |
 | POST | `/api/slots/{n}/start` · `stop` · `restart` | Start (a slot in Error is loaded again) · stop · load again from its file and start |
@@ -680,6 +794,32 @@ Every endpoint except `/api/info`, `/api/login` and `POST /hooks/{token}` needs 
 | GET / POST | `/api/slots/{n}/snapshots` | List the slot's snapshots, newest first (id, time, program, file, reason, size) · save one now |
 | POST | `/api/slots/{n}/snapshots/{id}/restore` | Optional `{"start":true}` or `false` to override whether it starts. Roll back: saves the current state first, replaces the program files, NVRAM and User with the snapshot's, loads the program, and starts it if it was running. Returns the slot, or 404 for an unknown id |
 | DELETE | `/api/slots/{n}/snapshots/{id}` | Delete a snapshot |
+| GET | `/api/slots/{n}/versions` | The slot's [program versions](#versions-and-diff), newest load first: `id`, `name`, `file`, `hash`, `size`, `files`, `kind`, `firstLoaded`, `loadedAt`, `loads`, `how`, `who`, `lastHow`, `lastWho`, `note`, `available`, `current`; also `keep` and the `current` version id |
+| PUT · DELETE | `/api/slots/{n}/versions/{id}` | `{"note":"..."}` sets or clears the note (500 characters) · forget a version and delete its files (409 for the loaded one) |
+| POST | `/api/slots/{n}/versions/{id}/load` | `{"start":true}`: load the version (after a snapshot); returns the slot, or 404 if its files are gone |
+| GET | `/api/slots/{n}/versions/{id}/download` | The program file, or a zip when the version has several files |
+| POST | `/api/slots/{n}/versions/diff` | `{"a":"loaded"\|"<version id>","b":"...","aSlot":2,"bSlot":3}` (the slots default to `{n}`): the comparison as `sections` (`title`, `added`, `removed`, `changed`, `items` of `name`, `change`, `detail`), `summary`, `notes`, `identical` and a plain `text` report. Starts nothing |
+| GET · PUT | `/api/versions/settings` | `{"keep":30}`: how many versions each slot keeps (1-1000) |
+| GET | `/api/slots/{n}/files/text?root=user&path=config/rooms.json` | Open a text file for editing (up to 2 MB): `text` (always `\n` line breaks), `tag`, `kind` (`json`, `xml`, `text`), `size`, `modified`, `newline`, `encoding`. 413 over the limit, 400 for binary or a file type that isn't text |
+| PUT | `/api/slots/{n}/files/text?root=user&path=...` | `{"text":"...","tag":"<tag from the read>","force":false,"allowInvalid":false}`: save, keeping the earlier content in the trash. `undo` in the answer is a trash id for `POST /api/trash/{id}/restore`. 409 `{"conflict":true}` if the file changed on disk since `tag` (send `force` to overwrite), 400 `{"invalid":true,"line":3,"column":7}` for bad JSON or XML (send `allowInvalid` to save anyway) |
+| POST | `/api/slots/{n}/files/validate` | `{"name":"a.json","text":"..."}`: `{ok, line, column, error}` without saving |
+| POST | `/api/export` | `{"history":false,"snapshots":false,"secrets":false,"password":"...","slots":[1,2]}`: the [export](#backups-and-export) as a download (`.openvp`). `secrets` needs a `password` of 8+ characters (400 otherwise) |
+| POST | `/api/import/preview` | Multipart `file` (and `password`), or JSON `{"previewId":"...","password":"..."}` for a file already uploaded: what is in it (`slots`, `settings`, `hasSecrets`, `passwordOk`, `warnings`, ...) and a `previewId`. The file waits 30 minutes. Changes nothing. 400 `code` is `bad-archive`, `unsafe-path` or `wrong-version`, 413 `too-big` |
+| POST | `/api/import` | JSON `{"previewId":"...","slots":[1,2],"replaceSettings":false,"restoreSecrets":false,"password":"...","restoreHistory":false}`, or multipart `file` plus the same fields (what a push sends): imports, returning `slots` (`slot`, `ok`, `loaded`, `started`, `message`), `settingsReplaced`, `secretsRestored` and `warnings`. 422 `code` `wrong-password` or `need-password` changes nothing. A slot's snapshot is taken first |
+| GET · DELETE | `/api/backups` · `/api/backups/{id}` | Backup `settings`, the `folder`, `next`, `last` and the `backups` · delete one |
+| PUT | `/api/backups/settings` | Any of `enabled`, `time` (`03:00`), `keepDays`, `folder` (null for `data/backups`), `includeHistory`, `includeSnapshots`, `includeSecrets` with `password` |
+| POST | `/api/backups/run` | Back up now (500 with the reason, and a `backup.failed` alert, if it fails) |
+| GET · POST | `/api/backups/{id}/download` · `.../preview` | The file · put it in the import preview (then `POST /api/import` with `"how":"restore"`) |
+| GET · POST | `/api/schedules` | The [schedules](#schedules) (`mode`, `time`, `days`, `cron`, `at`, `runMissed`, `action`, `nextRun`, `lastRun`, `lastOk`, ...) with `zone`, `now` and the `history` · add one: `{"name":"Nightly","mode":"daily","time":"03:30","action":{"type":"restart","slot":1}}`. `mode` is `once` (`at`: `2026-01-05T09:00`), `daily`, `weekly` (`days`: 0 is Sunday) or `cron`. `action.type` is `restart`, `start`, `stop`, `loadVersion` (`versionId`), `loadPath` (`path`; only from this computer), `setSignal` (`signal`, `value`), `pulse` or `backup` |
+| PUT · DELETE | `/api/schedules/{id}` | Replace (send everything, `enabled` too) · delete |
+| POST | `/api/schedules/{id}/run` · `/api/schedules/preview` | Run now · the next five times of a schedule as typed, without saving it |
+| GET · POST | `/api/targets` | [Push targets](#push-to-other-machines) (`name`, `url`, `fingerprint`, `hasKey`, `lastOk`, ...) · add `{"name":"B","url":"http://host:8080","key":"...","fingerprint":null}` |
+| PUT · DELETE | `/api/targets/{id}` | Change (`key` is kept if left out, removed by `""`) · remove it and its key |
+| POST | `/api/targets/{id}/test` · `/api/targets/certificate` | Connect and check the key · `{"url":"https://..."}`: the certificate that address presents (`fingerprint`, `subject`, `notAfter`, `trusted`) |
+| GET · POST | `/api/push` · `/api/push/{id}` | Recent pushes and one's progress (`targets` with `state`, `message` and per-slot results; `done`) · start one: `{"what":"version","slot":1,"version":"loaded"\|"<id>","start":true,"targets":[{"id":"...","slots":[1,2]}]}` or `{"what":"export","targets":["id"],"slots":[1],"replaceSettings":false,"secrets":false,"password":"..."}` |
+| GET · PUT | `/api/git` | The [git config](#git-backed-config) status: `available`, `version`, `settings`, `isRepo`, `last`, `error`, `commits` · change `enabled`, `repo`, `remote`, `push`, `branch`, `includePrograms`, `maxProgramMb` |
+| POST | `/api/git/init` · `/api/git/commit` · `/api/git/push` | `{"repo":"/path"}` make the repository · `{"message":"..."}` commit now (`skipped` lists what was left out) · push now |
+| GET | `/healthz` | `ok`, with no access key (not on the tunnel port). For container health checks |
 | GET | `/api/slots/{n}/recording/status` | What the slot is doing: `mode` (`idle`, `recording`, `replaying`), recording elapsed time and counts, replay progress and, once finished, its report. The console polls it |
 | POST | `/api/slots/{n}/recording/start` · `recording/stop` | Start recording · stop and save it, with an optional `{"name":"..."}` (409 if busy or there's no program) |
 | GET / POST | `/api/slots/{n}/recordings` | List the slot's recordings (name, program, length, counts, last result) · upload one as multipart `file` (and optional `name`); it gets a new id |

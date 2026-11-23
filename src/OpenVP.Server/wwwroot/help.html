@@ -62,6 +62,10 @@
     <a href="#integrations">Integrations</a>
     <a href="#debugger">Debugger</a>
     <a href="#paths">Paths</a>
+    <a href="#backups">Backups</a>
+    <a href="#versions">Versions</a>
+    <a href="#schedules">Schedules</a>
+    <a href="#push">Push</a>
     <a href="#alerts">Alerts</a>
     <a href="#metrics">Metrics</a>
     <a href="#panel">Test panel</a>
@@ -93,6 +97,9 @@
     <dt id="top-devices"><span class="b">Devices ↗</span></dt><dd>Opens the <a href="#devices">Devices</a> page for the selected slot: simulators, COM terminal, sockets, redirects and discovery.</dd>
     <dt id="top-templates"><span class="b">Templates</span></dt><dd>Starter projects to download, see <a href="#templates">Templates</a>.</dd>
     <dt><span class="b">Metrics ↗</span></dt><dd>Opens the <a href="#metrics">Metrics</a> page: CPU, memory and how busy each slot is.</dd>
+    <dt id="top-backups"><span class="b">Backups ↗</span></dt><dd>Opens <a href="#backups">Backups and export</a>: export or import the whole processor, daily backups and Git-backed config.</dd>
+    <dt id="top-schedules"><span class="b">Schedules ↗</span></dt><dd>Opens <a href="#schedules">Schedules</a>: restart a slot nightly, load a program, run a backup or set a signal at a time.</dd>
+    <dt id="top-push"><span class="b">Push ↗</span></dt><dd>Opens <a href="#push">Push to other machines</a>: send a program version or a whole export to other OpenVP servers.</dd>
     <dt><span class="b">Test panel ↗</span></dt><dd>Opens a blank <a href="#panel">test panel</a>. Type the IP ID you want and click Connect.</dd>
     <dt><span class="b">Help</span></dt><dd>Opens this page.</dd>
     <dt><span class="b">Search ⌘K</span></dt><dd>Opens the command palette, see <a href="#palette">Search, shortcuts and undo</a>.</dd>
@@ -254,16 +261,28 @@
     <dt><span class="b">Upload folder</span></dt><dd>Uploads a whole folder with everything inside it.</dd>
     <dt>Folder path (<b>NVRAM / config</b>)</dt><dd>Click any part of the path to go back up to that folder.</dd>
     <dt>📁 A folder name</dt><dd>Click it to open the folder.</dd>
+    <dt id="edit-file"><span class="b">Edit</span></dt><dd>Opens a text file (json, xml, txt, csv, ini, cfg, usp and similar, up to 2 MB) in the <a href="#file-editor">editor</a>. Programs and other binary files can't be edited here.</dd>
     <dt><span class="b">⤓</span></dt><dd>Downloads that file to your computer.</dd>
     <dt><span class="b">Rename</span></dt><dd>Gives the file or folder a new name.</dd>
     <dt><span class="b">✕</span></dt><dd>Deletes the file, or the folder and everything in it. There is no confirmation; Undo is offered for 10 seconds.</dd>
     <dt><span class="b">Create … folder</span> / <span class="b">Open …</span></dt><dd>Appear in a yellow box when the program looked for a file and didn't find it. They create (or open) the exact folder the program expects, so you can upload the missing file into it.</dd>
   </dl>
 
+  <h3 id="file-editor">File editor</h3>
+  <p class="muted">Edit a config file in the browser instead of downloading, changing and uploading it again. Line numbers run down the left. Every save writes the file the way it was (same line endings and encoding).</p>
+  <dl>
+    <dt>The status line</dt><dd>Shows the line and column of the cursor. For JSON and XML files it checks what you type: <b>valid JSON</b> in green, or the line and the problem in red, and that line number turns red.</dd>
+    <dt><span class="b">Save</span> (<kbd>Ctrl</kbd>+<kbd>S</kbd>)</dt><dd>Writes the file. The earlier content is kept in the trash, and the Saved message offers <b>Undo</b> for 10 seconds (and in <a href="#palette">Undo</a> for 24 hours). If the JSON or XML isn't valid, Save says which line is wrong and offers <b>Save anyway</b>.</dd>
+    <dt>"This file changed on disk"</dt><dd>Appears when the file was changed (by the program, or by someone else) after you opened it. <b>Reload from disk</b> drops what you typed and reads the new content; <b>Keep my version</b> hides the message. A save over a changed file is refused until you choose <b>Save anyway</b>.</dd>
+    <dt><span class="b">Reload from disk</span></dt><dd>Reads the file again. It asks first if you have unsaved changes.</dd>
+    <dt>Size limit</dt><dd>2 MB. A bigger file can still be downloaded, changed elsewhere and uploaded.</dd>
+  </dl>
+
   <h3 id="history">History</h3>
   <p class="muted">Before a new program is loaded into the slot, OpenVP saves a snapshot of what is there: the program files plus the NVRAM and User folders. The last 10 are kept. The Room ID isn't part of a snapshot.</p>
   <dl>
     <dt id="snapshot-now"><span class="b">Snapshot now</span></dt><dd>Saves a snapshot of the slot as it is, without loading anything.</dd>
+    <dt id="versions-btn"><span class="b">Versions…</span></dt><dd>Opens <a href="#versions">Program versions</a> for the slot: every program that was loaded into it, to load again, download, annotate or compare.</dd>
     <dt><span class="b">Roll back</span></dt><dd>Puts the slot back as it was at that time: program, NVRAM and User files are replaced, and the program is loaded again (and started, if it was running). The current state is saved first as a "before roll back" snapshot, so you can undo it. It asks you to confirm first.</dd>
     <dt><span class="b">Delete</span></dt><dd>Deletes that snapshot (Undo is offered for 10 seconds).</dd>
   </dl>
@@ -618,6 +637,79 @@
     <dt>Slots</dt><dd>Available is the share of the time the slot's program was running. Down counts a program that is stopped, faulted, or OpenVP not running. Empty slots aren't counted. The bar is the timeline (green up, red down, grey no data); point at a segment for its time and percentage. Drops is how many times it went from up to down.</dd>
     <dt>Panels and devices</dt><dd>Available is the share of the time a panel was connected, counted while its slot is running. A device that hasn't connected since OpenVP started isn't counted until it does.</dd>
     <dt>Offline heat map</dt><dd>One row for each panel that dropped. <span class="b">By hour of the day</span> adds up all the days in the period for each hour (in your time zone), to show when panels tend to drop; <span class="b">By day</span> has a column for each day. Darker means more minutes offline. Point at a cell (or tab to it) for the panel, the time, the minutes and the number of drops.</dd>
+  </dl>
+</section>
+
+<section id="backups">
+  <h2>Backups and export</h2>
+  <p class="muted">Open it with <b>Backups ↗</b> in the console's top bar. It has three tabs. Everything here is written to the Activity feed.</p>
+
+  <h3 id="export">Export and import</h3>
+  <dl>
+    <dt><span class="b">Export processor</span></dt><dd>Downloads one <code>.openvp</code> file (a zip with a manifest and a version) with every slot you tick: program files, NVRAM and User files, <code>slot.json</code> settings, simulators and redirects, integrations, recordings, bookmarks and watches; and the processor settings: integrations, alerts, thresholds, report settings, schedules, push targets and the recent programs list (paths only). The access key is never included.</dd>
+    <dt>Include history</dt><dd>Adds uptime and metrics history, the activity feed, alert history and saved traces. Off by default.</dd>
+    <dt>Include snapshots and program versions</dt><dd>Adds each slot's snapshots and kept program versions. Off by default; it can make the file big.</dd>
+    <dt>Include secrets and share links</dt><dd>Adds email, MQTT and webhook passwords and secrets, share-link and incoming-webhook tokens and push-target keys, <b>encrypted with the password you type</b> (AES-256-GCM, key from PBKDF2). At least 8 characters. Without the password they can't be read; OpenVP can't recover it. Left out, none of these are in the file.</dd>
+    <dt>Choose a file to import</dt><dd>Reads the file and shows what is in it before anything changes: who made it and when, each slot with its program and what the slot holds now, and the processor settings. It refuses a file with the wrong format version, names that would escape the data folder (zip-slip), too many entries or more than 8 GB unpacked.</dd>
+    <dt>Slot checkboxes</dt><dd>Which slots to import (all by default). A snapshot of each slot is taken first (<i>before import</i>), so you can roll back. Programs are loaded and started as each slot's autostart setting and its state when exported say; a slot with autostart off gets its files and settings back and stays unloaded. A Room ID that another slot already has isn't used.</dd>
+    <dt>Replace the processor settings</dt><dd>Also replaces integrations, alerts and thresholds, schedules, push targets, backup settings and symbol maps with the file's, and adds the file's recent programs. The old ones are copied to <code>data/tmp</code> first. The console and mDNS options in a file are configuration, not data; they are saved as <code>imported-options.json</code> for you to read.</dd>
+    <dt>Restore secrets and share links</dt><dd>Shown when the file has encrypted secrets. Type the export password; the box says whether it is right. A wrong password stops the whole import before anything is touched.</dd>
+  </dl>
+
+  <h3 id="backup-daily">Backups</h3>
+  <dl>
+    <dt>Back up every day</dt><dd>Writes a backup in the export format every day at the time you choose (this computer's time), to <code>data/backups</code> or to the folder you type (a network share path works). Backups older than the days you set are deleted; the newest is always kept. If OpenVP wasn't running at the time, the backup runs once when it starts. Turn on <b>Include secrets</b> and the backup password is kept in the secret store and the secrets in each backup are encrypted with it.</dd>
+    <dt><span class="b">Back up now</span></dt><dd>Makes a backup straight away with the settings shown. If a backup fails (folder not writable, disk full), a <b>backup.failed</b> alert is raised; the next good backup clears it.</dd>
+    <dt><span class="b">Restore…</span></dt><dd>Opens the same preview as importing: choose the slots and settings to restore.</dd>
+    <dt><span class="b">Download</span> · <span class="b">Delete</span></dt><dd>Save a backup somewhere else, or remove it (no Undo: it asks first).</dd>
+  </dl>
+
+  <h3 id="git">Git-backed config</h3>
+  <dl>
+    <dt>Repository folder · <span class="b">Create repository</span></dt><dd>A folder on this computer, outside the data folder. Create repository makes it (it must be empty or not exist) and runs <code>git init</code>. If git isn't installed, the page says so and the feature stays off.</dd>
+    <dt>Commit changes to this repository</dt><dd>After each change (a program load, settings, file edits and uploads) OpenVP copies slot settings, simulators, integrations, watches, NVRAM and User text files, program files, and the alert, integration and schedule settings into the folder and commits them. The message is the Activity entry; a burst of changes is one commit, and there is at most one every 30 seconds. <b>Never copied:</b> the access key, saved secrets (webhook secrets and auth headers are cut out of <code>integrations.json</code>), share-link and incoming-webhook tokens, push-target keys, binary NVRAM files, files whose name looks like a secret, and any file whose text contains a saved secret or the access key. The commit's Skipped list says what was left out.</dd>
+    <dt>Remote · Push after each commit · <span class="b">Push now</span></dt><dd>Optional. Pushes the branch to <code>origin</code>. Authentication is your own git setup (an SSH key, or a credential helper); OpenVP never asks for or stores a git password.</dd>
+    <dt><span class="b">Commit now</span></dt><dd>Writes the copy and commits it now, with a message you didn't choose ("Committed by hand from the console").</dd>
+  </dl>
+</section>
+
+<section id="versions">
+  <h2>Program versions</h2>
+  <p class="muted">Open it with <b>Versions…</b> in the History section, or "Program versions of slot N" in the search box (<kbd>Ctrl</kbd>+<kbd>K</kbd>). Every program loaded into a slot is kept: uploaded, loaded from a path, reloaded when its file changed, rolled back to, imported or pushed from another machine.</p>
+  <dl>
+    <dt>The list</dt><dd>Newest load first: when, the program with its kind and a short hash, how it first got there and who did it, how many times it has been loaded, size, and your note. The same files loaded again are the same version (matched by hash). The one loaded now is marked.</dd>
+    <dt>Keep the last N versions per slot</dt><dd>Older versions, and their files, are deleted (30 by default). The program loaded last is never deleted.</dd>
+    <dt><span class="b">Load this version</span></dt><dd>Loads those files into the slot and starts them, after a snapshot of what is there. It asks first.</dd>
+    <dt><span class="b">Download</span></dt><dd>The program, or a zip when it comes with a <code>.sig</code> or sidecar files.</dd>
+    <dt><span class="b">Note…</span></dt><dd>Adds or changes a note (up to 500 characters).</dd>
+    <dt><span class="b">Compare…</span></dt><dd>Compares two versions, or a version with the program loaded now, without starting either. The report lists devices and IP IDs added, removed or changed; signals added, removed or changed; for a SIMPL Windows source file, the symbols (by name and type) added, removed or changed in parameters or wiring; SIMPL+ modules; and the files. <b>Copy as text</b> copies it. A compiled <code>.lpz</code> and a SIMPL# program have no symbol list, so those are compared by signals, devices and files.</dd>
+    <dt><span class="b">Push…</span></dt><dd>Opens <a href="#push">Push</a> with this version chosen.</dd>
+    <dt><span class="b">Delete</span></dt><dd>Forgets a version and deletes its files. The loaded one can't be deleted.</dd>
+  </dl>
+</section>
+
+<section id="schedules">
+  <h2>Schedules</h2>
+  <p class="muted">Open it with <b>Schedules ↗</b>. Times are the processor's local time zone (shown at the top) and follow daylight saving. A time that doesn't exist on the day the clocks go forward (02:30 when 02:00 jumps to 03:00) runs once, just after the gap. A time that happens twice when the clocks go back (01:30) runs the first time, except a schedule that runs every hour or every few minutes, which keeps running through the repeated hour.</p>
+  <dl>
+    <dt><span class="b">New schedule…</span></dt><dd>Name it, choose what it does, and when. Actions: restart a slot (load its program again and start it), start, stop, load a program version into a slot, load a program file from this computer (only when you set it up on this computer), set a signal to a value, pulse a digital signal, or back up the processor. When: once, every day, on certain days of the week, or advanced (a cron expression: minute hour day-of-month month day-of-week, with lists, ranges, steps and day or month names). The next few run times are shown as you type.</dd>
+    <dt>Run it once if OpenVP wasn't running</dt><dd>If OpenVP was stopped (or the computer asleep) at the time, a schedule with this ticked runs once when OpenVP starts, as long as the missed time was within 24 hours. Otherwise the missed run is skipped and the history says so. Several missed times are one run.</dd>
+    <dt>On</dt><dd>Turns a schedule off without deleting it. Turning it back on doesn't catch up on what it missed.</dd>
+    <dt>Next run · Last run</dt><dd>When it will run next, and how the last run went (hover for the message). A one-off shows <b>done</b> after it has run.</dd>
+    <dt><span class="b">Run now</span></dt><dd>Runs the action now, whatever the time.</dd>
+    <dt>Run history</dt><dd>The last runs with their result: <b>ok</b>, <b>failed</b> (with the reason) or <b>skipped</b> (missed, or the previous run was still going). A failed run raises a <b>schedule.failed</b> alert. Every run is in the Activity feed as <b>auto</b>.</dd>
+  </dl>
+</section>
+
+<section id="push">
+  <h2>Push to other machines</h2>
+  <p class="muted">Open it with <b>Push ↗</b>. Sends a program version, or a whole-processor export, to other OpenVP servers through their REST API.</p>
+  <dl>
+    <dt><span class="b">Add target…</span></dt><dd>A name, the other server's address (<code>http://192.168.1.20:8080</code>) and its access key. The key is kept in the secret store and never shown again; leave it empty when editing to keep it. <b>Save and test</b> connects and checks that the key is accepted.</dd>
+    <dt>https targets</dt><dd>The certificate is checked. For a self-signed certificate, <b>Fetch certificate</b> shows its fingerprint (SHA-256); compare it with the other machine's, and saving it makes OpenVP accept <i>only</i> that one certificate for this target. Plain <b>http</b> works, but the key and the programs cross the network unencrypted.</dd>
+    <dt>A program version</dt><dd>Choose a slot here, one of its versions (or the one loaded now) and, for each target, the slot numbers there to load it into (<code>1,2</code>). Each slot there stops its program, takes a snapshot, loads the new one, and starts it if you ticked that.</dd>
+    <dt>A whole-processor export</dt><dd>Sends a fresh export (the slots you tick) and imports it on each target as <a href="#export">Import</a> would. Tick <b>replace the target's processor settings</b> to send those too, and <b>include secrets</b> to send them encrypted with the password (the target restores them with it).</dd>
+    <dt>Progress</dt><dd>One row per target with its state (queued, running, ok, failed) and what happened in each slot. Targets run at the same time; one failing doesn't stop the others. Pushes are written to the Activity feed.</dd>
   </dl>
 </section>
 
