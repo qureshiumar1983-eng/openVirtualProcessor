@@ -1,17 +1,17 @@
 name: Windows app
 # Builds OpenVP.exe, the Electron desktop app (portable: one file, no install, no .NET needed), starts it to
 # check the console loads, and publishes it as a GitHub release.
-#   - Every push to main makes a new release, numbered from desktop/package.json's version plus the run
-#     number (e.g. v0.1.15), and marks it Latest.
-#   - Pushes to other branches just build and test it (download from the run's "OpenVP-windows" artifact).
-#   - Run it by hand (Actions > Windows app > Run workflow) to make a release with a version you choose.
+# It runs ONLY when started by hand (Actions > Windows app > Run workflow), because Windows runners bill
+# minutes at twice the Linux rate and building on every push was using up the Actions budget.
+#   - Run it on main: makes a release numbered from desktop/package.json's version plus the run number
+#     (e.g. v0.1.15), marked Latest. Fill in "release" to choose the version yourself.
+#   - Run it on any other branch: just builds and tests it (download from the run's "OpenVP-windows" artifact),
+#     unless you fill in "release".
 on:
-  push:
-    branches: ['**']
   workflow_dispatch:
     inputs:
       release:
-        description: Make a release with this version (e.g. v0.2.0). Leave empty to use the automatic number.
+        description: Make a release with this version (e.g. v0.2.0). Leave empty to use the automatic number on main, or no release on other branches.
         required: false
         default: ''
 concurrency:
@@ -73,7 +73,7 @@ jobs:
         with:
           name: OpenVP-windows
           path: desktop/dist/OpenVP.exe
-      - name: Release (pushes to main, or run by hand)
+      - name: Release (run on main, or a version was given)
         if: github.ref == 'refs/heads/main' || inputs.release != ''
         shell: pwsh
         env:
