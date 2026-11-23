@@ -10,7 +10,7 @@ namespace OpenVP.Tests;
 public static class SymbolCatalogTests
 {
     /// <summary>A small .smw program with no devices: signals are driven and read by name, as the debugger does.</summary>
-    private sealed class Smw : IDisposable
+    internal sealed class Smw : IDisposable
     {
         private readonly StringBuilder _sb = new("[\nObjTp=Hd\nPgmNm=CatalogTest\n]\n[\nObjTp=Sg\nH=1\nNm=0\n]\n[\nObjTp=Sg\nH=2\nNm=1\n]\n");
         private readonly Dictionary<string, int> _sigs = new() { ["0"] = 1, ["1"] = 2 };
