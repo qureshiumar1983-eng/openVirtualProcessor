@@ -18,5 +18,7 @@
     <!-- Build the sample program first so tests can load it. -->
     <ProjectReference Include="../../samples/SampleProgram/SampleProgram.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../../samples/SplusModule/Sample_Splus.csproj" ReferenceOutputAssembly="false" />
+    <!-- The example plugin, built so the plugin tests can load the real assembly. -->
+    <ProjectReference Include="../../examples/plugins/hello/Hello.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>
