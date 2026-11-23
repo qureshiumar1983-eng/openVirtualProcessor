@@ -78,8 +78,9 @@ public sealed class MetricsSampler : IDisposable
                     _lastSlot[i] = (d.Processed, d.BusySeconds);
                 }
 
-                _history.Enqueue(new ProcessSample(DateTimeOffset.Now, Math.Round(_cpuPercent, 1), Mb(p.WorkingSet64),
-                    Mb(GC.GetTotalMemory(false)), p.Threads.Count, ThreadPool.ThreadCount, ThreadPool.PendingWorkItemCount));
+                var mem = ProcMemory.Read(p);
+                _history.Enqueue(new ProcessSample(DateTimeOffset.Now, Math.Round(_cpuPercent, 1), Mb(mem.WorkingSet),
+                    Mb(GC.GetTotalMemory(false)), mem.Threads, ThreadPool.ThreadCount, ThreadPool.PendingWorkItemCount));
                 while (_history.Count > HistoryLength) _history.Dequeue();
             }
         }
@@ -89,6 +90,7 @@ public sealed class MetricsSampler : IDisposable
     public MetricsSnapshot Snapshot(bool includeHistory = true)
     {
         using var p = Process.GetCurrentProcess();
+        var mem = ProcMemory.Read(p);
         ThreadPool.GetMinThreads(out var minW, out _);
         ThreadPool.GetMaxThreads(out var maxW, out _);
         var slots = _processor.Slots.Select(SlotSnapshot).ToList();
@@ -106,9 +108,9 @@ public sealed class MetricsSampler : IDisposable
         }
         return new MetricsSnapshot(
             DateTimeOffset.Now, (DateTimeOffset.Now - _started).TotalSeconds, Environment.ProcessorCount, Math.Round(cpu, 1),
-            Mb(p.WorkingSet64), Mb(p.PrivateMemorySize64), Mb(GC.GetTotalMemory(false)), Mb(GC.GetGCMemoryInfo().TotalAvailableMemoryBytes),
+            Mb(mem.WorkingSet), Mb(mem.Private), Mb(GC.GetTotalMemory(false)), Mb(GC.GetGCMemoryInfo().TotalAvailableMemoryBytes),
             GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2),
-            p.Threads.Count, ThreadPool.ThreadCount, ThreadPool.PendingWorkItemCount, ThreadPool.CompletedWorkItemCount, minW, maxW,
+            mem.Threads, ThreadPool.ThreadCount, ThreadPool.PendingWorkItemCount, ThreadPool.CompletedWorkItemCount, minW, maxW,
             slots, warnings, history);
     }
 
@@ -165,6 +167,40 @@ public sealed class MetricsSampler : IDisposable
 }
 
 /// <summary>Text versions of the metrics for the slot console (cpuload, ramfree, taskstat, metrics).</summary>
+/// <summary>
+/// Memory and thread counts of this process. On Linux they come straight from /proc/self/status: Process.WorkingSet64
+/// and Process.Threads list every thread under /proc/self/task, which is slow and has crashed the runtime while threads
+/// were exiting. Elsewhere they come from <see cref="Process"/>.
+/// </summary>
+internal static class ProcMemory
+{
+    public static (long WorkingSet, long Private, int Threads) Read(Process p)
+    {
+        if (OperatingSystem.IsLinux())
+        {
+            try
+            {
+                long rss = -1, priv = -1; var threads = -1;
+                foreach (var line in File.ReadLines("/proc/self/status"))
+                {
+                    if (line.StartsWith("VmRSS:", StringComparison.Ordinal)) rss = Kb(line);
+                    else if (line.StartsWith("VmData:", StringComparison.Ordinal)) priv = Kb(line);
+                    else if (line.StartsWith("Threads:", StringComparison.Ordinal) && int.TryParse(line.AsSpan(8).Trim(), out var t)) threads = t;
+                }
+                if (rss >= 0 && priv >= 0 && threads >= 0) return (rss, priv, threads);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        }
+        return (p.WorkingSet64, p.PrivateMemorySize64, p.Threads.Count);
+    }
+
+    private static long Kb(string line)
+    {
+        var parts = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 && long.TryParse(parts[1], out var kb) ? kb * 1024 : -1;
+    }
+}
+
 public static class MetricsReport
 {
     public static string Console(Processor processor, ProgramSlot slot, string command)

@@ -406,8 +406,9 @@ public sealed class PluginHost : IDisposable
             var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
             _queue.Writer.TryWrite((what, () =>
             {
+                // Fault before answering, so the caller never sees the plugin still loaded after its failure.
                 try { tcs.TrySetResult(work()); }
-                catch { tcs.TrySetResult(onFail); throw; }
+                catch (Exception e) { _host.Fault(Manifest.Name, what, e); tcs.TrySetResult(onFail); }
             }));
             try { if (tcs.Task.Wait(CallTimeout)) return tcs.Task.Result; }
             catch (AggregateException) { }
