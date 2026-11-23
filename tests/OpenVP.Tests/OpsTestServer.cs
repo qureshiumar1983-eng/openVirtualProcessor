@@ -29,7 +29,7 @@ public sealed class OpsTestServer : IDisposable
         args.AddRange(more);
         App = OpenVpServer.Create(args.ToArray());
         App.StartAsync().GetAwaiter().GetResult();
-        Key = File.ReadAllText(Path.Combine(Dir, "apikey.txt")).Trim();
+        Key = File.Exists(Path.Combine(Dir, "apikey.txt")) ? File.ReadAllText(Path.Combine(Dir, "apikey.txt")).Trim() : ""; // no file when the key is off
         P = App.Services.GetRequiredService<Processor>();
         Http = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false, SslOptions = { RemoteCertificateValidationCallback = (_, _, _, _) => true } }) { Timeout = TimeSpan.FromSeconds(60) };
         Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Key);
