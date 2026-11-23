@@ -2,7 +2,7 @@
 
 OpenVP adds a row here whenever a program uses a symbol, type or API it doesn't support yet. Commit this file after running your programs so everyone can see what to build next; **Programs** counts the program loads that hit it, so the top of each kind is the most wanted. Only symbol names are recorded, never program names.
 
-When you implement one, delete its row. If a program still needs it, it comes back on the next run.
+When you implement one, delete its row (the server also drops rows for symbols the catalog supports now, whether matched by library name, SmC code or compiled type). If a program still needs it, it comes back on the next run.
 
 Merging: if two people's edits clash, keep both rows; for the same row, add the Programs counts and keep the earliest First seen and latest Last seen.
 
