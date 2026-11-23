@@ -9,6 +9,7 @@ using System.Threading.Channels;
 using OpenVP.Core;
 using OpenVP.Core.Alerts;
 using OpenVP.Core.Ops;
+using OpenVP.Core.Security;
 using OpenVP.Lpz;
 using OpenVP.Panels;
 using OpenVP.Simpl;
@@ -30,20 +31,44 @@ public static class OpenVpServer
         builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o => o.MultipartBodyLengthLimit = 512L * 1024 * 1024);
         var cfg = builder.Configuration.GetSection("OpenVP");
 
+        // Users, tokens, the audit log and HTTPS settings live under data/security. HTTPS is decided now because it changes what Kestrel listens on.
+        var dataDir = cfg["DataDirectory"] ?? "data";
+        var secSettings = new SecuritySettings(dataDir);
+        var httpsMgr = new HttpsManager(dataDir, secSettings);
+        OpenVP.Core.Integrations.IntegrationsHost? integrationsHolder = null; // set below; single sign-on reads its secret store lazily
+        var oidc = new OidcSupport(secSettings, () => integrationsHolder!.Store.Secrets) { AllowHttp = cfg.GetValue("OidcAllowHttp", false) };
+        oidc.AddServices(builder.Services);
+        var extraUrls = new List<string>();
+        var baseUrls = builder.Configuration["urls"];
+        if (string.IsNullOrWhiteSpace(baseUrls)) baseUrls = "http://localhost:5000";
+        var httpsSettings = secSettings.Get().Https;
+        if (httpsSettings.Enabled)
+        {
+            httpsMgr.Load(out var httpsProblem);
+            if (!httpsMgr.HasCertificate) Console.WriteLine("HTTPS is off: " + httpsProblem);
+            else if (CheckHttpsPort(baseUrls, httpsSettings.Port) is { } portProblem) Console.WriteLine("HTTPS is off: " + portProblem);
+            else
+            {
+                if (httpsProblem != null) Console.WriteLine("HTTPS warning: " + httpsProblem);
+                extraUrls.Add($"https://0.0.0.0:{httpsSettings.Port}");
+                httpsMgr.MarkListening(httpsSettings.Port);
+                builder.WebHost.ConfigureKestrel(k => k.ConfigureHttpsDefaults(o => o.ServerCertificateSelector = (_, _) => httpsMgr.Holder.Current));
+            }
+        }
+
         // The internet tunnel gets its own listener on 127.0.0.1, never the console's port (see TunnelGate).
         var tunnelPort = cfg.GetValue("TunnelPort", 8085);
         string? tunnelUnavailable = null;
         if (tunnelPort > 0)
         {
-            var urls = builder.Configuration["urls"];
-            if (string.IsNullOrWhiteSpace(urls)) urls = "http://localhost:5000";
-            tunnelUnavailable = CheckTunnelPort(urls, tunnelPort);
-            if (tunnelUnavailable == null) builder.WebHost.UseUrls(urls + ";http://127.0.0.1:" + tunnelPort);
+            tunnelUnavailable = CheckTunnelPort(baseUrls, tunnelPort);
+            if (tunnelUnavailable == null) extraUrls.Add("http://127.0.0.1:" + tunnelPort);
             else Console.WriteLine("Internet access (tunnel) is off: " + tunnelUnavailable);
         }
         else tunnelUnavailable = "Internet access is switched off (OpenVP:TunnelPort is 0).";
+        if (extraUrls.Count > 0) builder.WebHost.UseUrls(baseUrls + ";" + string.Join(";", extraUrls));
 
-        var processor = new Processor(cfg["DataDirectory"] ?? "data", cfg.GetValue("Slots", 10), cfg.GetValue("SlotSpinMicroseconds", 0));
+        var processor = new Processor(dataDir, cfg.GetValue("Slots", 10), cfg.GetValue("SlotSpinMicroseconds", 0));
         processor.AddLoader(new SimplSharpLoader());
         processor.AddLoader(new SimplLoader(Path.Combine(processor.DataDirectory, "symbols.json")));
         processor.AddLoader(new LpzLoader(Path.Combine(processor.DataDirectory, "primitives.json")));
@@ -87,10 +112,29 @@ public static class OpenVpServer
             if (!auth.LocalRequiresKey) Console.WriteLine("  Requests from this machine (localhost) don't need the key.");
         }
 
+        // Who is calling and what they may do: users, sessions, API tokens, the audit log and slot locks (see Authz).
+        var users = new UserStore(dataDir);
+        var sessions = new SessionStore(dataDir);
+        var tokens = new TokenStore(dataDir);
+        var audit = new AuditLog(dataDir);
+        var slotLocks = new SlotLocks(dataDir);
+        var presence = new PresenceTracker();
+        var acmeSvc = new AcmeService(dataDir, httpsMgr, secSettings);
+        var acmeTimer = new Timer(_ => { try { _ = acmeSvc.RenewIfDueAsync((a, t) => audit.Add(a, t, "auto", "")); } catch { } }, null, TimeSpan.FromMinutes(5), TimeSpan.FromHours(12));
+        var authz = new Authz(auth, users, sessions, tokens, secSettings, slotLocks, audit);
+        builder.Services.AddSingleton(authz);
+        builder.Services.AddSingleton(audit);
+        builder.Services.AddSingleton(httpsMgr);
+        builder.Services.AddSingleton(acmeSvc);
+        if (users.Any) Console.WriteLine($"{users.Count} user{(users.Count == 1 ? "" : "s")}: sign in at /login.html. The access key still works for scripts and Admins." + (authz.LocalExempt ? " This computer (localhost) needs no login." : ""));
+
         var app = builder.Build();
+        oidc.Attach(app.Services);
         var gate = new TunnelGate(tunnelUnavailable == null ? tunnelPort : 0);
         app.Use(gate.Handle);   // first: anything on the tunnel port is marked remote and limited to /s/...
-        app.Use(auth.Handle);
+        app.Use(HttpsRedirect(secSettings, httpsMgr));
+        app.Use(authz.Handle);
+        app.UseWhen(c => c.Request.Path.StartsWithSegments("/signin-oidc") || c.Request.Path.StartsWithSegments("/signout-callback-oidc"), b => b.UseAuthentication());
         app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20) });
         // gzip/brotli for JSON, html, js and the like (the default MIME list; downloads of programs and other
         // binary files are not touched). Compression only applies to a response whose request asks for it, so
@@ -121,6 +165,13 @@ public static class OpenVpServer
         var crash = new CrashSupervisor(processor, stuckCheck: TimeSpan.FromSeconds(1));
         // Who did what and when, kept in data/activity.jsonl (see ActivityLog). "who" is as good as OpenVP can tell today; user accounts will add a name.
         var activity = new ActivityLog(processor.DataDirectory);
+        // Everything in the activity feed is also written to the tamper-evident audit log, with the caller's address (except what OpenVP does on its own at start-up).
+        activity.Added += e =>
+        {
+            if (e.Action is "crash" or "report" or "state" || (e.Action == "restore" && e.Who == Actors.Auto)) return;
+            var cp = Principal.Current;
+            audit.Add(e.Action, e.Text, e.User ?? (e.Who == Actors.Auto ? "auto" : null), cp is { Ip.Length: > 0 } ? cp.Ip : e.Who, e.Slot, e.Detail);
+        };
         crash.Acted += (n, what, why) => activity.Add("crash", $"Slot {n} crashed ({why}): {what}", n, Actors.Auto);
         var checker = new ReadinessChecker(processor.DataDirectory);
         var templates = Templates.Default();
@@ -132,6 +183,8 @@ public static class OpenVpServer
             return Actors.FromAddress(ip?.ToString(), ApiAuth.IsDirectLocal(ctx));
         }
         void Note(HttpContext ctx, string action, string text, int? slot = null, string? detail = null) => activity.Add(action, text, slot, Who(ctx), null, detail);
+        // A caller limited to some slots only sees those in lists.
+        static bool Visible(int n) => Principal.Current?.CanSlot(n) ?? true;
         string Prog(int n) => processor.Slot(n).Runtime?.ProgramName ?? "the program";
         // Program summaries don't change once a program is loaded, so keep them; a SIMPL# program's devices appear when it starts, so ask again.
         var summaries = new System.Runtime.CompilerServices.ConditionalWeakTable<IProgramRuntime, ProgramSummary>();
@@ -171,6 +224,8 @@ public static class OpenVpServer
             file = s.ProgramPath is null ? null : Path.GetFileName(s.ProgramPath),
             error = s.LastError,
             summary = SummaryDto(SummaryOf(s)),
+            locked = slotLocks.Get(s.Number) is { } lk ? Authz.LockDto(lk) : null,
+            presence = presence.ForSlot(s.Number).Select(e => new { name = e.Name, initials = e.Initials, kind = e.Kind, since = e.Since, me = Principal.Current is { } pc && e.Key == Authz.PresenceKey(pc) }),
             alerts = s.Monitor.Oscillation.Recent(DateTimeOffset.Now),
             alertText = s.Monitor.Oscillation.Alerts.FirstOrDefault()?.Message,
             exceptions = s.Exceptions.Count,
@@ -270,28 +325,12 @@ public static class OpenVpServer
 
         // ------------------------------------------------------------------ REST
 
-        app.MapGet("/api/info", (HttpContext ctx) => new
-        {
-            name = "OpenVP", version = "0.1.0", slots = processor.Slots.Count, cipPort = cip?.Port,
-            auth = auth.Enabled, authenticated = auth.IsAuthenticated(ctx)
-        });
-
-        app.MapPost("/api/login", (HttpContext ctx, JsonElement body) =>
-        {
-            var key = body.TryGetProperty("key", out var k) ? k.GetString() : null;
-            if (!auth.Enabled) return Results.Ok();
-            if (!auth.Matches(key)) return Results.Json(new { error = "Wrong access key." }, statusCode: StatusCodes.Status401Unauthorized);
-            auth.SetCookie(ctx, key!);
-            return Results.Ok();
-        });
-        app.MapPost("/api/logout", (HttpContext ctx) => { auth.ClearCookie(ctx); return Results.Ok(); });
-
         // First-run Welcome screen: shown until someone finishes or skips it; remembered for everyone.
         var welcome = new WelcomeState(processor.DataDirectory);
         app.MapGet("/api/welcome", () => new { show = welcome.Show });
         app.MapPost("/api/welcome/dismiss", () => { welcome.Dismiss(); return Results.Ok(new { show = false }); });
 
-        app.MapGet("/api/slots", () => processor.Slots.Select(SlotDto));
+        app.MapGet("/api/slots", () => processor.Slots.Where(s => Visible(s.Number)).Select(SlotDto));
 
         // Everything under /api/slots/{n}: an unknown slot is a 404, not a server error.
         var slotApi = app.MapGroup("/api/slots/{n:int}").AddEndpointFilter(async (ctx, next) =>
@@ -305,6 +344,8 @@ public static class OpenVpServer
 
         // MQTT, outgoing and incoming webhooks, OSC, Art-Net, Prometheus and REST per signal (OpenVP.Core.Integrations).
         var integrations = new OpenVP.Core.Integrations.IntegrationsHost(processor, () => new MqttNetTransport());
+        integrationsHolder = integrations;
+        SecurityEndpoints.Map(app, authz, processor, presence, httpsMgr, acmeSvc, oidc, integrations.Store.Secrets, activity, () => cip?.Port, () => app.Urls.Select(u => Uri.TryCreate(u.Replace("://[::]", "://localhost").Replace("://0.0.0.0", "://localhost").Replace("://+", "://localhost").Replace("://*", "://localhost"), UriKind.Absolute, out var uri) ? uri.Port : 0).Append(tunnelPort));
         IntegrationEndpoints.Map(app, slotApi, processor, integrations, auth, crash, (c, a, t, sl) => Note(c, a, t, sl));
 
         // Alerts, uptime and metrics history, thresholds and health reports (OpenVP.Core.Alerts). OpenVP:Alerts=false turns the lot off.
@@ -421,6 +462,7 @@ public static class OpenVpServer
 
         // Reload a watched slot when its files change. The watch is replaced or stopped by anything else that loads or
         // unloads the slot, so a stale one does nothing.
+        var pendingReloads = new Dictionary<int, (SourceWatch Watch, string[] Chosen)>();
         async Task ReloadAsync(int n, SourceWatch w, string[] chosen)
         {
             await uploadLocks[n - 1].WaitAsync();
@@ -428,6 +470,15 @@ public static class OpenVpServer
             {
                 lock (watches) if (watches[n - 1] != w) return;
                 var slot = processor.Slot(n);
+                // A locked slot is left alone: the change waits and is loaded when the lock ends.
+                if (slotLocks.Get(n) is { } held)
+                {
+                    lock (pendingReloads) pendingReloads[n] = (w, chosen);
+                    slot.Log("Warning", $"{Path.GetFileName(w.Program)} changed on disk, but auto-reload is paused because the slot is locked by {held.By}{(string.IsNullOrEmpty(held.Reason) ? "" : " (" + held.Reason + ")")}. It will reload when the lock ends.");
+                    activity.Add("auto-reload.paused", $"Auto-reload of slot {n} paused: the slot is locked by {held.By}", n, Actors.Auto);
+                    return;
+                }
+                lock (pendingReloads) pendingReloads.Remove(n);
                 slot.Log("Notice", $"{Path.GetFileName(w.Program)} changed on disk; reloading.");
                 LoadFromDisk(n, w.Program, chosen, slot.State != SlotState.Stopped, watch: true, who: Actors.Auto, logAs: "auto-reload");
             }
@@ -438,6 +489,16 @@ public static class OpenVpServer
             catch (Exception e) { processor.Slot(n).Log("Error", $"Reloading {Path.GetFileName(w.Program)} failed: {e.Message}"); }
             finally { uploadLocks[n - 1].Release(); }
         }
+
+        // When a lock ends, load what changed while it was on.
+        slotLocks.Changed += (n, locked) =>
+        {
+            if (locked) return;
+            (SourceWatch Watch, string[] Chosen) pending;
+            lock (pendingReloads) { if (!pendingReloads.Remove(n, out pending)) return; }
+            _ = ReloadAsync(n, pending.Watch, pending.Chosen);
+        };
+        var lockTimer = new Timer(_ => { try { slotLocks.Tick(); } catch { } }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
 
         slotApi.MapPost("/program", async (int n, HttpContext ctx) =>
         {
@@ -762,6 +823,8 @@ public static class OpenVpServer
             }
             var n = a.Slot ?? 0;
             if (!processor.IsValidSlot(n)) throw new InvalidOperationException($"Slot {n} doesn't exist.");
+            // A locked slot isn't changed by a schedule (a manual "Run now" by an Admin or the one who locked it still goes through).
+            if (slotLocks.Blocking(n, trigger == "manual" ? Principal.Current : null) is { } held) throw new ScheduleSkippedException(SlotLocks.Message(held));
             await uploadLocks[n - 1].WaitAsync();
             try
             {
@@ -844,7 +907,7 @@ public static class OpenVpServer
         var ops = new OpsServices
         {
             Processor = processor, Activity = activity, Trash = trash, Snapshots = snapshots, Versions = versions, Profiler = profiler, Backups = backups, Scheduler = scheduler,
-            Targets = pushTargets, PushClient = pushClient, Push = pushManager, Git = git, Exporter = exporter, Importer = importer, Secrets = secretStore, SlotLocks = uploadLocks,
+            Locks = slotLocks, Targets = pushTargets, PushClient = pushClient, Push = pushManager, Git = git, Exporter = exporter, Importer = importer, Secrets = secretStore, SlotLocks = uploadLocks,
             Who = Who, Previews = previews, StopWatching = StopWatching,
             Install = (n, files, start, who, how) => Install(n, files, start, who: who, how: how)
         };
@@ -897,7 +960,7 @@ public static class OpenVpServer
             return new ValidatedJson(GraphJson.For(src, compact));
         });
 
-        slotApi.MapPost("/signals", (int n, JsonElement body) =>
+        slotApi.MapPost("/signals", (int n, HttpContext ctx, JsonElement body) =>
         {
             var slot = processor.Slot(n);
             if (slot.Runtime == null) return Results.NotFound("No program in that slot.");
@@ -906,10 +969,17 @@ public static class OpenVpServer
             var name = nameEl.GetString() ?? "";
             // Pulse: high then low with nothing in between, like a processor's debugger.
             if (body.TryGetProperty("pulse", out var pulseEl) && pulseEl.ValueKind == JsonValueKind.True)
-                return slot.ForcePulse(name) ? Results.Ok() : Results.NotFound($"Unknown or non-digital signal '{name}'.");
+            {
+                if (!slot.ForcePulse(name)) return Results.NotFound($"Unknown or non-digital signal '{name}'.");
+                Note(ctx, "force", $"Pulsed {name} in slot {n}", n);
+                return Results.Ok();
+            }
             if (!body.TryGetProperty("value", out var valueEl))
                 return Results.BadRequest("Send {\"name\": \"...\", \"value\": ...} or {\"name\": \"...\", \"pulse\": true}.");
-            return slot.ForceSignal(name, ValueOf(valueEl)) ? Results.Ok() : Results.NotFound($"Unknown signal '{name}'.");
+            var forced = ValueOf(valueEl);
+            if (!slot.ForceSignal(name, forced)) return Results.NotFound($"Unknown signal '{name}'.");
+            Note(ctx, "force", $"Forced {name} to {forced} in slot {n}", n);
+            return Results.Ok();
         });
 
         // ---- Record and replay: a slot's inputs and the feedback they caused, replayed as a regression test.
@@ -1181,9 +1251,12 @@ public static class OpenVpServer
                 return Results.BadRequest(new { error = "Send the slot numbers as {\"slots\":[1,2]}." });
             var numbers = arr.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.Number && e.TryGetInt32(out _)).Select(e => e.GetInt32()).Distinct().ToList();
             if (numbers.Count == 0 || numbers.Any(x => !processor.IsValidSlot(x))) return Results.BadRequest(new { error = $"Slots must be numbers 1–{processor.Slots.Count}." });
+            if (action == "unload" && Principal.Current is { } bp && !bp.Has(Perm.LoadProgram)) return Results.Json(new { error = "Your account isn't allowed to unload programs." }, statusCode: 403);
             var results = new List<object>();
             foreach (var n in numbers)
             {
+                if (!Visible(n)) { results.Add(new { slot = n, ok = false, error = $"Your account isn't allowed to use slot {n}." }); continue; }
+                if (action != "start" && slotLocks.Blocking(n, Principal.Current) is { } held) { results.Add(new { slot = n, ok = false, locked = true, error = SlotLocks.Message(held) }); continue; }
                 await uploadLocks[n - 1].WaitAsync();
                 try
                 {
@@ -1218,6 +1291,8 @@ public static class OpenVpServer
         {
             var t = trash.Get(id);
             if (t == null) return Results.NotFound(new { error = "That can't be undone any more (it was restored already, or has been in the trash for over 24 hours)." });
+            if (t.Slot is int ts && !Visible(ts)) return Results.Json(new { error = $"Your account isn't allowed to use slot {ts}." }, statusCode: 403);
+            if (t.Slot is int tl && slotLocks.Blocking(tl, Principal.Current) is { } heldBy) return Results.Json(new { error = SlotLocks.Message(heldBy), locked = Authz.LockDto(heldBy) }, statusCode: 423);
             // Files go back into a slot's folders; hold the slot lock so a load in progress can't be mixed up with it.
             var lockSlot = t.Slot is int sn && processor.IsValidSlot(sn) ? uploadLocks[sn - 1] : null;
             if (lockSlot != null) await lockSlot.WaitAsync();
@@ -1328,7 +1403,7 @@ public static class OpenVpServer
         app.MapGet("/api/activity", (int? slot, int? limit) =>
         {
             if (slot is int sn && !processor.IsValidSlot(sn)) return Results.BadRequest(new { error = $"Slot must be 1–{processor.Slots.Count}." });
-            return Results.Ok(activity.Query(slot, limit ?? 200).Select(e => new { time = e.Time, action = e.Action, text = e.Text, slot = e.Slot, who = e.Who, user = e.User, detail = e.Detail }));
+            return Results.Ok(activity.Query(slot, limit ?? 200).Where(e => e.Slot == null || Visible(e.Slot.Value)).Select(e => new { time = e.Time, action = e.Action, text = e.Text, slot = e.Slot, who = e.Who, user = e.User, detail = e.Detail }));
         });
 
         // ---- Try the demo: the SIMPL# sample in slot 1 and the SIMPL Windows sample in slot 2, linked over EISC.
@@ -1349,6 +1424,8 @@ public static class OpenVpServer
             if (occupied.Length > 0 && !replace)
                 return Results.Json(new { error = "Slot 1 or 2 already has a program. Send {\"replace\": true} to replace it.", occupied }, statusCode: 409);
             var who = Who(ctx);
+            foreach (var dn in new[] { 1, 2 })
+                if (slotLocks.Blocking(dn, Principal.Current) is { } dHeld) return Results.Json(new { error = SlotLocks.Message(dHeld), locked = Authz.LockDto(dHeld) }, statusCode: 423);
             var sets = new[]
             {
                 (Slot: 1, Files: new List<(string, byte[])> { ("SampleProgram.dll", File.ReadAllBytes(demoSharp)) }),
@@ -1389,9 +1466,9 @@ public static class OpenVpServer
             ? Results.Ok(new { file = processor.Unsupported.FilePath, items = processor.Unsupported.Items })
             : Results.File(System.Text.Encoding.UTF8.GetBytes(processor.Unsupported.Render()), "text/markdown; charset=utf-8", "unsupported.md"));
 
-        app.MapGet("/api/log", (int? slot, int? max) => processor.RecentLog(slot, max ?? 500));
+        app.MapGet("/api/log", (int? slot, int? max) => processor.RecentLog(slot, max ?? 500).Where(l => Visible(l.Slot)));
 
-        app.MapGet("/api/devices", () => processor.AllDevices.OrderBy(d => d.Slot).ThenBy(d => d.IpId).Select(DeviceDto));
+        app.MapGet("/api/devices", () => processor.AllDevices.Where(d => Visible(d.Slot)).OrderBy(d => d.Slot).ThenBy(d => d.IpId).Select(DeviceDto));
 
         // ------------------------------------------------------------------ WebSockets
 
@@ -1402,21 +1479,37 @@ public static class OpenVpServer
             if (!ctx.WebSockets.IsWebSocketRequest) { ctx.Response.StatusCode = 400; return; }
             int? slot = int.TryParse(ctx.Request.Query["slot"], out var s) ? s : null;
             var wantTrace = ctx.Request.Query["trace"] != "0";   // trace=0: log lines only (the console page)
+            var me = authz.Resolve(ctx);
+            if (slot is int reqSlot && !me.CanSlot(reqSlot)) { ctx.Response.StatusCode = 403; return; }
             using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
             // Raw events go in; the send loop below turns them into JSON, so the slot thread only pays for an enqueue.
             var outbox = Channel.CreateBounded<object>(new BoundedChannelOptions(10_000) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
+            bool Mine(int n) => slot == null ? me.CanSlot(n) : n == slot;   // a slot-limited account only gets its own slots' events
             void OnTrace(TraceEvent e)
             {
-                if (slot == null || e.Slot == slot) outbox.Writer.TryWrite(e);
+                if (Mine(e.Slot)) outbox.Writer.TryWrite(e);
             }
             void OnLog(LogEntry e)
             {
-                if (slot == null || e.Slot == slot) outbox.Writer.TryWrite(e);
+                if (Mine(e.Slot)) outbox.Writer.TryWrite(e);
             }
             void OnStep(ProgramSlot st)
             {
                 // Snapshot now: the stepper's state may have moved on by the time the send loop runs.
-                if (slot == null || st.Number == slot) outbox.Writer.TryWrite(StepDto(st));
+                if (Mine(st.Number)) outbox.Writer.TryWrite(StepDto(st));
+            }
+            // Who else has this slot open, and whether it is locked: pushed on connect and on every change, so the debugger can warn.
+            var myKey = Authz.PresenceKey(me);
+            object PresenceFrame(int sn) => new { t = "presence", slot = sn, people = presence.ForSlot(sn).Select(e => new { name = e.Name, initials = e.Initials, kind = e.Kind, since = e.Since, me = e.Key == myKey }) };
+            object LockFrame(int sn) => new { t = "lock", slot = sn, locked = slotLocks.Get(sn) is { } lf ? Authz.LockDto(lf) : null };
+            void OnPresence(int sn) { if (sn == slot) outbox.Writer.TryWrite(PresenceFrame(sn)); }
+            void OnLock(int sn, bool _) { if (sn == slot) outbox.Writer.TryWrite(LockFrame(sn)); }
+            IDisposable? presenceLease = null;
+            if (slot is int ps && processor.IsValidSlot(ps))
+            {
+                presenceLease = presence.Enter(ps, myKey, Authz.PresenceName(me), wantTrace ? "debugging" : "viewing");
+                presence.Changed += OnPresence; slotLocks.Changed += OnLock;
+                outbox.Writer.TryWrite(PresenceFrame(ps)); outbox.Writer.TryWrite(LockFrame(ps));
             }
             if (wantTrace)
             {
@@ -1458,6 +1551,8 @@ public static class OpenVpServer
                 foreach (var sl in processor.Slots) sl.Traced -= OnTrace;
                 processor.StepChanged -= OnStep;
                 processor.LogWritten -= OnLog;
+                presence.Changed -= OnPresence; slotLocks.Changed -= OnLock;
+                presenceLease?.Dispose();
                 lease?.Dispose();
             }
         });
@@ -1597,7 +1692,7 @@ public static class OpenVpServer
         // Both listeners are off unless enabled. When on they listen on every interface; a login needs the access key as the password.
         var consoleShell = new ConsoleShell(processor);
         var consoleGate = new ConsoleGate { MaxTotal = Math.Clamp(cfg.GetValue("ConsoleMaxConnections", 5), 1, 50), MaxPerAddress = 3 };
-        var consoleAuth = new AccessKeyAuth(() => auth.Enabled ? auth.Key : null);
+        var consoleAuth = new UserConsoleAuth(() => auth.Enabled ? auth.Key : null, users, slotLocks, audit);
         TelnetServer? telnet = null;
         SshConsoleServer? ssh = null;
         string? telnetMessage = null, sshMessage = null;
@@ -1605,7 +1700,7 @@ public static class OpenVpServer
         var sshOn = cfg.GetValue("SshEnabled", false);
         var telnetPort = cfg.GetValue("TelnetPort", 41795);
         var sshPort = cfg.GetValue("SshPort", 22);
-        if ((telnetOn || sshOn) && !auth.Enabled)
+        if ((telnetOn || sshOn) && !auth.Enabled && !users.Any)
         {
             telnetMessage = sshMessage = "Not started: the console needs the access key, and it is switched off (OpenVP:ApiKey=off).";
             Console.WriteLine("Telnet/SSH console not started: " + telnetMessage);
@@ -1655,10 +1750,42 @@ public static class OpenVpServer
         }, (c, a, t, sl) => Note(c, a, t, sl));
 
         app.Lifetime.ApplicationStarted.Register(() => { try { integrations.Start(); } catch (Exception e) { Console.WriteLine("Integrations not started: " + e.Message); } });
-        app.Lifetime.ApplicationStopping.Register(() => { scheduler.Dispose(); backups.Dispose(); git.Dispose(); alerts?.Dispose(); integrations.Dispose(); telnet?.Dispose(); ssh?.Dispose(); mdns?.Dispose(); for (var i = 1; i <= watches.Length; i++) StopWatching(i); tunnel?.Dispose(); cip?.Dispose(); crash.Dispose(); trashTimer.Dispose(); recordings.Dispose(); processor.Dispose(); });
+        app.Lifetime.ApplicationStopping.Register(() => { scheduler.Dispose(); backups.Dispose(); git.Dispose(); alerts?.Dispose(); integrations.Dispose(); telnet?.Dispose(); ssh?.Dispose(); mdns?.Dispose(); for (var i = 1; i <= watches.Length; i++) StopWatching(i); tunnel?.Dispose(); cip?.Dispose(); crash.Dispose(); trashTimer.Dispose(); lockTimer.Dispose(); acmeTimer.Dispose(); tokens.Flush(); recordings.Dispose(); processor.Dispose(); });
         // If the process ends some other way (not a clean stop), still take cloudflared down with it.
         AppDomain.CurrentDomain.ProcessExit += (_, _) => tunnel?.Stop();
         return app;
+    }
+
+    /// <summary>
+    /// With "redirect HTTP to HTTPS" on, a browser opening a page over plain http from another machine is sent to https. Not for this computer (the desktop app
+    /// keeps using http://localhost), and never for the API, WebSockets, webhooks, /healthz, /metrics, shared panels or ACME challenges, whose clients may not follow
+    /// a redirect or would lose their Authorization header. CIP is not HTTP at all and is never touched.
+    /// </summary>
+    public static Func<HttpContext, RequestDelegate, Task> HttpsRedirect(SecuritySettings settings, HttpsManager https) => (ctx, next) =>
+    {
+        if (!https.Listening || ctx.Request.IsHttps || ctx.Items.ContainsKey(TunnelGate.ItemKey)) return next(ctx);
+        if (!(HttpMethods.IsGet(ctx.Request.Method) || HttpMethods.IsHead(ctx.Request.Method)) || !settings.Get().Https.Redirect) return next(ctx);
+        var path = ctx.Request.Path;
+        if (path.StartsWithSegments("/api") || path.StartsWithSegments("/ws") || path.StartsWithSegments("/hooks") || path.StartsWithSegments("/healthz") || path.StartsWithSegments("/metrics")
+            || path.StartsWithSegments("/s") || path.StartsWithSegments("/.well-known") || path.StartsWithSegments("/signin-oidc")) return next(ctx);
+        var ip = ctx.Connection.RemoteIpAddress;
+        if (ip != null && System.Net.IPAddress.IsLoopback(ip)) return next(ctx);
+        var port = https.BoundPort == 443 ? "" : ":" + https.BoundPort;
+        ctx.Response.Redirect($"https://{ctx.Request.Host.Host}{port}{ctx.Request.PathBase}{ctx.Request.Path}{ctx.Request.QueryString}");
+        return Task.CompletedTask;
+    };
+
+    /// <summary>Null if the HTTPS port can be opened (all addresses), else why not.</summary>
+    public static string? CheckHttpsPort(string urls, int port)
+    {
+        foreach (var u in urls.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var probe = u.Replace("://*", "://localhost").Replace("://+", "://localhost").Replace("://[::]", "://localhost");
+            if (Uri.TryCreate(probe, UriKind.Absolute, out var uri) && uri.Port == port) return $"the HTTPS port ({port}) is the console's own port. Choose another.";
+        }
+        try { var l = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Any, port); l.Start(); l.Stop(); }
+        catch (System.Net.Sockets.SocketException) { return $"port {port} is already in use. Choose another HTTPS port."; }
+        return null;
     }
 
     /// <summary>Null if 127.0.0.1:<paramref name="port"/> can be used for the tunnel listener, else why not.</summary>

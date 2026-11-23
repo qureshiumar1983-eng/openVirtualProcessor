@@ -5,7 +5,8 @@ using System.Text;
 namespace OpenVP.Server;
 
 /// <summary>
-/// Access key for the web console, REST API and debugger stream.
+/// Access key for the web console, REST API and debugger stream. This class holds the key and the rules for "is this request from this machine" and "is it from another site";
+/// <see cref="Authz"/> decides who is calling (the key, an API token, a signed-in user, or this computer) and what they may do, and is the middleware.
 ///
 /// Anyone who can call the API can upload a program, and a SIMPL# program is .NET code that runs in this
 /// process, so the API needs a key whenever the server is reachable from other machines. The key comes from
@@ -127,46 +128,4 @@ public sealed class ApiAuth
         });
 
     public void ClearCookie(HttpContext ctx) => ctx.Response.Cookies.Delete(CookieName);
-
-    private bool IsProtected(PathString p, bool panelsRequireKey) =>
-        (!MetricsPublic && p.StartsWithSegments("/metrics"))
-        || (p.StartsWithSegments("/api") && !p.StartsWithSegments("/api/info") && !p.StartsWithSegments("/api/login") && !p.StartsWithSegments("/api/logout"))
-        || p.StartsWithSegments("/ws/trace") || p.StartsWithSegments("/ws/metrics")
-        || (panelsRequireKey && p.StartsWithSegments("/ws/panel"));
-
-    /// <summary>The middleware: <c>?key=</c> login on pages, cross-origin check on WebSockets, 401 on protected paths.</summary>
-    public async Task Handle(HttpContext ctx, RequestDelegate next)
-    {
-        var path = ctx.Request.Path;
-
-        // A page on another site must never drive the API or open the debugger stream, whatever its cookies
-        // or the local exception. (Browsers send cross-site form uploads without a CORS preflight.)
-        if ((IsProtected(path, PanelsRequireKey) || path.StartsWithSegments("/api/login")) && IsCrossOrigin(ctx))
-        {
-            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
-            return;
-        }
-
-        // Opening /?key=KEY (or any page with ?key=) logs the browser in and strips the key from the address bar.
-        if (Enabled && HttpMethods.IsGet(ctx.Request.Method) && !path.StartsWithSegments("/api") && !path.StartsWithSegments("/ws") && !path.StartsWithSegments("/s") && !path.StartsWithSegments("/metrics") && !path.StartsWithSegments("/hooks")
-            && ctx.Request.Query.TryGetValue("key", out var qk))
-        {
-            var rest = string.Join('&', ctx.Request.Query.Where(q => q.Key != "key")
-                .SelectMany(q => q.Value.Select(v => $"{Uri.EscapeDataString(q.Key)}={Uri.EscapeDataString(v ?? "")}")));
-            if (Matches(qk.ToString())) SetCookie(ctx, qk.ToString());
-            ctx.Response.Redirect(path + (rest.Length > 0 ? "?" + rest : "") + (Matches(qk.ToString()) ? "" : (rest.Length > 0 ? "&" : "?") + "badkey=1"));
-            return;
-        }
-
-        if (IsProtected(path, PanelsRequireKey) && !IsAuthenticated(ctx))
-        {
-            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            ctx.Response.Headers.WWWAuthenticate = "Bearer realm=\"OpenVP\"";
-            if (!path.StartsWithSegments("/ws"))
-                await ctx.Response.WriteAsJsonAsync(new { error = "OpenVP access key required. Log in on the web console, or send it as 'Authorization: Bearer KEY'." });
-            return;
-        }
-
-        await next(ctx);
-    }
 }

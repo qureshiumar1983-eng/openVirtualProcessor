@@ -23,6 +23,8 @@ public sealed class OpsServices
     public required ProcessorImporter Importer { get; init; }
     public required SecretStore Secrets { get; init; }
     public required SemaphoreSlim[] SlotLocks { get; init; }
+    /// <summary>"Live event, don't touch" locks: an import skips a locked slot unless the caller is an Admin or made the lock.</summary>
+    public required OpenVP.Core.Security.SlotLocks Locks { get; init; }
     public required Func<HttpContext, string> Who { get; init; }
     public required ImportPreviews Previews { get; init; }
     /// <summary>Loads files (the program first) into a slot as an upload. Call with the slot's lock held.</summary>

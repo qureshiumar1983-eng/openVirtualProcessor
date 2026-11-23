@@ -21,6 +21,8 @@ services:
     ports:
       - "8080:8080"               # web console and REST API
       - "41794:41794"             # CIP, for real touch panels and XPanel (experimental)
+      # - "8443:8443"             # HTTPS: make or upload a certificate on the Security page, tick "Serve the console over HTTPS", restart once
+      # - "80:8080"               # only for Let's Encrypt (ACME HTTP-01): Let's Encrypt must reach port 80
       # - "41795:41795"           # telnet console; also set OpenVP__TelnetEnabled below
       # - "22:22"                 # SSH console; also set OpenVP__SshEnabled below (frees port 22 on the host first)
     environment:

@@ -81,7 +81,7 @@ public sealed class SshConsoleServer : IDisposable
             try { session.Disconnect(DisconnectReason.TooManyConnections, "Too many console sessions are open."); } catch { }
             return;
         }
-        string? user = null;
+        string? user = null; IConsoleAccess? access = null;
         ConsoleConnection? conn = null;
         Timer? idle = null;
         var closed = 0;
@@ -101,7 +101,7 @@ public sealed class SshConsoleServer : IDisposable
                     if (a.AuthMethod != "password") { a.Result = false; return; }
                     var r = _auth.Authenticate(a.Username, a.Password ?? "", remote);
                     a.Result = r.Ok;
-                    if (r.Ok) { user = r.User; _log($"SSH console: {r.User} logged in from {remote}"); }
+                    if (r.Ok) { user = r.User; access = r.Access; _log($"SSH console: {r.User} logged in from {remote}"); }
                     else { _log($"SSH console: wrong password from {remote}"); Thread.Sleep(1000); }
                 };
             }
@@ -112,7 +112,7 @@ public sealed class SshConsoleServer : IDisposable
                     if (a.ShellType is not ("shell" or "exec")) { a.Agreed = false; return; }
                     a.Agreed = true;
                     var ch = a.Channel;
-                    var info = new ConsoleSession { Remote = remote, Transport = "ssh", User = user };
+                    var info = new ConsoleSession { Remote = remote, Transport = "ssh", User = user, Access = access };
                     void Send(string text) { try { ch.SendData(Encoding.UTF8.GetBytes(text)); } catch { } }
                     if (a.ShellType == "exec")
                     {

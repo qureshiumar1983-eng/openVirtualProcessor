@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using OpenVP.Core;
+using OpenVP.Core.Security;
 using OpenVP.Lpz;
 using OpenVP.Simpl;
 using OpenVP.SimplSharpHost;
@@ -261,6 +262,7 @@ internal static class DebugEndpoints
 
         app.MapGet("/api/search/signals", (string? q, int? max) =>
             SignalSearch.Find(processor, q ?? "", Math.Clamp(max ?? 50, 1, 200))
+                .Where(h => Principal.Current?.CanSlot(h.Slot) ?? true)
                 .Select(h => new { slot = h.Slot, program = h.Program, signal = h.Signal, kind = h.Kind, value = h.Value }));
 
         // ------------------------------------------------------------------ support bundle

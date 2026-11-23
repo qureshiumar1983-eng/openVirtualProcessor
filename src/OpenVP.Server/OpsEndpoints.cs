@@ -146,6 +146,16 @@ public static class OpsEndpoints
                 // Look before locking: a bad file or password is reported without touching any slot.
                 var preview = s.Importer.Preview(path, req.RestoreSecrets ? req.Password : null);
                 var affected = preview.Slots.Where(p => slots == null || slots.Contains(p.Slot)).Select(p => p.Slot).Order().ToList();
+                // A locked slot, or one this account can't use, is left as it is; the rest of the import goes ahead.
+                var skipped = new List<string>();
+                foreach (var n in affected.ToList())
+                {
+                    if (OpenVP.Core.Security.Principal.Current is { } who && !who.CanSlot(n)) skipped.Add($"Slot {n} was skipped: your account isn't allowed to use it.");
+                    else if (s.Locks.Blocking(n, F("overrideLock") ? OpenVP.Core.Security.Principal.Current : null) is { } held) skipped.Add($"Slot {n} was skipped: " + OpenVP.Core.Security.SlotLocks.Message(held) + " An Admin can import into it by sending overrideLock: true.");
+                    else continue;
+                    affected.Remove(n);
+                }
+                if (skipped.Count > 0) req = req with { Slots = affected };
                 foreach (var n in affected) await s.SlotLocks[n - 1].WaitAsync();
                 ImportResult result;
                 try { result = await Task.Run(() => s.Importer.Apply(path, req)); }
@@ -154,7 +164,7 @@ public static class OpsEndpoints
                 consume = true;
                 s.Activity.Add(req.How, $"{(req.How == "restore" ? "Restored" : "Imported")} {ok} slot{(ok == 1 ? "" : "s")} from {(preview.Machine is { Length: > 0 } m ? "an export made on " + m : "an export file")}{(result.SettingsReplaced ? " and replaced the processor settings" : "")}", null, req.Who,
                     null, string.Join("; ", result.Slots.Select(x => $"slot {x.Slot}: {x.Message}")));
-                return Results.Ok(new { slots = result.Slots, settingsReplaced = result.SettingsReplaced, secretsRestored = result.SecretsRestored, warnings = result.Warnings });
+                return Results.Ok(new { slots = result.Slots, settingsReplaced = result.SettingsReplaced, secretsRestored = result.SecretsRestored, warnings = skipped.Concat(result.Warnings).ToList() });
             }
             catch (ArchiveException e) { if (e.Code is not ("wrong-password" or "need-password")) consume = true; return Archive(e); }
             catch (ArgumentException e) { return Error(400, e.Message); }
