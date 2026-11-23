@@ -283,7 +283,29 @@ namespace Crestron.SimplSharp.CrestronSockets
 
         public SocketErrorCodes EnableUDPServer(string address, int port) { AddressToAcceptConnectionFrom = address; PortNumber = port; LocalPort = port; return EnableUDPServer(); }
         public SocketErrorCodes EnableUDPServer(Crestron.SimplSharp.IPAddress address, int port) => EnableUDPServer(address.ToString(), port);
-        public SocketErrorCodes EnableUDPServer(Crestron.SimplSharp.IPAddress address, int port, int localPort) { LocalPort = localPort; AddressToAcceptConnectionFrom = address.ToString(); PortNumber = port; return EnableUDPServer(); }
+        /// <summary>Listen on <paramref name="localPort"/>; send to <paramref name="address"/>:<paramref name="remotePort"/>.</summary>
+        public SocketErrorCodes EnableUDPServer(string address, int localPort, int remotePort) { LocalPort = localPort; AddressToAcceptConnectionFrom = address; PortNumber = remotePort; return EnableUDPServer(); }
+        public SocketErrorCodes EnableUDPServer(Crestron.SimplSharp.IPAddress address, int localPort, int remotePort) => EnableUDPServer(address.ToString(), localPort, remotePort);
+        public SocketStatus ServerStatus => _udp == null ? SocketStatus.SOCKET_STATUS_NO_CONNECT : SocketStatus.SOCKET_STATUS_CONNECTED;
+        public bool DataAvailable => _udp?.Available > 0;
+        public int LocalPortNumber => (_udp?.Client.LocalEndPoint as System.Net.IPEndPoint)?.Port ?? 0;
+
+        /// <summary>Blocks until a datagram arrives; returns its length (0 when the server is disabled).</summary>
+        public int ReceiveData()
+        {
+            if (_udp == null) return 0;
+            try
+            {
+                System.Net.IPEndPoint from = null;
+                var bytes = _udp.Receive(ref from);
+                IncomingDataBuffer = bytes;
+                IPAddressLastMessageReceivedFrom = from.Address.ToString();
+                IPPortLastMessageReceivedFrom = from.Port;
+                _rec?.Received(bytes, 0, bytes.Length);
+                return bytes.Length;
+            }
+            catch (Exception) { return 0; }
+        }
 
         public SocketErrorCodes DisableUDPServer() { _udp?.Dispose(); _udp = null; _rec?.Close("closed"); return SocketErrorCodes.SOCKET_OK; }
 

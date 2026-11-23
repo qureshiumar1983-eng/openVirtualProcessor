@@ -38,6 +38,8 @@ namespace Crestron.SimplSharp.CrestronSockets
             public int Received;
             public SocketStatus Status = SocketStatus.SOCKET_STATUS_CONNECTED;
             public SocketRecord Rec;
+            /// <summary>1 while a Receive is waiting on the stream; the closed-connection check leaves such a connection alone.</summary>
+            public int Reading;
         }
 
         private TcpListener _listener;
@@ -45,6 +47,7 @@ namespace Crestron.SimplSharp.CrestronSockets
         internal readonly ConcurrentDictionary<uint, Conn> Clients = new ConcurrentDictionary<uint, Conn>();
         private readonly int _bufferSize;
         private Action<uint> _alwaysCallback;
+        private Timer _watch;
 
         protected TcpServerBase(string address, int port, int bufferSize, int maxClients)
         {
@@ -98,6 +101,7 @@ namespace Crestron.SimplSharp.CrestronSockets
                 _listener.Start();
                 _listenRec = OpenVPBridge.Sock(this is SecureTCPServer ? "SecureTCPServer" : "TCPServer", "server", "tcp", $"0.0.0.0:{PortNumber}", "");
                 _listenRec?.Connected();
+                _watch ??= new Timer(_ => CheckClosed(), null, 250, 250);
                 return true;
             }
             catch (Exception e)
@@ -111,6 +115,7 @@ namespace Crestron.SimplSharp.CrestronSockets
         private uint? Accept(string fromAddress)
         {
             if (!EnsureListening()) return null;
+            if (string.IsNullOrEmpty(fromAddress)) fromAddress = AddressToAcceptConnectionFrom; // the constructor's address: only that client may connect
             while (true)
             {
                 TcpClient tcp;
@@ -120,7 +125,12 @@ namespace Crestron.SimplSharp.CrestronSockets
                 if (Clients.Count >= MaxNumberOfClientSupported) { tcp.Dispose(); continue; }
                 tcp.NoDelay = !Nagle;
                 System.IO.Stream stream;
-                try { stream = Wrap(tcp.GetStream()); }
+                try
+                {
+                    tcp.ReceiveTimeout = 10000; // a client that connects and never speaks must not hold the accept loop
+                    stream = Wrap(tcp.GetStream());
+                    tcp.ReceiveTimeout = 0;
+                }
                 catch (Exception e) { OpenVPBridge.Log("Warning", "TLS handshake failed: " + e.Message); tcp.Dispose(); continue; }
                 uint index = 1;
                 while (Clients.ContainsKey(index)) index++;
@@ -134,6 +144,8 @@ namespace Crestron.SimplSharp.CrestronSockets
 
         protected SocketErrorCodes WaitSync(string from, ref uint index)
         {
+            if (Clients.Count >= MaxNumberOfClientSupported) return SocketErrorCodes.SOCKET_MAX_CONNECTIONS_REACHED;
+            if (!EnsureListening()) return SocketErrorCodes.SOCKET_INVALID_PORT_NUMBER;
             var i = Accept(from);
             if (i == null) return SocketErrorCodes.SOCKET_CONNECTION_IN_PROGRESS;
             index = i.Value;
@@ -142,6 +154,7 @@ namespace Crestron.SimplSharp.CrestronSockets
 
         protected SocketErrorCodes WaitAsync(string from, Action<uint> callback)
         {
+            if (Clients.Count >= MaxNumberOfClientSupported) return SocketErrorCodes.SOCKET_MAX_CONNECTIONS_REACHED;
             if (!EnsureListening()) return SocketErrorCodes.SOCKET_INVALID_PORT_NUMBER;
             Task.Run(() => { var i = Accept(from); if (i != null) Post(() => callback(i.Value)); });
             return SocketErrorCodes.SOCKET_OPERATION_PENDING;
@@ -171,15 +184,33 @@ namespace Crestron.SimplSharp.CrestronSockets
         {
             var c = Get(i);
             if (c == null) return 0;
+            System.Threading.Interlocked.Exchange(ref c.Reading, 1);
             try
             {
                 var n = c.Stream.Read(c.Buffer, 0, c.Buffer.Length);
+                System.Threading.Interlocked.Exchange(ref c.Reading, 0);
                 if (n <= 0) { Drop(i, SocketStatus.SOCKET_STATUS_BROKEN_REMOTELY); return 0; }
                 c.Received = n;
                 c.Rec?.Received(c.Buffer, 0, n);
                 return n;
             }
-            catch { Drop(i, SocketStatus.SOCKET_STATUS_BROKEN_REMOTELY); return 0; }
+            catch { System.Threading.Interlocked.Exchange(ref c.Reading, 0); Drop(i, SocketStatus.SOCKET_STATUS_BROKEN_REMOTELY); return 0; }
+        }
+
+        /// <summary>A client that went away while the program wasn't reading from it is noticed here, so the program still gets its status event.</summary>
+        private void CheckClosed()
+        {
+            foreach (var kv in Clients)
+            {
+                var c = kv.Value;
+                if (Volatile.Read(ref c.Reading) != 0) continue;
+                try
+                {
+                    var sock = c.Tcp.Client;
+                    if (sock.Poll(0, SelectMode.SelectRead) && sock.Available == 0 && Volatile.Read(ref c.Reading) == 0) Drop(kv.Key, SocketStatus.SOCKET_STATUS_BROKEN_REMOTELY);
+                }
+                catch (Exception) { Drop(kv.Key, SocketStatus.SOCKET_STATUS_BROKEN_REMOTELY); }
+            }
         }
 
         protected SocketErrorCodes ReceiveAsync(uint i, Action<uint, int> callback)
@@ -217,7 +248,7 @@ namespace Crestron.SimplSharp.CrestronSockets
         public SocketErrorCodes Disconnect() => Disconnect(FirstIndex);
         public SocketErrorCodes Disconnect(uint i) { Drop(i, SocketStatus.SOCKET_STATUS_NO_CONNECT); return SocketErrorCodes.SOCKET_OK; }
         public void DisconnectAll() { foreach (var k in Clients.Keys.ToList()) Disconnect(k); }
-        public void Stop() { DisconnectAll(); try { _listener?.Stop(); } catch { } _listener = null; _alwaysCallback = null; _listenRec?.Close("stopped"); _listenRec = null; }
+        public void Stop() { _watch?.Dispose(); _watch = null; DisconnectAll(); try { _listener?.Stop(); } catch { } _listener = null; _alwaysCallback = null; _listenRec?.Close("stopped"); _listenRec = null; }
         public void HandleLinkLoss() { }
         public void HandleLinkUp() { }
         public void Dispose() { Stop(); OpenVPBridge.Untrack(this); }
@@ -227,6 +258,9 @@ namespace Crestron.SimplSharp.CrestronSockets
     {
         public TCPServer(int port) : this("0.0.0.0", port, 4096, EthernetAdapterType.EthernetUnknownAdapter, 1) { }
         public TCPServer(int port, int maxClients) : this("0.0.0.0", port, 4096, EthernetAdapterType.EthernetUnknownAdapter, maxClients) { }
+        public TCPServer(int port, int bufferSize, EthernetAdapterType adapter, int maxClients) : this("0.0.0.0", port, bufferSize, adapter, maxClients) { }
+        public TCPServer(string address, int port, int bufferSize, int maxClients) : this(address, port, bufferSize, EthernetAdapterType.EthernetUnknownAdapter, maxClients) { }
+        public TCPServer(Crestron.SimplSharp.IPAddress address, int port, int bufferSize, EthernetAdapterType adapter, int maxClients) : this(address.ToString(), port, bufferSize, adapter, maxClients) { }
         public TCPServer(string address, int port, int bufferSize) : this(address, port, bufferSize, EthernetAdapterType.EthernetUnknownAdapter, 1) { }
         public TCPServer(string address, int port, int bufferSize, EthernetAdapterType adapter) : this(address, port, bufferSize, adapter, 1) { }
         public TCPServer(string address, int port, int bufferSize, EthernetAdapterType adapter, int maxClients) : base(address, port, bufferSize, maxClients) { EthernetAdapterToBindTo = adapter; }
@@ -281,6 +315,9 @@ namespace Crestron.SimplSharp.CrestronSockets
 
         public SecureTCPServer(int port) : this("0.0.0.0", port, 4096, EthernetAdapterType.EthernetUnknownAdapter, 1) { }
         public SecureTCPServer(int port, int maxClients) : this("0.0.0.0", port, 4096, EthernetAdapterType.EthernetUnknownAdapter, maxClients) { }
+        public SecureTCPServer(int port, int bufferSize, EthernetAdapterType adapter, int maxClients) : this("0.0.0.0", port, bufferSize, adapter, maxClients) { }
+        public SecureTCPServer(string address, int port, int bufferSize, int maxClients) : this(address, port, bufferSize, EthernetAdapterType.EthernetUnknownAdapter, maxClients) { }
+        public SecureTCPServer(Crestron.SimplSharp.IPAddress address, int port, int bufferSize, EthernetAdapterType adapter, int maxClients) : this(address.ToString(), port, bufferSize, adapter, maxClients) { }
         public SecureTCPServer(string address, int port, int bufferSize) : this(address, port, bufferSize, EthernetAdapterType.EthernetUnknownAdapter, 1) { }
         public SecureTCPServer(string address, int port, int bufferSize, EthernetAdapterType adapter) : this(address, port, bufferSize, adapter, 1) { }
         public SecureTCPServer(string address, int port, int bufferSize, EthernetAdapterType adapter, int maxClients) : base(address, port, bufferSize, maxClients) { EthernetAdapterToBindTo = adapter; }

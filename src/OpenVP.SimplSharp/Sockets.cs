@@ -61,6 +61,10 @@ namespace Crestron.SimplSharp.CrestronSockets
 
         public TCPClient(string addressToConnectTo, int portNumber, int bufferSize, Crestron.SimplSharp.EthernetAdapterType adapter)
             : this(addressToConnectTo, portNumber, bufferSize) { }
+        public TCPClient(Crestron.SimplSharp.IPAddress address, int portNumber, int bufferSize)
+            : this(address?.ToString(), portNumber, bufferSize) { }
+        public TCPClient(Crestron.SimplSharp.IPAddress address, int portNumber, int bufferSize, Crestron.SimplSharp.EthernetAdapterType adapter)
+            : this(address?.ToString(), portNumber, bufferSize) { }
 
         public string AddressClientConnectedTo { get; set; }
         public int PortNumber { get; set; }
@@ -69,27 +73,41 @@ namespace Crestron.SimplSharp.CrestronSockets
         public int SocketSendOrReceiveTimeOutInMs { get; set; }
         public SocketStatus ClientStatus => _status;
         public bool DataAvailable => _stream?.DataAvailable ?? false;
+        public int LocalPortNumberOfClient => (_client?.Client?.LocalEndPoint as System.Net.IPEndPoint)?.Port ?? 0;
+        public string LocalAddressOfClient => (_client?.Client?.LocalEndPoint as System.Net.IPEndPoint)?.Address.ToString() ?? "";
 
         public event TCPClientSocketStatusChangeEventHandler SocketStatusChange;
 
         public SocketErrorCodes ConnectToServer()
         {
+            if (_status == SocketStatus.SOCKET_STATUS_CONNECTED) return SocketErrorCodes.SOCKET_INVALID_STATE;
+            if (string.IsNullOrWhiteSpace(AddressClientConnectedTo)) return SocketErrorCodes.SOCKET_NO_HOSTNAME_RESOLVE;
+            if (PortNumber < 1 || PortNumber > 65535) return SocketErrorCodes.SOCKET_INVALID_PORT_NUMBER;
             try
             {
                 Open();
                 var go = OpenVPBridge.Redirect(AddressClientConnectedTo, PortNumber);
                 if (go.Redirected && _rec != null) _rec.RedirectedTo = $"{go.Host}:{go.Port}";
-                _client.Connect(go.Host, go.Port);
+                var connect = _client.ConnectAsync(go.Host, go.Port);
+                if (SocketSendOrReceiveTimeOutInMs > 0 && !connect.Wait(SocketSendOrReceiveTimeOutInMs))
+                {
+                    try { _client.Dispose(); } catch { }
+                    throw new TimeoutException();
+                }
+                connect.GetAwaiter().GetResult();
                 Connected();
                 return SocketErrorCodes.SOCKET_OK;
             }
-            catch (Exception)
+            catch (Exception e)
             {
                 _rec?.Close("connect failed");
-                SetStatus(SocketStatus.SOCKET_STATUS_CONNECT_FAILED);
-                return SocketErrorCodes.SOCKET_CONNECT_FAILED;
+                var dns = Unwrap(e) is SocketException { SocketErrorCode: SocketError.HostNotFound or SocketError.NoData or SocketError.TryAgain };
+                SetStatus(dns ? SocketStatus.SOCKET_STATUS_DNS_FAILED : SocketStatus.SOCKET_STATUS_CONNECT_FAILED);
+                return dns ? SocketErrorCodes.SOCKET_NO_HOSTNAME_RESOLVE : SocketErrorCodes.SOCKET_CONNECT_FAILED;
             }
         }
+
+        private static Exception Unwrap(Exception e) => e is AggregateException { InnerException: { } i } ? i : e;
 
         public SocketErrorCodes ConnectToServerAsync(TCPClientConnectCallback callback)
         {
@@ -100,7 +118,11 @@ namespace Crestron.SimplSharp.CrestronSockets
             if (go.Redirected && _rec != null) _rec.RedirectedTo = $"{go.Host}:{go.Port}";
             _client.ConnectAsync(go.Host, go.Port).ContinueWith(t =>
             {
-                if (t.IsFaulted) { _rec?.Close("connect failed"); SetStatus(SocketStatus.SOCKET_STATUS_CONNECT_FAILED); }
+                if (t.IsFaulted)
+                {
+                    _rec?.Close("connect failed");
+                    SetStatus(Unwrap(t.Exception) is SocketException { SocketErrorCode: SocketError.HostNotFound or SocketError.NoData or SocketError.TryAgain } ? SocketStatus.SOCKET_STATUS_DNS_FAILED : SocketStatus.SOCKET_STATUS_CONNECT_FAILED);
+                }
                 else Connected();
                 if (callback != null) OpenVPBridge.Post(() => callback(this));
             });
