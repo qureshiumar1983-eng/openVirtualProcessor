@@ -7,7 +7,7 @@
 //   - Dev (`npm start`): runs the server from source with `dotnet watch`, serves the web pages straight from
 //     src/OpenVP.Server/wwwroot, and reloads the windows when a page changes or the server restarts after a
 //     C# change. Needs the .NET 8 SDK.
-const { app, BrowserWindow, Menu, Tray, Notification, nativeImage, dialog, shell } = require('electron');
+const { app, BrowserWindow, Menu, Tray, Notification, nativeImage, dialog, shell, powerSaveBlocker } = require('electron');
 const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const http = require('http');
@@ -21,6 +21,18 @@ const PORT = 8080;
 const BASE = `http://localhost:${PORT}/`;
 
 const DEV = !app.isPackaged;
+
+// Kiosk: `OpenVP.exe --kiosk` opens the generated panel full screen with no menu, window frame or tray; `--kiosk=panel.html?ipid=03&slot=1`
+// (or any other page of the local OpenVP server) opens that instead. The page's hidden exit (five taps in the top-left corner)
+// leaves kiosk mode and the window returns to normal. Needs a screen to test, so it has not been run on real hardware.
+const KIOSK_PAGE = (() => {
+  const a = process.argv.find(x => x === '--kiosk' || x.startsWith('--kiosk='));
+  if (!a) return null;
+  const v = (a.includes('=') ? a.slice(a.indexOf('=') + 1) : '').trim().replace(/^\/+/, '');
+  return v && !/^[a-z][a-z0-9+.-]*:/i.test(v) ? v : 'autopanel.html';   // only a page of this server, never another site
+})();
+const kioskUrl = () => { const u = new URL(KIOSK_PAGE, BASE); u.searchParams.set('kiosk', '1'); return u.toString(); };
+let sleepBlocker = null;
 const SERVER_SRC = path.join(__dirname, '..', 'src', 'OpenVP.Server');
 const WWWROOT_SRC = path.join(SERVER_SRC, 'wwwroot');
 
@@ -184,6 +196,7 @@ function openPopup(url, name) {
 function createWindow(width, height) {
   const win = new BrowserWindow({
     width, height,
+    ...(KIOSK_PAGE ? { kiosk: true, fullscreen: true, frame: false } : {}),
     title: 'OpenVP',
     backgroundColor: '#202020',
     autoHideMenuBar: true,
@@ -192,12 +205,19 @@ function createWindow(width, height) {
     webPreferences: { contextIsolation: true, sandbox: true, preload: path.join(__dirname, 'preload.js') },
   });
   wire(win);
+  if (KIOSK_PAGE) {
+    // The page left kiosk mode (its exit gesture): give the window its frame and menu back.
+    const left = (_e, url) => { try { if (new URL(url).searchParams.get('kiosk') === '0') { win.setKiosk(false); win.setFullScreen(false); win.setAutoHideMenuBar(false); if (sleepBlocker !== null) { powerSaveBlocker.stop(sleepBlocker); sleepBlocker = null; } } } catch { } };
+    win.webContents.on('did-navigate', left);
+    win.webContents.on('did-navigate-in-page', left);
+  }
   return win;
 }
 
 async function start() {
   loadPrefs();
   setMenu();
+  if (KIOSK_PAGE) sleepBlocker = powerSaveBlocker.start('prevent-display-sleep');
   mainWindow = createWindow(1280, 860);
   // With "keep running in the tray" on, closing the window only hides it; OpenVP (and its programs) keep running until Quit in the tray menu.
   mainWindow.on('close', e => { if (!quitting && prefs.closeToTray && tray) { e.preventDefault(); mainWindow.hide(); } });
@@ -216,9 +236,10 @@ async function start() {
     }
   }
   if (!mainWindow) return;
-  mainWindow.loadURL(BASE);
+  mainWindow.loadURL(KIOSK_PAGE ? kioskUrl() : BASE);
   startAlerts();
   if (DEV) watchForChanges();
+  else if (KIOSK_PAGE) { /* no update pop-ups on a kiosk screen */ }
   else updater.start({ getWindow: () => mainWindow, beforeRestart: restartInto });
 }
 
