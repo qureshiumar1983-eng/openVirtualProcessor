@@ -13,8 +13,9 @@ namespace OpenVP.SimplSharp.SshCore
     /// <summary>
     /// A small SSH-2 client (RFC 4253/4252/4254), enough for control-system use: key exchange
     /// (ecdh-sha2-nistp256, diffie-hellman-group14-sha256/sha1, group1-sha1), aes128/256-ctr and -cbc,
-    /// hmac-sha2-256 / hmac-sha1, password and keyboard-interactive authentication, and one interactive
-    /// shell channel. Host keys are reported to the caller rather than verified against a known-hosts list.
+    /// hmac-sha2-256 / hmac-sha1, password, keyboard-interactive and public-key (RSA, ECDSA) authentication, and any
+    /// number of session channels (shells and commands). Host keys are reported to the caller rather than verified
+    /// against a known-hosts list.
     /// </summary>
     internal sealed class SshConnection : IDisposable
     {
@@ -30,22 +31,34 @@ namespace OpenVP.SimplSharp.SshCore
         private Thread _reader;
         private volatile bool _closed;
 
-        private uint _remoteChannel;
-        private uint _remoteWindow;
-        private uint _remoteMaxPacket = 32768;
-        private uint _localWindow = 1024 * 1024;
-        private readonly AutoResetEvent _channelReply = new AutoResetEvent(false);
-        private bool _channelOk;
+        private readonly object _chGate = new object();
+        private readonly Dictionary<uint, SshChannel> _channels = new Dictionary<uint, SshChannel>();
+        private uint _nextChannel;
+        private SshChannel _primary;
 
         public event Action<byte[]> DataReceived;
         public event Action<Exception> Closed;
+        /// <summary>The server's pre-login banner, if it sent one.</summary>
+        public event Action<string> Banner;
         public Func<byte[], byte[], bool> HostKeyCheck; // (hostKey, md5 fingerprint) -> trust
         public Func<string, string, IList<(string prompt, bool echo)>, IList<string>> KeyboardInteractive;
+        public string ServerVersion { get; private set; }
         public bool IsConnected => !_closed && _tcp?.Connected == true;
 
         // ------------------------------------------------------------------ connect
 
+        /// <summary>Connects and logs in with a password (and keyboard-interactive if the server asks for it). Kept for the IP table's console read.</summary>
         public void Connect(string host, int port, string user, string password, bool tryKeyboardInteractive, TimeSpan timeout)
+        {
+            Open(host, port, timeout);
+            var ok = password != null && AuthPassword(user, password);
+            if (!ok && tryKeyboardInteractive) ok = AuthKeyboardInteractive(user, password);
+            if (!ok) throw new SshAuthFailed("SSH authentication failed");
+            LoggedIn();
+        }
+
+        /// <summary>TCP connect, version exchange, key exchange and the request for the user-authentication service.</summary>
+        public void Open(string host, int port, TimeSpan timeout)
         {
             _tcp = new TcpClient();
             if (!_tcp.ConnectAsync(host, port).Wait(timeout)) throw new TimeoutException($"SSH connect to {host}:{port} timed out");
@@ -54,9 +67,18 @@ namespace OpenVP.SimplSharp.SshCore
             _net.ReadTimeout = (int)timeout.TotalMilliseconds;
 
             var serverVersion = ExchangeVersions();
+            ServerVersion = serverVersion;
             KeyExchange(serverVersion);
-            Authenticate(user, password, tryKeyboardInteractive);
+            var s = new Writer(); s.Byte(5); s.String("ssh-userauth"); SendPacket(s.ToArray());
+            ExpectPacket(6);
+        }
+
+        /// <summary>Authentication is over: start reading the session.</summary>
+        public void LoggedIn()
+        {
             _net.ReadTimeout = Timeout.Infinite;
+            _reader = new Thread(ReadLoop) { IsBackground = true, Name = "ssh-reader" };
+            _reader.Start();
         }
 
         private string ExchangeVersions()
@@ -192,89 +214,195 @@ namespace OpenVP.SimplSharp.SshCore
             "EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED" +
             "EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE65381FFFFFFFFFFFFFFFF";
 
+
         // ------------------------------------------------------------------ authentication
 
-        private void Authenticate(string user, string password, bool tryKeyboardInteractive)
+        /// <summary>One authentication attempt: true on success. A refusal returns false so the caller can try another method.</summary>
+        private bool Attempt(Writer request, Func<byte[], byte[]> onInfo = null)
         {
-            var s = new Writer(); s.Byte(5); s.String("ssh-userauth"); SendPacket(s.ToArray());
-            ExpectPacket(6);
-
-            var a = new Writer(); a.Byte(50); a.String(user); a.String("ssh-connection"); a.String("password"); a.Bool(false); a.String(password ?? "");
-            SendPacket(a.ToArray());
-            var triedKbd = false;
+            SendPacket(request.ToArray());
             while (true)
             {
                 var p = ReadPacket();
                 switch (p[0])
                 {
-                    case 52: return; // success
-                    case 53: continue; // banner
-                    case 51:
-                        var methods = new Reader(p) { Pos = 1 }.NameList();
-                        if (!triedKbd && methods.Contains("keyboard-interactive"))
-                        {
-                            triedKbd = true;
-                            var k = new Writer(); k.Byte(50); k.String(user); k.String("ssh-connection"); k.String("keyboard-interactive"); k.String(""); k.String("");
-                            SendPacket(k.ToArray());
-                            continue;
-                        }
-                        throw new IOException("SSH authentication failed");
+                    case 52: return true;
+                    case 53: var b = new Reader(p) { Pos = 1 }; Banner?.Invoke(Encoding.UTF8.GetString(b.String())); continue;
+                    case 51: return false;
                     case 60:
-                        var r = new Reader(p) { Pos = 1 };
-                        var name = Encoding.UTF8.GetString(r.String()); var instruction = Encoding.UTF8.GetString(r.String()); r.String();
-                        var n = (int)r.UInt();
-                        var prompts = new List<(string, bool)>();
-                        for (int i = 0; i < n; i++) prompts.Add((Encoding.UTF8.GetString(r.String()), r.Bool()));
-                        var answers = KeyboardInteractive?.Invoke(name, instruction, prompts) ?? prompts.Select(_ => password ?? "").ToList();
-                        var resp = new Writer(); resp.Byte(61); resp.UInt((uint)answers.Count);
-                        foreach (var ans in answers) resp.String(ans ?? "");
-                        SendPacket(resp.ToArray());
+                        var reply = onInfo?.Invoke(p);
+                        if (reply == null) return false;
+                        SendPacket(reply);
                         continue;
+                    case 1: throw new IOException("SSH server disconnected: " + Encoding.UTF8.GetString(new Reader(p) { Pos = 5 }.String()));
                     default: continue;
                 }
             }
         }
 
-        // ------------------------------------------------------------------ shell channel
+        public bool AuthPassword(string user, string password)
+        {
+            var a = new Writer(); a.Byte(50); a.String(user); a.String("ssh-connection"); a.String("password"); a.Bool(false); a.String(password ?? "");
+            return Attempt(a); // a "password change required" reply (60) is a refusal
+        }
 
+        public bool AuthKeyboardInteractive(string user, string fallbackPassword)
+        {
+            var k = new Writer(); k.Byte(50); k.String(user); k.String("ssh-connection"); k.String("keyboard-interactive"); k.String(""); k.String("");
+            return Attempt(k, p =>
+            {
+                var r = new Reader(p) { Pos = 1 };
+                var name = Encoding.UTF8.GetString(r.String()); var instruction = Encoding.UTF8.GetString(r.String()); r.String();
+                var n = (int)r.UInt();
+                var prompts = new List<(string, bool)>();
+                for (int i = 0; i < n; i++) prompts.Add((Encoding.UTF8.GetString(r.String()), r.Bool()));
+                var answers = KeyboardInteractive?.Invoke(name, instruction, prompts) ?? prompts.Select(_ => fallbackPassword ?? "").ToList();
+                var resp = new Writer(); resp.Byte(61); resp.UInt((uint)answers.Count);
+                foreach (var ans in answers) resp.String(ans ?? "");
+                return resp.ToArray();
+            });
+        }
+
+        public bool AuthPublicKey(string user, SshKey key)
+        {
+            foreach (var alg in key.SignatureAlgorithms())
+            {
+                var blob = key.PublicBlob;
+                var body = new Writer(); body.Byte(50); body.String(user); body.String("ssh-connection"); body.String("publickey"); body.Bool(true); body.String(alg); body.String(blob);
+                var toSign = new Writer(); toSign.String(_sessionId); toSign.Raw(body.ToArray());
+                var sig = new Writer(); sig.String(alg); sig.String(key.Sign(toSign.ToArray(), alg));
+                var req = new Writer(); req.Raw(body.ToArray()); req.String(sig.ToArray());
+                if (Attempt(req)) return true;
+            }
+            return false;
+        }
+
+        // ------------------------------------------------------------------ channels
+
+        /// <summary>One session channel (a shell or a command). Data events run on the connection's reader thread.</summary>
+        internal sealed class SshChannel
+        {
+            private readonly SshConnection _c;
+            internal uint Local, Remote, RemoteMaxPacket = 32768;
+            internal long RemoteWindow;
+            internal uint LocalWindow = 1024 * 1024;
+            internal readonly ManualResetEventSlim Opened = new ManualResetEventSlim(false);
+            internal bool OpenOk;
+            internal readonly AutoResetEvent Reply = new AutoResetEvent(false);
+            internal bool ReplyOk;
+            private readonly object _winGate = new object();
+            private int _closeSent;
+
+            internal SshChannel(SshConnection c) { _c = c; }
+
+            public event Action<byte[]> Data;
+            public event Action<byte[]> ExtendedData;
+            public event Action Eof;
+            public event Action Closed;
+            public int? ExitStatus { get; internal set; }
+            public string ExitSignal { get; internal set; }
+            public bool IsClosed { get; private set; }
+
+            internal void RaiseData(byte[] d) => Data?.Invoke(d);
+            internal void RaiseExt(byte[] d) => ExtendedData?.Invoke(d);
+            internal void RaiseEof() => Eof?.Invoke();
+            internal void AddWindow(uint n) { lock (_winGate) { RemoteWindow += n; Monitor.PulseAll(_winGate); } }
+            internal void MarkClosed() { if (IsClosed) return; IsClosed = true; lock (_winGate) Monitor.PulseAll(_winGate); Closed?.Invoke(); }
+
+            /// <summary>Sends a channel request; when a reply is wanted, waits for the server's yes or no.</summary>
+            public bool Request(string type, Action<Writer> body, bool wantReply = true, int timeoutMs = 10000)
+            {
+                var w = new Writer(); w.Byte(98); w.UInt(Remote); w.String(type); w.Bool(wantReply); body?.Invoke(w);
+                Reply.Reset();
+                _c.SendPacket(w.ToArray());
+                if (!wantReply) return true;
+                return Reply.WaitOne(timeoutMs) && ReplyOk;
+            }
+
+            public void Send(byte[] data)
+            {
+                for (int off = 0; off < data.Length;)
+                {
+                    int n;
+                    lock (_winGate)
+                    {
+                        var deadline = DateTime.UtcNow.AddSeconds(30);
+                        while (RemoteWindow <= 0 && !IsClosed && !_c._closed)
+                        {
+                            var left = deadline - DateTime.UtcNow;
+                            if (left <= TimeSpan.Zero) throw new IOException("SSH send window stayed closed");
+                            Monitor.Wait(_winGate, left);
+                        }
+                        if (IsClosed || _c._closed) throw new IOException("SSH channel closed");
+                        n = (int)Math.Min(Math.Min(data.Length - off, RemoteWindow), Math.Min(RemoteMaxPacket - 64, 16384));
+                        RemoteWindow -= n;
+                    }
+                    var w = new Writer(); w.Byte(94); w.UInt(Remote); w.String(data.Skip(off).Take(n).ToArray());
+                    _c.SendPacket(w.ToArray());
+                    off += n;
+                }
+            }
+
+            public void SendEof() { try { var w = new Writer(); w.Byte(96); w.UInt(Remote); _c.SendPacket(w.ToArray()); } catch (Exception) { } }
+
+            public void Close()
+            {
+                if (System.Threading.Interlocked.Exchange(ref _closeSent, 1) == 0)
+                {
+                    try { var w = new Writer(); w.Byte(97); w.UInt(Remote); _c.SendPacket(w.ToArray()); } catch (Exception) { }
+                }
+                MarkClosed();
+                lock (_c._chGate) _c._channels.Remove(Local);
+            }
+
+            internal bool CloseSentAlready() => System.Threading.Interlocked.Exchange(ref _closeSent, 1) != 0;
+        }
+
+        /// <summary>Opens a session channel.</summary>
+        internal SshChannel OpenSession()
+        {
+            var ch = new SshChannel(this);
+            lock (_chGate) { ch.Local = _nextChannel++; _channels[ch.Local] = ch; }
+            var o = new Writer(); o.Byte(90); o.String("session"); o.UInt(ch.Local); o.UInt(ch.LocalWindow); o.UInt(32768);
+            SendPacket(o.ToArray());
+            if (!ch.Opened.Wait(15000)) { lock (_chGate) _channels.Remove(ch.Local); throw new IOException("SSH server didn't answer the session request"); }
+            if (!ch.OpenOk) { lock (_chGate) _channels.Remove(ch.Local); throw new IOException("SSH server refused the session channel"); }
+            return ch;
+        }
+
+        /// <summary>A shell on a pseudo-terminal.</summary>
+        internal SshChannel OpenShellChannel(string term, uint cols, uint rows, uint width, uint height, Action<SshChannel> beforeStart = null)
+        {
+            var ch = OpenSession();
+            beforeStart?.Invoke(ch); // a server's greeting can arrive before it has answered the shell request: listen first
+            ch.Request("pty-req", w => { w.String(term ?? "vt100"); w.UInt(cols); w.UInt(rows); w.UInt(width); w.UInt(height); w.String(new byte[] { 0 }); }, wantReply: true);
+            if (!ch.Request("shell", null)) { ch.Close(); throw new IOException("SSH server refused the shell"); }
+            return ch;
+        }
+
+        /// <summary>A command (no terminal): its output arrives as data, its status as <see cref="SshChannel.ExitStatus"/>.</summary>
+        internal SshChannel OpenExecChannel(string command)
+        {
+            var ch = OpenSession();
+            if (!ch.Request("exec", w => w.String(command ?? ""))) { ch.Close(); throw new IOException("SSH server refused the command"); }
+            return ch;
+        }
+
+        /// <summary>The single-shell interface the IP table's console read uses.</summary>
         public void OpenShell(string term, uint cols, uint rows, uint width, uint height)
         {
-            var o = new Writer(); o.Byte(90); o.String("session"); o.UInt(0); o.UInt(_localWindow); o.UInt(32768);
-            SendPacket(o.ToArray());
-            while (true)
+            if (_reader == null) LoggedIn();
+            _primary = OpenShellChannel(term, cols, rows, width, height, ch =>
             {
-                var p = ReadPacket();
-                if (p[0] == 91)
-                {
-                    var r = new Reader(p) { Pos = 1 }; r.UInt();
-                    _remoteChannel = r.UInt(); _remoteWindow = r.UInt(); _remoteMaxPacket = r.UInt();
-                    break;
-                }
-                if (p[0] == 92) throw new IOException("SSH server refused the session channel");
-            }
-            _reader = new Thread(ReadLoop) { IsBackground = true, Name = "ssh-reader" };
-            _reader.Start();
-
-            var pty = new Writer(); pty.Byte(98); pty.UInt(_remoteChannel); pty.String("pty-req"); pty.Bool(true);
-            pty.String(term ?? "vt100"); pty.UInt(cols); pty.UInt(rows); pty.UInt(width); pty.UInt(height); pty.String(new byte[] { 0 });
-            SendPacket(pty.ToArray());
-            _channelReply.WaitOne(10000);
-
-            var sh = new Writer(); sh.Byte(98); sh.UInt(_remoteChannel); sh.String("shell"); sh.Bool(true);
-            SendPacket(sh.ToArray());
-            if (!_channelReply.WaitOne(10000) || !_channelOk) throw new IOException("SSH server refused the shell");
+                ch.Data += d => DataReceived?.Invoke(d);
+                ch.ExtendedData += d => DataReceived?.Invoke(d);
+            });
         }
 
-        public void Send(byte[] data)
-        {
-            for (int off = 0; off < data.Length;)
-            {
-                var n = (int)Math.Min(data.Length - off, Math.Min(_remoteMaxPacket - 64, 16384));
-                var w = new Writer(); w.Byte(94); w.UInt(_remoteChannel); w.String(data.Skip(off).Take(n).ToArray());
-                SendPacket(w.ToArray());
-                off += n;
-            }
-        }
+        public void Send(byte[] data) => (_primary ?? throw new IOException("No shell is open")).Send(data);
+
+        /// <summary>A global keep-alive request (the server answers or the connection breaks).</summary>
+        public void KeepAlive() { var w = new Writer(); w.Byte(80); w.String("keepalive@openssh.com"); w.Bool(true); SendPacket(w.ToArray()); }
 
         private void ReadLoop()
         {
@@ -284,37 +412,78 @@ namespace OpenVP.SimplSharp.SshCore
                 {
                     var p = ReadPacket();
                     var r = new Reader(p) { Pos = 1 };
+                    SshChannel ch = null;
                     switch (p[0])
                     {
-                        case 94:
-                            r.UInt();
-                            var data = r.String();
-                            DataReceived?.Invoke(data);
-                            if ((_localWindow -= (uint)data.Length) < 512 * 1024)
-                            {
-                                var adj = new Writer(); adj.Byte(93); adj.UInt(_remoteChannel); adj.UInt(1024 * 1024);
-                                SendPacket(adj.ToArray());
-                                _localWindow += 1024 * 1024;
-                            }
+                        case 91: case 92: case 93: case 94: case 95: case 96: case 97: case 98: case 99: case 100:
+                            var id = r.UInt();
+                            lock (_chGate) _channels.TryGetValue(id, out ch);
+                            if (ch == null) continue;
                             break;
-                        case 95: r.UInt(); r.UInt(); DataReceived?.Invoke(r.String()); break; // extended data (stderr)
-                        case 93: r.UInt(); _remoteWindow += r.UInt(); break;
-                        case 99: _channelOk = true; _channelReply.Set(); break;
-                        case 100: _channelOk = false; _channelReply.Set(); break;
+                    }
+                    switch (p[0])
+                    {
+                        case 91:
+                            ch.Remote = r.UInt(); ch.RemoteWindow = r.UInt(); ch.RemoteMaxPacket = r.UInt();
+                            ch.OpenOk = true; ch.Opened.Set(); break;
+                        case 92: ch.OpenOk = false; ch.Opened.Set(); lock (_chGate) _channels.Remove(ch.Local); break;
+                        case 93: ch.AddWindow(r.UInt()); break;
+                        case 94:
+                        {
+                            var data = r.String();
+                            ch.RaiseData(data);
+                            Replenish(ch, data.Length);
+                            break;
+                        }
+                        case 95:
+                        {
+                            r.UInt(); var data = r.String();
+                            ch.RaiseExt(data);
+                            Replenish(ch, data.Length);
+                            break;
+                        }
+                        case 96: ch.RaiseEof(); break;
+                        case 97:
+                            if (!ch.CloseSentAlready()) { try { var w = new Writer(); w.Byte(97); w.UInt(ch.Remote); SendPacket(w.ToArray()); } catch (Exception) { } }
+                            lock (_chGate) _channels.Remove(ch.Local);
+                            ch.MarkClosed();
+                            break;
+                        case 98: // request from the server: exit-status, exit-signal
+                        {
+                            var type = Encoding.ASCII.GetString(r.String()); var want = r.Bool();
+                            if (type == "exit-status") ch.ExitStatus = (int)r.UInt();
+                            else if (type == "exit-signal") { ch.ExitSignal = Encoding.ASCII.GetString(r.String()); ch.ExitStatus ??= 128; }
+                            if (want) { var f = new Writer(); f.Byte(100); f.UInt(ch.Remote); SendPacket(f.ToArray()); }
+                            break;
+                        }
+                        case 99: ch.ReplyOk = true; ch.Reply.Set(); break;
+                        case 100: ch.ReplyOk = false; ch.Reply.Set(); break;
                         case 80: // global request: refuse if a reply is wanted
                             r.String(); if (r.Bool()) SendPacket(new byte[] { 82 });
                             break;
-                        case 98: // channel request from server (exit-status etc.)
-                            r.UInt(); r.String(); if (r.Bool()) { var f = new Writer(); f.Byte(100); f.UInt(_remoteChannel); SendPacket(f.ToArray()); }
-                            break;
-                        case 96: break;
-                        case 97: case 1: throw new IOException("SSH connection closed by the server");
+                        case 1: throw new IOException("SSH connection closed by the server");
                     }
                 }
             }
             catch (Exception e)
             {
-                if (!_closed) { _closed = true; Closed?.Invoke(e); }
+                var wasOpen = !_closed;
+                _closed = true;
+                SshChannel[] all;
+                lock (_chGate) { all = _channels.Values.ToArray(); _channels.Clear(); }
+                foreach (var c in all) c.MarkClosed();
+                if (wasOpen) Closed?.Invoke(e);
+            }
+        }
+
+        private void Replenish(SshChannel ch, int consumed)
+        {
+            ch.LocalWindow -= (uint)consumed;
+            if (ch.LocalWindow < 512 * 1024)
+            {
+                var adj = new Writer(); adj.Byte(93); adj.UInt(ch.Remote); adj.UInt(1024 * 1024);
+                SendPacket(adj.ToArray());
+                ch.LocalWindow += 1024 * 1024;
             }
         }
 
@@ -401,6 +570,7 @@ namespace OpenVP.SimplSharp.SshCore
                 _closed = true;
                 try { var d = new Writer(); d.Byte(1); d.UInt(11); d.String("bye"); d.String(""); SendPacket(d.ToArray()); } catch { }
             }
+            lock (_chGate) foreach (var c in _channels.Values.ToArray()) c.MarkClosed();
             try { _tcp?.Dispose(); } catch { }
         }
 
@@ -453,7 +623,7 @@ namespace OpenVP.SimplSharp.SshCore
             }
         }
 
-        private sealed class Writer
+        internal sealed class Writer
         {
             private readonly MemoryStream _ms = new MemoryStream();
             public void Byte(byte b) => _ms.WriteByte(b);
@@ -474,7 +644,7 @@ namespace OpenVP.SimplSharp.SshCore
             public byte[] ToArray() => _ms.ToArray();
         }
 
-        private sealed class Reader
+        internal sealed class Reader
         {
             private readonly byte[] _b;
             public int Pos;
