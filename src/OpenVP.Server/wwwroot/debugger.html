@@ -25,6 +25,12 @@
   .title { display:flex; align-items:center; gap:10px; padding:6px 10px; border-bottom:1px solid var(--line); background:var(--head); }
   .title b { font-size:14px; } .title .muted { color:var(--muted); }
   .title a { color:var(--accent); }
+  #pres { display:inline-flex; gap:4px; align-items:center; flex-wrap:wrap; }
+  #pres .av { width:22px; height:22px; border-radius:50%; background:var(--active); border:1px solid var(--accent); display:inline-grid; place-items:center; font-size:10px; font-weight:700; color:var(--text); cursor:help; }
+  #pres .av.dbg { border-color:var(--warn); background:var(--warn-bg); color:var(--warn-fg); }
+  #pres .av.me { outline:2px solid var(--ok); outline-offset:1px; }
+  #lockb { font-size:12px; padding:1px 8px; border-radius:20px; background:var(--warn-bg); color:var(--warn-fg); border:1px solid var(--warn-line); }
+  #who-chip { font-size:12px; }
   .toolbar { display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center; padding:6px 10px; border-bottom:1px solid var(--line); background:var(--pane); }
   .group { display:flex; gap:6px; align-items:center; }
   .sep { width:1px; height:20px; background:var(--line); }
@@ -273,7 +279,9 @@
   <b>Debugger</b>
   <select id="slot" title="Program slot"></select>
   <span id="prog" class="muted mono"></span>
+  <span id="pres" aria-label="Who has this slot open"></span><span id="lockb" hidden></span>
   <span style="flex:1"></span>
+  <span id="who-chip"></span>
   <button id="alertchip" class="alertchip" hidden title="A signal in this program is racing or oscillating. Click for the list."></button>
   <button class="theme-btn" data-theme-toggle></button>
   <button id="keys-open" title="Keyboard shortcuts (?)" style="padding:1px 8px">?</button>
@@ -445,6 +453,11 @@
   </div>
 </section>
 
+<dialog id="warn-dlg" class="dlg"><form method="dialog" onsubmit="return false">
+  <h3 id="warn-title">Someone else is debugging this slot</h3>
+  <div id="warn-text" class="muted"></div>
+  <div class="drow"><button type="button" id="warn-cancel">Cancel</button><button id="warn-ok" style="border-color:var(--warn)">Go ahead</button></div>
+</form></dialog>
 <dialog id="ask-dlg" class="dlg"><form method="dialog">
   <h3 id="ask-title"></h3>
   <label id="ask-label" style="color:var(--muted)"></label>
@@ -1414,6 +1427,7 @@ function saveTrace() {
 const stepKey = () => "breaks." + slot;
 
 async function stepPost(path, body) {
+  if ((path === "/next" || path === "/run" || body?.enabled === true) && !await guardOthers(path === "/next" ? "Stepping" : path === "/run" ? "Letting the paused program run" : "Turning step-through on")) return;
   try {
     const st = await api(`/api/slots/${slot}/step${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body || {}) });
     onStep(st);
@@ -1627,6 +1641,7 @@ $("#wavebtn").onclick = () => setWaveOpen($("#wavewrap").hidden);
 // ---------------------------------------------------------------- forcing signals
 
 async function force(name, value) {
+  if (!await guardOthers(`Forcing ${name}`)) return;
   try {
     await api(`/api/slots/${slot}/signals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, value }) });
     msg(step.paused ? `Queued: ${name} changes once the paused step is released (Next).` : "");
@@ -1636,6 +1651,7 @@ async function force(name, value) {
 // between, as a processor's debugger does. (Two requests, or a held pulse, leave a gap that short program
 // timers, such as a Stepper's 0.1 s first step, can fall into.)
 async function pulse(name) {
+  if (!await guardOthers(`Pulsing ${name}`)) return;
   try {
     await api(`/api/slots/${slot}/signals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, pulse: true }) });
     msg(step.paused ? `Queued: ${name} pulses once the paused step is released (Next).` : "");
@@ -1794,11 +1810,44 @@ function drain() {
     if (m.t === "trace") onTrace(m);
     else if (m.t === "step") onStep(m);
     else if (m.t === "log") onLog(m);
+    else if (m.t === "presence") onPresence(m);
+    else if (m.t === "lock") onLockFrame(m);
     if ((++n & 63) === 0 && performance.now() - t0 > 8) break;
   }
   if (inboxHead >= inbox.length) { inbox.length = 0; inboxHead = 0; draining = false; }
   else drainChannel.port2.postMessage(0);
 }
+// Who has this slot open (pushed by the server over this same WebSocket), and whether it is locked.
+let others = [], slotLock = null, warnedFor = "", warnedAt = 0;
+function onPresence(m) {
+  if (m.slot !== slot) return;
+  others = (m.people || []).filter(p => !p.me && p.kind === "debugging");
+  $("#pres").innerHTML = (m.people || []).map(p => `<span class="av ${p.kind === "debugging" ? "dbg" : ""} ${p.me ? "me" : ""}" title="${esc2(p.name + (p.me ? " (you)" : "") + (p.kind === "debugging" ? ": debugger open" : ": viewing"))}">${esc2(p.initials)}</span>`).join("");
+}
+function onLockFrame(m) {
+  if (m.slot !== slot) return;
+  slotLock = m.locked;
+  const b = $("#lockb"); b.hidden = !m.locked;
+  const me = window.openvpAuth?.me;
+  const mine = !m.locked || !me || me.perms?.includes("Admin") || (me.kind === "user" && m.locked.by === me.name);
+  for (const id of ["#fset", "#fclear", "#fpulse"]) { const el = $(id); if (el) { el.disabled = !mine; el.title = mine ? "" : "This slot is locked by " + m.locked.by + ". Only they or an Admin can force signals."; } }
+  if (m.locked) { b.textContent = "locked by " + m.locked.by; b.title = (m.locked.reason || "") + (m.locked.expires ? "\nUntil " + new Date(m.locked.expires).toLocaleString() : "") + "\nOnly an Admin or " + m.locked.by + " can force signals or change the program."; }
+}
+const esc2 = t => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+// Before forcing, stepping or reloading: if someone else has this slot's debugger open, say so and ask. Asked again only after a minute or when the people change.
+async function guardOthers(what) {
+  if (!others.length) return true;
+  const key = others.map(p => p.name).join("|");
+  if (key === warnedFor && Date.now() - warnedAt < 60000) return true;
+  const names = others.map(p => p.name).join(", ");
+  $("#warn-title").textContent = `${names} ${others.length === 1 ? "is" : "are"} debugging this slot`;
+  $("#warn-text").textContent = `${what} will change what ${others.length === 1 ? "they see" : "they see"} while they are working. Go ahead?`;
+  const d = $("#warn-dlg");
+  const ok = await new Promise(res => { d.onclose = () => res(d.returnValue === "ok"); d.returnValue = ""; $("#warn-ok").onclick = () => d.close("ok"); $("#warn-cancel").onclick = () => d.close("cancel"); d.showModal(); });
+  if (ok) { warnedFor = key; warnedAt = Date.now(); }
+  return ok;
+}
+
 // Only the slot's own lifecycle messages (see ProgramSlot) reload the list; any other log line that happens to contain
 // "started" or "stopped" must not.
 const LIFECYCLE = /^\s*(?:Loaded .* program '.*'|Program (?:started|stopped))\s*$/;

@@ -25,7 +25,7 @@
   <div id="fail" class="note" role="alert" hidden></div>
   <div class="card">
     <h2>Targets <span class="sp" style="flex:1"></span><button class="primary small" id="add">Add target…</button></h2>
-    <p class="muted">Other OpenVP servers you can send programs and whole exports to. Each target is its address and its access key (kept in the secret store, never shown again). It works through the other machine's REST API, so it needs a version of OpenVP with the same API.</p>
+    <p class="muted">Other OpenVP servers you can send programs and whole exports to. Each target is its address and its access key or an API token made on that machine (kept in the secret store, never shown again). A <b>programmer</b> token is enough to push a program; a whole export needs <b>admin</b>. It works through the other machine's REST API, so it needs a version of OpenVP with the same API.</p>
     <div class="scroll-x"><table id="tbl" class="cards"><thead><tr><th>Name</th><th>Address</th><th>Key</th><th>Last test</th><th></th></tr></thead><tbody></tbody></table></div>
     <div id="empty" class="muted" hidden>No targets yet. Click <b>Add target…</b>.</div>
   </div>
@@ -61,8 +61,8 @@
   <h2 id="tg-title">Add target</h2>
   <label>Name<input id="tg-name" maxlength="60" placeholder="Boardroom 2"></label>
   <label>Address<input id="tg-url" class="mono" maxlength="300" placeholder="http://192.168.1.20:8080  or  https://openvp.example.com"></label>
-  <label>Access key<input id="tg-key" type="password" autocomplete="new-password" placeholder=""></label>
-  <div id="tg-http" class="note" hidden>This address uses plain http, so the access key and the programs cross the network unencrypted. Use it on a network you trust, or put the other OpenVP behind https.</div>
+  <label>Access key or API token<input id="tg-key" type="password" autocomplete="new-password" placeholder=""></label>
+  <div id="tg-http" class="note" hidden>This address uses plain http, so the key or token and the programs cross the network unencrypted. Use it on a network you trust, or put the other OpenVP behind https.</div>
   <div id="tg-tls" class="stack" hidden>
     <div class="muted">https certificates are checked. If the other OpenVP uses a certificate nobody trusts (self-signed), fetch it and choose to trust that one certificate by its fingerprint.</div>
     <div class="bar"><button type="button" id="tg-fetch" class="small">Fetch certificate</button><span class="muted" id="tg-cert"></span></div>

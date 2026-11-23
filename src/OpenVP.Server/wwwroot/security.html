@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<link rel="stylesheet" href="openvp-ops.css">
+<script src="openvp-theme.js"></script>
+<title>OpenVP security</title>
+<style>
+  .map-row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin:3px 0; }
+  .map-row input { flex:1 1 10em; min-width:0; } .map-row select { flex:none; }
+  .fp { overflow-wrap:anywhere; }
+  .tok { overflow-wrap:anywhere; user-select:all; padding:8px; display:block; }
+  .chips { display:flex; flex-wrap:wrap; gap:4px; }
+  .kv { display:grid; grid-template-columns:max-content 1fr; gap:3px 12px; margin:6px 0; }
+  .kv dt { color:var(--muted); } .kv dd { margin:0; overflow-wrap:anywhere; }
+  @media (max-width:600px) { .kv { grid-template-columns:1fr; } .kv dt { margin-top:4px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Security</h1>
+  <span id="saved" role="status" aria-live="polite"></span>
+  <span class="sp"></span>
+  <span id="who-chip"></span>
+  <button class="theme-btn" data-theme-toggle></button>
+  <a href="audit.html" data-perm="Admin" data-perm-hide>Audit log</a>
+  <a href="/">Console</a>
+  <a href="help.html#users" target="openvp-help">Help</a>
+</header>
+<main>
+  <div id="fail" class="note" role="alert" hidden></div>
+  <div id="noadmin" class="note" hidden>Only an Admin can change security settings. You can change your own password from the chip at the top.</div>
+  <div class="tabs" role="tablist" id="tabs">
+    <button class="active" data-t="users">Users</button><button data-t="tokens">API tokens</button><button data-t="https">HTTPS</button><button data-t="sso">Single sign-on</button><button data-t="settings">Settings</button>
+  </div>
+
+  <!-- ------------------------------------------------------------ Users -->
+  <div class="pane on" id="pane-users">
+    <div class="card">
+      <h2>Users <span style="flex:1"></span><button class="primary small" id="u-add">Add user…</button></h2>
+      <p class="muted">Until the first user is added, OpenVP works exactly as before: the access key, and no login from this computer. Once there is a user, people sign in at <code>/login.html</code>, and the access key still works for Admins and scripts.</p>
+      <div class="scroll-x"><table id="u-tbl" class="cards"><thead><tr><th>Name</th><th>Role</th><th>Slots</th><th>Status</th><th>Last sign-in</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div id="u-empty" class="muted" hidden>No users yet. Add an Admin first.</div>
+    </div>
+    <div class="card">
+      <h2>What each role can do</h2>
+      <dl class="kv">
+        <dt>Admin</dt><dd>Everything, including users, tokens, HTTPS, single sign-on, the audit log, export and import, backups, push targets and the internet tunnel.</dd>
+        <dt>Programmer</dt><dd>Load, unload and roll back programs, the debugger, files, recordings, snapshots, simulators, a slot's integrations and schedules, plus everything a Technician can.</dd>
+        <dt>Technician</dt><dd>Start, stop and restart, panels and signals, the IP table, shared links, acknowledging alerts, locking a slot, and viewing everything.</dd>
+        <dt>Viewer</dt><dd>Read-only.</dd>
+      </dl>
+      <p class="muted">A user limited to some slots only sees and changes those. The server checks every request; the buttons you can't use are only dimmed for your convenience.</p>
+    </div>
+  </div>
+
+  <!-- ------------------------------------------------------------ Tokens -->
+  <div class="pane" id="pane-tokens">
+    <div class="card">
+      <h2>API tokens <span style="flex:1"></span><button class="primary small" id="t-add">New token…</button></h2>
+      <p class="muted">For scripts and for other OpenVP machines that push to this one. Send a token as <code>Authorization: Bearer ovp_…</code> or <code>X-OpenVP-Key</code>. Only a hash is kept, so the value is shown once, when you make it.</p>
+      <div class="scroll-x"><table id="t-tbl" class="cards"><thead><tr><th>Name</th><th>Scope</th><th>Slots</th><th>Expires</th><th>Last used</th><th>Status</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div id="t-empty" class="muted" hidden>No tokens yet.</div>
+    </div>
+    <div class="card">
+      <h2>Scopes</h2>
+      <dl class="kv">
+        <dt>read-only</dt><dd>Read everything that isn't a secret.</dd>
+        <dt>operator</dt><dd>Read, start/stop/restart, set and pulse signals.</dd>
+        <dt>programmer</dt><dd>Operator plus load programs, the debugger, files, recordings, snapshots, simulators and integrations.</dd>
+        <dt>admin</dt><dd>Everything, like the access key. Keep these few.</dd>
+      </dl>
+      <p class="muted">The access key from <code>data/apikey.txt</code> keeps working as the admin credential.</p>
+    </div>
+  </div>
+
+  <!-- ------------------------------------------------------------ HTTPS -->
+  <div class="pane" id="pane-https">
+    <div class="card" id="h-status">
+      <h2>HTTPS <span id="h-pill"></span></h2>
+      <div id="h-restart" class="note" hidden>These settings take effect after OpenVP restarts (the listening port is chosen at start-up). Replacing the certificate needs no restart.</div>
+      <dl class="kv" id="h-kv"></dl>
+      <div class="bar">
+        <button class="primary" id="h-self">Make a self-signed certificate</button>
+        <button id="h-up">Upload a certificate…</button>
+        <a id="h-dl" class="small" href="/api/https/certificate" download="openvp.cer" hidden>Download certificate (.cer)</a>
+      </div>
+      <p class="muted">A self-signed certificate covers this computer's name, <code>openvp.local</code>, <code>localhost</code> and its network addresses. Browsers warn about it until you trust it: download the <code>.cer</code> and add it to the machine, or compare the fingerprint above when the browser shows it.</p>
+    </div>
+    <div class="card">
+      <h2>Listen on HTTPS</h2>
+      <div class="stack">
+        <label class="inline"><input type="checkbox" id="h-en"> Serve the console over HTTPS</label>
+        <label style="max-width:12em">Port<input id="h-port" type="number" min="1" max="65535" value="8443"></label>
+        <label class="inline"><input type="checkbox" id="h-redir"> Send browsers that open an http page to https</label>
+        <p class="muted" style="margin:0">The redirect never touches this computer, the API, WebSockets, webhooks, <code>/healthz</code>, shared panels or CIP.</p>
+      </div>
+      <div class="bar"><button class="primary" id="h-save">Save</button><span class="muted">The desktop app keeps using <code>http://localhost</code>. Shared-panel links use https once it is on.</span></div>
+    </div>
+    <div class="card">
+      <h2>Let's Encrypt <span class="pill">optional</span></h2>
+      <p class="muted">A free public certificate by ACME HTTP-01. It needs a public host name that points at this machine, and Let's Encrypt must reach <b>port 80</b> on it (forward port 80 to OpenVP's http port). Off unless you click Get certificate. Not for a machine that is only on a private network.</p>
+      <div class="form">
+        <label>Host name<input id="a-domain" placeholder="openvp.example.com"></label>
+        <label>E-mail for expiry notices<input id="a-email" type="email" placeholder="you@example.com"></label>
+        <label class="inline"><input type="checkbox" id="a-stg"> Use the Let's Encrypt staging server (testing; the certificate isn't trusted)</label>
+        <label class="inline"><input type="checkbox" id="a-auto"> Renew automatically (30 days before it expires)</label>
+      </div>
+      <div class="bar"><button id="a-go">Get certificate</button><span class="muted" id="a-res"></span></div>
+    </div>
+  </div>
+
+  <!-- ------------------------------------------------------------ SSO -->
+  <div class="pane" id="pane-sso">
+    <div class="card">
+      <h2>Single sign-on (OpenID Connect) <span id="s-pill"></span></h2>
+      <p class="muted">An extra way in beside local users and the access key. Register OpenVP with your provider (Microsoft Entra, Okta, Keycloak, Google…) as a web app with the <b>authorization code</b> flow, and give it this redirect address: <code id="s-cb"></code></p>
+      <div class="form">
+        <label class="inline"><input type="checkbox" id="s-en"> Allow single sign-on</label>
+        <label>Authority (the issuer address)<input id="s-auth" placeholder="https://login.example.com/realms/main"></label>
+        <label>Client ID<input id="s-cid" autocomplete="off"></label>
+        <label>Client secret <span id="s-hs" class="muted"></span><input id="s-sec" type="password" autocomplete="new-password" placeholder="leave empty to keep the saved one"></label>
+        <label>Scopes<input id="s-scopes" value="openid profile email"></label>
+        <label>Claim that holds groups or roles<input id="s-rc" value="roles"></label>
+        <label>User name claim<input id="s-uc" value="preferred_username"></label>
+        <label>Button text<input id="s-bt" value="Sign in with single sign-on"></label>
+        <label>Allowed e-mail domains (comma separated; empty allows any)<input id="s-dom" placeholder="example.com, example.org"></label>
+        <label>Role for people who match no mapping<select id="s-def"><option value="">Refuse them</option><option>viewer</option><option>technician</option><option>programmer</option><option>admin</option></select></label>
+      </div>
+      <h3>Claim to role</h3>
+      <div id="s-maps"></div>
+      <div class="bar"><button class="small" id="s-addmap">Add mapping</button><span class="muted">If several match, the highest role wins. Role and slots are re-read at every sign-in; edit a single-sign-on user's slots under Users.</span></div>
+      <div class="bar"><button class="primary" id="s-save">Save</button></div>
+    </div>
+  </div>
+
+  <!-- ------------------------------------------------------------ Settings -->
+  <div class="pane" id="pane-settings">
+    <div class="card">
+      <h2>Requests from this computer</h2>
+      <label class="inline"><input type="checkbox" id="c-local"> Requests from this computer (localhost) need no login, even when users exist</label>
+      <p class="muted">On by default so the desktop app, which opens <code>http://localhost:8080</code>, keeps working without a login. The trade-off: anyone who can sit at this computer, or run a program on it, is an Admin. Turn it off on a shared or remote machine; then everyone, here too, signs in or sends the access key. It never applies to requests that came through a proxy or the internet tunnel. <code>OpenVP:LocalRequiresKey=true</code> switches it off for good, before any user exists too.</p>
+      <div id="c-state" class="muted"></div>
+    </div>
+    <div class="card">
+      <h2>Sessions and lock-out</h2>
+      <div class="form">
+        <label>Sign out after this many idle minutes<input id="c-idle" type="number" min="5"></label>
+        <label>Sign out this many hours after sign-in, whatever<input id="c-abs" type="number" min="1"></label>
+        <label>Lock an account after this many wrong passwords<input id="c-att" type="number" min="3"></label>
+        <label>…for this many minutes<input id="c-lock" type="number" min="1"></label>
+        <label>Audit log: start a new file at this many MB<input id="c-amb" type="number" min="1"></label>
+        <label>…or after this many days<input id="c-ad" type="number" min="1"></label>
+      </div>
+      <div class="bar"><button class="primary" id="c-save">Save</button><span class="muted" id="c-info"></span></div>
+    </div>
+  </div>
+</main>
+
+<dialog id="u-dlg" aria-labelledby="u-title"><form method="dialog" id="u-form" onsubmit="return false" autocomplete="off">
+  <h2 id="u-title">Add user</h2>
+  <label>User name<input id="u-name" required maxlength="64"></label>
+  <label id="u-pw-l">Password (at least 8 characters)<input id="u-pw" type="password" autocomplete="new-password" minlength="8"></label>
+  <label>Role<select id="u-role"><option value="viewer">Viewer</option><option value="technician">Technician</option><option value="programmer">Programmer</option><option value="admin">Admin</option></select></label>
+  <label class="inline"><input type="checkbox" id="u-all" checked> All slots</label>
+  <div class="checks" id="u-slots" hidden></div>
+  <div class="err" id="u-err" role="alert"></div>
+  <div class="row"><button type="button" data-close>Cancel</button><button class="primary" id="u-ok">Save</button></div>
+</form></dialog>
+
+<dialog id="pw-dlg2" aria-labelledby="pw2-title"><form method="dialog" id="pw2-form" onsubmit="return false" autocomplete="off">
+  <h2 id="pw2-title">New password</h2>
+  <p class="muted" id="pw2-for"></p>
+  <label>New password (at least 8 characters)<input id="pw2" type="password" autocomplete="new-password" minlength="8"></label>
+  <div class="err" id="pw2-err" role="alert"></div>
+  <div class="row"><button type="button" data-close>Cancel</button><button class="primary">Set password</button></div>
+</form></dialog>
+
+<dialog id="t-dlg" aria-labelledby="t-title"><form method="dialog" id="t-form" onsubmit="return false" autocomplete="off">
+  <h2 id="t-title">New API token</h2>
+  <label>Name (what it is for)<input id="t-name" required maxlength="64" placeholder="CI pipeline"></label>
+  <label>Scope<select id="t-scope"><option value="read-only">read-only</option><option value="operator">operator</option><option value="programmer">programmer</option><option value="admin">admin</option></select></label>
+  <label>Expires<select id="t-exp"><option value="">Never</option><option value="1">in 1 day</option><option value="7">in 7 days</option><option value="30" selected>in 30 days</option><option value="90">in 90 days</option><option value="365">in 1 year</option></select></label>
+  <label class="inline"><input type="checkbox" id="t-all" checked> All slots</label>
+  <div class="checks" id="t-slots" hidden></div>
+  <div class="err" id="t-err" role="alert"></div>
+  <div class="row"><button type="button" data-close>Cancel</button><button class="primary">Create token</button></div>
+</form></dialog>
+
+<dialog id="tv-dlg" aria-labelledby="tv-title"><form method="dialog" id="tv-form" onsubmit="return false">
+  <h2 id="tv-title">Copy your token now</h2>
+  <p class="note">This is the only time it is shown. OpenVP keeps just a hash, so a lost token can't be looked up: revoke it and make another.</p>
+  <code class="tok mono" id="tv-val"></code>
+  <p class="muted" style="margin:0">Try it: <code id="tv-curl"></code></p>
+  <div class="row"><button type="button" id="tv-copy">Copy</button><button class="primary" data-close>Done</button></div>
+</form></dialog>
+
+<dialog id="up-dlg" aria-labelledby="up-title"><form method="dialog" id="up-form" onsubmit="return false" autocomplete="off">
+  <h2 id="up-title">Upload a certificate</h2>
+  <label>Certificate: a .pfx / .p12 file, or a PEM certificate (.pem, .crt)<input id="up-file" type="file" accept=".pfx,.p12,.pem,.crt,.cer" required></label>
+  <label>Private key, if the certificate is PEM (.key, .pem)<input id="up-key" type="file" accept=".key,.pem"></label>
+  <label>Password (for a .pfx, or an encrypted key)<input id="up-pw" type="password" autocomplete="off"></label>
+  <div class="err" id="up-err" role="alert"></div>
+  <div class="row"><button type="button" data-close>Cancel</button><button class="primary">Upload</button></div>
+</form></dialog>
+
+<dialog id="cf-dlg" aria-labelledby="cf-title"><form method="dialog" id="cf-form" onsubmit="return false">
+  <h2 id="cf-title"></h2><p id="cf-text"></p>
+  <div class="row"><button type="button" data-close>Cancel</button><button class="primary" id="cf-ok" value="ok">OK</button></div>
+</form></dialog>
+
+<script src="openvp-auth.js"></script>
+<script src="openvp-ops.js"></script>
+<script>
+openvpAuth.init();
+let slotCount = 10, me = null, users = [], tokens = [], editing = null, pwFor = null;
+const ROLES = ["viewer", "technician", "programmer", "admin"];
+const isAdmin = () => openvpAuth.can("Admin");
+
+for (const b of $$("#tabs button")) b.onclick = () => show(b.dataset.t);
+function show(t) {
+  for (const b of $$("#tabs button")) b.classList.toggle("active", b.dataset.t === t);
+  for (const p of $$(".pane")) p.classList.toggle("on", p.id === "pane-" + t);
+  history.replaceState(null, "", "#" + t);
+}
+function slotBoxes(el, chosen) {
+  el.innerHTML = Array.from({ length: slotCount }, (_, i) => `<label><input type="checkbox" value="${i + 1}" ${chosen?.includes(i + 1) ? "checked" : ""}> ${i + 1}</label>`).join("");
+}
+const picked = el => [...el.querySelectorAll("input:checked")].map(i => +i.value);
+$("#u-all").onchange = () => $("#u-slots").hidden = $("#u-all").checked;
+$("#t-all").onchange = () => $("#t-slots").hidden = $("#t-all").checked;
+
+// ---------------------------------------------------------------- users
+async function loadUsers() {
+  try { users = await api("/api/users"); } catch (e) { users = []; if (e.status !== 403) fail(e.message); }
+  const tb = $("#u-tbl tbody"); tb.innerHTML = "";
+  $("#u-empty").hidden = users.length > 0;
+  for (const u of users) {
+    const st = u.disabled ? pill("err", "disabled") : u.locked ? pill("warn", "locked until " + when(u.lockedUntil)) : pill("ok", "active");
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td data-l="Name"><b>${esc(u.name)}</b>${u.source === "oidc" ? ' ' + pill("info", "single sign-on") : ""}${u.display ? `<br><span class="muted">${esc(u.display)}</span>` : ""}</td>
+      <td data-l="Role">${pill(u.role === "admin" ? "warn" : "", u.role)}</td>
+      <td data-l="Slots">${u.slots ? esc(u.slots.join(", ")) : "all"}</td><td data-l="Status">${st}</td>
+      <td data-l="Last sign-in">${u.lastLogin ? esc(ago(u.lastLogin)) : "never"}</td>
+      <td class="act"><button class="small" data-a="edit">Edit</button> ${u.source === "local" ? '<button class="small" data-a="pw">Password</button> ' : ""}${u.locked ? '<button class="small" data-a="unlock">Unlock</button> ' : ""}<button class="small" data-a="out" title="End all of this user's sessions">Sign out</button> <button class="small danger" data-a="del">Delete</button></td>`;
+    tr.querySelector('[data-a="edit"]').onclick = () => editUser(u);
+    tr.querySelector('[data-a="pw"]')?.addEventListener("click", () => setPw(u));
+    tr.querySelector('[data-a="unlock"]')?.addEventListener("click", async () => { try { await api(`/api/users/${u.id}/unlock`, "POST", {}); flash("Unlocked"); loadUsers(); } catch (e) { fail(e.message); } });
+    tr.querySelector('[data-a="out"]').onclick = async () => { try { const r = await api(`/api/users/${u.id}/signout`, "POST", {}); flash(`Ended ${r.ended} session${r.ended === 1 ? "" : "s"}`); } catch (e) { fail(e.message); } };
+    tr.querySelector('[data-a="del"]').onclick = async () => {
+      if (!await confirmBox("Delete " + u.name + "?", "They can't sign in any more, and their sessions end. Their entries stay in the audit log.", "Delete", true)) return;
+      try { await api("/api/users/" + u.id, "DELETE"); flash("Deleted"); loadUsers(); openvpAuth.refreshChip(); } catch (e) { fail(e.message); }
+    };
+    tb.appendChild(tr);
+  }
+}
+function editUser(u) {
+  editing = u;
+  $("#u-title").textContent = u ? "Edit " + u.name : "Add user";
+  $("#u-name").value = u?.name || ""; $("#u-name").disabled = !!u;
+  $("#u-pw-l").hidden = !!u; $("#u-pw").required = !u; $("#u-pw").value = "";
+  $("#u-role").value = u?.role || "viewer";
+  $("#u-all").checked = !u?.slots; slotBoxes($("#u-slots"), u?.slots); $("#u-slots").hidden = $("#u-all").checked;
+  $("#u-err").textContent = "";
+  $("#u-dlg").showModal(); (u ? $("#u-role") : $("#u-name")).focus();
+}
+$("#u-add").onclick = () => editUser(null);
+$("#u-form").onsubmit = async () => {
+  const body = { role: $("#u-role").value, slots: $("#u-all").checked ? [] : picked($("#u-slots")) };
+  if (!$("#u-all").checked && !body.slots.length) { $("#u-err").textContent = "Tick at least one slot, or choose All slots."; return; }
+  try {
+    if (editing) await api("/api/users/" + editing.id, "PUT", body);
+    else await api("/api/users", "POST", { ...body, name: $("#u-name").value, password: $("#u-pw").value });
+    $("#u-dlg").close(); flash("Saved"); loadUsers(); openvpAuth.refreshChip();
+  } catch (e) { $("#u-err").textContent = e.message; }
+};
+function setPw(u) { pwFor = u; $("#pw2-for").textContent = "For " + u.name + ". Their other sessions end."; $("#pw2").value = ""; $("#pw2-err").textContent = ""; $("#pw-dlg2").showModal(); $("#pw2").focus(); }
+$("#pw2-form").onsubmit = async () => {
+  try { await api(`/api/users/${pwFor.id}/password`, "POST", { password: $("#pw2").value }); $("#pw-dlg2").close(); flash("Password set"); } catch (e) { $("#pw2-err").textContent = e.message; }
+};
+
+// ---------------------------------------------------------------- tokens
+async function loadTokens() {
+  try { tokens = await api("/api/tokens"); } catch (e) { tokens = []; if (e.status !== 403) fail(e.message); }
+  const tb = $("#t-tbl tbody"); tb.innerHTML = "";
+  $("#t-empty").hidden = tokens.length > 0;
+  for (const t of tokens) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td data-l="Name"><b>${esc(t.name)}</b><br><span class="muted mono">${esc(t.prefix)}…</span></td><td data-l="Scope">${pill(t.scope === "admin" ? "warn" : "", t.scope)}</td>
+      <td data-l="Slots">${t.slots ? esc(t.slots.join(", ")) : "all"}</td><td data-l="Expires">${t.expires ? esc(when(t.expires)) : "never"}</td>
+      <td data-l="Last used">${t.lastUsed ? esc(ago(t.lastUsed)) + (t.lastIp ? ` <span class="muted">from ${esc(t.lastIp)}</span>` : "") : "never"}</td>
+      <td data-l="Status">${t.status === "active" ? pill("ok", "active") : pill("err", t.status)}</td>
+      <td class="act"><button class="small danger" data-a="rev">${t.status === "active" ? "Revoke" : "Remove"}</button></td>`;
+    tr.querySelector("button").onclick = async () => {
+      if (t.status === "active" && !await confirmBox("Revoke " + t.name + "?", "Anything using this token stops working at once.", "Revoke", true)) return;
+      try { await api("/api/tokens/" + t.id, "DELETE"); flash(t.status === "active" ? "Revoked" : "Removed"); loadTokens(); } catch (e) { fail(e.message); }
+    };
+    tb.appendChild(tr);
+  }
+}
+$("#t-add").onclick = () => { $("#t-name").value = ""; $("#t-err").textContent = ""; $("#t-all").checked = true; slotBoxes($("#t-slots")); $("#t-slots").hidden = true; $("#t-dlg").showModal(); $("#t-name").focus(); };
+$("#t-form").onsubmit = async () => {
+  const body = { name: $("#t-name").value, scope: $("#t-scope").value, slots: $("#t-all").checked ? [] : picked($("#t-slots")) };
+  if ($("#t-exp").value) body.expiresInDays = +$("#t-exp").value;
+  if (!$("#t-all").checked && !body.slots.length) { $("#t-err").textContent = "Tick at least one slot, or choose All slots."; return; }
+  try {
+    const r = await api("/api/tokens", "POST", body);
+    $("#t-dlg").close(); $("#tv-val").textContent = r.token;
+    $("#tv-curl").textContent = `curl -H "Authorization: Bearer ${r.token}" ${location.origin}/api/slots`;
+    $("#tv-dlg").showModal(); loadTokens();
+  } catch (e) { $("#t-err").textContent = e.message; }
+};
+$("#tv-copy").onclick = async () => { try { await navigator.clipboard.writeText($("#tv-val").textContent); $("#tv-copy").textContent = "Copied"; } catch { const r = document.createRange(); r.selectNodeContents($("#tv-val")); getSelection().removeAllRanges(); getSelection().addRange(r); $("#tv-copy").textContent = "Selected: press Ctrl+C"; } };
+
+// ---------------------------------------------------------------- https
+let hs = null;
+async function loadHttps() {
+  try { hs = await api("/api/https"); } catch (e) { if (e.status !== 403) fail(e.message); return; }
+  $("#h-pill").innerHTML = hs.listening ? pill("ok", "listening on " + hs.boundPort) : hs.enabled ? pill("warn", "on after restart") : pill("", "off");
+  $("#h-restart").hidden = !hs.restartNeeded;
+  const exp = hs.expiresInDays;
+  $("#h-kv").innerHTML = hs.hasCertificate
+    ? `<dt>Certificate</dt><dd>${esc(hs.subject)} ${pill("info", hs.source || "")}</dd><dt>SHA-256 fingerprint</dt><dd class="mono fp">${esc(hs.fingerprint)}</dd>
+       <dt>Valid until</dt><dd>${esc(when(hs.notAfter))} ${exp != null ? pill(exp < 0 ? "err" : exp < 30 ? "warn" : "ok", exp < 0 ? "expired" : exp + " days left") : ""}</dd><dt>Names</dt><dd class="chips">${(hs.names || []).map(n => pill("", n)).join("")}</dd>`
+    : `<dt>Certificate</dt><dd class="muted">None yet. Make a self-signed one, or upload yours.</dd>`;
+  $("#h-dl").hidden = !hs.hasCertificate;
+  $("#h-en").checked = hs.enabled; $("#h-port").value = hs.port; $("#h-redir").checked = hs.redirect;
+  $("#a-domain").value = hs.acme.domain || ""; $("#a-email").value = hs.acme.email || ""; $("#a-stg").checked = hs.acme.staging; $("#a-auto").checked = hs.acme.enabled;
+  $("#a-res").textContent = hs.acme.lastResult ? `${hs.acme.lastResult}${hs.acme.lastAttempt ? " (" + ago(hs.acme.lastAttempt) + ")" : ""}` : "";
+}
+$("#h-self").onclick = async () => {
+  if (hs?.hasCertificate && !await confirmBox("Replace the certificate?", "A new self-signed certificate replaces the current one for new connections. Browsers that trusted the old one will need the new one.", "Replace")) return;
+  try { await api("/api/https/self-signed", "POST", {}); flash("Certificate made"); loadHttps(); } catch (e) { fail(e.message); }
+};
+$("#h-up").onclick = () => { $("#up-form").reset(); $("#up-err").textContent = ""; $("#up-dlg").showModal(); };
+$("#up-form").onsubmit = async () => {
+  const f = new FormData(); f.append("file", $("#up-file").files[0]); if ($("#up-key").files[0]) f.append("key", $("#up-key").files[0]); f.append("password", $("#up-pw").value);
+  try { await api("/api/https/upload", "POST", f); $("#up-dlg").close(); flash("Certificate saved"); loadHttps(); } catch (e) { $("#up-err").textContent = e.message; }
+};
+$("#h-save").onclick = async () => {
+  try { await api("/api/https", "PUT", { enabled: $("#h-en").checked, port: +$("#h-port").value, redirect: $("#h-redir").checked }); flash("Saved"); loadHttps(); } catch (e) { fail(e.message); }
+};
+$("#a-go").onclick = async () => {
+  $("#a-res").textContent = "Asking Let's Encrypt… (this can take a minute)"; $("#a-go").disabled = true;
+  try { const r = await api("/api/https/acme", "POST", { domain: $("#a-domain").value, email: $("#a-email").value, staging: $("#a-stg").checked, enabled: $("#a-auto").checked }); flash("Certificate issued"); } catch (e) { fail(e.message); }
+  $("#a-go").disabled = false; loadHttps();
+};
+
+// ---------------------------------------------------------------- sso
+let sso = null;
+function mapRow(m = { value: "", role: "viewer" }) {
+  const d = document.createElement("div"); d.className = "map-row";
+  d.innerHTML = `<input placeholder="claim value, for example openvp-admins" value="${esc(m.value)}" aria-label="Claim value"><span>→</span><select aria-label="Role">${ROLES.map(r => `<option ${r === m.role ? "selected" : ""}>${r}</option>`).join("")}</select><button type="button" class="small danger" aria-label="Remove">✕</button>`;
+  d.querySelector("button").onclick = () => d.remove();
+  $("#s-maps").appendChild(d);
+}
+$("#s-addmap").onclick = () => mapRow();
+async function loadSso() {
+  try { sso = await api("/api/oidc"); } catch (e) { if (e.status !== 403) fail(e.message); return; }
+  $("#s-cb").textContent = location.origin + sso.callbackPath;
+  $("#s-pill").innerHTML = sso.ready ? pill("ok", "on") : sso.enabled ? pill("warn", "on, but incomplete") : pill("", "off");
+  $("#s-en").checked = sso.enabled; $("#s-auth").value = sso.authority || ""; $("#s-cid").value = sso.clientId || ""; $("#s-scopes").value = sso.scopes; $("#s-rc").value = sso.roleClaim;
+  $("#s-uc").value = sso.userClaim; $("#s-bt").value = sso.buttonText; $("#s-dom").value = (sso.allowedDomains || []).join(", "); $("#s-def").value = sso.defaultRole || "";
+  $("#s-hs").textContent = sso.hasSecret ? "(one is saved)" : "";
+  $("#s-maps").innerHTML = ""; for (const m of sso.mappings) mapRow(m); if (!sso.mappings.length) mapRow();
+}
+$("#s-save").onclick = async () => {
+  const body = { enabled: $("#s-en").checked, authority: $("#s-auth").value, clientId: $("#s-cid").value, scopes: $("#s-scopes").value, roleClaim: $("#s-rc").value, userClaim: $("#s-uc").value, buttonText: $("#s-bt").value,
+    allowedDomains: $("#s-dom").value.split(",").map(x => x.trim()).filter(Boolean), defaultRole: $("#s-def").value,
+    mappings: $$("#s-maps .map-row").map(r => ({ value: r.querySelector("input").value, role: r.querySelector("select").value })).filter(m => m.value.trim()) };
+  if ($("#s-sec").value) body.clientSecret = $("#s-sec").value;
+  try { sso = await api("/api/oidc", "PUT", body); $("#s-sec").value = ""; flash("Saved"); loadSso(); } catch (e) { fail(e.message); }
+};
+
+// ---------------------------------------------------------------- settings
+async function loadSettings() {
+  let s; try { s = await api("/api/security"); } catch (e) { if (e.status !== 403) fail(e.message); return; }
+  $("#c-local").checked = s.localExemption; $("#c-idle").value = s.sessionIdleMinutes; $("#c-abs").value = s.sessionAbsoluteHours; $("#c-att").value = s.lockoutAttempts; $("#c-lock").value = s.lockoutMinutes;
+  $("#c-amb").value = s.auditMaxMegabytes; $("#c-ad").value = s.auditMaxDays;
+  $("#c-state").textContent = s.localRequiresKey ? "OpenVP:LocalRequiresKey is true, so this computer always needs a login or the key." : s.users ? (s.localExempt ? "Right now this computer needs no login." : "Right now this computer needs a login or the key, like everyone.") : "No users yet, so this computer needs no login (as always).";
+  $("#c-info").textContent = `${s.users} user${s.users === 1 ? "" : "s"}, ${s.sessions} open session${s.sessions === 1 ? "" : "s"}, ${s.tokens} active token${s.tokens === 1 ? "" : "s"}.`;
+}
+$("#c-save").onclick = async () => {
+  try {
+    await api("/api/security", "PUT", { localExemption: $("#c-local").checked, sessionIdleMinutes: +$("#c-idle").value, sessionAbsoluteHours: +$("#c-abs").value, lockoutAttempts: +$("#c-att").value, lockoutMinutes: +$("#c-lock").value, auditMaxMegabytes: +$("#c-amb").value, auditMaxDays: +$("#c-ad").value });
+    flash("Saved"); loadSettings(); openvpAuth.refreshChip();
+  } catch (e) { fail(e.message); }
+};
+
+(async () => {
+  try { const s = await api("/api/slots"); slotCount = s.length; } catch { }
+  const i = await (await fetch("/api/info")).json().catch(() => null);
+  if (i && !i.me?.perms?.includes("Admin")) { $("#noadmin").hidden = false; for (const t of ["tokens", "https", "sso", "settings"]) $(`#tabs [data-t=${t}]`).hidden = true; $("#pane-users .card").hidden = true; return; }
+  const h = location.hash.slice(1); if (["users", "tokens", "https", "sso", "settings"].includes(h)) show(h);
+  loadUsers(); loadTokens(); loadHttps(); loadSso(); loadSettings();
+})();
+</script>
+</body>
+</html>

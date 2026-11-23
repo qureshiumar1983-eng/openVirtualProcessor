@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<link rel="stylesheet" href="openvp-ops.css">
+<script src="openvp-theme.js"></script>
+<title>Sign in to OpenVP</title>
+<style>
+  body { align-items:center; justify-content:center; padding:16px; }
+  .box { width:min(400px, 100%); }
+  .box h1 { margin:0 0 4px; font-size:20px; }
+  .box .card { padding:18px; }
+  .stack input { width:100%; }
+  details { margin-top:12px; } summary { cursor:pointer; color:var(--muted); font-size:13px; }
+  .sso { width:100%; margin-top:10px; }
+  .top { position:fixed; top:10px; right:12px; }
+</style>
+</head>
+<body>
+<div class="top"><button class="theme-btn" data-theme-toggle></button></div>
+<div class="box">
+  <div class="card">
+    <h1>OpenVP</h1>
+    <p class="muted" style="margin:0 0 12px">Sign in with your user name and password.</p>
+    <div id="note" class="note" hidden></div>
+    <form id="f" class="stack" autocomplete="on">
+      <label>User name<input id="u" name="username" autocomplete="username" required autofocus></label>
+      <label>Password<input id="p" name="password" type="password" autocomplete="current-password" required></label>
+      <div class="err" id="err" role="alert"></div>
+      <button class="primary" id="go">Sign in</button>
+    </form>
+    <button id="sso" class="sso" hidden></button>
+    <details id="keybox">
+      <summary>Use the access key instead</summary>
+      <form id="kf" class="stack" style="margin-top:8px">
+        <label>Access key<input id="k" type="password" autocomplete="off" placeholder="the key the server printed, or data/apikey.txt"></label>
+        <button>Sign in with the key</button>
+      </form>
+    </details>
+  </div>
+  <p class="muted" style="font-size:12px;text-align:center">Not signed in on this page? <a href="help.html#users">What are users and roles?</a></p>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const q = new URLSearchParams(location.search);
+const next = (() => { const n = q.get("next") || "/"; return n.startsWith("/") && !n.startsWith("//") && !n.includes("\\") ? n : "/"; })();
+function note(t) { const n = $("#note"); n.textContent = t; n.hidden = !t; }
+if (q.get("expired")) note("You were signed out because the session timed out. Sign in again.");
+if (q.get("error")) note(q.get("error"));
+async function post(body) {
+  const r = await fetch("/api/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  return { ok: r.ok, status: r.status, j };
+}
+$("#f").onsubmit = async e => {
+  e.preventDefault(); $("#err").textContent = ""; $("#go").disabled = true;
+  try {
+    const r = await post({ user: $("#u").value, password: $("#p").value });
+    if (r.ok) location.href = next; else { $("#err").textContent = r.j.error || "Couldn't sign in."; $("#p").select(); }
+  } catch { $("#err").textContent = "Couldn't reach the server."; }
+  $("#go").disabled = false;
+};
+$("#kf").onsubmit = async e => {
+  e.preventDefault(); $("#err").textContent = "";
+  const r = await post({ key: $("#k").value });
+  if (r.ok) location.href = next; else $("#err").textContent = r.j.error || "Wrong key.";
+};
+(async () => {
+  let i; try { i = await (await fetch("/api/info", { cache: "no-store" })).json(); } catch { return; }
+  if (!i.users) { location.replace(next); return; }                      // nobody to sign in as: back to the console
+  if (i.me?.authenticated && i.me.kind !== "local" && !q.get("expired") && !q.get("again")) { location.replace(next); return; }
+  if (i.oidc?.enabled) { const b = $("#sso"); b.textContent = i.oidc.text || "Sign in with single sign-on"; b.hidden = false; b.onclick = () => location.href = "/api/login/oidc?next=" + encodeURIComponent(next); }
+  if (!i.auth) $("#keybox").hidden = true;
+})();
+</script>
+</body>
+</html>

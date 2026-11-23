@@ -266,6 +266,12 @@
   .btile .bname { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:0 1 auto; }
   .btile .bsel { margin:0 2px 0 0; width:16px; height:16px; flex:none; accent-color:var(--accent); }
   .bbadge.pol { background:var(--chip); color:var(--text2); }
+  .bbadge.lockb { background:var(--warn-bg); color:var(--warn-fg); border:1px solid var(--warn-line); }
+  .bpres { display:flex; gap:3px; flex-wrap:wrap; margin-top:3px; min-height:0; }
+  .av { width:20px; height:20px; border-radius:50%; background:var(--active); border:1px solid var(--accent); display:inline-grid; place-items:center; font-size:9px; font-weight:700; color:var(--text); cursor:help; flex:none; }
+  .av.dbg { border-color:var(--warn); background:var(--warn-bg); color:var(--warn-fg); }
+  #lock-banner { margin:6px 0; padding:6px 8px; border:1px solid var(--warn-line); background:var(--warn-box); border-radius:6px; }
+  #pres-sel { display:inline-flex; gap:4px; align-items:center; flex-wrap:wrap; }
   .bcrash { margin-top:4px; font-size:12px; color:var(--warn-fg); overflow-wrap:anywhere; }
   tr.slot td:first-child { box-shadow:inset 4px 0 0 var(--sc, transparent); }
   #slots input.bsel { width:16px; height:16px; margin:0; accent-color:var(--accent); vertical-align:middle; }
@@ -362,7 +368,7 @@
 <body>
 <header>
   <h1>OpenVP</h1><small>open-source virtual control processor</small>
-  <span style="flex:1"></span><span id="saved" role="status" aria-live="polite"></span><span id="sigfind-wrap"><input id="sigfind" type="search" placeholder="Find a signal in all slots" aria-label="Find a signal by name in every loaded slot" autocomplete="off" title="Finds signals by name across all loaded slots and opens that slot's debugger on the one you pick (press F)" data-help="signal-search"><div id="sigfind-res" hidden></div></span><button class="hbtn" id="pal-open" title="Search every action and every help topic (Ctrl+K or Cmd+K)" data-help="palette">Search ⌘K</button><button class="hbtn" id="keys-open" title="Keyboard shortcuts (?)" data-help="palette">?</button><button class="hbtn" id="tpl-open" title="Starter projects to download: a SIMPL# Pro program and a CH5 panel" data-help="templates">Templates</button><button class="theme-btn" data-theme-toggle data-help="top-bar"></button><a href="devices.html" id="devices-link" target="openvp-devices" data-help="devices" title="Device simulators, COM terminal, socket sniffer, network redirects and discovery for the selected slot">Devices ↗</a><a href="metrics.html" target="openvp-metrics" data-help="metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="alerts.html" id="alerts-link" target="openvp-alerts" data-help="alerts" title="Alerts to email, Teams, Slack and your phone; thresholds and health reports">Alerts ↗<span class="abadge" id="alerts-badge" hidden></span></a><a href="integrations.html" id="integrations-link" target="openvp-integrations" data-help="integrations" title="MQTT and Home Assistant, webhooks, OSC, Art-Net and Prometheus for the selected slot">Integrations ↗</a><a href="backup.html" id="backup-link" target="openvp-backup" data-help="backups" title="Export the whole processor, daily backups, and Git-backed config">Backups ↗</a><a href="schedules.html" target="openvp-schedules" data-help="schedules" title="Restart a slot nightly, load a program, run a backup or set a signal at a time">Schedules ↗</a><a href="targets.html" target="openvp-push" data-help="push" title="Push programs and exports to other OpenVP machines">Push ↗</a><a href="panel.html" target="_blank" data-help="panel" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a><a href="#welcome" id="welcome-link" title="Show the welcome screen again">Welcome</a>
+  <span style="flex:1"></span><span id="saved" role="status" aria-live="polite"></span><span id="sigfind-wrap"><input id="sigfind" type="search" placeholder="Find a signal in all slots" aria-label="Find a signal by name in every loaded slot" autocomplete="off" title="Finds signals by name across all loaded slots and opens that slot's debugger on the one you pick (press F)" data-help="signal-search"><div id="sigfind-res" hidden></div></span><button class="hbtn" id="pal-open" title="Search every action and every help topic (Ctrl+K or Cmd+K)" data-help="palette">Search ⌘K</button><button class="hbtn" id="keys-open" title="Keyboard shortcuts (?)" data-help="palette">?</button><button class="hbtn" id="tpl-open" title="Starter projects to download: a SIMPL# Pro program and a CH5 panel" data-help="templates">Templates</button><button class="theme-btn" data-theme-toggle data-help="top-bar"></button><a href="devices.html" id="devices-link" target="openvp-devices" data-help="devices" title="Device simulators, COM terminal, socket sniffer, network redirects and discovery for the selected slot">Devices ↗</a><a href="metrics.html" target="openvp-metrics" data-help="metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="alerts.html" id="alerts-link" target="openvp-alerts" data-help="alerts" title="Alerts to email, Teams, Slack and your phone; thresholds and health reports">Alerts ↗<span class="abadge" id="alerts-badge" hidden></span></a><a href="integrations.html" id="integrations-link" target="openvp-integrations" data-help="integrations" title="MQTT and Home Assistant, webhooks, OSC, Art-Net and Prometheus for the selected slot">Integrations ↗</a><a href="backup.html" id="backup-link" target="openvp-backup" data-help="backups" title="Export the whole processor, daily backups, and Git-backed config">Backups ↗</a><a href="schedules.html" target="openvp-schedules" data-help="schedules" title="Restart a slot nightly, load a program, run a backup or set a signal at a time">Schedules ↗</a><a href="targets.html" target="openvp-push" data-help="push" title="Push programs and exports to other OpenVP machines">Push ↗</a><a href="panel.html" target="_blank" data-help="panel" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="security.html" id="security-link" data-perm="Admin" data-perm-hide target="openvp-security" title="Users, API tokens, HTTPS, single sign-on and the audit log">Security ↗</a><span id="who-chip"></span><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a><a href="#welcome" id="welcome-link" title="Show the welcome screen again">Welcome</a>
 </header>
 <div id="slot-strip" aria-label="Selected slot"><select id="strip-slot" aria-label="Slot"></select><button id="strip-start" title="Start">▶</button><button id="strip-stop" title="Stop">■</button><button id="strip-restart" title="Restart">↻</button></div>
 <div id="net-bar" data-help="internet">
@@ -416,6 +422,12 @@
         <span class="muted">Room ID</span> <b id="room-id" class="mono"></b>
         <button id="room-edit" data-help="room-id" title="Virtual Control Room ID for this slot (panels can connect with ?room=ID)">Edit…</button>
       </div>
+      <div class="bar" id="lock-row">
+        <button id="lock-btn" data-perm="LockSlot" title="Lock this slot for a live event. Only an Admin or you can then load, stop, restart, force or edit it. Panels and shared links keep working.">Lock slot…</button>
+        <button id="unlock-btn" data-perm="LockSlot" hidden>Unlock</button>
+        <span id="pres-sel" class="muted"></span>
+      </div>
+      <div id="lock-banner" hidden role="status"></div>
       <div id="sel-info" class="muted mono"></div>
       <div id="sel-summary" class="muted" data-help="summary" hidden></div>
       <details id="slot-set" data-help="slotsettings"><summary>Slot settings</summary>
@@ -679,6 +691,21 @@
   </ul>
   <div class="row"><button type="button" id="welcome-skip">Skip</button><button type="button" id="welcome-demo" title="Load the SIMPL# and SIMPL Windows samples into slots 1 and 2, linked over EISC, and open a test panel">Try the demo</button><button value="ok" id="welcome-go" autofocus>Get started</button></div>
 </form></dialog>
+<dialog id="pres-dlg" aria-labelledby="pres-title" style="background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:16px;width:min(440px,calc(100vw - 24px))">
+  <form method="dialog" onsubmit="return false" style="display:flex;flex-direction:column;gap:10px;margin:0">
+    <h2 id="pres-title" style="margin:0;font-size:16px;text-transform:none;letter-spacing:0;color:var(--text)"></h2>
+    <div id="pres-text" class="muted"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" id="pres-cancel">Cancel</button><button id="pres-ok" style="border-color:var(--warn)">Go ahead</button></div>
+  </form></dialog>
+<dialog id="lock-dlg" aria-labelledby="lock-title" style="background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:16px;width:min(440px,calc(100vw - 24px))">
+  <form method="dialog" id="lock-form" onsubmit="return false" style="display:flex;flex-direction:column;gap:10px;margin:0">
+    <h2 id="lock-title" style="margin:0;font-size:16px;text-transform:none;letter-spacing:0;color:var(--text)">Lock slot</h2>
+    <div class="muted">While it is locked only an Admin, or you, can load, unload, stop, restart, force signals, edit files, roll back, import or push to this slot, and schedules skip it. Panels and shared links keep working.</div>
+    <label class="fld">Reason (shown to everyone)<input id="lock-reason" maxlength="300" placeholder="Live event until 17:00" autocomplete="off"></label>
+    <label class="fld">Unlock automatically<select id="lock-for"><option value="">When I unlock it</option><option value="1">After 1 hour</option><option value="4">After 4 hours</option><option value="8">After 8 hours</option><option value="24">After 24 hours</option></select></label>
+    <div id="lock-err" class="muted" role="alert" style="color:var(--err-fg)"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" id="lock-cancel">Cancel</button><button id="lock-ok" style="border-color:var(--accent)">Lock slot</button></div>
+  </form></dialog>
 <script src="openvp-auth.js"></script>
 <script src="openvp-alerts.js"></script>
 <script src="qrcode.js"></script>
@@ -687,6 +714,19 @@
 openvpAuth.init();
 const $ = s => document.querySelector(s);
 let sel = 1, ws = null, curRoom, bulkSel = new Set();
+
+// What each control needs. The server checks every request; this only dims what your account can't use.
+const PERM_MAP = {
+  "#upload, #recent-btn, #inspect, #demo-btn, #from-path, #watch-stop, #room-edit, #slot-set input, #slot-set select, #slot-set button, [data-bulk=unload]": "LoadProgram",
+  "[data-act=start], [data-act=stop], [data-act=restart], #strip-start, #strip-stop, #strip-restart, [data-bulk=start], [data-bulk=stop], [data-bulk=restart]": "Operate",
+  "#files-mkdir, #files-up, #files-updir": "Files", "#hist-now": "Snapshot", "#rec-toggle, #rec-up": "Recording", "#console-run, #console-in": "Console",
+  "#d-identify, #d-login-toggle": "IpTable", "#d-remap, #d-remap-reset": "Simulator", "#d-share": "Share",
+};
+function permsApply() {
+  for (const [selector, perm] of Object.entries(PERM_MAP)) for (const el of document.querySelectorAll(selector)) el.dataset.perm = perm;
+  openvpAuth.apply();
+}
+document.addEventListener("openvp-me", () => { permsApply(); try { refreshSlots(); } catch { } });
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
@@ -712,7 +752,7 @@ async function refreshSlots() {
       curRoom = s.roomId;
       document.title = `OpenVP · slot ${s.number}${s.name ? " " + s.name : ""}`;
       $("#sel-name").textContent = s.name ? "· " + s.name : "";
-      fillSettings(s);
+      fillSettings(s); renderLockPresence(s);
       document.querySelectorAll(".room-tag").forEach(e => e.textContent = typeof s.roomId === "string" ? ` · room ${s.roomId}` : "");
       const hasRoom = typeof s.roomId === "string";
       document.querySelectorAll(".roomcol").forEach(e => e.style.display = hasRoom ? "" : "none");
@@ -727,6 +767,7 @@ async function refreshSlots() {
     }
   }
   renderBulk();
+  permsApply();
 }
 
 // ---------------- Status board ----------------
@@ -734,6 +775,29 @@ async function refreshSlots() {
 // plus the slot's own error state.
 let boardSlots = [], boardMetrics = null, boardHtml = "";
 
+function lockText(l) { return `Locked by ${l.by}${l.reason ? ": " + l.reason : ""}${l.expires ? " (until " + new Date(l.expires).toLocaleString() + ")" : ""}`; }
+function lockBadge(s) { return s.locked ? `<span class="bbadge lockb" title="${esc(lockText(s.locked) + "\nOnly an Admin or the one who locked it can load, stop, restart, force or edit this slot. Panels and shared links still work.")}">locked</span>` : ""; }
+function presenceHtml(s) {
+  const p = s.presence || [];
+  if (!p.length) return "";
+  return `<div class="bpres" title="${esc(p.map(x => x.name + (x.kind === "debugging" ? " (debugger open)" : " (viewing)")).join("\n"))}">` + p.slice(0, 6).map(x => `<span class="av ${x.kind === "debugging" ? "dbg" : ""}" aria-label="${esc(x.name + (x.kind === "debugging" ? ", debugging" : ", viewing"))}">${esc(x.initials)}</span>`).join("") + (p.length > 6 ? `<span class="muted">+${p.length - 6}</span>` : "") + `</div>`;
+}
+// The selected slot: its lock, and who has it open.
+function renderLockPresence(s) {
+  const l = s.locked, me = openvpAuth.me;
+  $("#lock-banner").hidden = !l; $("#lock-banner").textContent = l ? lockText(l) + ". Only an Admin or the one who locked it can change this slot; panels and shared links keep working." : "";
+  $("#lock-btn").hidden = !!l; $("#unlock-btn").hidden = !l;
+  const mine = l && me && (me.perms?.includes("Admin") || (me.kind === "user" && l.by === me.name));
+  // For anyone else the buttons that would change the locked slot are dimmed (the server refuses them anyway).
+  const blocked = !!l && !mine;
+  for (const el of document.querySelectorAll("#upload, #recent-btn, #from-path, #demo-btn, #watch-stop, [data-act=stop], [data-act=restart], [data-act=unload], #strip-stop, #strip-restart, #files-mkdir, #files-up, #files-updir")) {
+    if (blocked) { if (!el.hasAttribute("data-lock-off")) { el.dataset.lockTitle = el.title || ""; el.setAttribute("data-lock-off", ""); } el.disabled = true; el.title = lockText(l); }
+    else if (el.hasAttribute("data-lock-off")) { el.removeAttribute("data-lock-off"); el.disabled = false; el.title = el.dataset.lockTitle || ""; }
+  }
+  $("#unlock-btn").title = mine || !l ? "Let people change this slot again" : "Only an Admin or " + l.by + " can unlock it";
+  const p = s.presence || [];
+  $("#pres-sel").innerHTML = p.length ? "Open now: " + p.map(x => `<span class="av ${x.kind === "debugging" ? "dbg" : ""}" title="${esc(x.name + (x.kind === "debugging" ? " has the debugger open" : " is viewing"))}">${esc(x.initials)}</span> ${esc(x.name)}`).join(", ") : "";
+}
 function crashLabel(c) { return c.mode === "restart" ? "restart on crash" : c.mode === "limited" ? `restart up to ${c.maxRestarts} in ${c.windowMinutes} min` : ""; }
 function renderBoard() {
   const bySlot = {};
@@ -747,7 +811,7 @@ function renderBoard() {
     const online = s.devices.filter(d => d.online).length;
     const eps = m ? `${m.eventsPerSecond.toFixed(1)} ev/s` : "– ev/s";
     const pol = crashLabel(s.crash);
-    const flags = (problems.length ? `<span class="bbadge" title="${esc(problems.join("\n"))}">${problems.length > 1 ? problems.length + " problems" : "problem"}</span>` : "")
+    const flags = lockBadge(s) + (problems.length ? `<span class="bbadge" title="${esc(problems.join("\n"))}">${problems.length > 1 ? problems.length + " problems" : "problem"}</span>` : "")
       + (s.alerts > 0 ? `<span class="bbadge osc" title="${esc((s.alertText || "A signal is racing or oscillating") + "\nOpen the debugger's Alerts panel for the list.")}">⚠ ${s.alerts > 1 ? s.alerts + " oscillating" : "oscillating"}</span>` : "")
       + (s.exceptions > 0 ? `<span class="bbadge" title="${esc("The program threw " + s.exceptions + " unhandled exception" + (s.exceptions > 1 ? "s" : "") + ". See Exceptions under the log.")}">${s.exceptions} exception${s.exceptions > 1 ? "s" : ""}</span>` : "")
       + (s.recording === "recording" ? `<span class="bbadge rec" title="This slot is recording its inputs and feedback">● recording</span>` : "")
@@ -762,6 +826,7 @@ function renderBoard() {
     return `<div class="btile st-${st}${s.number === sel ? " sel" : ""}" data-n="${s.number}" role="button" tabindex="0" aria-label="${esc(label)}" title="${esc("Select slot " + s.number + (s.name ? " · " + s.name : "") + (typeof s.roomId === "string" ? " · room " + s.roomId : "") + (s.summary ? "\n" + (s.program ?? "") + "\n" + s.summary.text : ""))}"${s.color ? ` style="--sc:${esc(s.color)}"` : ""}>
       <div class="btop"><input type="checkbox" class="bsel" data-n="${s.number}" aria-label="Select slot ${s.number} for bulk actions" ${bulkSel.has(s.number) ? "checked" : ""}><span class="bdot"></span><span class="bnum">${s.number}</span>${nm || room}<span class="bflags">${flags}</span></div>
       <div class="bprog" title="${esc((s.program ?? "") + (s.summary ? "\n" + s.summary.text : ""))}">${s.program ? `${esc(s.program)} <span class="muted">· ${esc(s.kind)}</span>` : "empty"}</div>
+      ${presenceHtml(s)}
       <div class="bstats">${st === "Empty" ? "" : `<span>${st}</span>`}<span title="Panels online / IP IDs in this slot's IP table">${online}/${s.devices.length} online</span><span title="Events per second on the slot thread">${eps}</span></div>${crashLine}
     </div>`;
   }).join("");
@@ -1103,6 +1168,7 @@ $("#watch-stop").onclick = async () => {
 
 // Load a program (and the files that belong with it) into the selected slot. Used by the Load button and by dropping files on the page.
 async function loadFiles(list) {
+  if (!await warnDebuggers(sel, "Loading a program")) return;
   const files = [...list].filter(f => f.name);
   if (!files.length) return alert("Choose a .cpz, .dll, .lpz or .smw first.");
   const main = pickMain(files) || (list === $("#file").files ? files[0] : null);
@@ -1149,6 +1215,21 @@ $("#inspect").onclick = async () => {
   const fd = new FormData(); for (const f of files) fd.append("file", f);
   try { $("#console-out").textContent = await api("/api/inspect", { method: "POST", body: fd }); }
   catch (e) { alert(e.message); }
+};
+
+// Lock a slot for a live event (and unlock it). The server decides who may.
+$("#lock-btn").onclick = () => { $("#lock-reason").value = ""; $("#lock-for").value = ""; $("#lock-err").textContent = ""; $("#lock-title").textContent = `Lock slot ${sel}`; $("#lock-dlg").showModal(); $("#lock-reason").focus(); };
+$("#lock-cancel").onclick = () => $("#lock-dlg").close();
+$("#lock-dlg").addEventListener("click", e => { if (e.target === $("#lock-dlg")) $("#lock-dlg").close(); });
+$("#lock-form").onsubmit = async () => {
+  try {
+    const h = $("#lock-for").value;
+    await api(`/api/slots/${sel}/lock`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reason: $("#lock-reason").value, hours: h ? +h : undefined }) });
+    $("#lock-dlg").close(); refreshSlots(); refreshBoard(); refreshActivity();
+  } catch (e) { $("#lock-err").textContent = e.message; }
+};
+$("#unlock-btn").onclick = async () => {
+  try { await api(`/api/slots/${sel}/lock`, { method: "DELETE" }); refreshSlots(); refreshBoard(); refreshActivity(); } catch (e) { alert(e.message); }
 };
 
 $("#compat").onclick = async () => { $("#console-out").textContent = await api(`/api/slots/${sel}/compat`); };
@@ -1661,23 +1742,26 @@ async function shareBases() {
   const out = [];
   const host = location.hostname;
   const isLocal = ["localhost", "127.0.0.1", "[::1]", "::1"].includes(host);
-  const port = location.port ? ":" + location.port : "";
+  let scheme = location.protocol, port = location.port ? ":" + location.port : "";
+  try { const i = await api("/api/info"); if (i.https?.listening) { scheme = "https:"; port = i.https.port === 443 ? "" : ":" + i.https.port; } } catch { }
   try {
     const t = await api("/api/tunnel");
     if (t.state === "on" && t.url) out.push({ label: `Internet (${new URL(t.url).host})`, base: t.url, internet: true });
   } catch { }
-  if (!isLocal) out.push({ label: `This address (${location.host})`, base: location.origin, lan: true });
+  if (!isLocal) out.push({ label: `This address (${location.hostname}${port})`, base: `${scheme}//${location.hostname}${port}`, lan: true });
   let net = { lan: [] };
   try { net = await api("/api/network"); } catch { }
   for (const a of net.lan) {
     if (!isLocal && location.hostname === a.address) continue;
-    out.push({ label: `${a.address} (${a.name})`, base: `${location.protocol}//${a.address}${port}`, lan: true });
+    out.push({ label: `${a.address} (${a.name})`, base: `${scheme}//${a.address}${port}`, lan: true });
   }
   if (isLocal) out.push({ label: "localhost (only works on this computer)", base: location.origin, local: true });
   return out;
 }
 
 async function refreshShares() {
+  // The link list holds the secret tokens, so it is for those who may share; a Viewer doesn't ask for it.
+  if (!openvpAuth.can("Share")) { try { ch5List = await api("/api/panels"); sharesData = []; } catch { return; } renderShares(); renderCh5Rows(); return; }
   try { [sharesData, ch5List] = await Promise.all([api("/api/shares"), api("/api/panels")]); } catch { return; }
   renderShares();
   renderCh5Rows();
@@ -1925,7 +2009,18 @@ const fail = e => toast(e.message || String(e), { error: true });
 const restoreTrash = id => api(`/api/trash/${id}/restore`, { method: "POST" });
 
 // ------------------------------------------------------------------ slot actions (buttons, keys, palette, strip)
+// If someone else has this slot's debugger open, say so before something that changes the program under them.
+async function warnDebuggers(n, what) {
+  const s = boardSlots.find(x => x.number === n);
+  const others = (s?.presence || []).filter(p => !p.me && p.kind === "debugging");
+  if (!others.length) return true;
+  const d = $("#pres-dlg");
+  $("#pres-title").textContent = `${others.map(p => p.name).join(", ")} ${others.length === 1 ? "is" : "are"} debugging slot ${n}`;
+  $("#pres-text").textContent = `${what} will interrupt ${others.length === 1 ? "them" : "them"} while they work. Go ahead?`;
+  return new Promise(res => { d.onclose = () => res(d.returnValue === "ok"); d.returnValue = ""; $("#pres-ok").onclick = () => d.close("ok"); $("#pres-cancel").onclick = () => d.close("cancel"); d.showModal(); });
+}
 async function slotAction(n, act) {
+  if (["stop", "restart", "unload"].includes(act) && !await warnDebuggers(n, act === "stop" ? "Stopping it" : act === "restart" ? "Restarting it" : "Unloading it")) return;
   const r = await api(`/api/slots/${n}/${act}`, { method: "POST" });
   if (act === "unload" && r.undo?.snapshot)
     toast(`Unloaded slot ${n}.`, { undo: async () => { await api(`/api/slots/${n}/snapshots/${r.undo.snapshot}/restore`, jsonPost({ start: r.undo.start })); refreshAllSoon(n); } });
