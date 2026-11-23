@@ -67,6 +67,7 @@
     <a href="#schedules">Schedules</a>
     <a href="#push">Push</a>
     <a href="#alerts">Alerts</a>
+    <a href="#security">Security</a>
     <a href="#metrics">Metrics</a>
     <a href="#panel">Test panel</a>
     <input type="search" id="find" placeholder="Find a button…" autocomplete="off">
@@ -377,7 +378,7 @@
   </dl>
 
   <h3 id="console-access">Telnet and SSH console</h3>
-  <p class="muted">Not a page: a text console like a processor's, over telnet (port 41795) and SSH (port 22). Off by default; turn it on with <code>OpenVP:TelnetEnabled</code> and <code>OpenVP:SshEnabled</code>. When on it listens on all interfaces. The password is the access key. See the README for the commands (<code>ver</code>, <code>ipt</code>, <code>progreset -p:N</code>, <code>stopprog</code>, <code>info</code>, ... and the program's own commands) and the limits on sessions and wrong passwords.</p>
+  <p class="muted">Not a page: a text console like a processor's, over telnet (port 41795) and SSH (port 22). Off by default; turn it on with <code>OpenVP:TelnetEnabled</code> and <code>OpenVP:SshEnabled</code>. When on it listens on all interfaces. The password is the access key; once users exist it asks for a user name and password and applies their role (see Security). See the README for the commands (<code>ver</code>, <code>ipt</code>, <code>progreset -p:N</code>, <code>stopprog</code>, <code>info</code>, ... and the program's own commands) and the limits on sessions and wrong passwords.</p>
 
   <h3 id="mdns">openvp.local</h3>
   <p class="muted">OpenVP announces itself on the network as <code>openvp.local</code> and <code>&lt;hostname&gt;.local</code>, and as the service "OpenVP on &lt;hostname&gt;", so phones and PCs can find it. Set <code>OpenVP:Mdns</code> to turn it on or off (on by default, off inside a container).</p>
@@ -754,6 +755,64 @@
     <dt><span class="b">Send report now</span></dt><dd>Sends the last 24 hours or 7 days through the ticked channels and shows the result for each.</dd>
     <dt><span class="b">View report</span> · <span class="b">Download HTML</span></dt><dd>Opens or saves the report as a web page: uptime for each slot, crashes and restarts, alerts, the most frequent events, devices that dropped, peak CPU and memory, and programs loaded or changed.</dd>
   </dl>
+</section>
+
+<section id="security">
+  <h2>Security: users, tokens, HTTPS, audit, lock</h2>
+  <p class="muted">The <b>Security</b> link in the console's header (Admins only) opens the page with Users, API tokens, HTTPS, Single sign-on and Settings; the <b>Audit log</b> is its own page. The server checks every request itself, so a button that is dimmed for you is also refused by the server.</p>
+
+  <h3 id="users">Users and roles</h3>
+  <p class="muted">Until you add the first user OpenVP works as it always has: the access key, and no login from this computer. Once there is a user, people sign in at the <b>login page</b> and the access key still works for Admins and scripts.</p>
+  <dl>
+    <dt><span class="b">Add user…</span></dt><dd>A name, a password (at least 8 characters), a role and optionally the slots they are limited to. A user limited to slots only sees and changes those.</dd>
+    <dt>Admin</dt><dd>Everything: users, tokens, HTTPS, single sign-on, the audit log, export and import, backups, push targets, git, alert setup, the internet tunnel.</dd>
+    <dt>Programmer</dt><dd>Load, unload and roll back programs; the debugger and forcing signals; files; recordings; snapshots; simulators; a slot's integrations and schedules; plus a Technician's abilities.</dd>
+    <dt>Technician</dt><dd>Start, stop and restart; panels and signals; the IP table; shared links; acknowledging alerts; locking a slot; viewing everything.</dd>
+    <dt>Viewer</dt><dd>Read-only.</dd>
+    <dt><span class="b">Edit</span></dt><dd>Change a role, slots, or turn the account off. OpenVP won't let you leave without an enabled Admin.</dd>
+    <dt><span class="b">Password</span> · <span class="b">Unlock</span> · <span class="b">Sign out</span></dt><dd>Set a new password (their sessions end) · clear a lock-out (5 wrong passwords lock an account for 15 minutes) · end every session of that user.</dd>
+    <dt><span class="b">Password…</span> (header)</dt><dd>Change your own password. Your other browsers are signed out.</dd>
+    <dt><span class="b">Sign out</span> (header)</dt><dd>End this browser's session. Sessions also end after 60 idle minutes or 12 hours (Settings).</dd>
+  </dl>
+
+  <h3 id="localhost">Requests from this computer</h3>
+  <p class="muted">Settings tab. On by default: this computer needs no login, even when users exist, so the desktop app keeps working. Turn it off on a shared or remote machine: then this computer signs in like everyone else. It never applies through a proxy or the internet tunnel.</p>
+
+  <h3 id="tokens">API tokens</h3>
+  <dl>
+    <dt><span class="b">New token…</span></dt><dd>A name, a scope (<b>read-only</b>, <b>operator</b>: start/stop/restart and signals, <b>programmer</b>: plus programs, debugger and files, or <b>admin</b>), optionally the slots and an expiry. The token is shown <b>once</b>; copy it then. Use it as <code>Authorization: Bearer ovp_…</code> or <code>X-OpenVP-Key</code>.</dd>
+    <dt><span class="b">Revoke</span></dt><dd>Stops it at once. The list shows when and from where each was last used.</dd>
+    <dt>Push targets</dt><dd>On the Push page a target's key can be a token made on the other machine: <b>programmer</b> to push a program, <b>admin</b> to push an export.</dd>
+  </dl>
+
+  <h3 id="https">HTTPS</h3>
+  <dl>
+    <dt><span class="b">Make a self-signed certificate</span></dt><dd>One click. It covers this computer's name, <code>openvp.local</code>, <code>localhost</code> and its network addresses, for two years. The fingerprint is shown; browsers warn until you trust it (download the <code>.cer</code>).</dd>
+    <dt><span class="b">Upload a certificate…</span></dt><dd>A <code>.pfx</code>/<code>.p12</code> with its password, or a PEM certificate and key.</dd>
+    <dt>Serve the console over HTTPS</dt><dd>Needs a certificate. The port (default 8443) is opened when OpenVP starts, so turning it on or changing the port needs a restart; a new certificate doesn't. Share links and QR codes then use https.</dd>
+    <dt>Redirect http to https</dt><dd>Sends browsers opening a page over http from another machine to https. Never this computer, the API, webhooks, <code>/healthz</code> or CIP.</dd>
+    <dt>Let's Encrypt (optional)</dt><dd>Needs a public host name that points here and <b>port 80 reaching OpenVP</b>. <span class="b">Get certificate</span> asks Let's Encrypt; it can renew itself. Off unless you use it; not tested against the live service.</dd>
+  </dl>
+
+  <h3 id="sso">Single sign-on</h3>
+  <p class="muted">Optional OpenID Connect login (Entra, Okta, Keycloak, Google…). Fill in the authority, client id and secret, the claim that holds groups, and which group becomes which role; give your provider the redirect address the page shows. Local users and the access key keep working. Off by default.</p>
+
+  <h3 id="audit">Audit log</h3>
+  <dl>
+    <dt>What is in it</dt><dd>Sign-ins and failures, lock-outs, token and user changes, permission denials, program loads, forced signals, file edits, exports and imports, shared links and hooks, slot locks, HTTPS and settings changes. Each has who, from where and when.</dd>
+    <dt><span class="b">Verify chain</span></dt><dd>Every entry holds the hash of the one before. Verify walks all files and says where the chain breaks: a changed, removed or reordered line, or a cut-off end.</dd>
+    <dt>Filters · <span class="b">Download CSV</span></dt><dd>By who, what, slot, text and date. The CSV has the same filters.</dd>
+    <dt>Rotation</dt><dd>A new file starts at 5 MB or 90 days (Settings); the chain carries on across files.</dd>
+  </dl>
+
+  <h3 id="lock">Lock a slot</h3>
+  <dl>
+    <dt><span class="b">Lock slot…</span></dt><dd>"Live event, don't touch." Give a reason and optionally an expiry. Only an Admin or you can then load, unload, stop, restart, force signals, edit files or roll back that slot. Schedules skip it, imports skip it, a push from another OpenVP is refused, and auto-reload waits until the lock ends. Panels and shared links keep working.</dd>
+    <dt><span class="b">Unlock</span></dt><dd>Only the one who locked it, or an Admin. The Status board tile shows <b>locked</b>; hover for who and why.</dd>
+  </dl>
+
+  <h3 id="presence">Who is here (presence)</h3>
+  <p class="muted">The small circles on a Status board tile and in the debugger's title bar show who has that slot open: their initials, or for the access key and this computer, their address. An amber circle has the debugger open. Before you force a signal, step, stop, restart or load a program, OpenVP warns if someone else has that slot's debugger open ("Sam is debugging this slot") and lets you cancel.</p>
 </section>
 
 <section id="panel">

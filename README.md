@@ -337,7 +337,7 @@ Every program loaded into a slot is kept as a **version** in `data/versions/slot
 
 ### Push to other machines
 
-**Push ↗** (`/targets.html`) keeps a list of **targets**: other OpenVP servers, each an address (`http://192.168.1.20:8080`) and its access key. The key is saved in the secret store (`target.<id>.key`), never in `targets.json` and never shown again. It uses the other machine's own REST API: `POST /api/slots/{n}/program` to load a program, `POST /api/import` to import an export. **Test** connects, checks it is OpenVP and that the key is accepted.
+**Push ↗** (`/targets.html`) keeps a list of **targets**: other OpenVP servers, each an address (`http://192.168.1.20:8080`) and its access key **or an [API token](#api-tokens) made on that machine**: a `programmer` token is enough to push a program version, a whole export needs `admin`. The key is saved in the secret store (`target.<id>.key`), never in `targets.json` and never shown again. It uses the other machine's own REST API: `POST /api/slots/{n}/program` to load a program, `POST /api/import` to import an export. **Test** connects, checks it is OpenVP and that the key or token is accepted, and warns if a token's scope is too small to push. A slot that is [locked](#slot-lock-and-presence) on the other machine refuses the push (423) and says why.
 
 - **A program version** (the loaded one or any kept version) is sent to the slot numbers you choose on each target, which stops the program there, snapshots it, loads the new one and starts it (or not). **A whole-processor export** (the slots you tick, optionally with the processor settings and secrets under a password) is imported there like an [import](#backups-and-export).
 - **Many targets at once.** Targets run in parallel; the page shows each one's state and each slot's result as it goes (`queued`, `running`, `ok`, `failed` with the reason), and one failing (wrong key, unreachable, an older OpenVP without the endpoint) doesn't stop the others. A pushed program is a `push` version on the target.
@@ -576,7 +576,7 @@ Maps analog signals to DMX channels. Each mapping has a universe (0-32767, the 1
 
 #### Prometheus and Grafana
 
-`GET /metrics` returns the [Prometheus text format](https://prometheus.io/docs/instrumenting/exposition_formats/). It needs the access key (`Authorization: Bearer KEY`, or no key from this computer), unless you set `OpenVP:MetricsPublic=true`; it is **never** served on the internet tunnel's port. It has:
+`GET /metrics` returns the [Prometheus text format](https://prometheus.io/docs/instrumenting/exposition_formats/). It needs a credential (the access key or a token as `Authorization: Bearer ...`, any signed-in user, or no login from this computer), unless you set `OpenVP:MetricsPublic=true`; it is **never** served on the internet tunnel's port. It has:
 
 | Metric | |
 |---|---|
@@ -612,7 +612,7 @@ ssh admin@host           # any user name; the password is the access key
 ssh admin@host ver       # one command, no shell
 ```
 
-- **Login.** The password is the OpenVP [access key](#security); the user name is ignored for now. The authenticator is a small interface (`IConsoleAuth`), so a user from a later accounts feature can be checked the same way, with a user name prompt. With the key switched off (`OpenVP:ApiKey=off`) the console doesn't start at all: it won't be open to anyone. SSH takes password logins only (no keys, no port forwarding, no subsystems).
+- **Login.** With no users, the password is the OpenVP [access key](#security) and the user name is ignored. Once [users](#users-and-roles) exist, telnet asks for a **user name** and password (SSH takes them as the login), and the same roles and slot limits apply: a Viewer can look (`slots`, `ipt`, `signals`, `taskstat`), a Technician can also `startprog`/`stopprog`/`progreset`, a Programmer can `progload` and run a program's own commands, and a locked slot refuses `stopprog`, `progreset` and `progload`. The access key still works as the password with any user name (an Admin). The authenticator is a small interface (`IConsoleAuth`). Every console login, good or bad, goes in the [audit log](#audit-log). With neither a key nor a user the console doesn't start at all: it won't be open to anyone. SSH takes password logins only (no keys, no port forwarding, no subsystems).
 - **Commands.** `help`, `ver`, `info`, `hostname`, `uptime`, `time`, `slots`, `ipt [-p:N]`, `progreset -p:N` (load the slot's program again and start it), `progload -p:N [-f:file]` (the slot's remembered program, or a file in its upload folder), `stopprog -p:N`, `startprog -p:N`, `cpuload`, `ramfree`, `taskstat` (`-p:N` for a slot), `progcomments -p:N`, `signals -p:N`, `use N`, `prog N command` and `exit`. Anything else is tried as a console command the program registered (`CrestronConsole.AddNewConsoleCommand`, `RunConsoleCommand`, as in the web console), in the slot named with `-p:N`, the one chosen with `use N`, or the first slot that has a command of that name. `help` lists the program's own commands too.
 - **Limits.** At most 5 sessions at a time (`OpenVP:ConsoleMaxConnections`) and 3 from one address; idle sessions close after 15 minutes. **Wrong passwords are limited**: each wrong one waits 1.5 s, 3 wrong end the session, 5 wrong from one address in 5 minutes lock that address out for 5 minutes (even for the right password), and 30 from all addresses together lock everyone out for 5 minutes.
 - **SSH library.** [FxSsh](https://github.com/Aimeast/FxSsh) (MIT, no dependencies) from NuGet. Its host key is made on first start and kept in `data/ssh_host_key.pem` (owner-only on Linux and macOS); keep the file so clients don't see host key warnings. Telnet is plain text and so are the passwords typed into it: use it on a trusted network, or use SSH.
@@ -643,25 +643,106 @@ The per-slot view is still there: the log lists what each program is missing, an
 
 ## Security
 
-A SIMPL# program is .NET code that runs inside the OpenVP process, so anyone who can upload a program can run code on the machine. The web console and API are protected by an **access key**:
+A SIMPL# program is .NET code that runs inside the OpenVP process, so anyone who can upload a program can run code on the machine. The web console, the REST API, the debugger streams and the telnet/SSH console are protected, and **the server checks every request itself**: the buttons a page dims are a convenience, never the protection. How you sign in, in the order you will probably use them:
+
+| Credential | What it is | What it can do |
+|---|---|---|
+| **Access key** | One secret in `data/apikey.txt` (or `OpenVP:ApiKey`). Always valid. | Everything (Admin). The bootstrap and scripting credential. |
+| **API token** | A named secret made on the Security page, with a scope, optional slots and an optional expiry. | What its scope allows. |
+| **User** | A name and password, with a role. | What the role allows. |
+| **Single sign-on** | A person signed in by your OpenID Connect provider. | What their mapped role allows. |
+| **This computer** | A request from localhost with no login. | Everything, unless you turn it off (below). |
+
+**While no user exists, nothing changes**: the access key, and no login from this computer, exactly as before. The desktop app opens `http://localhost:8080` and works with no login.
+
+### Access key
 
 - If `OpenVP:ApiKey` isn't set, a random key is generated on first start, saved in `data/apikey.txt` (readable only by its owner) and printed to the console.
-- In a browser, open `http://host:8080/?key=KEY` once, or type the key into the login box. You'll get an HttpOnly, SameSite=Strict cookie.
+- In a browser, open `http://host:8080/?key=KEY` once, or type the key into the login box. You get an HttpOnly, SameSite=Strict cookie.
 - From scripts, send `Authorization: Bearer KEY` or `X-OpenVP-Key: KEY`.
-- Requests from the same machine to `localhost` don't need the key, unless `OpenVP:LocalRequiresKey=true`. This exception never applies to requests that arrive through a reverse proxy (with `X-Forwarded-For`, `Forwarded`, `X-Real-IP`, `Cf-Connecting-IP`, `Cf-Ray` or `CF-Visitor` headers), to anything that arrives on the internet tunnel's port, or to a host name other than localhost, which also stops DNS-rebinding attacks.
-- Requests from a web page on another site are refused (403) even when the browser has the cookie, and even from localhost. So a malicious page open in your browser can't upload a program.
-- Panels (`/ws/panel` and CIP on 41794) don't need the key, because they can only press joins, like panels on a real processor. Set `OpenVP:PanelsRequireKey=true` to protect `/ws/panel` too. CIP has no way to send a key, so keep port 41794 on a trusted network.
-- **Shared panel links** (`/s/{token}`) don't need the key either: the secret token in the link is the credential. A link is for one slot and IP ID and can only press joins there. Treat it like a password: anyone who has it (and the PIN, if there is one) can use that panel until it expires or you revoke it. Links, their tokens and hashed PINs are stored in `data/shares.json`, owner-only on Linux and macOS. Pages under `/s/` are sent with `Referrer-Policy: no-referrer` so the link doesn't leak to other sites. A CH5 project you upload is your own code running in the link holder's browser, on the same address as the console, so only upload projects you trust.
-- **Everything new is behind the key**: simulators, the COM terminal, sockets, redirects, the IP ID remap and discovery are all under `/api`. Simulators listen on 127.0.0.1 only. The telnet and SSH consoles are **off by default**; when enabled they listen on all interfaces, need the key as the password, cap sessions and limit wrong passwords (see [Telnet and SSH console](#telnet-and-ssh-console)), and don't start if the key is off. Discovery sends packets to your network only when someone clicks Discover. mDNS announces the computer's name and the console port on the LAN, nothing else.
-- **Incoming webhooks (`POST /hooks/{token}`) are the one other open endpoint.** They need no access key: the token in the address is the credential (192 random bits, one per hook, scoped to one slot and optionally to a list of its signals, revocable, rate limited, and wrong guesses are limited per address). They are not served on the internet tunnel's port. See [Webhooks](#webhooks). `GET /metrics` needs the access key unless `OpenVP:MetricsPublic=true`, and is never on the tunnel port either. The MQTT password is stored apart (DPAPI on Windows, an owner-only file elsewhere) and is never returned by the API. OSC and Art-Net listeners have no authentication and are off by default; each only sets signals you have ticked **Receive** for.
-- `OpenVP:ApiKey=off` turns the key off. Only do that on a network you trust completely.
+- `OpenVP:ApiKey=off` turns the key off. Only do that on a network you trust completely; once a user exists, "off" no longer opens anything.
+- Wrong keys are limited: 5 wrong tries from one address, and that address waits 5 minutes (even with the right key).
+- Requests from a web page on another site are refused (403) even when the browser has the cookie, and even from localhost. So a malicious page open in your browser can't upload a program or drive the debugger stream.
 
-- **Exported secrets.** A [processor export](#backups-and-export) leaves out the access key, every saved password and signing secret, share links and push-target keys unless you tick *Include secrets*, and then they are only in `secrets.enc`, encrypted (AES-256-GCM, PBKDF2-SHA256 210,000 iterations) with your export password. Whoever has the file and the password has your SMTP and MQTT passwords and can use your share links, so treat both like keys, and use a long password. The access key is never exported. Backups with secrets keep their password in the secret store (DPAPI on Windows, an owner-only file elsewhere). The same applies to anything you commit to a [git repository](#git-backed-config), which never gets the secrets, but gets your programs and your NVRAM and User text files: don't push that repository anywhere you wouldn't put the programs. Importing a file replaces slots and can replace settings, so only import files you trust; it refuses names that would write outside the data folder and archives that unpack to too much.
-- **Push targets.** A [target's](#push-to-other-machines) access key lets this OpenVP load programs (which are .NET code) onto the other machine, so it is kept in the secret store and the target list is behind the access key. An `http` target sends that key and the programs unencrypted: use `https`, and for a self-signed certificate pin its fingerprint, which then accepts only that certificate. Scheduled actions that load a program from a path can only be created from the OpenVP computer itself, like loading from a path.
-- **`/healthz`** answers `ok` to anyone who can reach the console port and tells them nothing else. It is not served on the internet tunnel's port.
-- **Internet access (tunnel)** exposes only shared panels, through a separate listener that serves nothing but `/s/{token}…` (not `/hooks`, not `/metrics`); see [Internet access (tunnel)](#internet-access-tunnel). The console, API and debugger are never reachable through it.
+### Users and roles
 
-Traffic is plain HTTP. To use OpenVP across an untrusted network, put it behind a reverse proxy that adds HTTPS. Through the internet tunnel, Cloudflare provides HTTPS between the visitor and Cloudflare.
+Add users on the **Security** page (the console's header, Admins only). Passwords are hashed with PBKDF2-SHA256 (210,000 iterations, a random salt each) and never kept in clear. A user has a role and, optionally, a list of slots they are limited to.
+
+| Role | Can |
+|---|---|
+| **Admin** | Everything, including users, tokens, HTTPS, single sign-on, the audit log, export and import, backups, push targets, git, alert setup, the internet tunnel and global integrations. |
+| **Programmer** | Load, unload and roll back programs, the debugger (stepping, watches, traces, forcing signals), files, recordings, snapshots, simulators, COM ports and redirects, a slot's integrations and incoming hooks, schedules, console commands, plus everything a Technician can. |
+| **Technician** | Start, stop and restart, panels and signals, the IP table, shared panel links, acknowledging and muting alerts, locking a slot, and viewing everything. |
+| **Viewer** | Read-only: it can read everything that isn't a secret (slots, signals, logs, metrics, files and program downloads, the activity feed), and changes nothing. It doesn't see share-link tokens, incoming-hook tokens, push targets or any key. |
+
+- A user limited to slots sees and changes only those: other slots return 403, lists leave them out, and the debugger stream of another slot won't open. Things that reach every slot (schedules, incoming hooks, whole-processor settings) are closed to a limited user.
+- **Sessions** are a random 256-bit id in an HttpOnly, `SameSite=Strict` cookie (`Secure` on https), kept on the server only as a hash. A session ends after 60 idle minutes or 12 hours after sign-in, whichever is first (Security, Settings). Changing your password ends your other sessions; so does an Admin resetting, disabling or deleting you.
+- **Lock-out.** 5 wrong passwords in a row lock that account for 15 minutes, even for the right password; an Admin can unlock it at once. Wrong tries are also limited per address. A wrong user name and a wrong password look the same.
+- **Change your own password** with *Password…* in the console's header. Admins reset others' on the Users tab. There is no e-mail reset, because OpenVP sends none: an Admin or the access key resets a forgotten password. If every Admin is lost, the access key still works; deleting `data/security/users.json` returns OpenVP to the no-users mode.
+- **Every endpoint and WebSocket has a permission** in one central table (`PolicyTable.cs`), and a test lists every registered endpoint and fails if one has no line or isn't explicitly public. A route with no line is Admin-only.
+- The telnet/SSH console asks for a user name once users exist, and applies the same roles and slot limits. The access key still works as the password, with any user name.
+
+### API tokens
+
+Make one on the Security page (Admins). Choose a **scope**, optionally the slots it may use and when it expires:
+
+| Scope | Can |
+|---|---|
+| `read-only` | Read what isn't a secret. |
+| `operator` | Read, start/stop/restart, set and pulse signals. |
+| `programmer` | Operator plus load programs, the debugger, files, recordings, snapshots, simulators, integrations, schedules. |
+| `admin` | Everything, like the access key. |
+
+The token (`ovp_…`) is shown once; OpenVP keeps a SHA-256 hash. Send it as `Authorization: Bearer ovp_…` or `X-OpenVP-Key: ovp_…`. The list shows each token's last use, address and status; **Revoke** stops it at once. [Push targets](#push-to-other-machines) accept a token in place of the access key: a `programmer` token is enough to push a program, a whole export needs `admin`.
+
+### Requests from this computer (localhost)
+
+Requests from the same machine to `localhost` don't need a login, unless `OpenVP:LocalRequiresKey=true`. This exception never applies to requests that arrive through a reverse proxy (with `X-Forwarded-For`, `Forwarded`, `X-Real-IP`, `Cf-Connecting-IP`, `Cf-Ray` or `CF-Visitor` headers), to anything on the internet tunnel's port, or to a host name other than localhost (which also stops DNS rebinding).
+
+**Once users exist the exemption stays on by default** (Security, Settings: *Requests from this computer need no login*), so the desktop app keeps working. The trade-off: anyone at this computer, or running a program on it, is an Admin. On a shared or remote machine turn it off; then this computer signs in like everyone else, and the desktop app's alert stream and window need the access key or a login.
+
+### HTTPS
+
+Security, HTTPS tab:
+
+- **Make a self-signed certificate**: one click. It covers this computer's name, `name.local`, `openvp.local`, `localhost`, `127.0.0.1` and every LAN address, is valid for two years, and the page shows its SHA-256 fingerprint. Download the `.cer` to trust it on another machine.
+- **Upload your own**: a `.pfx`/`.p12` (with its password) or a PEM certificate and key.
+- **Let's Encrypt (optional, off unless you click Get certificate)**: ACME HTTP-01 with the [Certes](https://github.com/fszlin/certes) library (MIT). It needs a public host name that points at this machine, and **port 80 must reach OpenVP** (forward 80 to its http port, e.g. 8080); Let's Encrypt fetches `/.well-known/acme-challenge/…` from there. Renewal runs 30 days before expiry if you tick it. This part has not been tested against the real Let's Encrypt service. Package: `Certes` 4.1.0 (MIT; it brings `BouncyCastle.Cryptography` 2.7.0, MIT, which MailKit already uses).
+- Then **Serve the console over HTTPS** on a port (default 8443). The HTTPS port is opened when OpenVP starts, so turning it on or changing the port needs a restart; **replacing the certificate needs none**: the next connection gets the new one. The private key is kept in `data/security/certs/server.pfx` (owner-only on Linux and macOS).
+- *Redirect http to https* sends browsers opening a **page** over http from another machine to https. It never redirects this computer (the desktop app keeps using `http://localhost`), the API, WebSockets, webhooks, `/healthz`, `/metrics`, shared panels or CIP, whose clients may not follow a redirect.
+- Shared-panel links and QR codes use `https://` once HTTPS is on. Session cookies get `Secure` on https.
+
+### Single sign-on (OpenID Connect)
+
+Off by default. Security, Single sign-on: authority URL, client id and secret, scopes, the claim that holds groups/roles, a **claim to role** mapping (the highest match wins; a default role for people who match none, or refuse them) and allowed e-mail domains. Register OpenVP at your provider as a web app using the authorization-code flow with the redirect address the page shows (`https://your-host/signin-oidc`). It uses Microsoft's `Microsoft.AspNetCore.Authentication.OpenIdConnect` with PKCE. A person who signs in gets an ordinary OpenVP session and is listed under Users (role and slots re-read at each sign-in). You need a local Admin first, so the provider is never the only way in; local users and the access key keep working. The client secret is in the secret store and is never returned. The flow is tested against a small in-process OIDC provider; it has not been run against Entra, Okta, Keycloak or Google. Packages: `Microsoft.AspNetCore.Authentication.OpenIdConnect` 8.0.11 (MIT; it brings `Microsoft.IdentityModel.*` 7.1.2, MIT).
+
+### Audit log
+
+`data/audit/audit.jsonl`: an append-only record of sign-ins and failures, sign-outs, lock-outs, token create/revoke/first use each day, user and role changes, password changes, permission denials, program loads and auto-reloads, forced signals, file edits, exports, imports, shared-link and hook changes, slot locks, HTTPS and single-sign-on changes and settings changes. Each entry has the user (a name, `token CI`, `access key`, or `auto`), the source address and the time. Every entry carries the SHA-256 of the line before it; **Verify chain** (Audit page, Admins) walks every file and says where it first breaks: an edited, removed or reordered line, or a cut-off end (`head.json` remembers the newest). The file rotates at 5 MB or 90 days (Settings), the newest 40 are kept, and the chain runs on across files. Filter by who, what, slot, text and date, or download CSV. It shows tampering; it cannot stop someone who can rewrite the whole folder, so copy the newest hash elsewhere if that matters. The console's Activity list shows the same actions with the user filled in.
+
+### Slot lock and presence
+
+*Lock slot…* on the console (Technician and up) says "live event, don't touch", with a reason and an optional expiry. While locked, only an Admin or the one who locked it can load, unload, stop, restart, force or pulse signals, edit or upload files, roll back, load a version, replay a recording, and **schedules skip it** (recorded as skipped, not failed). **Imports skip it** unless an Admin sends `overrideLock`. A program **pushed in** by another OpenVP is refused (423), and **auto-reload pauses**, says so in the slot log, and loads the change when the lock ends. Panels, shared links, reading and the debugger stay available; start isn't blocked, and crash restarts and start-up restores still happen. The Status board tile shows *locked*.
+
+**Presence**: every open debugger or console log view registers on the same WebSocket it already uses. Status board tiles and the debugger header show who has a slot open (initials; the user name, or the address for the access key and localhost). Before forcing a signal, stepping, reloading, stopping or loading, OpenVP warns if someone else has that slot's debugger open ("Sam is debugging this slot").
+
+### Public endpoints
+
+Everything under `/api` needs a credential except: `GET /api/info`, `POST /api/login`, `POST /api/logout`, `GET /api/login/oidc` and `/api/login/oidc/done` (the start and end of single sign-on). Also open: `GET /healthz` (answers `ok`, nothing else), `POST /hooks/{token}` (the token in the address is the credential: 192 random bits, one per hook, scoped to one slot and optionally its signals, revocable, rate limited, wrong guesses limited per address), the shared-panel pages `/s/{token}…` (the token, and the PIN if set, is the credential), `GET /.well-known/acme-challenge/{token}` (answers only while a Let's Encrypt request is running), and the static pages and scripts (they hold no data). `GET /metrics` needs a credential unless `OpenVP:MetricsPublic=true`. `/ws/panel` and CIP (41794) are open because panels can only press joins; `OpenVP:PanelsRequireKey=true` protects `/ws/panel` (it then needs the Signal permission). CIP has no way to send a key, so keep port 41794 on a trusted network. The list is checked by a test.
+
+### Shared links, hooks and the tunnel
+
+- **Shared panel links** (`/s/{token}`) don't need a login: the secret token in the link is the credential. A link is for one slot and IP ID and can only press joins there. Treat it like a password: anyone who has it (and the PIN, if there is one) can use that panel until it expires or you revoke it. Links, tokens and hashed PINs are in `data/shares.json`, owner-only. Pages under `/s/` send `Referrer-Policy: no-referrer`. A CH5 project you upload is your own code running in the link holder's browser, on the same address as the console, so only upload projects you trust (it needs the LoadProgram permission).
+- **Internet access (tunnel)** exposes only shared panels, through a separate listener that serves nothing but `/s/{token}…` (not `/hooks`, not `/metrics`, not the login or the API); see [Internet access (tunnel)](#internet-access-tunnel). Nothing on the tunnel port is ever local, whatever its address or `Host`.
+- **Webhooks and the rest.** `POST /hooks/{token}` is not served on the tunnel port. The MQTT password is stored apart (DPAPI on Windows, an owner-only file elsewhere) and never returned. OSC and Art-Net listeners have no authentication and are off by default; each only sets signals you have ticked **Receive** for.
+- **Everything else is behind a credential**: simulators, the COM terminal, sockets, redirects, the IP ID remap and discovery. Simulators listen on 127.0.0.1 only. The telnet and SSH consoles are **off by default**; when enabled they listen on all interfaces, need a login (the access key or a user), cap sessions and limit wrong passwords (see [Telnet and SSH console](#telnet-and-ssh-console)), and don't start if there is neither a key nor a user.
+
+### Secrets, export and push
+
+- **Exported secrets.** A [processor export](#backups-and-export) leaves out the access key, every saved password and signing secret, share links and push-target keys unless you tick *Include secrets*, and then they are only in `secrets.enc`, encrypted (AES-256-GCM, PBKDF2-SHA256 210,000 iterations) with your export password. That includes the single-sign-on client secret. **Users, API tokens, sessions, the audit log and the HTTPS private key are never exported** and never go to git; they stay in `data/security` and `data/audit`. Importing a file replaces slots and can replace settings, so only import files you trust; it refuses names that would write outside the data folder and archives that unpack to too much.
+- **Push targets.** A [target's](#push-to-other-machines) key (the access key or a token) lets this OpenVP load programs (which are .NET code) onto the other machine, so it is kept in the secret store and the target list needs Admin. An `http` target sends that key and the programs unencrypted: use `https`, and for a self-signed certificate pin its fingerprint. Scheduled actions that load a program from a path can only be created from the OpenVP computer itself, like loading from a path.
+
+Traffic is plain HTTP unless you turn on HTTPS above (or put OpenVP behind a reverse proxy that adds it). Through the internet tunnel, Cloudflare provides HTTPS between the visitor and Cloudflare.
 
 ## Deploying with Docker Compose and Helm
 
@@ -693,6 +774,8 @@ kubectl port-forward svc/openvp-openvp 8080:8080     # then open http://localhos
 
 `/healthz` is on the console port and needs no key; the Helm probes use the older `/api/info`, which also needs none.
 
+**HTTPS in a container.** Make or upload the certificate on the Security page, tick *Serve the console over HTTPS*, publish the port you chose (8443 by default; add `- "8443:8443"` under `ports:` in Compose, or `service.extraPorts`-style in your chart), and restart the container once: the certificate lives in the data volume. The healthcheck keeps using plain http on the console port, which stays open.
+
 ## Configuration
 
 `src/OpenVP.Server/appsettings.json`, or command-line overrides like `--OpenVP:CipPort=41795`:
@@ -705,8 +788,9 @@ kubectl port-forward svc/openvp-openvp 8080:8080     # then open http://localhos
 | `OpenVP:CipEnabled` / `CipPort` | `true` / `41794` | CIP listener |
 | `OpenVP:CipLogPackets` | `false` (code default); `true` in the shipped `appsettings.json` | Hex-log CIP traffic. The shipped file turns it on while CIP is being validated against real panels; set it to `false` to stop |
 | `OpenVP:ApiKey` | (generated) | Access key for the console and API; `off` disables it. See [Security](#security) |
-| `OpenVP:LocalRequiresKey` | `false` | Require the key from localhost too |
-| `OpenVP:PanelsRequireKey` | `false` | Require the key for browser panels (`/ws/panel`) |
+| `OpenVP:LocalRequiresKey` | `false` | Require the key (or a login) from localhost too, even before any user exists. With users, the exemption is also a setting on the Security page (on by default; see [Security](#requests-from-this-computer-localhost)) |
+| `OpenVP:PanelsRequireKey` | `false` | Require a login or the key for browser panels (`/ws/panel`); they then need the Signal permission |
+| `OpenVP:OidcAllowHttp` | `false` | Allow a single-sign-on provider at an `http://` address (testing only; providers should be https) |
 | `OpenVP:UnsupportedLog` | `docs/unsupported.md` in a source checkout, else `unsupported.md` in the data folder | Where the list of unsupported symbols is kept (see [Compatibility](#compatibility)); `off` keeps it in memory only |
 | `OpenVP:MetricsPublic` | `false` | `true` lets `GET /metrics` (Prometheus) be read without the access key. It is never served on the tunnel port. See [Prometheus and Grafana](#prometheus-and-grafana) |
 | `OpenVP:TunnelPort` | `8085` | Port of the second listener (on 127.0.0.1 only) that the internet tunnel points at. `0` switches Internet access off. Must differ from the console's port |
@@ -719,14 +803,16 @@ kubectl port-forward svc/openvp-openvp 8080:8080     # then open http://localhos
 | `OpenVP:MdnsName` | `openvp` | The extra host name to answer for (`<name>.local`) |
 | `OpenVP:Alerts` | `true` | `false` turns off the alert engine, uptime and metrics history, thresholds and reports (the pages then say so). Settings and history are in `data/alerts` and `data/history`; see [Alerts](#alerts) |
 | `OpenVP:Autoload:slot1` | | Program file to load into slot 1 at startup. Wins over the slot's remembered program (see [Autostart](#autostart-and-crash-policy)) |
-| `Urls` | `http://0.0.0.0:8080` | Web console address |
+| `Urls` | `http://0.0.0.0:8080` | Web console address. HTTPS is added by the Security page (port 8443 by default) |
 | `--healthcheck` | | A command-line flag, not a setting: `openvp --healthcheck` asks the console port of the OpenVP already running (same `Urls`) for `/healthz` and exits 0 or 1. For containers, see [Deploying](#deploying-with-docker-compose-and-helm) |
+
+Users, sessions, API tokens, slot locks, HTTPS and single-sign-on settings are set on the Security page and kept under `data/security/` (`users.json`, `sessions.json`, `tokens.json`, `slotlocks.json`, `settings.json`, `certs/server.pfx`; owner-only on Linux and macOS), and the audit log is `data/audit/`. A damaged `users.json`, `tokens.json` or `settings.json` stops OpenVP starting, because carrying on without it would switch that protection off. None of it is exported or committed to git.
 
 The backups, schedules, push targets, git sync and program versions are set on their pages and saved in the data folder: `backups.json`, `schedules.json` (and `schedules-history.jsonl`), `targets.json` (the keys are in `integrations/secrets.json`), `git.json`, `versions/` (the kept programs and `settings.json`), `backups/` (the default backup folder) and `tmp/` (uploads waiting to be imported, which are cleared at start-up).
 
 ## REST API
 
-Every endpoint except `/api/info`, `/api/login` and `POST /hooks/{token}` needs the access key (see [Security](#security)), for example `curl -H "Authorization: Bearer $(cat data/apikey.txt)" http://host:8080/api/slots`. An unknown slot number returns 404.
+Every endpoint needs a credential except the [public ones](#public-endpoints) (see [Security](#security)): the access key, an [API token](#api-tokens) or a signed-in user. Send `Authorization: Bearer KEY-OR-TOKEN` (or `X-OpenVP-Key`), for example `curl -H "Authorization: Bearer $(cat data/apikey.txt)" http://host:8080/api/slots`. **401** means no valid credential; **403** means a valid one that may not do this (or may not use that slot); **423** means the slot is [locked](#slot-lock-and-presence). An unknown slot number returns 404. The permission each endpoint needs is in `src/OpenVP.Server/PolicyTable.cs`.
 
 | Method | Path | |
 |---|---|---|
@@ -866,8 +952,24 @@ Every endpoint except `/api/info`, `/api/login` and `POST /hooks/{token}` needs 
 | GET | `/api/tunnel` | Internet access: `state` (`off`, `downloading`, `starting`, `on`, `error`), `url`, `message`, `needsDownload`, `available`, recent `cloudflared` output |
 | POST | `/api/tunnel/start` · `tunnel/stop` | Start the tunnel (`{"download":true}` also allows downloading `cloudflared` if it isn't installed; without it you get `needsDownload`) · stop it and kill `cloudflared` |
 | GET / WS | `/s/{token}` · `/s/{token}/ws` · `/s/{token}/app/…` · `/s/{token}/status` | What a link holder uses (no access key; the token and PIN are the credential). `410` once the link has expired or been revoked. `POST /s/{token}/pin` checks a PIN |
-| GET | `/api/info` | Version, slot count, and whether you're logged in |
-| POST | `/api/login` · `/api/logout` | `{"key":"..."}`; sets or clears the login cookie |
+| GET | `/api/info` | No login needed. Version, slot count, `auth` (a login is needed), `authenticated`, `users` (any exist), `me` (`name`, `kind`, `role` or `scope`, `perms`, `slots`), `oidc`, `localExempt` and `https` |
+| POST | `/api/login` · `/api/logout` | `{"key":"..."}` (the access key) or `{"user":"...","password":"..."}`; sets or clears the login cookie. 401 wrong, 429 locked or too many tries |
+| POST | `/api/me/password` | `{"current":"...","new":"..."}`: change your own password (your other sessions end) |
+| GET | `/api/login/oidc?next=/` · `/api/login/oidc/done` | Start and finish a [single sign-on](#single-sign-on-openid-connect) login (the provider calls back `/signin-oidc`) |
+| GET · POST | `/api/users` | Admin. The users with `role`, `slots`, `source`, `locked`, `lastLogin` · add `{"name":"sam","password":"…","role":"programmer","slots":[1,2]}` (`slots` empty or missing is all) |
+| PUT · DELETE | `/api/users/{id}` | Admin. Change `role`, `slots`, `disabled`, `display` (400/409 if it would leave no Admin) · delete |
+| POST | `/api/users/{id}/password` · `unlock` · `signout` | Admin. Set a new password · clear a lock-out · end every session of the user |
+| GET · POST | `/api/tokens` | Admin. The [tokens](#api-tokens) (`scope`, `slots`, `expires`, `lastUsed`, `status`; never the value) · make one `{"name":"CI","scope":"programmer","slots":[1],"expiresInDays":30}`; the answer has the `token` once |
+| DELETE | `/api/tokens/{id}` | Admin. Revoke (or, for one already revoked or expired, remove it from the list) |
+| GET · PUT | `/api/security` | Admin. `localExemption`, `sessionIdleMinutes`, `sessionAbsoluteHours`, `lockoutAttempts`, `lockoutMinutes`, `auditMaxMegabytes`, `auditMaxDays` and counts |
+| GET · PUT | `/api/https` | Admin. Certificate details and listening state (`restartNeeded`) · `{"enabled":true,"port":8443,"redirect":false}` |
+| POST | `/api/https/self-signed` · `upload` · `acme` · GET `/api/https/certificate` | Admin. `{"host":"openvp.example"}` makes a certificate · multipart `file` (.pfx, or PEM with `key`) and `password` · `{"domain":"…","email":"…","staging":false,"enabled":true}` asks Let's Encrypt · the public certificate (`.cer`; any signed-in user) |
+| GET · PUT | `/api/oidc` | Admin. The [single sign-on](#single-sign-on-openid-connect) settings (`authority`, `clientId`, `hasSecret`, `scopes`, `roleClaim`, `mappings`, `defaultRole`, `allowedDomains`) · change them (`clientSecret` is kept if left out) |
+| GET | `/api/audit?user=&action=&q=&slot=&from=&to=&limit=` | Admin. [Audit log](#audit-log) entries, newest first, with the `head` hash |
+| POST | `/api/audit/verify` · GET `/api/audit/download` | Admin. Check the hash chain (`ok`, `entries`, `files`, `message`, `file`, `line`) · the same filters as CSV |
+| GET | `/api/locks` · `/api/presence` | The [locked slots](#slot-lock-and-presence) · who has each slot open (`name`, `initials`, `kind` `debugging` or `viewing`, `me`) |
+| POST · DELETE | `/api/slots/{n}/lock` | Technician and up. `{"reason":"Live event","hours":4}` (or `"expires"`) locks the slot (409 if someone else has) · unlock (403 unless you made it or are an Admin) |
+| GET | `/.well-known/acme-challenge/{token}` | No login. Answers a Let's Encrypt check while a certificate is being requested |
 
 ## Development
 
