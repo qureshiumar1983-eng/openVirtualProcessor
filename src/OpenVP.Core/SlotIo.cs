@@ -30,6 +30,8 @@ public sealed class SlotIo : IDisposable
     public SlotSimulators Simulators { get; }
     public NetworkRedirects Redirects { get; }
     public IpIdRemap Remap { get; }
+    /// <summary>The web-scripting (CWS) servers the program registered, served at <c>/cws/{slot}/...</c> by the console.</summary>
+    public CwsHost Cws { get; } = new();
 
     /// <summary>Start the simulators that are enabled (at startup).</summary>
     public void Start() => Simulators.StartAll();
@@ -39,6 +41,7 @@ public sealed class SlotIo : IDisposable
     {
         Ports.Clear();
         Sockets.CloseAll();
+        Cws.Clear();
     }
 
     /// <summary>Read the settings from disk again (after a snapshot was restored).</summary>

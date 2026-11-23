@@ -58,6 +58,8 @@ public sealed record SlotSettings
     /// <summary>Seconds to wait before this slot is restored, after the one before it.</summary>
     public int StartDelaySeconds { get; init; }
     public CrashPolicy Crash { get; init; } = new();
+    /// <summary>Let anyone who can reach the console call this slot's web-scripting (CWS) server with no sign-in. Off by default: calls then need the Signal permission.</summary>
+    public bool CwsPublic { get; init; }
     public ProgramMemory? Program { get; init; }
 
     /// <summary>Check the fields a user can edit and normalize them. Throws <see cref="ArgumentException"/>.</summary>
@@ -97,6 +99,7 @@ public sealed record SlotSettings
             {
                 case "name": s = s with { Name = Str(p) }; break;
                 case "color": s = s with { Color = Str(p) }; break;
+                case "cwsPublic": s = s with { CwsPublic = Bool(p) }; break;
                 case "autostart": s = s with { Autostart = Bool(p) }; break;
                 case "startOrder": s = s with { StartOrder = p.Value.ValueKind == JsonValueKind.Null ? null : Int(p) }; break;
                 case "startDelaySeconds": s = s with { StartDelaySeconds = Int(p) }; break;

@@ -5,7 +5,8 @@ namespace OpenVP.Server;
 
 /// <summary>
 /// What a request to one endpoint needs. <see cref="Kind"/> is <c>public</c> (no sign-in), <c>perm</c> (needs <see cref="Perm"/>), <c>panel</c> (open unless
-/// <c>OpenVP:PanelsRequireKey</c>, then needs <see cref="Perm.Signal"/>) or <c>metrics</c> (open with <c>OpenVP:MetricsPublic</c>, else needs <see cref="Perm.View"/>).
+/// <c>OpenVP:PanelsRequireKey</c>, then needs <see cref="Perm.Signal"/>), <c>metrics</c> (open with <c>OpenVP:MetricsPublic</c>, else needs <see cref="Perm.View"/>)
+/// or <c>cws</c> (a program's web-scripting server: open when that slot's "CWS is public" setting is on, else needs <see cref="Perm.Signal"/>).
 /// </summary>
 /// <param name="Locks">A locked slot refuses it (unless the caller is an Admin or made the lock).</param>
 /// <param name="AllSlots">Not for an account limited to some slots.</param>
@@ -54,6 +55,7 @@ public static class EndpointPolicy
                 "public" => Policy.Open,
                 "panel" => new Policy("panel", Perm.Signal),
                 "metrics" => new Policy("metrics", Perm.View),
+                "cws" => new Policy("cws", Perm.Signal),
                 _ => Enum.TryParse<Perm>(parts[0], true, out var perm) ? Policy.Needs(perm, flags.Contains("+lock"), flags.Contains("+all")) : throw new InvalidOperationException("Bad permission in policy line: " + line)
             };
             var key = KeyOf(parts[1], parts[2]);

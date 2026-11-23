@@ -28,6 +28,10 @@ public static class PolicyTable
         # The other end of a remote EISC link: an API token of scope eisc-link (or an Admin), and only when Remote EISC is on in Labs.
         Eisc * /ws/eisc
 
+        # A SIMPL# program's web-scripting (CWS) server, at /cws/{slot}/...: needs Signal on that slot, unless the slot's "CWS is public" setting is on. Never on the tunnel port.
+        cws * /cws/{n:int}
+        cws * /cws/{n:int}/{**path}
+
         # Prometheus: open with OpenVP:MetricsPublic, else View.
         metrics GET /metrics
 

@@ -447,6 +447,7 @@
           <label class="fld" id="set-win-l" title="Counting restarts over this many minutes">in (minutes)<input type="number" id="set-win" min="1" max="1440"></label>
           <label class="fld" title="Count the slot as crashed when one event runs this long (the stuck-slot detector). 0 = never. At least 2.">Stuck after (s)<input type="number" id="set-stuck" min="0" max="3600"></label>
           <label class="fld chk" title="An unhandled exception in a program's event handler counts as a crash. Off: it is only logged."><input type="checkbox" id="set-fault"> Unhandled exception = crash</label>
+          <label class="fld chk" title="Web API (CWS): a program's HttpCwsServer is served at /cws/{slot}/... Normally it needs a sign-in with the Signal permission. Tick this to let anyone who can reach this console call it with no sign-in (on the internet tunnel it is never served)."><input type="checkbox" id="set-cws"> Web API (CWS) is public: no sign-in <span id="set-cws-note" class="muted"></span></label>
         </div>
         <div class="muted">Saved as you change it.</div>
       </details>
@@ -2088,6 +2089,8 @@ function fillSettings(s) {
   }
   $("#set-autostart").checked = !!s.autostart;
   $("#set-crash").value = s.crash.mode; $("#set-fault").checked = !!s.crash.faultOnUnhandled;
+  $("#set-cws").checked = !!s.cwsPublic;
+  $("#set-cws-note").textContent = (s.cws && s.cws.length ? "served at " + s.cws.map(p => "/cws/" + s.number + (p ? "/" + p : "")).join(", ") : "") + (s.cwsPublic ? " - anyone who can reach this console can call it" : "");
   $("#set-max-l").hidden = $("#set-win-l").hidden = s.crash.mode !== "limited";
   const box = $("#set-colors");
   if (box.dataset.cur !== (s.color ?? "") || !box.children.length) {
@@ -2125,6 +2128,7 @@ $("#set-crash").onchange = e => saveSetting({ crash: { mode: e.target.value } },
 $("#set-max").oninput = e => saveSetting({ crash: { maxRestarts: +e.target.value } });
 $("#set-win").oninput = e => saveSetting({ crash: { windowMinutes: +e.target.value } });
 $("#set-stuck").oninput = e => saveSetting({ crash: { stuckSeconds: +e.target.value || 0 } });
+$("#set-cws").onchange = e => saveSetting({ cwsPublic: e.target.checked }, true);
 $("#set-fault").onchange = e => saveSetting({ crash: { faultOnUnhandled: e.target.checked } }, true);
 addEventListener("beforeunload", () => { if (pendingSet) flushSettings(); });
 

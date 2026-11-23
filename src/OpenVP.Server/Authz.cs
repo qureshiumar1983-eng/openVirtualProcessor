@@ -27,6 +27,8 @@ public sealed class Authz
     public SlotLocks Locks { get; }
     public AuditLog Audit { get; }
     public AuthThrottle LoginThrottle { get; }
+    /// <summary>Whether a slot's web-scripting (CWS) server may be called with no sign-in (the slot's own setting). Set by the server; nothing is public until it is.</summary>
+    public Func<int, bool> CwsPublic { get; set; } = _ => false;
 
     private readonly ConcurrentDictionary<string, DateTimeOffset> _denials = new();
 
@@ -142,7 +144,7 @@ public sealed class Authz
         }
 
         // Opening /?key=KEY (or any page with ?key=) logs the browser in with the access key and strips it from the address bar.
-        if (auth.Enabled && HttpMethods.IsGet(ctx.Request.Method) && !path.StartsWithSegments("/api") && !path.StartsWithSegments("/ws") && !path.StartsWithSegments("/s") && !path.StartsWithSegments("/metrics") && !path.StartsWithSegments("/hooks")
+        if (auth.Enabled && HttpMethods.IsGet(ctx.Request.Method) && !path.StartsWithSegments("/api") && !path.StartsWithSegments("/ws") && !path.StartsWithSegments("/s") && !path.StartsWithSegments("/metrics") && !path.StartsWithSegments("/hooks") && !path.StartsWithSegments("/cws")
             && ctx.Request.Query.TryGetValue("key", out var qk))
         {
             var rest = string.Join('&', ctx.Request.Query.Where(q => q.Key != "key")
@@ -171,12 +173,18 @@ public sealed class Authz
         }
 
         var policy = EndpointPolicy.For(ctx.Request.Method, ep) ?? EndpointPolicy.For("*", ep) ?? Policy.Needs(Perm.Admin); // no line: Admin only
+        if (policy.Kind == "cws")
+        {
+            // A program's own web API. Public only when the slot says so (then any site may call it, like any open web API); otherwise a page on another site must not drive it.
+            if (ctx.GetRouteValue("n") is { } cn && int.TryParse(Convert.ToString(cn), out var cslot) && CwsPublic(cslot)) { await next(ctx); return; }
+            if (ApiAuth.IsCrossOrigin(ctx)) { ctx.Response.StatusCode = StatusCodes.Status403Forbidden; return; }
+        }
         if (policy.Kind == "public" || (policy.Kind == "panel" && !auth.PanelsRequireKey) || (policy.Kind == "metrics" && auth.MetricsPublic))
         {
             await next(ctx);
             return;
         }
-        var need = policy.Kind == "panel" ? Perm.Signal : policy.Kind == "metrics" ? Perm.View : policy.Perm;
+        var need = policy.Kind is "panel" or "cws" ? Perm.Signal : policy.Kind == "metrics" ? Perm.View : policy.Perm;
 
         if (!p.Authenticated)
         {

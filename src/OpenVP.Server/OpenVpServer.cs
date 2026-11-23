@@ -221,6 +221,8 @@ public static class OpenVpServer
             autostart = s.Settings.Autostart,
             startOrder = s.Settings.StartOrder ?? s.Number,
             startDelaySeconds = s.Settings.StartDelaySeconds,
+            cwsPublic = s.Settings.CwsPublic,
+            cws = s.Io.Cws.Paths,
             crash = CrashDto(s),
             remembered = s.Settings.Program is { } m ? new { source = m.Source, file = m.File, path = m.FilePath, running = m.Running, watch = m.Watch } : null,
             state = s.State.ToString(),
@@ -352,6 +354,8 @@ public static class OpenVpServer
         var integrations = new OpenVP.Core.Integrations.IntegrationsHost(processor, () => new MqttNetTransport());
         integrationsHolder = integrations;
         SecurityEndpoints.Map(app, authz, processor, presence, httpsMgr, acmeSvc, oidc, integrations.Store.Secrets, activity, () => cip?.Port, () => app.Urls.Select(u => Uri.TryCreate(u.Replace("://[::]", "://localhost").Replace("://0.0.0.0", "://localhost").Replace("://+", "://localhost").Replace("://*", "://localhost"), UriKind.Absolute, out var uri) ? uri.Port : 0).Append(tunnelPort));
+        authz.CwsPublic = n => processor.IsValidSlot(n) && processor.Slot(n).Settings.CwsPublic;
+        CwsEndpoints.Map(app, processor);
         IntegrationEndpoints.Map(app, slotApi, processor, integrations, auth, crash, (c, a, t, sl) => Note(c, a, t, sl));
 
         // Alerts, uptime and metrics history, thresholds and health reports (OpenVP.Core.Alerts). OpenVP:Alerts=false turns the lot off.
@@ -1802,7 +1806,7 @@ public static class OpenVpServer
         if (!https.Listening || ctx.Request.IsHttps || ctx.Items.ContainsKey(TunnelGate.ItemKey)) return next(ctx);
         if (!(HttpMethods.IsGet(ctx.Request.Method) || HttpMethods.IsHead(ctx.Request.Method)) || !settings.Get().Https.Redirect) return next(ctx);
         var path = ctx.Request.Path;
-        if (path.StartsWithSegments("/api") || path.StartsWithSegments("/ws") || path.StartsWithSegments("/hooks") || path.StartsWithSegments("/healthz") || path.StartsWithSegments("/metrics")
+        if (path.StartsWithSegments("/api") || path.StartsWithSegments("/ws") || path.StartsWithSegments("/hooks") || path.StartsWithSegments("/cws") || path.StartsWithSegments("/healthz") || path.StartsWithSegments("/metrics")
             || path.StartsWithSegments("/s") || path.StartsWithSegments("/.well-known") || path.StartsWithSegments("/signin-oidc")) return next(ctx);
         var ip = ctx.Connection.RemoteIpAddress;
         if (ip != null && System.Net.IPAddress.IsLoopback(ip)) return next(ctx);

@@ -191,6 +191,7 @@
 [assembly: System.Runtime.CompilerServices.TypeForwardedTo(typeof(global::Crestron.SimplSharp.SystemEventHandler))]
 [assembly: System.Runtime.CompilerServices.TypeForwardedTo(typeof(global::Crestron.SimplSharp.WebScripting.CwsRouteValueDictionary))]
 [assembly: System.Runtime.CompilerServices.TypeForwardedTo(typeof(global::Crestron.SimplSharp.WebScripting.HttpCwsContext))]
+[assembly: System.Runtime.CompilerServices.TypeForwardedTo(typeof(global::Crestron.SimplSharp.WebScripting.HttpCwsHandler))]
 [assembly: System.Runtime.CompilerServices.TypeForwardedTo(typeof(global::Crestron.SimplSharp.WebScripting.HttpCwsRequest))]
 [assembly: System.Runtime.CompilerServices.TypeForwardedTo(typeof(global::Crestron.SimplSharp.WebScripting.HttpCwsResponse))]
 [assembly: System.Runtime.CompilerServices.TypeForwardedTo(typeof(global::Crestron.SimplSharp.WebScripting.HttpCwsRoute))]
