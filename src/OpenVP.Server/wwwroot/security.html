@@ -181,7 +181,7 @@
 <dialog id="t-dlg" aria-labelledby="t-title"><form method="dialog" id="t-form" onsubmit="return false" autocomplete="off">
   <h2 id="t-title">New API token</h2>
   <label>Name (what it is for)<input id="t-name" required maxlength="64" placeholder="CI pipeline"></label>
-  <label>Scope<select id="t-scope"><option value="read-only">read-only</option><option value="operator">operator</option><option value="programmer">programmer</option><option value="admin">admin</option></select></label>
+  <label>Scope<select id="t-scope"><option value="read-only">read-only</option><option value="operator">operator</option><option value="programmer">programmer</option><option value="admin">admin</option><option value="eisc-link">eisc-link (only opens a remote EISC link)</option></select></label>
   <label>Expires<select id="t-exp"><option value="">Never</option><option value="1">in 1 day</option><option value="7">in 7 days</option><option value="30" selected>in 30 days</option><option value="90">in 90 days</option><option value="365">in 1 year</option></select></label>
   <label class="inline"><input type="checkbox" id="t-all" checked> All slots</label>
   <div class="checks" id="t-slots" hidden></div>

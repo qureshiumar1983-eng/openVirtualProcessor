@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<link rel="stylesheet" href="openvp-ops.css">
+<script src="openvp-theme.js"></script>
+<title>OpenVP labs</title>
+<style>
+  .lab { display:grid; grid-template-columns:1fr auto; gap:6px 16px; align-items:start; }
+  .lab h2 { margin:0; }
+  .lab p { margin:4px 0; }
+  .sw { display:inline-flex; align-items:center; gap:8px; font-size:13px; white-space:nowrap; }
+  .sw input { width:2.6em; height:1.4em; accent-color:var(--accent); cursor:pointer; }
+  .sw input:disabled { cursor:not-allowed; }
+  .lab .note { grid-column:1 / -1; }
+  .lab .links { grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:4px 14px; font-size:13px; }
+  @media (max-width:600px) { .lab { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Labs</h1>
+  <span id="saved" role="status" aria-live="polite"></span>
+  <span class="sp"></span>
+  <span id="who-chip"></span>
+  <button class="theme-btn" data-theme-toggle></button>
+  <a href="/">Console</a>
+  <a href="help.html#labs" target="openvp-help">Help</a>
+</header>
+<main>
+  <div id="fail" class="note" role="alert" hidden></div>
+  <div class="card">
+    <p>Labs are features that are still being tried out. They are <b>off by default</b>, anyone can see them here, and only an <b>Admin</b> can switch them. Each one may change or go away between versions, and nothing else in OpenVP depends on them. Switching one off puts everything back as it was.</p>
+  </div>
+  <div id="list" class="stack"></div>
+</main>
+<script src="openvp-auth.js"></script>
+<script src="openvp-ops.js"></script>
+<script>
+"use strict";
+openvpAuth.init();
+const LINKS = {
+  "remote-eisc": [["eisc.html", "Remote EISC links"], ["targets.html", "Push targets (the other machine)"], ["security.html", "Make an eisc-link token"]],
+  "plugins": [["plugins.html", "Plugins"]],
+  "cip-heartbeat-probe": [["rack.html", "Rack view (shows panel latency)"]]
+};
+let features = [];
+function draw() {
+  $("#list").innerHTML = "";
+  for (const f of features) {
+    const card = document.createElement("div");
+    card.className = "card lab";
+    const forced = !!f.forcedBy;
+    card.innerHTML = `<div><h2>${esc(f.name)} ${pill(f.enabled ? "ok" : "", f.enabled ? "on" : "off")} ${pill("warn", "may change")}</h2>
+        <p>${esc(f.description)}</p></div>
+      <label class="sw"><input type="checkbox" role="switch" data-perm="Admin" data-id="${esc(f.id)}" ${f.enabled ? "checked" : ""} ${forced ? "disabled" : ""} aria-label="${esc(f.name)}"> ${f.enabled ? "On" : "Off"}</label>
+      <div class="note"><b>Warning:</b> ${esc(f.warning)}${f.needsRestart ? " It takes effect after OpenVP restarts." : ""}</div>
+      ${forced ? `<div class="muted" style="grid-column:1/-1">Set by <code>${esc(f.forcedBy)}</code> in the configuration, so it can't be changed here.</div>` : ""}
+      <div class="links">${(LINKS[f.id] || []).map(([h, t]) => `<a href="${h}">${esc(t)}</a>`).join("")}</div>`;
+    $("#list").appendChild(card);
+  }
+  for (const cb of $$("#list input[data-id]")) cb.onchange = async () => {
+    const on = cb.checked; cb.disabled = true;
+    try { const r = await api("/api/labs/" + cb.dataset.id, "PUT", { enabled: on }); features = r.features; flash(on ? "Switched on" : "Switched off"); }
+    catch (e) { fail(e.message); try { features = (await api("/api/labs")).features; } catch {} }
+    draw(); openvpAuth.apply();
+  };
+  openvpAuth.apply();
+}
+(async () => { try { features = (await api("/api/labs")).features; draw(); } catch (e) { fail(e.message); } })();
+document.addEventListener("openvp-me", () => openvpAuth.apply());
+</script>
+</body>
+</html>

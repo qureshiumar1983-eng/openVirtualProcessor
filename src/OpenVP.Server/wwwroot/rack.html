@@ -64,6 +64,7 @@
   <div class="rack" id="rack"></div>
   <div class="card detail" id="detail" hidden></div>
   <div class="card" id="linkcard" hidden><h2>EISC links</h2><div class="links" id="links"></div></div>
+  <div class="card" id="rlcard" hidden><h2>Remote EISC links <a href="eisc.html" style="font-size:12px;font-weight:400">manage</a></h2><div id="rl"></div></div>
 </main>
 <script src="openvp-auth.js"></script>
 <script src="openvp-ops.js"></script>
@@ -120,6 +121,15 @@ function draw() {
   $("#linkcard").hidden = !names.length;
   $("#links").innerHTML = names.join("");
 
+  // remote EISC links (another OpenVP, over the network)
+  const re = data.remoteEisc, rows = [];
+  if (re) {
+    for (const l of re.outbound) rows.push(`<div class="cl"><div><span class="led ${l.state === "connected" ? "on" : l.state === "off" ? "" : "off"}"></span> <b>${esc(l.name)}</b> <span class="pill ${l.state === "connected" ? "ok" : l.state === "reconnecting" || l.state === "connecting" ? "warn" : l.state === "error" ? "err" : ""}">${esc(l.state)}</span> <span class="muted">slot ${l.localSlot} EISC ${esc(l.localIpId)} ⇄ ${esc(l.remoteName || "?")} slot ${l.remoteSlot} EISC ${esc(l.remoteIpId)}${l.reconnects ? ` · ${l.reconnects} reconnect${l.reconnects === 1 ? "" : "s"}` : ""}</span>${l.message && l.state !== "connected" ? `<br><span class="muted">${esc(l.message)}</span>` : ""}</div><span class="lat ${latCls(l.latencyMs)}">${latTxt(l.latencyMs)}</span></div>`);
+    for (const i of re.inbound) rows.push(`<div class="cl"><div><span class="led on"></span> <b>Incoming</b> <span class="pill ok">connected</span> <span class="muted">to slot ${i.slot} EISC ${esc(i.ipId)}</span></div><span class="lat ${latCls(i.latencyMs)}">${latTxt(i.latencyMs)}</span></div>`);
+  }
+  $("#rlcard").hidden = !rows.length;
+  $("#rl").innerHTML = rows.join("");
+
   // detail
   const sel = selKey && findDev(selKey);
   $("#detail").hidden = !sel;
@@ -128,6 +138,7 @@ function draw() {
     $("#detail").innerHTML = `<h3><span class="led ${d.online ? "on" : "off"}"></span> Slot ${s.number} · IP ID ${esc(d.ipId)}${d.publicIpId !== d.ipId ? ` <span class="muted">(at ${esc(d.publicIpId)})</span>` : ""} · ${esc(d.type)}</h3>
       <div class="muted">${d.online ? "Online" : `Offline${d.lastOnline ? ", last online " + ago(d.lastOnline) : ", never connected"}`}</div>
       ${d.eisc.length ? `<p>EISC linked to: ${d.eisc.map(e => esc(e.peer || ("slot " + e.slot))).join(", ")}</p>` : ""}
+      ${(d.remote || []).map(r => `<p>Remote EISC link <b>${esc(r.link || "")}</b> to ${esc(r.peer || "")}${r.remoteSlot ? ` (slot ${esc(r.remoteSlot)}, EISC ${esc(r.remoteIpId || "")})` : ""}: ${latTxt(r.latencyMs)}, ${r.joinsIn} joins in, ${r.joinsOut} out, connected ${ago(r.connectedAt)}</p>`).join("")}
       ${d.clients.map(c => `<div class="cl"><div><b>${esc(c.name)}</b> <span class="pill">${esc(c.transport)}</span> <span class="muted mono">${esc(c.address)}</span><br>
           <span class="muted">connected ${ago(c.connectedAt)} · active ${ago(c.lastActivity)} · ${c.joinsIn} joins in, ${c.joinsOut} out</span><br>
           <span class="lat ${latCls(c.latencyMs)}">${latTxt(c.latencyMs)}</span> ${c.latencySource ? `<span class="muted">via ${esc(c.latencySource)}</span>` : `<span class="muted">not measured yet</span>`}
@@ -143,7 +154,7 @@ function devHtml(s, d) {
   return `<button type="button" class="dev kind-${esc(d.kind)}${key === selKey ? " sel" : ""}" data-key="${key}" aria-label="Slot ${s.number} IP ID ${esc(d.ipId)}, ${d.online ? "online" : "offline"}">
     <span class="top"><span class="led ${d.online ? "on" : "off"}"></span><b>${esc(d.ipId)}</b>${d.publicIpId !== d.ipId ? `<span class="muted">at ${esc(d.publicIpId)}</span>` : ""}${lat != null ? `<span class="lat ${latCls(lat)}">${latTxt(lat)}</span>` : ""}</span>
     <span class="ty">${esc(d.type)}</span>
-    <span class="muted">${d.kind === "eisc" ? "EISC" + (d.eisc.length ? " ⇄ " + d.eisc.map(e => "slot " + e.slot).join(", ") : "") : d.online ? `${n} client${n === 1 ? "" : "s"}${n ? ": " + esc(d.clients[0].name) : ""}` : "offline"}</span></button>`;
+    <span class="muted">${d.kind === "eisc" ? "EISC" + (d.eisc.length ? " ⇄ " + d.eisc.map(e => "slot " + e.slot).join(", ") : "") + ((d.remote || []).length ? " ⇄ remote " + d.remote.map(r => esc(r.link || r.peer)).join(", ") + (d.remote[0].latencyMs != null ? " (" + latTxt(d.remote[0].latencyMs) + ")" : "") : "") : d.online ? `${n} client${n === 1 ? "" : "s"}${n ? ": " + esc(d.clients[0].name) : ""}` : "offline"}</span></button>`;
 }
 function findDev(key) {
   const [sn, ip] = key.split(":");

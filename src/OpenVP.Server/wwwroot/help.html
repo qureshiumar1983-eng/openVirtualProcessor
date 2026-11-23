@@ -73,6 +73,11 @@
     <a href="#autopanel">Generated panel</a>
     <a href="#emulate">Emulate</a>
     <a href="#rack">Rack</a>
+    <a href="#examples">Examples</a>
+    <a href="#compat">Compatibility</a>
+    <a href="#labs">Labs</a>
+    <a href="#remote-eisc">Remote EISC</a>
+    <a href="#plugins">Plugins</a>
     <input type="search" id="find" placeholder="Find a button…" autocomplete="off">
   </nav>
 </div>
@@ -867,6 +872,55 @@
     <dt>A unit</dt><dd>One per loaded slot: its colour, program and state light, and a link to its generated panel. <b>show empty slots</b> adds the empty ones.</dd>
     <dt>A tile</dt><dd>One per IP ID in the slot's IP table: green when something is connected, red when not, with the worst round-trip time of its clients. Dashed tiles are EISCs and say which slot they link to. Click one for its clients (how they connect, their address, how long, joins in and out) and a trend line of their round trips with the minimum, average and maximum.</dd>
     <dt>Round trip</dt><dd>Browser panels are pinged by the server every 5 seconds. A CIP panel shows the time of its connect handshake; set <code>OpenVP:CipHeartbeatProbe=true</code> for a live heartbeat measurement (off by default, untested on real panels).</dd>
+  </dl>
+</section>
+
+<section id="examples">
+  <h2>Examples</h2>
+  <p class="muted">Small original programs bundled with OpenVP.</p>
+  <dl>
+    <dt>A card</dt><dd>What the example is, which devices it uses, and what to try once it runs.</dd>
+    <dt>Slot · <span class="b">Load into slot N</span></dt><dd>Pick a slot and load the example into it in one click and start it. If the slot already has a program you are asked before it is replaced. Programmer role needed. A locked slot is refused.</dd>
+  </dl>
+</section>
+
+<section id="compat">
+  <h2>Compatibility</h2>
+  <p class="muted">What OpenVP supports, from the programs loaded now and from everything it has ever noted as unsupported (the file <code>unsupported.md</code>).</p>
+  <dl>
+    <dt>Loaded programs</dt><dd>One card per slot: will it run, partly run, or not; how many of its primitives, SIMPL# types or symbols are supported, partial or unsupported; and each problem found.</dd>
+    <dt>Ever logged</dt><dd>Everything programs have used that OpenVP didn't support, grouped as primitives, SIMPL# APIs, SIMPL+ modules and panel features, with how many program loads hit it. Tick items and use <b>Report selected…</b>.</dd>
+    <dt>Panel features</dt><dd>The panel side of the same list: CrComLib, CH5 components, smart graphics, emulate, kiosk and latency.</dd>
+    <dt><span class="b">Report…</span></dt><dd>Writes a GitHub issue for the project from the items you picked. You see the exact text and can edit it. It holds the OpenVP version, the operating system family, the program type and the names of the unsupported things: no program contents, file paths, IP addresses, keys, user names or e-mail addresses (anything that looks like one is removed, and anything you type that looks like one is flagged). <b>Open on GitHub…</b> opens the project's new-issue page in your browser with the text filled in; you submit it yourself. OpenVP itself sends nothing. A long list is cut to fit GitHub's address length and says so.</dd>
+  </dl>
+</section>
+
+<section id="labs">
+  <h2>Labs</h2>
+  <p class="muted">Experimental features. Everyone can see the page; only an Admin can switch them. All are off by default and may change.</p>
+  <dl>
+    <dt>A switch</dt><dd>Turns one feature on or off at once (no restart). The setting is kept in <code>data/labs.json</code>. <code>OpenVP:Labs:&lt;feature&gt;</code> in the configuration overrides it and locks the switch. The older <code>OpenVP:CipHeartbeatProbe=true</code> still switches the CIP heartbeat probe on.</dd>
+    <dt>Remote EISC · Plugins · CIP heartbeat probe</dt><dd>The three features today. Each card says what it does, what may go wrong and links to its page.</dd>
+  </dl>
+</section>
+
+<section id="remote-eisc">
+  <h2>Remote EISC</h2>
+  <p class="muted">A Labs feature: link an EISC here to an EISC on another OpenVP so joins flow both ways over the network.</p>
+  <dl>
+    <dt><span class="b">Add link…</span></dt><dd>This machine's slot and EISC IP ID, the other machine (a push target whose key is an API token with scope <b>eisc-link</b>), and its slot and EISC IP ID. This machine opens the connection.</dd>
+    <dt>State</dt><dd><b>connected</b>, <b>reconnecting</b> (it tries again after 1 s, then 2, 4 … up to 30 s), <b>waiting for the EISC</b> (nothing with that IP ID in that slot yet) or <b>problem</b> (refused token, no such EISC there, a link to itself). Latency is measured with a ping every 5 seconds. Every connection starts by sending every join both ways, so a reconnect brings both sides up to date.</dd>
+    <dt>Incoming</dt><dd>Links other OpenVPs opened to an EISC here. They show in the rack view and in the IP table as <b>Remote EISC</b> clients.</dd>
+  </dl>
+</section>
+
+<section id="plugins">
+  <h2>Plugins</h2>
+  <p class="muted">A Labs feature: extend OpenVP with plugins from <code>data/plugins/&lt;name&gt;/</code>.</p>
+  <dl>
+    <dt>A plugin</dt><dd>Name, version, author and the permissions it asks for. Plugins are off until an Admin enables each one. Plugin code is not sandboxed; only enable plugins you trust.</dd>
+    <dt><span class="b">Enable…</span> · <span class="b">Disable</span></dt><dd>Enabling shows what the plugin asks to do and needs your approval. A plugin that throws, or doesn't answer in 10 seconds, is unloaded and disabled with the reason shown; OpenVP keeps running. If an updated plugin asks for new permissions it stays off until you enable it again.</dd>
+    <dt><span class="b">Open</span></dt><dd>A plugin with a page of its own shows it inside the console, and adds a link to the console's top bar while it is enabled.</dd>
   </dl>
 </section>
 
