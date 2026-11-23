@@ -38,6 +38,9 @@ public sealed class Processor : IDisposable
     public IReadOnlyList<ProgramSlot> Slots { get; }
     public IntersystemBus Bus { get; }
 
+    /// <summary>Console commands added by plugins. They work in every slot's console and in the telnet/SSH console, and run on the plugin's own thread.</summary>
+    public ConcurrentDictionary<string, ConsoleCommand> ExtraConsoleCommands { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Symbols, types and APIs programs used that OpenVP doesn't support yet, kept across runs
     /// (see <see cref="UnsupportedLog"/>). In memory only until someone calls <see cref="UnsupportedLog.UseFile"/>.</summary>
     public UnsupportedLog Unsupported { get; } = new();

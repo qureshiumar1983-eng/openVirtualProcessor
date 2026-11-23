@@ -40,12 +40,15 @@ public enum Perm
     Schedule,
     /// <summary>Everything else: users, tokens, HTTPS, single sign-on, audit log, export and import, backups, push targets, git, alerts setup, the internet tunnel and global settings.</summary>
     Admin,
+    /// <summary>Open a remote-EISC link to one of this processor's EISCs (the other OpenVP's outbound WebSocket). Nothing else: it reads and sets no other signal.</summary>
+    Eisc,
 }
 
 public enum Role { Viewer, Technician, Programmer, Admin }
 
-/// <summary>What an API token may do. <see cref="Operator"/> is narrower than a Technician: it has no IP table, sharing or alert acknowledgement.</summary>
-public enum Scope { ReadOnly, Operator, Programmer, Admin }
+/// <summary>What an API token may do. <see cref="Operator"/> is narrower than a Technician: it has no IP table, sharing or alert acknowledgement.
+/// <see cref="EiscLink"/> is for the other end of a remote EISC link: it can open the link WebSocket and do nothing else.</summary>
+public enum Scope { ReadOnly, Operator, Programmer, Admin, EiscLink }
 
 public static class Permissions
 {
@@ -54,10 +57,11 @@ public static class Permissions
     private static readonly Perm[] TechnicianSet = [.. OperatorSet, Perm.IpTable, Perm.Share, Perm.AlertAck, Perm.LockSlot];
     private static readonly Perm[] ProgrammerSet = [.. TechnicianSet, Perm.LoadProgram, Perm.Debug, Perm.Files, Perm.Recording, Perm.Snapshot, Perm.Simulator, Perm.Integration, Perm.Console, Perm.Schedule];
     private static readonly Perm[] AdminSet = Enum.GetValues<Perm>();
+    private static readonly Perm[] EiscSet = [Perm.Eisc];
 
     public static IReadOnlyCollection<Perm> ForRole(Role r) => r switch { Role.Viewer => ViewerSet, Role.Technician => TechnicianSet, Role.Programmer => ProgrammerSet, _ => AdminSet };
 
-    public static IReadOnlyCollection<Perm> ForScope(Scope s) => s switch { Scope.ReadOnly => ViewerSet, Scope.Operator => OperatorSet, Scope.Programmer => ProgrammerSet, _ => AdminSet };
+    public static IReadOnlyCollection<Perm> ForScope(Scope s) => s switch { Scope.ReadOnly => ViewerSet, Scope.Operator => OperatorSet, Scope.Programmer => ProgrammerSet, Scope.EiscLink => EiscSet, _ => AdminSet };
 
     public static bool TryParseRole(string? s, out Role r) => Enum.TryParse(s?.Trim(), true, out r) && Enum.IsDefined(r);
     public static bool TryParseScope(string? s, out Scope r)
@@ -66,7 +70,7 @@ public static class Permissions
         return Enum.TryParse(t, true, out r) && Enum.IsDefined(r);
     }
 
-    public static string ScopeName(Scope s) => s switch { Scope.ReadOnly => "read-only", Scope.Operator => "operator", Scope.Programmer => "programmer", _ => "admin" };
+    public static string ScopeName(Scope s) => s switch { Scope.ReadOnly => "read-only", Scope.Operator => "operator", Scope.Programmer => "programmer", Scope.EiscLink => "eisc-link", _ => "admin" };
     public static string RoleName(Role r) => r.ToString().ToLowerInvariant();
 }
 

@@ -401,7 +401,7 @@ public sealed class ProgramSlot : IDisposable
         {
             case "help" or "?":
                 var builtIn = "Built-in: help, progcomments, ipt, appstat, signals, cpuload, ramfree, taskstat, metrics\n";
-                return builtIn + string.Join('\n', _commands.Values.Select(c => $"{c.Name,-20} {c.Help}"));
+                return builtIn + string.Join('\n', _commands.Values.Concat(Processor.ExtraConsoleCommands.Values).Select(c => $"{c.Name,-20} {c.Help}"));
             case "progcomments" or "appstat":
                 return $"Slot {Number}: {State}\nProgram: {Runtime?.ProgramName ?? "(none)"}\nType: {Runtime?.Kind ?? "-"}\nFile: {ProgramPath ?? "-"}";
             case "ipt":
@@ -413,6 +413,12 @@ public sealed class ProgramSlot : IDisposable
                     .Select(s => $"{s.Kind,-8} {s.Name,-40} {s.Value}"));
         }
 
+        if (Processor.ExtraConsoleCommands.TryGetValue(name, out var extra) && !_commands.ContainsKey(name))
+        {
+            var text = new System.Text.StringBuilder();
+            extra.Handler(args, s => text.Append(s)); // a plugin's command: runs on the plugin's thread, not this slot's
+            return text.ToString();
+        }
         if (!_commands.TryGetValue(name, out var cmd)) return $"Bad or incomplete command: {name}";
         var sb = new System.Text.StringBuilder();
         Dispatcher.Invoke(() => cmd.Handler(args, s => sb.Append(s)));

@@ -280,6 +280,7 @@ public sealed class ConsoleShell
             slot = _processor.Slot(n);
         }
         else if (session.CurrentSlot > 0) slot = _processor.Slot(session.CurrentSlot);
+        else if (_processor.ExtraConsoleCommands.ContainsKey(name)) slot = _processor.Slots.FirstOrDefault(s => s.Runtime != null) ?? _processor.Slots[0]; // a plugin's command isn't tied to a slot
         else slot = _processor.Slots.FirstOrDefault(s => s.ConsoleCommands.Any(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)))
                     ?? (name is "progcomments" or "appstat" or "signals" or "metrics" ? _processor.Slots.FirstOrDefault(s => s.Runtime != null) : null);
         if (slot == null) return $"Bad or incomplete command: {name}. Type HELP for the list.\r\n";

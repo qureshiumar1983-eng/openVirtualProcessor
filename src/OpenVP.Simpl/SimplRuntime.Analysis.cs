@@ -12,6 +12,9 @@ public sealed partial class SimplRuntime : IProgramAnalysis
     IReadOnlyList<ReadinessProblem> IProgramAnalysis.Problems() =>
         Unsupported.Select(s => new ReadinessProblem("SIMPL symbol", $"{s.Name} (SmC {s.Code})", $"pins in={s.Inputs.Count} out={s.Outputs.Count}")).ToList();
 
+    /// <summary>Symbols the interpreter runs plus the ones it has no behavior for: what the compatibility dashboard counts against.</summary>
+    public int SymbolCount => _nodes.Count + Unsupported.Count;
+
     public ProgramSummary Summarize()
     {
         var panels = new List<string>();
