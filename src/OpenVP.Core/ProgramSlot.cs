@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using OpenVP.Core.Integrations;
 
 namespace OpenVP.Core;
 
@@ -31,10 +32,14 @@ public sealed class ProgramSlot : IDisposable
         Stepper.Changed += _ => { Processor.NotifyStepChanged(this); Monitor.Refresh(); };
         Metrics = new SlotMetrics(() => Volatile.Read(ref _generation));
         MissingFiles = new MissingFileLog(() => Directory, Log);
+        Hub = new SignalHub(this);
         _dispatcher = NewDispatcher();
         LoadSettings();
         Io = new SlotIo(this);
     }
+
+    /// <summary>Lets integrations (MQTT, webhooks, OSC, Art-Net, the REST stream) hear about chosen signals; costs nothing until one subscribes.</summary>
+    public SignalHub Hub { get; }
 
     /// <summary>The slot's COM ports and sockets, device simulators, network redirects and IP ID remap (see <see cref="SlotIo"/>).</summary>
     public SlotIo Io { get; }
@@ -534,5 +539,5 @@ public sealed class ProgramSlot : IDisposable
             if (_settings.Crash.FaultOnUnhandled) Fault($"unhandled {e.GetType().Name}: {e.Message}");
         }, () => Stepper.IsPaused, Processor.SlotSpinMicroseconds);
 
-    public void Dispose() { Unload(); Monitor.Dispose(); Io.Dispose(); }
+    public void Dispose() { Unload(); Hub.Dispose(); Monitor.Dispose(); Io.Dispose(); }
 }

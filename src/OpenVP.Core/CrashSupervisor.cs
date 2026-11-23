@@ -23,6 +23,7 @@ public sealed class CrashSupervisor : IDisposable
         public readonly List<DateTimeOffset> Restarts = new();
         public DateTimeOffset? LastTime;
         public string? LastAction, LastReason;
+        public long Crashes, TotalRestarts;
     }
 
     private readonly Processor _processor;
@@ -75,6 +76,13 @@ public sealed class CrashSupervisor : IDisposable
         }
     }
 
+    /// <summary>Faults and automatic restarts of a slot since OpenVP started (for the Prometheus metrics).</summary>
+    public (long Crashes, long Restarts) Totals(int slot)
+    {
+        var st = _state[slot - 1];
+        lock (st) return (st.Crashes, st.TotalRestarts);
+    }
+
     /// <summary>Forget the restarts counted for a slot, because a person started or loaded it.</summary>
     public void ClearHistory(int slot)
     {
@@ -101,9 +109,10 @@ public sealed class CrashSupervisor : IDisposable
             st.Restarts.RemoveAll(t => now - t > TimeSpan.FromDays(1));
             d = Decide(slot.Settings.Crash, st.Restarts, now);
             st.LastTime = now;
+            st.Crashes++;
             st.LastReason = reason;
             st.LastAction = d.Restart ? "restarted" : "stopped";
-            if (d.Restart && path != null) st.Restarts.Add(now);
+            if (d.Restart && path != null) { st.Restarts.Add(now); st.TotalRestarts++; }
         }
         slot.Log(d.Restart ? "Warning" : "Error", $"Crash policy: {d.Text} ({reason}).");
         try { Acted?.Invoke(slot.Number, d.Text, reason); } catch { }

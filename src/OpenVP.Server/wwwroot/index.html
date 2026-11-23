@@ -349,7 +349,7 @@
 <body>
 <header>
   <h1>OpenVP</h1><small>open-source virtual control processor</small>
-  <span style="flex:1"></span><span id="saved" role="status" aria-live="polite"></span><span id="sigfind-wrap"><input id="sigfind" type="search" placeholder="Find a signal in all slots" aria-label="Find a signal by name in every loaded slot" autocomplete="off" title="Finds signals by name across all loaded slots and opens that slot's debugger on the one you pick (press F)" data-help="signal-search"><div id="sigfind-res" hidden></div></span><button class="hbtn" id="pal-open" title="Search every action and every help topic (Ctrl+K or Cmd+K)" data-help="palette">Search ⌘K</button><button class="hbtn" id="keys-open" title="Keyboard shortcuts (?)" data-help="palette">?</button><button class="hbtn" id="tpl-open" title="Starter projects to download: a SIMPL# Pro program and a CH5 panel" data-help="templates">Templates</button><button class="theme-btn" data-theme-toggle data-help="top-bar"></button><a href="devices.html" id="devices-link" target="openvp-devices" data-help="devices" title="Device simulators, COM terminal, socket sniffer, network redirects and discovery for the selected slot">Devices ↗</a><a href="metrics.html" target="openvp-metrics" data-help="metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="panel.html" target="_blank" data-help="panel" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a><a href="#welcome" id="welcome-link" title="Show the welcome screen again">Welcome</a>
+  <span style="flex:1"></span><span id="saved" role="status" aria-live="polite"></span><span id="sigfind-wrap"><input id="sigfind" type="search" placeholder="Find a signal in all slots" aria-label="Find a signal by name in every loaded slot" autocomplete="off" title="Finds signals by name across all loaded slots and opens that slot's debugger on the one you pick (press F)" data-help="signal-search"><div id="sigfind-res" hidden></div></span><button class="hbtn" id="pal-open" title="Search every action and every help topic (Ctrl+K or Cmd+K)" data-help="palette">Search ⌘K</button><button class="hbtn" id="keys-open" title="Keyboard shortcuts (?)" data-help="palette">?</button><button class="hbtn" id="tpl-open" title="Starter projects to download: a SIMPL# Pro program and a CH5 panel" data-help="templates">Templates</button><button class="theme-btn" data-theme-toggle data-help="top-bar"></button><a href="devices.html" id="devices-link" target="openvp-devices" data-help="devices" title="Device simulators, COM terminal, socket sniffer, network redirects and discovery for the selected slot">Devices ↗</a><a href="metrics.html" target="openvp-metrics" data-help="metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="integrations.html" id="integrations-link" target="openvp-integrations" data-help="integrations" title="MQTT and Home Assistant, webhooks, OSC, Art-Net and Prometheus for the selected slot">Integrations ↗</a><a href="panel.html" target="_blank" data-help="panel" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a><a href="#welcome" id="welcome-link" title="Show the welcome screen again">Welcome</a>
 </header>
 <div id="slot-strip" aria-label="Selected slot"><select id="strip-slot" aria-label="Slot"></select><button id="strip-start" title="Start">▶</button><button id="strip-stop" title="Stop">■</button><button id="strip-restart" title="Restart">↻</button></div>
 <div id="net-bar" data-help="internet">
@@ -898,6 +898,7 @@ $("#d-remap-reset").onclick = async () => {
   refreshSlots(); refreshIpTable();
 };
 $("#devices-link").onclick = e => { e.preventDefault(); window.open(`devices.html?slot=${sel}`, "openvp-devices"); };
+$("#integrations-link").onclick = e => { e.preventDefault(); window.open(`integrations.html?slot=${sel}`, "openvp-integrations"); };
 $("#d-identify").onclick = async () => {
   if (!iptSel) return;
   $("#d-status").textContent = "Identifying… (reverse DNS and Crestron autodiscovery, a few seconds)";
@@ -2049,6 +2050,10 @@ function paletteItems() {
     add(`Share panel for IP ID ${d.ipId} (slot ${d.slot})`, "make a link", () => openShare(d.slot, d.ipId), "link qr pin");
   }
   add("Open metrics", "new window", () => openMetrics(0), "cpu memory");
+  add(`Open integrations for slot ${sel}`, "new window", () => window.open(`integrations.html?slot=${sel}`, "openvp-integrations"), "mqtt home assistant webhook osc art-net artnet dmx prometheus grafana");
+  add("MQTT: connect a broker", "Integrations", () => window.open(`integrations.html?slot=${sel}#mqtt`, "openvp-integrations"), "mqtt broker home assistant publish");
+  add("Webhooks: send and receive", "Integrations", () => window.open(`integrations.html?slot=${sel}#hooks`, "openvp-integrations"), "webhook http post incoming outgoing");
+  add("Prometheus and Grafana", "Integrations", () => window.open(`integrations.html?slot=${sel}#prom`, "openvp-integrations"), "metrics scrape grafana dashboard");
   add("Open help", "new window", () => window.open("help.html#console", "openvp-help"), "docs");
   add("Open the test panel", "new window", () => window.open("panel.html", "_blank"), "browser touch panel");
   add(`Take a snapshot of slot ${sel}`, "History", snapshotNow, "snapshot now save history");

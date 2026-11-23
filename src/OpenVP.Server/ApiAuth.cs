@@ -27,8 +27,9 @@ public sealed class ApiAuth
 
     private readonly byte[]? _key;
 
-    public ApiAuth(string? key, bool localRequiresKey, bool panelsRequireKey)
+    public ApiAuth(string? key, bool localRequiresKey, bool panelsRequireKey, bool metricsPublic = false)
     {
+        MetricsPublic = metricsPublic;
         _key = key is null ? null : Encoding.UTF8.GetBytes(key);
         LocalRequiresKey = localRequiresKey;
         PanelsRequireKey = panelsRequireKey;
@@ -37,6 +38,8 @@ public sealed class ApiAuth
     /// <summary>False when auth is switched off with <c>OpenVP:ApiKey=off</c>.</summary>
     public bool Enabled => _key != null;
     public bool LocalRequiresKey { get; }
+    /// <summary><c>OpenVP:MetricsPublic=true</c> lets <c>/metrics</c> (Prometheus) be read without the key. It is never served on the tunnel port either way.</summary>
+    public bool MetricsPublic { get; }
     public bool PanelsRequireKey { get; }
 
     /// <summary>Where the key came from, for the startup message.</summary>
@@ -48,10 +51,11 @@ public sealed class ApiAuth
         var configured = cfg["ApiKey"]?.Trim();
         var local = cfg.GetValue("LocalRequiresKey", false);
         var panels = cfg.GetValue("PanelsRequireKey", false);
+        var metricsPublic = cfg.GetValue("MetricsPublic", false);
         if (string.Equals(configured, "off", StringComparison.OrdinalIgnoreCase))
-            return new ApiAuth(null, local, panels) { Source = "off" };
+            return new ApiAuth(null, local, panels, metricsPublic) { Source = "off" };
         if (!string.IsNullOrEmpty(configured))
-            return new ApiAuth(configured, local, panels) { Source = "OpenVP:ApiKey", Key = configured };
+            return new ApiAuth(configured, local, panels, metricsPublic) { Source = "OpenVP:ApiKey", Key = configured };
 
         var file = Path.Combine(dataDirectory, "apikey.txt");
         var key = File.Exists(file) ? File.ReadAllText(file).Trim() : "";
@@ -63,7 +67,7 @@ public sealed class ApiAuth
             if (!OperatingSystem.IsWindows())
                 File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         }
-        return new ApiAuth(key, local, panels) { Source = file, Key = key };
+        return new ApiAuth(key, local, panels, metricsPublic) { Source = file, Key = key };
     }
 
     public bool Matches(string? candidate)
@@ -124,8 +128,9 @@ public sealed class ApiAuth
 
     public void ClearCookie(HttpContext ctx) => ctx.Response.Cookies.Delete(CookieName);
 
-    private static bool IsProtected(PathString p, bool panelsRequireKey) =>
-        (p.StartsWithSegments("/api") && !p.StartsWithSegments("/api/info") && !p.StartsWithSegments("/api/login") && !p.StartsWithSegments("/api/logout"))
+    private bool IsProtected(PathString p, bool panelsRequireKey) =>
+        (!MetricsPublic && p.StartsWithSegments("/metrics"))
+        || (p.StartsWithSegments("/api") && !p.StartsWithSegments("/api/info") && !p.StartsWithSegments("/api/login") && !p.StartsWithSegments("/api/logout"))
         || p.StartsWithSegments("/ws/trace") || p.StartsWithSegments("/ws/metrics")
         || (panelsRequireKey && p.StartsWithSegments("/ws/panel"));
 
@@ -143,7 +148,7 @@ public sealed class ApiAuth
         }
 
         // Opening /?key=KEY (or any page with ?key=) logs the browser in and strips the key from the address bar.
-        if (Enabled && HttpMethods.IsGet(ctx.Request.Method) && !path.StartsWithSegments("/api") && !path.StartsWithSegments("/ws") && !path.StartsWithSegments("/s")
+        if (Enabled && HttpMethods.IsGet(ctx.Request.Method) && !path.StartsWithSegments("/api") && !path.StartsWithSegments("/ws") && !path.StartsWithSegments("/s") && !path.StartsWithSegments("/metrics") && !path.StartsWithSegments("/hooks")
             && ctx.Request.Query.TryGetValue("key", out var qk))
         {
             var rest = string.Join('&', ctx.Request.Query.Where(q => q.Key != "key")

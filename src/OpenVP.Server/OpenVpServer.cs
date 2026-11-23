@@ -299,6 +299,10 @@ public static class OpenVpServer
         slotApi.MapGet("", (int n) => SlotDto(processor.Slot(n)));
         DeviceEndpoints.MapSlot(slotApi, processor, (c, a, t, sl) => Note(c, a, t, sl));
 
+        // MQTT, outgoing and incoming webhooks, OSC, Art-Net, Prometheus and REST per signal (OpenVP.Core.Integrations).
+        var integrations = new OpenVP.Core.Integrations.IntegrationsHost(processor, () => new MqttNetTransport());
+        IntegrationEndpoints.Map(app, slotApi, processor, integrations, auth, crash, (c, a, t, sl) => Note(c, a, t, sl));
+
         // One upload per slot at a time; a second one waits instead of racing on the same folder.
         var uploadLocks = processor.Slots.Select(_ => new SemaphoreSlim(1, 1)).ToArray();
 
@@ -548,6 +552,7 @@ public static class OpenVpServer
                     }
                     if (info == null) return Results.NotFound(new { error = "There's no such snapshot." });
                     slot.Io.Reload(); // simulators, redirects and the IP ID remap come back with the snapshot
+                    integrations.Store.ReloadSlot(n); // so do the slot's integration choices
                     slot.Log("Notice", $"Rolled back to the snapshot of {info.Program ?? "the slot"} from {info.Time.ToLocalTime():yyyy-MM-dd HH:mm:ss} ({info.Reason}).");
                     Note(ctx, "rollback", $"Rolled slot {n} back to the snapshot of {info.Program ?? "the slot"} from {info.Time.ToLocalTime():yyyy-MM-dd HH:mm:ss} ({info.Reason})", n);
                     if (snapshots.RestoredProgramPath(n, info) is { } path && File.Exists(path))
@@ -1496,7 +1501,8 @@ public static class OpenVpServer
             mdns = new { enabled = mdnsOn, running = mdns?.Running ?? false, names = mdns?.HostNames, service = mdns?.InstanceName },
         }, (c, a, t, sl) => Note(c, a, t, sl));
 
-        app.Lifetime.ApplicationStopping.Register(() => { telnet?.Dispose(); ssh?.Dispose(); mdns?.Dispose(); for (var i = 1; i <= watches.Length; i++) StopWatching(i); tunnel?.Dispose(); cip?.Dispose(); crash.Dispose(); trashTimer.Dispose(); recordings.Dispose(); processor.Dispose(); });
+        app.Lifetime.ApplicationStarted.Register(() => { try { integrations.Start(); } catch (Exception e) { Console.WriteLine("Integrations not started: " + e.Message); } });
+        app.Lifetime.ApplicationStopping.Register(() => { integrations.Dispose(); telnet?.Dispose(); ssh?.Dispose(); mdns?.Dispose(); for (var i = 1; i <= watches.Length; i++) StopWatching(i); tunnel?.Dispose(); cip?.Dispose(); crash.Dispose(); trashTimer.Dispose(); recordings.Dispose(); processor.Dispose(); });
         // If the process ends some other way (not a clean stop), still take cloudflared down with it.
         AppDomain.CurrentDomain.ProcessExit += (_, _) => tunnel?.Stop();
         return app;

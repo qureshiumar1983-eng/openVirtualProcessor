@@ -59,6 +59,7 @@
     <a href="/#welcome" title="Open the first-run welcome screen again">Welcome</a>
     <a href="#console">Console</a>
     <a href="#devices">Devices</a>
+    <a href="#integrations">Integrations</a>
     <a href="#debugger">Debugger</a>
     <a href="#paths">Paths</a>
     <a href="#metrics">Metrics</a>
@@ -532,6 +533,55 @@
   <dl>
     <dt><b>Loops &amp; oscillations</b></dt><dd>Signals that changed more than once in the same chain reaction. Red means it's changing so often it's probably stuck in a loop. Click one to centre the map on it.</dd>
     <dt><b>Last burst</b></dt><dd>Every change in the most recent chain reaction, in order. Click one to centre the map on it.</dd>
+  </dl>
+</section>
+
+<section id="integrations">
+  <h2>Integrations</h2>
+  <p class="muted">Open it with <b>Integrations ↗</b> in the console's top bar. It connects slots to other systems: MQTT and Home Assistant, webhooks, OSC, Art-Net and Prometheus. The slot chosen at the top decides which signals you pick; the connection settings (broker, ports) are for the whole of OpenVP. Every change is written to the Activity feed. A signal list shows what the loaded program has, so load the program first.</p>
+
+  <h3 id="int-mqtt">MQTT</h3>
+  <p class="muted">Publishes chosen signals to an MQTT broker and lets the broker set them. The bridge uses its own thread and a limited queue, so a slow or dead broker never holds up a program; if the queue fills, the oldest changes are dropped and counted.</p>
+  <dl>
+    <dt>Broker, port, TLS, user name, password</dt><dd>Where to connect. The password is kept in a file only you can read (encrypted for your Windows account on Windows) and is never sent back to this page; leave the box empty to keep it, or tick <b>Remove the saved password</b>.</dd>
+    <dt>Client id · Base topic</dt><dd>Both have defaults from this computer's name (<code>openvp-&lt;host&gt;</code> and <code>openvp/&lt;host&gt;</code>), shown greyed in the boxes.</dd>
+    <dt>Topics</dt><dd><code>&lt;base&gt;/status</code> is <code>online</code> or <code>offline</code> (the broker sets offline if OpenVP dies). <code>&lt;base&gt;/slotNN/state</code> is <code>running</code>, <code>stopped</code>, <code>loaded</code>, <code>empty</code> or <code>error</code>. <code>&lt;base&gt;/slotNN/&lt;signal&gt;</code> holds the value (retained). Letters, digits and <code>_ . -</code> stay as they are in a signal's topic; every other character becomes <code>_</code>.</dd>
+    <dt><span class="b">Add signals…</span></dt><dd>Pick from the slot's signals. <b>Set</b> lets <code>…/set</code> change the signal: <code>1</code>, <code>0</code>, <code>true</code>, <code>false</code> or <code>pulse</code> for digital, a number or <code>50%</code> for analog, any text for serial. Only signals with <b>Set</b> ticked are subscribed. Retained messages on a <code>/set</code> topic are ignored.</dd>
+    <dt>Home Assistant discovery</dt><dd>Turn it on above and tick <b>Home Assistant</b> for a signal: a digital signal becomes a switch (a binary sensor if it can't be set), an analog one a number (a sensor if it can't be set) and a serial one a text sensor. Turning it off for a signal removes the entity.</dd>
+    <dt>The status</dt><dd>Connected, connecting or error (with the broker's reason), the number of signals, messages in and out, how many were dropped, and when the last one went.</dd>
+  </dl>
+
+  <h3 id="int-webhooks">Webhooks</h3>
+  <p class="muted">Outgoing webhooks send a request when something happens in a slot. Incoming webhooks let another system set signals.</p>
+  <dl>
+    <dt><span class="b">New webhook…</span></dt><dd>A URL, and either <b>When a signal changes</b> (every change) or <b>When a condition becomes true</b>, written in the watch language: <code>Room_On=1 &amp;&amp; Proj_Power=0 for 2s</code>. <b>Check</b> tells you whether it reads and which signals the program doesn't have. A condition sends once each time it becomes true. Optional headers (<code>Name: value</code> per line) and a signing secret.</dd>
+    <dt>The request</dt><dd>A <code>POST</code> of JSON: <code>event</code> (<code>signal.change</code>, <code>expression.true</code> or <code>test</code>), <code>time</code>, <code>slot</code>, <code>room</code>, <code>program</code>, <code>webhook</code>, and <code>signal</code>, <code>kind</code> and <code>value</code> (or <code>expression</code> and <code>values</code>). With a secret, <code>X-OpenVP-Signature</code> is <code>sha256=</code> and the hex HMAC-SHA256 of <code>X-OpenVP-Timestamp + "." + body</code>.</dd>
+    <dt>Retries and the log</dt><dd>A request that fails (no answer within 10 s, a network error, 5xx, 408 or 429) is tried again after 1 s, 5 s and 30 s. Other 4xx answers are not retried. The <b>Delivery log</b> lists each delivery with its result, tries and time. Each webhook has its own queue, so a slow one only delays itself; when 200 are waiting the oldest are dropped.</dd>
+    <dt><span class="b">Test</span></dt><dd>Sends a sample event now (once, no retries) and shows the result in the log. It is marked <code>test</code>.</dd>
+    <dt><span class="b">New incoming webhook…</span></dt><dd>Makes an address like <code>/hooks/&lt;token&gt;</code> for one slot, optionally limited to the signals you list. Send <code>POST</code> with <code>{"signal":"Room_On","value":1}</code> or <code>{"pulse":"Button1"}</code>. Values follow the same rules as MQTT. It works without the access key, because the token is the key, and is not available through the internet tunnel. <b>Switch off</b> pauses it; <b>Revoke</b> deletes it and the address stops working at once. A hook is limited to 20 requests per second (a burst of 40), and an address that tries more than 10 wrong tokens a minute is refused.</dd>
+  </dl>
+
+  <h3 id="int-osc">OSC</h3>
+  <p class="muted">Open Sound Control over UDP.</p>
+  <dl>
+    <dt>Listen on UDP port</dt><dd>0 turns listening off. Messages to <code>/openvp/slotNN/&lt;signal&gt;</code> set signals ticked <b>Receive</b>; others are ignored and counted as refused. Digital: an int (non-zero is high), a float (above 0.5 is high), true or false, no value to pulse, or <code>/pulse</code> on the end of the address. Analog: an int 0-65535, or a float from 0 to 1 as a fraction of full scale. Serial: a string.</dd>
+    <dt>Send to</dt><dd>A host and port. Each change of a signal ticked <b>Send</b> goes there as one message to the same address (digital and analog as an int, serial as a string). An empty host turns sending off.</dd>
+  </dl>
+
+  <h3 id="int-artnet">Art-Net</h3>
+  <p class="muted">Analog signals as DMX channels.</p>
+  <dl>
+    <dt>Send to · Frames per second</dt><dd>One ArtDMX packet per universe in use is sent at the chosen rate (1 to 44) all the time, as DMX nodes expect, whether or not anything changed. Use a node's address or a broadcast address.</dd>
+    <dt><span class="b">Add signals…</span></dt><dd>Each signal gets a universe (0 to 32767), a channel (1 to 512) and 8 or 16 bits. 8-bit scales 0-65535 to 0-255. 16-bit sends the high byte on the channel and the low byte on the next one. A digital signal is 0 or 255. Two signals can't share a channel.</dd>
+    <dt>Receive</dt><dd>Tick <b>Also receive ArtDMX</b> and <b>Receive</b> on a channel: incoming ArtDMX on UDP 6454 for that universe sets the signal when the channel's value changes.</dd>
+  </dl>
+
+  <h3 id="int-prometheus">Prometheus</h3>
+  <p class="muted">A page of numbers at <code>/metrics</code> for Prometheus (and Grafana) to collect.</p>
+  <dl>
+    <dt>Access</dt><dd>The access key (<code>Authorization: Bearer KEY</code>), except from this computer. <code>OpenVP:MetricsPublic=true</code> removes that. It is never served on the internet tunnel's port.</dd>
+    <dt>What it has</dt><dd>OpenVP's CPU, memory and threads; for each slot its state, events per second, busy percent, queue depth, longest event, devices online, panel connections, crashes, restarts and alerts; and counters for MQTT, webhooks, OSC and Art-Net. The page shows a ready <code>prometheus.yml</code> and a <code>curl</code> command, and how many times it has been collected.</dd>
+    <dt>Grafana</dt><dd>Import <code>tools/grafana/openvp-dashboard.json</code> from the repository (Dashboards, New, Import) and choose your Prometheus data source.</dd>
   </dl>
 </section>
 

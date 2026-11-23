@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<script src="openvp-theme.js"></script>
+<title>OpenVP integrations</title>
+<style>
+  :root { --bg:#0f1216; --card:#181d23; --line:#29303a; --text:#e6e9ee; --muted:#8b95a3; --ok:#2f9e6e; --warn:#d69e2e; --err:#e05252; --accent:#4c8dff; }
+  * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
+  html, body { height:100%; }
+  body { margin:0; font:14px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--text); display:flex; flex-direction:column; min-height:100dvh; }
+  header { padding:10px 16px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:6px 12px; flex-wrap:wrap; background:var(--card); }
+  header h1 { margin:0; font-size:17px; }
+  header .sp { flex:1; }
+  a { color:var(--accent); }
+  .muted { color:var(--muted); }
+  .mono { font-family:ui-monospace, Menlo, Consolas, monospace; font-size:12px; }
+  code { font-family:ui-monospace, Menlo, Consolas, monospace; font-size:12px; background:var(--well); border:1px solid var(--line); border-radius:4px; padding:0 4px; }
+  button, input, select, textarea { font:inherit; color:var(--text); background:var(--input); border:1px solid var(--line); border-radius:6px; padding:5px 9px; }
+  textarea { width:100%; font-family:ui-monospace, Menlo, Consolas, monospace; font-size:12px; }
+  input[type=checkbox], input[type=radio] { padding:0; }
+  button { cursor:pointer; } button:hover { border-color:var(--accent); }
+  button:disabled { opacity:.5; cursor:default; }
+  button.primary { border-color:var(--accent); background:var(--active); }
+  button.small { font-size:12px; padding:2px 8px; }
+  button.danger:hover { border-color:var(--err); color:var(--err-fg); }
+  main { flex:1; min-height:0; display:flex; flex-direction:column; padding:12px 16px 24px; gap:10px; max-width:1100px; width:100%; margin:0 auto; }
+  .tabs { display:flex; flex-wrap:wrap; }
+  .tabs button { border-radius:0; margin-left:-1px; } .tabs button:first-child { border-radius:6px 0 0 6px; margin-left:0; } .tabs button:last-child { border-radius:0 6px 6px 0; }
+  .tabs button.active { background:var(--active); border-color:var(--accent); position:relative; }
+  .tabs .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; background:var(--dim); }
+  .tabs .dot.ok { background:var(--ok); } .tabs .dot.err { background:var(--err); } .tabs .dot.warn { background:var(--warn); }
+  .pane { display:none; flex-direction:column; gap:10px; min-height:0; }
+  .pane.on { display:flex; }
+  .bar { display:flex; flex-wrap:wrap; gap:6px 8px; align-items:center; }
+  .bar .sp { flex:1; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
+  .card h2 { margin:0 0 6px; font-size:15px; display:flex; flex-wrap:wrap; gap:4px 8px; align-items:center; }
+  .card h3 { margin:10px 0 4px; font-size:13px; }
+  .pill { display:inline-block; font-size:11px; padding:1px 8px; border-radius:20px; background:var(--chip); color:var(--text2); white-space:nowrap; }
+  .pill.ok { background:var(--ok-bg); color:var(--ok-fg); } .pill.warn { background:var(--warn-bg); color:var(--warn-fg); } .pill.err { background:var(--err-bg); color:var(--err-fg); } .pill.info { background:var(--info-bg); color:var(--info-fg); }
+  .form { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:8px 12px; align-items:end; }
+  .form label { display:flex; flex-direction:column; gap:3px; font-size:12px; color:var(--muted); min-width:0; }
+  .form label.inline { flex-direction:row; align-items:center; gap:6px; color:var(--text); font-size:13px; }
+  .form input:not([type=checkbox]):not([type=radio]), .form select { width:100%; }
+  .stat { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:4px 12px; margin-top:8px; }
+  .stat div { background:var(--well); border:1px solid var(--line); border-radius:6px; padding:3px 8px; display:flex; justify-content:space-between; gap:8px; align-items:baseline; min-width:0; }
+  .stat span { color:var(--muted); font-size:12px; }
+  .stat b { font-family:ui-monospace, Menlo, Consolas, monospace; font-size:12px; overflow-wrap:anywhere; text-align:right; }
+  .note { padding:6px 8px; border:1px solid var(--warn-line); background:var(--warn-box); border-radius:6px; font-size:12px; }
+  .err { color:var(--err-fg); min-height:1.3em; font-size:13px; overflow-wrap:anywhere; }
+  table { border-collapse:collapse; width:100%; }
+  th, td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  th { font-size:12px; color:var(--muted); font-weight:600; white-space:nowrap; }
+  td.num, th.num { text-align:right; }
+  td input:not([type=checkbox]), td select { width:100%; min-width:70px; }
+  .scroll-x { overflow-x:auto; }
+  .snip { position:relative; }
+  .snip pre { margin:0; background:var(--well); border:1px solid var(--line); border-radius:6px; padding:8px 10px; overflow-x:auto; font-size:12px; line-height:1.4; }
+  .snip button { position:absolute; top:4px; right:4px; }
+  .hook { display:flex; flex-direction:column; gap:6px; }
+  .hook .url { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .hook .url code { overflow-wrap:anywhere; word-break:break-all; }
+  dialog { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:16px; width:min(520px, calc(100vw - 24px)); max-height:92dvh; overflow:auto; }
+  dialog.wide { width:min(720px, calc(100vw - 24px)); }
+  dialog::backdrop { background:var(--overlay); }
+  dialog form { display:flex; flex-direction:column; gap:10px; margin:0; }
+  dialog .row { display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+  dialog label { display:flex; flex-direction:column; gap:3px; font-size:12px; color:var(--muted); }
+  dialog label.inline { flex-direction:row; align-items:center; gap:6px; color:var(--text); font-size:13px; }
+  dialog input:not([type=checkbox]):not([type=radio]), dialog select { width:100%; }
+  .picklist { border:1px solid var(--line); border-radius:6px; background:var(--well); max-height:42dvh; overflow:auto; }
+  .picklist label { flex-direction:row; align-items:center; gap:8px; padding:4px 8px; color:var(--text); font-size:13px; border-bottom:1px solid var(--line); cursor:pointer; }
+  .picklist label:hover { background:var(--hover); }
+  .picklist .nm { flex:1; min-width:0; overflow-wrap:anywhere; }
+  #saved { color:var(--ok-fg); font-size:12px; min-width:4em; }
+  @media (max-width: 700px) {
+    header, main { padding-left:16px; padding-right:16px; }
+    table.cards thead { display:none; }
+    table.cards, table.cards tbody, table.cards tr, table.cards td { display:block; }
+    table.cards tr { border:1px solid var(--line); border-radius:8px; margin:0 0 8px; padding:6px 8px; }
+    table.cards td { border:none; padding:2px 0; text-align:left; }
+    table.cards td[data-l]::before { content:attr(data-l) " "; color:var(--muted); font-size:11px; }
+    table.cards td input:not([type=checkbox]), table.cards td select { width:auto; min-width:0; max-width:100%; }
+    .tabs button { padding:5px 8px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Integrations</h1>
+  <label class="muted" style="display:flex;gap:6px;align-items:center">Slot <select id="slot" aria-label="Program slot whose signals are chosen below"></select></label>
+  <span id="prog" class="muted mono" style="overflow-wrap:anywhere"></span>
+  <span id="saved" role="status" aria-live="polite"></span>
+  <span class="sp"></span>
+  <button class="theme-btn" data-theme-toggle></button>
+  <a href="/">Console</a>
+  <a href="help.html#integrations" target="openvp-help">Help</a>
+</header>
+<main>
+  <div id="fail" class="note" role="alert" hidden></div>
+  <div class="tabs" role="tablist">
+    <button id="t-mqtt" class="active" role="tab" title="Publish signals to an MQTT broker and set them from it; Home Assistant discovery"><span class="dot" id="d-mqtt"></span>MQTT</button><button id="t-hooks" role="tab" title="Outgoing webhooks when a signal changes, and incoming webhooks that set signals"><span class="dot" id="d-hooks"></span>Webhooks</button><button id="t-osc" role="tab" title="OSC over UDP: receive messages that set signals, send changes"><span class="dot" id="d-osc"></span>OSC</button><button id="t-artnet" role="tab" title="Art-Net: analog signals as DMX channels"><span class="dot" id="d-artnet"></span>Art-Net</button><button id="t-prom" role="tab" title="Prometheus metrics at /metrics, and a Grafana dashboard"><span class="dot" id="d-prom"></span>Prometheus</button>
+  </div>
+
+  <!-- ============================================================ MQTT -->
+  <section id="pane-mqtt" class="pane on">
+    <div class="card">
+      <h2>MQTT broker <span id="mqtt-pill" class="pill"></span></h2>
+      <div class="muted">Signals you choose below are published to <code>&lt;base&gt;/slotNN/&lt;signal&gt;</code> (retained, whenever they change). Write to <code>…/set</code> to set one. <code>&lt;base&gt;/status</code> says online or offline.</div>
+      <form id="mqtt-form" class="form" style="margin-top:10px" autocomplete="off">
+        <label class="inline"><input type="checkbox" id="m-enabled"> Turn the MQTT bridge on</label>
+        <label>Broker host<input id="m-host" placeholder="broker.local or 192.168.1.10" maxlength="253"></label>
+        <label>Port<input id="m-port" type="number" min="1" max="65535" value="1883"></label>
+        <label class="inline"><input type="checkbox" id="m-tls"> Use TLS</label>
+        <label>User name<input id="m-user" maxlength="100" autocomplete="off"></label>
+        <label>Password<input id="m-pass" type="password" autocomplete="new-password" placeholder=""></label>
+        <label class="inline" id="m-clear-l" hidden><input type="checkbox" id="m-clear"> Remove the saved password</label>
+        <label>Client id<input id="m-cid" maxlength="120"></label>
+        <label>Base topic<input id="m-base" maxlength="200"></label>
+        <label class="inline"><input type="checkbox" id="m-ha"> Home Assistant discovery</label>
+        <label>Discovery prefix<input id="m-hap" maxlength="100" placeholder="homeassistant"></label>
+        <div class="bar" style="align-self:end"><button class="primary" id="m-save">Save and connect</button></div>
+      </form>
+      <div id="m-err" class="err"></div>
+      <div class="muted" id="m-pwnote"></div>
+      <div class="stat" id="mqtt-stat"></div>
+    </div>
+    <div class="card">
+      <h2>Signals of slot <span id="m-slotn"></span>
+        <span class="sp" style="flex:1"></span><button id="m-add" class="small primary">Add signals…</button></h2>
+      <div class="muted">Tick <b>Set</b> to let a message on <code>…/set</code> change the signal: digital <code>1</code>, <code>0</code>, <code>true</code>, <code>false</code> or <code>pulse</code>; analog a number or <code>50%</code>; serial any text. Tick <b>Home Assistant</b> to add it to Home Assistant (a switch for digital, a number for analog, a text sensor for serial; needs discovery on above). Messages marked retained on a <code>/set</code> topic are ignored.</div>
+      <div class="scroll-x"><table id="m-tbl" class="cards"><thead><tr><th>Signal</th><th>Kind</th><th>Topic</th><th>Set</th><th>Home Assistant</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div id="m-empty" class="muted" hidden>No signals chosen for this slot. Click <b>Add signals…</b>.</div>
+    </div>
+  </section>
+
+  <!-- ============================================================ webhooks -->
+  <section id="pane-hooks" class="pane">
+    <div class="card">
+      <h2>Outgoing webhooks of slot <span id="w-slotn"></span> <span id="w-pill" class="pill"></span>
+        <span class="sp" style="flex:1"></span><button id="w-new" class="small primary">New webhook…</button></h2>
+      <div class="muted">OpenVP sends a JSON <code>POST</code> to your URL when a signal changes, or when a condition becomes true (the same language as watches, for example <code>Room_On=1 &amp;&amp; Proj_Power=0 for 2s</code>). Failed requests are tried again after 1 s, 5 s and 30 s. With a signing secret each request carries <code>X-OpenVP-Signature: sha256=…</code>, the HMAC-SHA256 of <code>timestamp + "." + body</code>, and <code>X-OpenVP-Timestamp</code>. The URL, headers and secret are saved with the slot, so they are in its snapshots.</div>
+      <div class="scroll-x"><table id="w-tbl" class="cards"><thead><tr><th>Name</th><th>Fires when</th><th>URL</th><th>On</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div id="w-empty" class="muted" hidden>No webhooks in this slot.</div>
+      <div class="stat" id="w-stat"></div>
+      <h3>Delivery log <button id="w-clear" class="small" title="Hide the entries shown now">Clear view</button></h3>
+      <div class="scroll-x"><table id="dl-tbl" class="cards"><thead><tr><th>Time</th><th>Webhook</th><th>Event</th><th>Result</th><th class="num">Tries</th><th class="num">ms</th><th>Detail</th></tr></thead><tbody></tbody></table></div>
+      <div id="dl-empty" class="muted">Nothing sent yet. Use <b>Test</b> on a webhook.</div>
+    </div>
+    <div class="card">
+      <h2>Incoming webhooks <span class="sp" style="flex:1"></span><button id="h-new" class="small primary">New incoming webhook…</button></h2>
+      <div class="muted">Anyone who has a hook's address can set signals in its slot with <code>POST /hooks/&lt;token&gt;</code> and a body like <code>{"signal":"Room_On","value":1}</code> or <code>{"pulse":"Button1"}</code>. The token is the only credential, so treat the address like a password: it is for one slot and (if you list signals) only those signals, can be switched off or revoked, and is rate limited. These addresses work without the access key, but <b>not through the internet tunnel</b>.</div>
+      <div id="h-list" style="display:flex;flex-direction:column;gap:8px;margin-top:8px"></div>
+      <div id="h-empty" class="muted" hidden>No incoming webhooks yet.</div>
+    </div>
+  </section>
+
+  <!-- ============================================================ OSC -->
+  <section id="pane-osc" class="pane">
+    <div class="card">
+      <h2>OSC <span id="osc-pill" class="pill"></span></h2>
+      <div class="muted">Open Sound Control over UDP. <b>Receive:</b> messages to <code>/openvp/slotNN/&lt;signal&gt;</code> with one value set the signals ticked <b>Receive</b> below (digital: int or float, or no value to pulse, or <code>/pulse</code> on the end; analog: an int 0-65535, or a float 0 to 1 as a fraction of full scale; serial: a string). <b>Send:</b> each change of a signal ticked <b>Send</b> goes to the target as one message (digital and analog as an int, serial as a string).</div>
+      <form id="osc-form" class="form" style="margin-top:10px" autocomplete="off">
+        <label>Listen on UDP port (0 is off)<input id="o-listen" type="number" min="0" max="65535" value="0"></label>
+        <label>Send to host<input id="o-host" placeholder="192.168.1.60 (empty is off)" maxlength="253"></label>
+        <label>Port<input id="o-port" type="number" min="1" max="65535" value="9000"></label>
+        <div class="bar" style="align-self:end"><button class="primary" id="o-save">Save</button></div>
+      </form>
+      <div id="o-err" class="err"></div>
+      <div class="stat" id="osc-stat"></div>
+    </div>
+    <div class="card">
+      <h2>Signals of slot <span id="o-slotn"></span><span class="sp" style="flex:1"></span><button id="o-add" class="small primary">Add signals…</button></h2>
+      <div class="scroll-x"><table id="o-tbl" class="cards"><thead><tr><th>Signal</th><th>Kind</th><th>Address</th><th>Send</th><th>Receive</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div id="o-empty" class="muted" hidden>No signals chosen for this slot.</div>
+    </div>
+  </section>
+
+  <!-- ============================================================ Art-Net -->
+  <section id="pane-artnet" class="pane">
+    <div class="card">
+      <h2>Art-Net <span id="an-pill" class="pill"></span></h2>
+      <div class="muted">Analog signals become DMX channels: 0-65535 is scaled to 0-255, or in 16-bit mode the high byte goes on the channel and the low byte on the next one. ArtDMX packets go to the target at a steady rate whether or not anything changed. A node's own address, or a broadcast address such as <code>2.255.255.255</code> or <code>255.255.255.255</code>. Optionally OpenVP also listens on UDP 6454 and sets signals ticked <b>Receive</b> from incoming ArtDMX.</div>
+      <form id="an-form" class="form" style="margin-top:10px" autocomplete="off">
+        <label class="inline"><input type="checkbox" id="a-enabled"> Turn Art-Net on</label>
+        <label>Send to<input id="a-target" placeholder="255.255.255.255" maxlength="253"></label>
+        <label>Port<input id="a-port" type="number" min="1" max="65535" value="6454"></label>
+        <label>Frames per second<input id="a-rate" type="number" min="1" max="44" value="30"></label>
+        <label class="inline"><input type="checkbox" id="a-listen"> Also receive ArtDMX</label>
+        <div class="bar" style="align-self:end"><button class="primary" id="a-save">Save</button></div>
+      </form>
+      <div id="a-err" class="err"></div>
+      <div class="stat" id="an-stat"></div>
+    </div>
+    <div class="card">
+      <h2>Channels of slot <span id="a-slotn"></span><span class="sp" style="flex:1"></span><button id="a-add" class="small primary">Add signals…</button></h2>
+      <div class="scroll-x"><table id="a-tbl" class="cards"><thead><tr><th>Signal</th><th>Universe</th><th>Channel</th><th>Bits</th><th>Send</th><th>Receive</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div id="a-empty" class="muted" hidden>No channels mapped for this slot. Pick analog signals (a digital signal is sent as 0 or 255).</div>
+    </div>
+  </section>
+
+  <!-- ============================================================ Prometheus -->
+  <section id="pane-prom" class="pane">
+    <div class="card">
+      <h2>Prometheus metrics <span id="p-pill" class="pill"></span></h2>
+      <div class="muted">OpenVP serves its metrics in the Prometheus text format at <code>/metrics</code>: process CPU, memory and threads; per slot the state, events per second, busy percent, queue depth, devices online, panel connections, crash and restart counts and alerts; and the integrations' counters. It needs the access key, except from this computer; set <code>OpenVP:MetricsPublic=true</code> to drop that. It is never served on the internet tunnel's port.</div>
+      <div class="stat" id="p-stat"></div>
+      <h3>Scrape it</h3>
+      <div class="snip"><pre id="p-yml"></pre><button class="small" data-copy="p-yml">Copy</button></div>
+      <h3>Look at it</h3>
+      <div class="snip"><pre id="p-curl"></pre><button class="small" data-copy="p-curl">Copy</button></div>
+      <h3>Grafana</h3>
+      <div class="muted">A ready dashboard is in the repository at <code>tools/grafana/openvp-dashboard.json</code>. In Grafana choose <b>Dashboards → New → Import</b>, upload the file and pick your Prometheus data source.</div>
+    </div>
+  </section>
+</main>
+
+<!-- pick signals -->
+<dialog id="pick-dlg" class="wide"><form method="dialog" id="pick-form">
+  <b id="pick-title">Choose signals</b>
+  <input id="pick-q" type="search" placeholder="Type to find a signal" autocomplete="off" aria-label="Filter signals">
+  <div class="bar"><label class="inline" style="flex-direction:row;display:flex;gap:6px"><input type="checkbox" id="pick-dig" checked> Digital</label><label class="inline" style="flex-direction:row;display:flex;gap:6px"><input type="checkbox" id="pick-ana" checked> Analog</label><label class="inline" style="flex-direction:row;display:flex;gap:6px"><input type="checkbox" id="pick-ser" checked> Serial</label><span class="sp"></span><span id="pick-count" class="muted"></span></div>
+  <div id="pick-list" class="picklist" role="listbox" aria-label="Signals"></div>
+  <div class="muted" id="pick-note"></div>
+  <div class="row"><button type="button" id="pick-cancel">Cancel</button><button class="primary" id="pick-ok" type="submit">Add</button></div>
+</form></dialog>
+
+<!-- outgoing webhook -->
+<dialog id="wh-dlg" class="wide"><form method="dialog" id="wh-form" autocomplete="off">
+  <b id="wh-title">New webhook</b>
+  <label>Name (optional)<input id="wh-name" maxlength="60"></label>
+  <label>URL<input id="wh-url" placeholder="https://example.com/openvp" maxlength="500"></label>
+  <div class="bar"><label class="inline"><input type="radio" name="wh-trig" value="signal" checked> When a signal changes</label><label class="inline"><input type="radio" name="wh-trig" value="expr"> When a condition becomes true</label></div>
+  <div id="wh-sig-row" class="bar"><input id="wh-signal" style="flex:1;min-width:180px" placeholder="Signal name" aria-label="Signal name"><button type="button" id="wh-pick" class="small">Pick…</button></div>
+  <div id="wh-expr-row" hidden>
+    <input id="wh-expr" style="width:100%" placeholder="Room_On=1 && Proj_Power=0 for 2s" aria-label="Condition" maxlength="500">
+    <div class="bar" style="margin-top:4px"><button type="button" id="wh-check" class="small">Check</button><span id="wh-check-out" class="muted"></span></div>
+  </div>
+  <label>Headers (one per line, <code>Name: value</code>)<textarea id="wh-headers" rows="3" placeholder="Authorization: Bearer abc"></textarea></label>
+  <label>Signing secret (optional)<input id="wh-secret" type="password" autocomplete="new-password"></label>
+  <label class="inline" id="wh-keep-l" hidden><input type="checkbox" id="wh-keep" checked> Keep the saved secret</label>
+  <label class="inline"><input type="checkbox" id="wh-on" checked> On</label>
+  <div id="wh-err" class="err"></div>
+  <div class="row"><button type="button" id="wh-cancel">Cancel</button><button class="primary" id="wh-ok" type="submit">Save</button></div>
+</form></dialog>
+
+<!-- incoming hook -->
+<dialog id="hk-dlg" class="wide"><form method="dialog" id="hk-form" autocomplete="off">
+  <b id="hk-title">New incoming webhook</b>
+  <label>Label<input id="hk-label" maxlength="60" placeholder="Doorbell"></label>
+  <label>Slot<select id="hk-slot"></select></label>
+  <label>Signals it may set (empty means any signal of the slot)<textarea id="hk-allow" rows="3" placeholder="One signal name per line"></textarea></label>
+  <div class="bar"><button type="button" id="hk-pick" class="small">Pick signals…</button></div>
+  <div id="hk-err" class="err"></div>
+  <div class="row"><button type="button" id="hk-cancel">Cancel</button><button class="primary" id="hk-ok" type="submit">Save</button></div>
+</form></dialog>
+
+<!-- confirm -->
+<dialog id="cf-dlg"><form method="dialog">
+  <b id="cf-title"></b><div id="cf-text" class="muted"></div>
+  <div class="row"><button value="cancel">Cancel</button><button class="primary danger" value="ok" id="cf-ok">OK</button></div>
+</form></dialog>
+
+<script src="openvp-auth.js"></script>
+<script>
+openvpAuth.init();
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const q = new URLSearchParams(location.search);
+let slot = Number(q.get("slot")) || 1, tab = (location.hash || "#mqtt").slice(1), slots = [], ov = null, sc = { mqtt: [], osc: [], artnet: [], webhooks: [] }, sigs = [], hooks = [], clearedBefore = 0;
+
+async function api(path, method = "GET", body) {
+  const r = await fetch(path, { method, headers: body === undefined ? {} : { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+  if (openvpAuth.check(r)) throw new Error("Log in with the access key first.");
+  const ct = r.headers.get("content-type") || "";
+  const data = ct.includes("json") ? await r.json() : await r.text();
+  if (!r.ok) throw new Error((data && data.error) || data || r.statusText);
+  return data;
+}
+const S = p => `/api/slots/${slot}${p}`;
+const pad = (n, w = 2) => String(n).padStart(w, "0");
+const clock = t => { const d = new Date(t); return isNaN(d) ? "" : `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+const ago = t => { if (!t) return "never"; const s = Math.max(0, (Date.now() - new Date(t)) / 1000); return s < 2 ? "just now" : s < 90 ? `${Math.round(s)} s ago` : s < 5400 ? `${Math.round(s / 60)} min ago` : s < 129600 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`; };
+const num = n => Number(n || 0).toLocaleString();
+let savedT = 0, failT = 0;
+function fail(msg) { const b = $("#fail"); b.textContent = msg; b.hidden = false; clearTimeout(failT); failT = setTimeout(() => b.hidden = true, 9000); }
+function flash(t = "Saved") { const el = $("#saved"); el.textContent = t; clearTimeout(savedT); savedT = setTimeout(() => el.textContent = "", 2000); }
+const stat = (el, rows) => { el.innerHTML = rows.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join(""); };
+function pill(el, kind, text) { el.className = "pill " + kind; el.textContent = text; }
+function seg(name) { return name.replace(/[^A-Za-z0-9_.\-]/g, "_") || "_"; }
+function segs(names) { const used = new Set(), map = {}; for (const n of names) { if (n in map) continue; let s = seg(n), t = s, i = 2; while (used.has(t)) t = `${s}_${i++}`; used.add(t); map[n] = t; } return map; }
+const kindOf = n => (sigs.find(s => s.name === n)?.kind || "").toLowerCase();
+const slotNo = () => pad(slot);
+
+// ---- dialogs ----
+function confirmBox(title, text, ok = "OK") {
+  return new Promise(res => {
+    const d = $("#cf-dlg"); $("#cf-title").textContent = title; $("#cf-text").textContent = text; $("#cf-ok").textContent = ok;
+    d.onclose = () => res(d.returnValue === "ok"); d.returnValue = ""; d.showModal();
+  });
+}
+// A signal picker over the slot's signal list (the same list the debugger uses).
+function pickSignals({ title = "Choose signals", skip = [], single = false, kinds = ["digital", "analog", "serial"], note = "" } = {}) {
+  return new Promise(async res => {
+    const d = $("#pick-dlg"), list = $("#pick-list"), qin = $("#pick-q");
+    $("#pick-title").textContent = title; $("#pick-note").textContent = note; $("#pick-ok").textContent = single ? "Use" : "Add";
+    $("#pick-dig").checked = kinds.includes("digital"); $("#pick-ana").checked = kinds.includes("analog"); $("#pick-ser").checked = kinds.includes("serial");
+    for (const [id, k] of [["pick-dig", "digital"], ["pick-ana", "analog"], ["pick-ser", "serial"]]) $("#" + id).closest("label").hidden = !kinds.includes(k);
+    list.innerHTML = `<div class="muted" style="padding:8px">Loading…</div>`;
+    const chosen = new Set(); const skipSet = new Set(skip);
+    let all = [];
+    try { all = await api(S("/signals")); } catch (e) { list.innerHTML = `<div class="err" style="padding:8px">${esc(e.message)}</div>`; }
+    if (!all.length && !list.querySelector(".err")) list.innerHTML = `<div class="muted" style="padding:8px">This slot has no program loaded, so it has no signals yet. Load one in the console.</div>`;
+    sigs = all.length ? all : sigs;
+    const paint = () => {
+      const words = qin.value.toLowerCase().split(/\s+/).filter(Boolean);
+      const on = { digital: $("#pick-dig").checked, analog: $("#pick-ana").checked, serial: $("#pick-ser").checked };
+      const hits = all.filter(s => on[s.kind.toLowerCase()] && !skipSet.has(s.name) && words.every(w => s.name.toLowerCase().includes(w)));
+      $("#pick-count").textContent = `${hits.length} of ${all.length}`;
+      if (!all.length) return;
+      list.innerHTML = hits.slice(0, 300).map(s => `<label><input type="${single ? "radio" : "checkbox"}" name="pk" value="${esc(s.name)}" ${chosen.has(s.name) ? "checked" : ""}><span class="nm">${esc(s.name)}</span><span class="pill">${esc(s.kind.toLowerCase())}</span><span class="muted mono">${esc(typeof s.value === "string" ? JSON.stringify(s.value).slice(0, 24) : s.value)}</span></label>`).join("")
+        + (hits.length > 300 ? `<div class="muted" style="padding:6px 8px">Showing 300. Type to narrow the list.</div>` : "") + (hits.length ? "" : `<div class="muted" style="padding:8px">Nothing matches.</div>`);
+    };
+    list.onchange = e => { if (e.target.name !== "pk") return; if (single) { chosen.clear(); chosen.add(e.target.value); } else if (e.target.checked) chosen.add(e.target.value); else chosen.delete(e.target.value); };
+    qin.oninput = paint; for (const id of ["pick-dig", "pick-ana", "pick-ser"]) $("#" + id).onchange = paint;
+    $("#pick-cancel").onclick = () => d.close("cancel");
+    d.onclose = () => res(d.returnValue === "ok" ? [...chosen] : null);
+    qin.value = ""; d.returnValue = ""; paint(); d.showModal(); qin.focus();
+  });
+}
+$("#pick-form").onsubmit = () => { $("#pick-dlg").returnValue = "ok"; };
+
+// ---- tabs ----
+const TABS = { mqtt: "t-mqtt", hooks: "t-hooks", osc: "t-osc", artnet: "t-artnet", prom: "t-prom" };
+function showTab(t) {
+  if (!TABS[t]) t = "mqtt";
+  tab = t;
+  for (const [k, id] of Object.entries(TABS)) { $("#" + id).classList.toggle("active", k === t); $("#pane-" + k).classList.toggle("on", k === t); }
+  try { history.replaceState(null, "", `?slot=${slot}#${t}`); } catch { }
+}
+for (const [k, id] of Object.entries(TABS)) $("#" + id).onclick = () => showTab(k);
+
+// ---- slot ----
+async function loadSlots() {
+  slots = await api("/api/slots");
+  const sel = $("#slot"); sel.innerHTML = "";
+  for (const s of slots) { const o = document.createElement("option"); o.value = s.number; o.textContent = `Slot ${s.number}${s.name ? " · " + s.name : ""}${s.program ? " · " + s.program : ""}`; sel.appendChild(o); }
+  if (!slots.some(s => s.number === slot)) slot = 1;
+  sel.value = slot;
+  setProg();
+}
+function setProg() {
+  const s = slots.find(x => x.number === slot);
+  $("#prog").textContent = s ? (s.program ? `${s.program} · ${s.state}` : "no program loaded") : "";
+  for (const id of ["m-slotn", "w-slotn", "o-slotn", "a-slotn"]) $("#" + id).textContent = slot;
+}
+$("#slot").onchange = async e => { slot = Number(e.target.value); setProg(); showTab(tab); await loadSlotData(); };
+
+async function loadSlotData() {
+  const [c, s] = await Promise.all([api(S("/integrations")), api(S("/signals")).catch(() => [])]);
+  sc = c; sigs = s;
+  renderMqttTable(); renderHooksTable(); renderOscTable(); renderArtTable();
+  refreshDeliveries();
+}
+
+async function saveSection(section) {
+  try {
+    const body = {}; body[section] = sc[section];
+    sc = await api(S("/integrations"), "PUT", body);
+    flash();
+    return true;
+  } catch (e) { flash("Not saved: " + e.message); fail(e.message); await loadSlotData(); return false; }
+}
+
+// ---- signal tables (shared) ----
+const kindPill = n => { const k = kindOf(n); return k ? `<span class="pill">${k}</span>` : `<span class="pill warn" title="The program doesn't have this signal right now">not in program</span>`; };
+const rm = (arr, i) => arr.splice(i, 1);
+
+// ================================================================ MQTT
+function fillMqtt(m) {
+  $("#m-enabled").checked = m.enabled; $("#m-host").value = m.host || ""; $("#m-port").value = m.port; $("#m-tls").checked = m.tls;
+  $("#m-user").value = m.username || ""; $("#m-pass").value = ""; $("#m-pass").placeholder = m.hasPassword ? "saved (leave empty to keep)" : "";
+  $("#m-clear-l").hidden = !m.hasPassword; $("#m-clear").checked = false;
+  $("#m-cid").value = m.clientId || ""; $("#m-cid").placeholder = m.effectiveClientId; $("#m-base").value = m.baseTopic || ""; $("#m-base").placeholder = m.effectiveBase;
+  $("#m-ha").checked = m.homeAssistant; $("#m-hap").value = m.discoveryPrefix || "";
+  $("#m-pwnote").textContent = m.hasPassword ? "A password is saved. It is kept in a file only you can read (encrypted for your Windows account on Windows) and is never sent back to this page." : "";
+}
+let mqttBase = "openvp/host";
+function showMqtt(m) {
+  mqttBase = m.effectiveBase;
+  const st = m.status;
+  const kind = !m.enabled ? "" : st.state === "connected" ? "ok" : st.state === "error" ? "err" : "warn";
+  pill($("#mqtt-pill"), kind, !m.enabled ? "off" : st.state === "connected" ? "connected" : st.state === "error" ? "error" : "connecting…");
+  $("#d-mqtt").className = "dot " + kind;
+  stat($("#mqtt-stat"), [["Base topic", m.effectiveBase], ["Signals published", num(st.signals)], ["Messages published", num(st.published)], ["Messages received", num(st.received)],
+    ["Dropped (queue full)", num(st.dropped)], ["Last message in", st.lastMessageIn ? ago(st.lastMessageIn) : "never"], ["Last message out", st.lastMessageOut ? ago(st.lastMessageOut) : "never"], ["Last topic", st.lastTopic || "-"],
+    ["Connected", st.connectedSince && st.state === "connected" ? ago(st.connectedSince) : "-"], ["Tries", num(st.attempts)]]);
+  if (m.enabled && st.error) $("#m-err").textContent = st.error; else if ($("#m-err").dataset.own !== "1") $("#m-err").textContent = "";
+  renderMqttTable();
+}
+$("#mqtt-form").onsubmit = async e => {
+  e.preventDefault();
+  const body = { enabled: $("#m-enabled").checked, host: $("#m-host").value.trim(), port: Number($("#m-port").value) || 1883, tls: $("#m-tls").checked, username: $("#m-user").value.trim() || null,
+    clientId: $("#m-cid").value.trim() || null, baseTopic: $("#m-base").value.trim() || null, homeAssistant: $("#m-ha").checked, discoveryPrefix: $("#m-hap").value.trim() || "homeassistant" };
+  if ($("#m-pass").value) body.password = $("#m-pass").value;
+  if ($("#m-clear").checked) body.clearPassword = true;
+  const err = $("#m-err"); err.dataset.own = "";
+  try { const m = await api("/api/integrations/mqtt", "PUT", body); err.textContent = ""; fillMqtt(m); showMqtt(m); flash(); }
+  catch (x) { err.textContent = x.message; err.dataset.own = "1"; }
+};
+function renderMqttTable() {
+  const tb = $("#m-tbl tbody"), list = sc.mqtt || [];
+  const map = segs(list.map(x => x.signal));
+  tb.innerHTML = list.map((x, i) => `<tr><td data-l="Signal" style="overflow-wrap:anywhere">${esc(x.signal)}</td><td data-l="Kind">${kindPill(x.signal)}</td>
+    <td data-l="Topic" class="mono" style="overflow-wrap:anywhere">${esc(`${mqttBase}/slot${slotNo()}/${map[x.signal]}`)}${x.set ? `<br><span class="muted">${esc(`…/${map[x.signal]}/set`)}</span>` : ""}</td>
+    <td data-l="Set"><input type="checkbox" data-i="${i}" data-f="set" ${x.set ? "checked" : ""} aria-label="Allow set for ${esc(x.signal)}"></td>
+    <td data-l="Home Assistant"><input type="checkbox" data-i="${i}" data-f="discovery" ${x.discovery ? "checked" : ""} aria-label="Home Assistant for ${esc(x.signal)}"></td>
+    <td><button class="small danger" data-rm="${i}">Remove</button></td></tr>`).join("");
+  $("#m-tbl").hidden = !list.length; $("#m-empty").hidden = !!list.length;
+}
+$("#m-tbl").onchange = e => { const i = e.target.dataset.i; if (i == null) return; sc.mqtt[i][e.target.dataset.f] = e.target.checked; saveSection("mqtt"); };
+$("#m-tbl").onclick = async e => { const i = e.target.dataset.rm; if (i == null) return; rm(sc.mqtt, Number(i)); renderMqttTable(); await saveSection("mqtt"); renderMqttTable(); };
+$("#m-add").onclick = async () => {
+  const got = await pickSignals({ title: `Publish signals of slot ${slot} over MQTT`, skip: sc.mqtt.map(x => x.signal) });
+  if (!got?.length) return;
+  for (const n of got) sc.mqtt.push({ signal: n, set: kindOf(n) !== "", discovery: false });
+  renderMqttTable(); await saveSection("mqtt"); renderMqttTable();
+};
+
+// ================================================================ webhooks
+function whTrigger(w) { return w.signal ? `<span class="pill info">signal</span> ${esc(w.signal)}` : `<span class="pill info">condition</span> <span class="mono">${esc(w.expression)}</span>`; }
+function renderHooksTable() {
+  const tb = $("#w-tbl tbody"), list = sc.webhooks || [];
+  tb.innerHTML = list.map((w, i) => `<tr><td data-l="Name" style="overflow-wrap:anywhere">${esc(w.name || w.signal || w.expression)}${w.hasSecret ? ` <span class="pill" title="Requests are signed">signed</span>` : ""}</td>
+    <td data-l="Fires when" style="overflow-wrap:anywhere">${whTrigger(w)}</td><td data-l="URL" class="mono" style="overflow-wrap:anywhere">${esc(w.url)}</td>
+    <td data-l="On"><input type="checkbox" data-i="${i}" ${w.enabled ? "checked" : ""} aria-label="Webhook on"></td>
+    <td><button class="small" data-test="${esc(w.id)}">Test</button> <button class="small" data-edit="${i}">Edit</button> <button class="small danger" data-del="${i}">Remove</button></td></tr>`).join("");
+  $("#w-tbl").hidden = !list.length; $("#w-empty").hidden = !!list.length;
+}
+const wbody = w => ({ id: w.id, name: w.name, url: w.url, headers: w.headers, signal: w.signal, expression: w.expression, enabled: w.enabled });
+$("#w-tbl").onchange = async e => {
+  const i = e.target.dataset.i; if (i == null) return;
+  const list = sc.webhooks.map(wbody); list[i].enabled = e.target.checked;
+  try { sc = await api(S("/integrations"), "PUT", { webhooks: list }); flash(); } catch (x) { fail(x.message); } renderHooksTable();
+};
+$("#w-tbl").onclick = async e => {
+  const t = e.target;
+  if (t.dataset.test) {
+    t.disabled = true; t.textContent = "Sending…";
+    try { const d = await api(S(`/webhooks/${encodeURIComponent(t.dataset.test)}/test`), "POST"); flash(d.ok ? `Delivered (${d.status})` : `Failed: ${d.error || d.status}`); }
+    catch (x) { fail(x.message); }
+    t.disabled = false; t.textContent = "Test"; refreshDeliveries();
+  } else if (t.dataset.edit != null) openWebhook(Number(t.dataset.edit));
+  else if (t.dataset.del != null) {
+    const w = sc.webhooks[Number(t.dataset.del)];
+    if (!await confirmBox("Remove this webhook?", `“${w.name || w.signal || w.expression}” will stop sending to ${w.url}.`, "Remove")) return;
+    const list = sc.webhooks.map(wbody); list.splice(Number(t.dataset.del), 1);
+    try { sc = await api(S("/integrations"), "PUT", { webhooks: list }); flash(); } catch (x) { fail(x.message); } renderHooksTable();
+  }
+};
+let whEdit = -1;
+function trigMode() { return document.querySelector("input[name=wh-trig]:checked").value; }
+function syncTrig() { const m = trigMode(); $("#wh-sig-row").hidden = m !== "signal"; $("#wh-expr-row").hidden = m !== "expr"; }
+for (const r of document.querySelectorAll("input[name=wh-trig]")) r.onchange = syncTrig;
+function openWebhook(i) {
+  whEdit = i; const w = i >= 0 ? sc.webhooks[i] : null;
+  $("#wh-title").textContent = w ? "Edit webhook" : "New webhook";
+  $("#wh-name").value = w?.name || ""; $("#wh-url").value = w?.url || ""; $("#wh-signal").value = w?.signal || ""; $("#wh-expr").value = w?.expression || "";
+  document.querySelector(`input[name=wh-trig][value=${w?.expression ? "expr" : "signal"}]`).checked = true; syncTrig();
+  $("#wh-headers").value = Object.entries(w?.headers || {}).map(([k, v]) => `${k}: ${v}`).join("\n"); $("#wh-secret").value = "";
+  $("#wh-keep-l").hidden = !w?.hasSecret; $("#wh-keep").checked = true; $("#wh-on").checked = w ? w.enabled : true; $("#wh-err").textContent = ""; $("#wh-check-out").textContent = "";
+  $("#wh-dlg").showModal(); $("#wh-url").focus();
+}
+$("#w-new").onclick = () => openWebhook(-1);
+$("#wh-cancel").onclick = () => $("#wh-dlg").close();
+$("#wh-pick").onclick = async () => { const got = await pickSignals({ title: "Which signal?", single: true }); if (got?.length) $("#wh-signal").value = got[0]; };
+$("#wh-check").onclick = async () => {
+  const out = $("#wh-check-out");
+  try { const r = await api(S("/watches/check"), "POST", { expression: $("#wh-expr").value });
+    out.textContent = r.ok ? `OK${r.forMs ? `, true for ${r.forMs} ms` : ""}. Reads ${r.signals.join(", ")}.${r.unknown?.length ? ` Not in this program: ${r.unknown.join(", ")}.` : ""}` : r.error; out.style.color = r.ok ? "" : "var(--err-fg)"; }
+  catch (x) { out.textContent = x.message; }
+};
+$("#wh-form").onsubmit = async e => {
+  e.preventDefault();
+  const headers = {};
+  for (const line of $("#wh-headers").value.split("\n")) { const t = line.trim(); if (!t) continue; const c = t.indexOf(":"); if (c < 1) { $("#wh-err").textContent = `“${t}” isn't a header. Write Name: value.`; return; } headers[t.slice(0, c).trim()] = t.slice(c + 1).trim(); }
+  const w = { id: whEdit >= 0 ? sc.webhooks[whEdit].id : "", name: $("#wh-name").value.trim() || null, url: $("#wh-url").value.trim(), headers, enabled: $("#wh-on").checked };
+  if (trigMode() === "signal") w.signal = $("#wh-signal").value.trim(); else w.expression = $("#wh-expr").value.trim();
+  // A typed secret replaces the saved one; "keep" unticked removes it; otherwise the field is left out and the server keeps what it has.
+  const typed = $("#wh-secret").value;
+  if (typed) w.secret = typed; else if (!$("#wh-keep-l").hidden && !$("#wh-keep").checked) w.secret = "";
+  const list = sc.webhooks.map(wbody); if (whEdit >= 0) list[whEdit] = w; else list.push(w);
+  try { sc = await api(S("/integrations"), "PUT", { webhooks: list }); flash(); $("#wh-dlg").close(); renderHooksTable(); }
+  catch (x) { $("#wh-err").textContent = x.message; }
+};
+async function refreshDeliveries() {
+  try {
+    const d = (await api(`/api/webhooks/deliveries?slot=${slot}&max=40`)).filter(x => new Date(x.time).getTime() > clearedBefore);
+    $("#dl-tbl tbody").innerHTML = d.map(x => `<tr><td data-l="Time">${clock(x.time)}</td><td data-l="Webhook" style="overflow-wrap:anywhere">${esc(x.ruleName)}</td><td data-l="Event">${esc(x.event)}</td>
+      <td data-l="Result"><span class="pill ${x.ok ? "ok" : "err"}">${x.ok ? "delivered" : "failed"}${x.status ? " " + x.status : ""}</span></td><td class="num" data-l="Tries">${x.attempts}</td><td class="num" data-l="ms">${x.ms}</td><td data-l="Detail" style="overflow-wrap:anywhere" class="muted">${esc(x.error || "")}</td></tr>`).join("");
+    $("#dl-tbl").hidden = !d.length; $("#dl-empty").hidden = !!d.length;
+  } catch { }
+}
+$("#w-clear").onclick = () => { clearedBefore = Date.now(); refreshDeliveries(); };
+function showWebhookStatus(w) {
+  stat($("#w-stat"), [["Webhooks active", num(w.rules)], ["Delivered", num(w.sent)], ["Failed", num(w.failed)], ["Dropped (queue full)", num(w.dropped)], ["Waiting or retrying", num(w.pending)], ["Last delivery", w.lastDelivery ? ago(w.lastDelivery) : "never"]]);
+  const bad = w.failed > 0 && (Date.now() - new Date(w.lastDelivery || 0)) < 300000;
+  pill($("#w-pill"), w.failed > w.sent ? "err" : w.rules ? "ok" : "", w.rules ? `${w.rules} active` : "none");
+  $("#d-hooks").className = "dot " + (w.rules || hooks.length ? (bad && w.failed > w.sent ? "err" : "ok") : "");
+}
+
+// incoming
+function curlFor(h) { return `curl -X POST ${location.origin}${h.path} -d '{"signal":"${(h.allow && h.allow[0]) || "Room_On"}","value":1}'`; }
+async function loadHooks() { hooks = await api("/api/hooks"); renderIncoming(); }
+function renderIncoming() {
+  $("#h-list").innerHTML = hooks.map(h => `<div class="card hook"><div class="bar"><b style="overflow-wrap:anywhere">${esc(h.label)}</b><span class="pill info">slot ${h.slot}</span>
+    <span class="pill ${h.enabled ? "ok" : ""}">${h.enabled ? "on" : "off"}</span><span class="muted">${h.allow.length ? `${h.allow.length} signal${h.allow.length > 1 ? "s" : ""} allowed` : "any signal of the slot"} · used ${num(h.count)} time${h.count == 1 ? "" : "s"}${h.lastUsed ? ", " + ago(h.lastUsed) : ""}</span></div>
+    <div class="url"><code>${esc(location.origin + h.path)}</code><button class="small" data-copyurl="${esc(h.id)}">Copy address</button></div>
+    <div class="snip"><pre>${esc(curlFor(h))}</pre><button class="small" data-copycurl="${esc(h.id)}">Copy</button></div>
+    <div class="bar"><button class="small" data-hedit="${esc(h.id)}">Edit</button><button class="small" data-htoggle="${esc(h.id)}">${h.enabled ? "Switch off" : "Switch on"}</button><button class="small danger" data-hrevoke="${esc(h.id)}">Revoke</button></div></div>`).join("");
+  $("#h-empty").hidden = !!hooks.length;
+}
+async function copyText(t) { try { await navigator.clipboard.writeText(t); flash("Copied"); } catch { prompt_("Copy this", t); } }
+function prompt_(title, text) { fail(title + ": " + text); }
+$("#h-list").onclick = async e => {
+  const t = e.target, id = t.dataset.copyurl || t.dataset.copycurl || t.dataset.hedit || t.dataset.htoggle || t.dataset.hrevoke; if (!id) return;
+  const h = hooks.find(x => x.id === id); if (!h) return;
+  try {
+    if (t.dataset.copyurl) copyText(location.origin + h.path);
+    else if (t.dataset.copycurl) copyText(curlFor(h));
+    else if (t.dataset.hedit) openHook(h);
+    else if (t.dataset.htoggle) { await api(`/api/hooks/${id}`, "PUT", { enabled: !h.enabled }); await loadHooks(); flash(); }
+    else if (t.dataset.hrevoke) {
+      if (!await confirmBox("Revoke this hook?", `“${h.label}”: its address stops working at once. Whoever uses it will get "No such hook". This can't be undone; you can make a new one.`, "Revoke")) return;
+      await api(`/api/hooks/${id}`, "DELETE"); await loadHooks(); flash("Revoked");
+    }
+  } catch (x) { fail(x.message); }
+};
+let hkEdit = null;
+function openHook(h) {
+  hkEdit = h || null;
+  $("#hk-title").textContent = h ? "Edit incoming webhook" : "New incoming webhook";
+  $("#hk-label").value = h?.label || ""; $("#hk-allow").value = (h?.allow || []).join("\n"); $("#hk-err").textContent = "";
+  const sel = $("#hk-slot"); sel.innerHTML = slots.map(s => `<option value="${s.number}">Slot ${s.number}${s.name ? " · " + esc(s.name) : ""}</option>`).join(""); sel.value = h ? h.slot : slot; sel.disabled = !!h;
+  $("#hk-dlg").showModal(); $("#hk-label").focus();
+}
+$("#h-new").onclick = () => openHook(null);
+$("#hk-cancel").onclick = () => $("#hk-dlg").close();
+$("#hk-pick").onclick = async () => {
+  const sl = Number($("#hk-slot").value);
+  const prev = slot; slot = sl;
+  const got = await pickSignals({ title: `Signals of slot ${sl} this hook may set`, kinds: ["digital", "analog", "serial"] });
+  slot = prev;
+  if (got?.length) { const cur = $("#hk-allow").value.split("\n").map(x => x.trim()).filter(Boolean); $("#hk-allow").value = [...new Set([...cur, ...got])].join("\n"); }
+};
+$("#hk-form").onsubmit = async e => {
+  e.preventDefault();
+  const allow = $("#hk-allow").value.split("\n").map(x => x.trim()).filter(Boolean);
+  try {
+    if (hkEdit) await api(`/api/hooks/${hkEdit.id}`, "PUT", { label: $("#hk-label").value, allow });
+    else await api("/api/hooks", "POST", { slot: Number($("#hk-slot").value), label: $("#hk-label").value, allow });
+    $("#hk-dlg").close(); await loadHooks(); flash();
+  } catch (x) { $("#hk-err").textContent = x.message; }
+};
+
+// ================================================================ OSC
+function fillOsc(o) { $("#o-listen").value = o.listenPort; $("#o-host").value = o.targetHost || ""; $("#o-port").value = o.targetPort; }
+function showOsc(o) {
+  const st = o.status, on = st.listening || st.sending;
+  const kind = st.error ? "err" : on ? "ok" : "";
+  pill($("#osc-pill"), kind, st.error ? "error" : st.listening && st.sending ? "listening and sending" : st.listening ? `listening on ${st.listenPort}` : st.sending ? "sending" : "off");
+  $("#d-osc").className = "dot " + kind;
+  stat($("#osc-stat"), [["Listening", st.listening ? "UDP " + st.listenPort : "no"], ["Sending to", st.sending ? st.target : "no"], ["Received", num(st.received)], ["Sent", num(st.sent)], ["Refused", num(st.rejected)], ["Dropped (queue full)", num(st.dropped)],
+    ["Last in", st.lastIn ? ago(st.lastIn) : "never"], ["Last out", st.lastOut ? ago(st.lastOut) : "never"], ["Last address", st.lastAddress || "-"]]);
+  if (st.error && $("#o-err").dataset.own !== "1") $("#o-err").textContent = st.error;
+}
+$("#osc-form").onsubmit = async e => {
+  e.preventDefault(); const err = $("#o-err"); err.dataset.own = "";
+  try { const o = await api("/api/integrations/osc", "PUT", { listenPort: Number($("#o-listen").value) || 0, targetHost: $("#o-host").value.trim(), targetPort: Number($("#o-port").value) || 9000 }); err.textContent = o.status.error || ""; fillOsc(o.settings); showOsc(o); flash(); }
+  catch (x) { err.textContent = x.message; err.dataset.own = "1"; }
+};
+function renderOscTable() {
+  const list = sc.osc || [], map = segs(list.map(x => x.signal));
+  $("#o-tbl tbody").innerHTML = list.map((x, i) => `<tr><td data-l="Signal" style="overflow-wrap:anywhere">${esc(x.signal)}</td><td data-l="Kind">${kindPill(x.signal)}</td><td data-l="Address" class="mono" style="overflow-wrap:anywhere">/openvp/slot${slotNo()}/${esc(map[x.signal])}</td>
+    <td data-l="Send"><input type="checkbox" data-i="${i}" data-f="send" ${x.send ? "checked" : ""} aria-label="Send ${esc(x.signal)}"></td><td data-l="Receive"><input type="checkbox" data-i="${i}" data-f="receive" ${x.receive ? "checked" : ""} aria-label="Receive ${esc(x.signal)}"></td>
+    <td><button class="small danger" data-rm="${i}">Remove</button></td></tr>`).join("");
+  $("#o-tbl").hidden = !list.length; $("#o-empty").hidden = !!list.length;
+}
+$("#o-tbl").onchange = e => { const i = e.target.dataset.i; if (i == null) return; sc.osc[i][e.target.dataset.f] = e.target.checked; saveSection("osc"); };
+$("#o-tbl").onclick = async e => { const i = e.target.dataset.rm; if (i == null) return; rm(sc.osc, Number(i)); renderOscTable(); await saveSection("osc"); renderOscTable(); };
+$("#o-add").onclick = async () => {
+  const got = await pickSignals({ title: `OSC signals of slot ${slot}`, skip: sc.osc.map(x => x.signal) });
+  if (!got?.length) return; for (const n of got) sc.osc.push({ signal: n, send: true, receive: false });
+  renderOscTable(); await saveSection("osc"); renderOscTable();
+};
+
+// ================================================================ Art-Net
+function fillArt(a) { $("#a-enabled").checked = a.enabled; $("#a-target").value = a.target; $("#a-port").value = a.port; $("#a-rate").value = a.rateHz; $("#a-listen").checked = a.listen; }
+function showArt(a) {
+  const st = a.status, kind = st.error ? "err" : st.sending || st.listening ? "ok" : "";
+  pill($("#an-pill"), kind, st.error ? "error" : st.sending ? `sending ${st.universes} universe${st.universes == 1 ? "" : "s"}` : a.settings.enabled ? "on, no channels" : "off");
+  $("#d-artnet").className = "dot " + kind;
+  stat($("#an-stat"), [["Sending to", st.target || "-"], ["Rate", st.rateHz + " fps"], ["Universes", num(st.universes)], ["Packets sent", num(st.packetsSent)], ["Packets received", num(st.packetsReceived)], ["Refused", num(st.rejected)], ["Listening", st.listening ? "UDP 6454" : "no"],
+    ["Last out", st.lastOut ? ago(st.lastOut) : "never"], ["Last in", st.lastIn ? ago(st.lastIn) : "never"]]);
+  if (st.error && $("#a-err").dataset.own !== "1") $("#a-err").textContent = st.error;
+}
+$("#an-form").onsubmit = async e => {
+  e.preventDefault(); const err = $("#a-err"); err.dataset.own = "";
+  try { const a = await api("/api/integrations/artnet", "PUT", { enabled: $("#a-enabled").checked, target: $("#a-target").value.trim(), port: Number($("#a-port").value) || 6454, rateHz: Number($("#a-rate").value) || 30, listen: $("#a-listen").checked }); err.textContent = a.status.error || ""; fillArt(a.settings); showArt(a); flash(); }
+  catch (x) { err.textContent = x.message; err.dataset.own = "1"; }
+};
+function renderArtTable() {
+  const list = sc.artnet || [];
+  $("#a-tbl tbody").innerHTML = list.map((x, i) => `<tr><td data-l="Signal" style="overflow-wrap:anywhere">${esc(x.signal)} ${kindPill(x.signal)}</td>
+    <td data-l="Universe"><input type="number" min="0" max="32767" value="${x.universe}" data-i="${i}" data-f="universe" style="width:6em" aria-label="Universe for ${esc(x.signal)}"></td>
+    <td data-l="Channel"><input type="number" min="1" max="512" value="${x.channel}" data-i="${i}" data-f="channel" style="width:5em" aria-label="Channel for ${esc(x.signal)}"></td>
+    <td data-l="Bits"><select data-i="${i}" data-f="mode" aria-label="Bits for ${esc(x.signal)}"><option value="8" ${x.mode === "8" ? "selected" : ""}>8-bit</option><option value="16" ${x.mode === "16" ? "selected" : ""}>16-bit (2 channels)</option></select></td>
+    <td data-l="Send"><input type="checkbox" data-i="${i}" data-f="send" ${x.send ? "checked" : ""} aria-label="Send ${esc(x.signal)}"></td><td data-l="Receive"><input type="checkbox" data-i="${i}" data-f="receive" ${x.receive ? "checked" : ""} aria-label="Receive ${esc(x.signal)}"></td>
+    <td><button class="small danger" data-rm="${i}">Remove</button></td></tr>`).join("");
+  $("#a-tbl").hidden = !list.length; $("#a-empty").hidden = !!list.length;
+}
+$("#a-tbl").onchange = async e => {
+  const t = e.target, i = t.dataset.i; if (i == null) return;
+  const f = t.dataset.f; sc.artnet[i][f] = t.type === "checkbox" ? t.checked : f === "mode" ? t.value : Number(t.value);
+  await saveSection("artnet"); renderArtTable();
+};
+$("#a-tbl").onclick = async e => { const i = e.target.dataset.rm; if (i == null) return; rm(sc.artnet, Number(i)); renderArtTable(); await saveSection("artnet"); renderArtTable(); };
+$("#a-add").onclick = async () => {
+  const got = await pickSignals({ title: `Map signals of slot ${slot} to DMX channels`, skip: sc.artnet.map(x => x.signal), kinds: ["analog", "digital"], note: "Analog signals scale 0-65535 to 0-255. A digital signal is 0 or 255." });
+  if (!got?.length) return;
+  const used = new Map(); for (const x of sc.artnet) { const u = used.get(x.universe) || new Set(); for (let c = x.channel; c < x.channel + (x.mode === "16" ? 2 : 1); c++) u.add(c); used.set(x.universe, u); }
+  for (const n of got) {
+    const uni = sc.artnet.length ? sc.artnet[sc.artnet.length - 1].universe : 0, u = used.get(uni) || new Set(); let c = 1; while (u.has(c) && c < 512) c++;
+    sc.artnet.push({ signal: n, universe: uni, channel: c, mode: "8", send: true, receive: false }); u.add(c); used.set(uni, u);
+  }
+  renderArtTable(); await saveSection("artnet"); renderArtTable();
+};
+
+// ================================================================ Prometheus
+function showProm(p) {
+  const base = location.origin;
+  pill($("#p-pill"), p.keyRequired ? "ok" : "warn", p.public ? "public (no key)" : p.keyRequired ? "needs the access key" : "no access key set");
+  $("#d-prom").className = "dot " + (p.scrapes ? "ok" : "");
+  stat($("#p-stat"), [["Address", base + p.path], ["Scrapes so far", num(p.scrapes)], ["Last scrape", p.lastScrape ? ago(p.lastScrape) : "never"], ["Access", p.public ? "anyone who can reach it" : "access key (or this computer)"]]);
+  const host = location.host;
+  $("#p-yml").textContent = `scrape_configs:\n  - job_name: openvp\n    metrics_path: /metrics\n    scrape_interval: 15s\n    static_configs:\n      - targets: ["${host}"]\n${p.public ? "" : `    authorization:\n      credentials: <your OpenVP access key>   # or credentials_file: /etc/prometheus/openvp.key\n`}`;
+  $("#p-curl").textContent = `curl ${p.public ? "" : `-H "Authorization: Bearer $OPENVP_KEY" `}${base}${p.path}`;
+}
+document.addEventListener("click", e => { const id = e.target.dataset?.copy; if (id) copyText($("#" + id).textContent); });
+
+// ================================================================ loop
+let polling = false;
+async function poll() {
+  if (polling || document.hidden) return; polling = true;
+  try {
+    ov = await api("/api/integrations");
+    showMqtt(ov.mqtt); showOsc(ov.osc); showArt(ov.artnet); showProm(ov.prometheus); showWebhookStatus(ov.webhooks);
+    if (tab === "hooks") { refreshDeliveries(); loadHooks(); }
+    await loadSlotsQuiet();
+  } catch { } finally { polling = false; }
+}
+async function loadSlotsQuiet() { try { slots = await api("/api/slots"); setProg(); } catch { } }
+
+(async () => {
+  try {
+    await loadSlots();
+    ov = await api("/api/integrations");
+    fillMqtt(ov.mqtt); fillOsc(ov.osc.settings); fillArt(ov.artnet.settings);
+    await Promise.all([loadSlotData(), loadHooks()]);
+    showMqtt(ov.mqtt); showOsc(ov.osc); showArt(ov.artnet); showProm(ov.prometheus); showWebhookStatus(ov.webhooks);
+    showTab(tab);
+  } catch (e) { if (!/access key/.test(e.message)) document.querySelector("main").insertAdjacentHTML("afterbegin", `<div class="note">Couldn't load: ${esc(e.message)}</div>`); }
+  setInterval(poll, 2500);
+})();
+</script>
+</body>
+</html>

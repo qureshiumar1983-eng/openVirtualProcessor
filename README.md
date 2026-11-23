@@ -363,6 +363,108 @@ Click **Metrics ↗** in the console header (or go to `/metrics.html`) for a liv
 
 The same numbers are available from the slot console: `cpuload`, `ramfree`, `taskstat` (threads and what the slot thread is doing) and `metrics` (all of it). From scripts, use `GET /api/metrics` or the `/ws/metrics` WebSocket.
 
+### Integrations
+
+**Integrations ↗** in the console's top bar (or `/integrations.html`) connects slots to other systems. It has a tab for each of MQTT, Webhooks, OSC, Art-Net and Prometheus, each showing its status (connected or error, when the last message went, counts) and a form to set it up. Signals are chosen from a picker that lists what the slot's loaded program has, the same list the debugger uses. Connection settings (broker, ports) are for all of OpenVP and are saved in `data/integrations/global.json`; which signals a slot uses, and its outgoing webhooks, are saved with the slot in `data/programNN/devices/integrations.json`, so snapshots and roll backs include them. Each change is written to the [Activity](#console-features) feed.
+
+None of these can slow a program down. A slot listens for changes only to the signals you chose (a slot with no integrations is not traced at all), the listener only copies the change into a bounded queue, and the network work happens on other threads. If a broker, a webhook endpoint or an OSC target can't keep up, the oldest changes are dropped and counted, and the program carries on.
+
+#### MQTT bridge
+
+Connects to a broker (host, port, TLS, user name and password, client id, base topic) and publishes the signals you choose. The client is [MQTTnet](https://github.com/dotnet/MQTTnet) 4.3.7.1207 (MIT, no other dependencies).
+
+| Topic | |
+|---|---|
+| `<base>/status` | `online`, or `offline` (the broker publishes it if OpenVP disappears; OpenVP publishes it itself when it stops cleanly). Retained |
+| `<base>/slotNN/state` | `running`, `stopped`, `loaded`, `empty` or `error`. Retained |
+| `<base>/slotNN/<signal>` | The signal's value, published whenever it changes (and again after a reconnect or when the program starts). Retained. Digital is `1` or `0`, analog a number 0-65535, serial the text |
+| `<base>/slotNN/<signal>/set` | Write here to set the signal (only for signals with **Set** ticked) |
+
+The base topic defaults to `openvp/<computer name>`. In a topic a signal's name keeps letters, digits and `_ . -`; every other character becomes `_` (and a clash gets `_2`, `_3`). What `/set` accepts: a digital signal `1`, `0`, `true`, `false`, `on`, `off` or `pulse` (high then low); an analog signal a number (clamped to 0-65535) or a percentage like `50%`; a serial signal any text. Retained messages on a `/set` topic are ignored, so a stale command isn't replayed at every reconnect.
+
+```bash
+mosquitto_sub -h broker -t 'openvp/mypc/#' -v
+mosquitto_pub -h broker -t 'openvp/mypc/slot01/Room_On/set' -m 1
+mosquitto_pub -h broker -t 'openvp/mypc/slot01/Volume/set' -m '50%'
+```
+
+**Home Assistant.** Turn on *Home Assistant discovery* and tick **Home Assistant** on a signal, and OpenVP publishes a retained discovery message to `homeassistant/<component>/openvp_<host>/slotNN_<signal>/config`: a **switch** for a digital signal (a binary sensor if it can't be set), a **number** (0-65535) for an analog one (a sensor if it can't be set) and a **sensor** with the text for a serial one. They are grouped under one device per slot and use `<base>/status` for availability. Un-ticking a signal removes its entity.
+
+The password is kept apart from the other settings, in `data/integrations/secrets.json`: encrypted with Windows DPAPI for your user on Windows, and elsewhere stored as it is in a file readable only by its owner (like `apikey.txt`). The API and the page never send it back; a settings request that leaves `password` out keeps it.
+
+#### Webhooks
+
+*Outgoing.* A webhook fires when its signal changes, or when its condition becomes true. A condition uses the watch language of [debugger watches](#debugger) (`Room_On=1 && Proj_Power=0 for 2s`) and fires once each time it turns true. OpenVP sends `POST` with a JSON body:
+
+```json
+{"event":"signal.change","time":"2025-03-04T10:15:30.1234567+00:00","slot":1,"room":"SLOT01","program":"Boardroom","webhook":"Lights",
+ "signal":"Room_On","kind":"digital","value":true}
+```
+
+A condition sends `"event":"expression.true"`, `"expression"` and `"values"` (the signals it reads) instead. Headers you add are sent too. With a signing secret, each request has `X-OpenVP-Timestamp` (Unix seconds) and `X-OpenVP-Signature: sha256=<hex>`, the HMAC-SHA256 of `timestamp + "." + body` with your secret as the key, so the receiver can check who sent it and reject old requests. `X-OpenVP-Event` and `X-OpenVP-Delivery` (a running number) are sent as well. A request that gets no answer in 10 s, fails to connect, or is answered 5xx, 408 or 429 is tried again after 1 s, 5 s and 30 s; any other answer is final. Each webhook has its own queue of 200, so a dead endpoint only delays itself. The **Delivery log** (and `GET /api/webhooks/deliveries`) lists the last 500 deliveries with result, tries and time, and **Test** sends a sample event once.
+
+*Incoming.* `POST /hooks/<token>` sets a signal in one slot:
+
+```bash
+curl -X POST http://host:8080/hooks/TOKEN -d '{"signal":"Room_On","value":1}'
+curl -X POST http://host:8080/hooks/TOKEN -d '{"pulse":"Doorbell"}'
+```
+
+`value` is a number, `true`/`false` or text, read like MQTT's `/set`. Make a hook in the page (or `POST /api/hooks`); it has a label, a slot, and optionally a list of signals it may set (the rest get 403). The token is 192 random bits. It works **without the access key**, because the token is the credential, so treat the address like a password. It is for one slot only (a `slot` in the body is ignored), can be switched off or revoked (it stops working at once), and is **not available through the internet tunnel**. Limits: 20 requests per second per token (a burst of 40) answered `429` with `Retry-After`, a 4 KB body, and 10 wrong tokens a minute per address before that address gets `429` for the rest of the minute. Hooks are kept in `data/integrations/hooks.json` (owner-only, and not in snapshots, so rolling back never brings a revoked token back).
+
+#### REST per signal
+
+For scripts, one URL per signal (same access key as the rest of the API; the name must be URL-encoded):
+
+```bash
+KEY=$(cat data/apikey.txt)
+curl -H "Authorization: Bearer $KEY" http://host:8080/api/slots/1/signals/Room_On
+# {"slot":1,"name":"Room_On","kind":"digital","value":true}
+curl -X PUT  -H "Authorization: Bearer $KEY" http://host:8080/api/slots/1/signals/Volume -d '50%'
+curl -X PUT  -H "Authorization: Bearer $KEY" http://host:8080/api/slots/1/signals/Source_Name -d '"HDMI 1"'
+curl -X PUT  -H "Authorization: Bearer $KEY" http://host:8080/api/slots/1/signals/Room_On -d '{"value":1}'
+curl -X POST -H "Authorization: Bearer $KEY" http://host:8080/api/slots/1/signals/Doorbell/pulse
+curl -N      -H "Authorization: Bearer $KEY" http://host:8080/api/slots/1/signals/Volume/stream
+```
+
+`PUT` takes `1`, `true`, `"text"`, `{"value": ...}`, or plain text such as `50%` and `pulse`. The stream is [server-sent events](https://html.spec.whatwg.org/multipage/server-sent-events.html): first an `event: value` with the current value, then an `event: change` for each change, each `data:` a JSON `{"slot","name","kind","value","time"}`, with a `: keepalive` comment every 15 s. At most 100 streams are open at once.
+
+#### OSC
+
+Open Sound Control over UDP. In **Listen on UDP port** (0 is off, the default) OpenVP receives `/openvp/slotNN/<signal> <value>` and sets the signals that slot ticks **Receive** (nothing else can be set from OSC). A digital signal takes an int (non-zero is high), a float (above 0.5 is high), `T` or `F`, or no value at all or `/pulse` on the end of the address to pulse it. An analog signal takes an int 0-65535, or a float from 0 to 1 as a fraction of full scale (so TouchOSC faders work). A serial signal takes a string. In **Send to** (host and port) each change of a signal ticked **Send** goes out as one message to the same address: digital and analog as an int, serial as a string. The encoder and decoder (`OscCodec`, in `OpenVP.Core`) follow the OSC 1.0 specification, including bundles, and are tested against its example bytes. OSC has no authentication: only listen on a network you trust.
+
+#### Art-Net
+
+Maps analog signals to DMX channels. Each mapping has a universe (0-32767, the 15-bit port address), a channel (1-512) and a width: **8-bit** scales 0-65535 to 0-255, **16-bit** puts the high byte on the channel and the low byte on the next. A digital signal is 0 or 255. OpenVP sends one ArtDMX packet per universe in use at **Frames per second** (1-44, default 30), steadily, whether or not anything changed, to a node's address or a broadcast address. With **Also receive ArtDMX**, OpenVP listens on UDP 6454 and sets signals whose mapping ticks **Receive** when their channel changes (a byte `b` is `b * 257`). `ArtNetCodec` follows the Art-Net 4 ArtDMX layout and is tested against its bytes. Art-Net has no authentication either.
+
+#### Prometheus and Grafana
+
+`GET /metrics` returns the [Prometheus text format](https://prometheus.io/docs/instrumenting/exposition_formats/). It needs the access key (`Authorization: Bearer KEY`, or no key from this computer), unless you set `OpenVP:MetricsPublic=true`; it is **never** served on the internet tunnel's port. It has:
+
+| Metric | |
+|---|---|
+| `openvp_process_cpu_percent`, `_resident_memory_bytes`, `_private_memory_bytes`, `_managed_heap_bytes`, `_threads`; `openvp_threadpool_*`; `openvp_gc_collections_total{generation}`; `openvp_uptime_seconds`; `openvp_info{version}` | The OpenVP process |
+| `openvp_slot_info{slot,room,name,program,kind}`, `openvp_slot_state{slot,state}`, `openvp_slot_running{slot}` | What each slot holds and whether it runs |
+| `openvp_slot_events_per_second`, `_events_total`, `_busy_percent`, `_queue_depth`, `_longest_event_seconds`, `_current_event_seconds`, `_timers`, `_stuck`, `_warnings`, `_alerts` (all `{slot}`) | How busy a slot is, and its problems |
+| `openvp_slot_devices`, `_devices_online`, `_panel_connections` (`{slot}`); `openvp_devices_online`, `openvp_panel_connections` | Devices and panel connections |
+| `openvp_slot_crashes_total`, `openvp_slot_restarts_total` (`{slot}`); `openvp_alerts` | Crash policy activity and alerts |
+| `openvp_mqtt_connected`, `openvp_mqtt_messages_{published,received,dropped}_total`; `openvp_webhook_deliveries_total{result}`, `_dropped_total`, `_pending`; `openvp_osc_messages_{received,sent}_total`; `openvp_artnet_packets_{sent,received}_total` | The integrations |
+
+To scrape it, add to `prometheus.yml`:
+
+```yaml
+scrape_configs:
+  - job_name: openvp
+    scrape_interval: 15s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["openvp-host:8080"]
+    authorization:
+      credentials_file: /etc/prometheus/openvp.key   # the access key; leave out with OpenVP:MetricsPublic=true
+```
+
+The Grafana dashboard is [`tools/grafana/openvp-dashboard.json`](tools/grafana/openvp-dashboard.json): in Grafana choose Dashboards, New, Import, upload it and pick your Prometheus data source. It shows slots running, devices online, alerts, CPU and memory, a table of slots, per-slot events per second, busy percent, queue depth, devices, crashes and restarts, and the MQTT, webhook, OSC and Art-Net counters, with `job`, `instance` and `slot` variables.
+
 ### Telnet and SSH console
 
 A text console that behaves like a processor's, reachable over **telnet (port 41795)** and **SSH (port 22)**. Both are **off by default**. Turn them on with `OpenVP:TelnetEnabled=true` and `OpenVP:SshEnabled=true` (ports `OpenVP:TelnetPort`, default 41795, and `OpenVP:SshPort`, default 22; on Linux and macOS a port below 1024 needs privileges, so the log says so if it can't listen). **When enabled a listener binds to all interfaces and the log says so** (`Telnet console listening on all interfaces, port 41795`).
@@ -414,9 +516,10 @@ A SIMPL# program is .NET code that runs inside the OpenVP process, so anyone who
 - Panels (`/ws/panel` and CIP on 41794) don't need the key, because they can only press joins, like panels on a real processor. Set `OpenVP:PanelsRequireKey=true` to protect `/ws/panel` too. CIP has no way to send a key, so keep port 41794 on a trusted network.
 - **Shared panel links** (`/s/{token}`) don't need the key either: the secret token in the link is the credential. A link is for one slot and IP ID and can only press joins there. Treat it like a password: anyone who has it (and the PIN, if there is one) can use that panel until it expires or you revoke it. Links, their tokens and hashed PINs are stored in `data/shares.json`, owner-only on Linux and macOS. Pages under `/s/` are sent with `Referrer-Policy: no-referrer` so the link doesn't leak to other sites. A CH5 project you upload is your own code running in the link holder's browser, on the same address as the console, so only upload projects you trust.
 - **Everything new is behind the key**: simulators, the COM terminal, sockets, redirects, the IP ID remap and discovery are all under `/api`. Simulators listen on 127.0.0.1 only. The telnet and SSH consoles are **off by default**; when enabled they listen on all interfaces, need the key as the password, cap sessions and limit wrong passwords (see [Telnet and SSH console](#telnet-and-ssh-console)), and don't start if the key is off. Discovery sends packets to your network only when someone clicks Discover. mDNS announces the computer's name and the console port on the LAN, nothing else.
+- **Incoming webhooks (`POST /hooks/{token}`) are the one other open endpoint.** They need no access key: the token in the address is the credential (192 random bits, one per hook, scoped to one slot and optionally to a list of its signals, revocable, rate limited, and wrong guesses are limited per address). They are not served on the internet tunnel's port. See [Webhooks](#webhooks). `GET /metrics` needs the access key unless `OpenVP:MetricsPublic=true`, and is never on the tunnel port either. The MQTT password is stored apart (DPAPI on Windows, an owner-only file elsewhere) and is never returned by the API. OSC and Art-Net listeners have no authentication and are off by default; each only sets signals you have ticked **Receive** for.
 - `OpenVP:ApiKey=off` turns the key off. Only do that on a network you trust completely.
 
-- **Internet access (tunnel)** exposes only shared panels, through a separate listener that serves nothing but `/s/{token}…`; see [Internet access (tunnel)](#internet-access-tunnel). The console, API and debugger are never reachable through it.
+- **Internet access (tunnel)** exposes only shared panels, through a separate listener that serves nothing but `/s/{token}…` (not `/hooks`, not `/metrics`); see [Internet access (tunnel)](#internet-access-tunnel). The console, API and debugger are never reachable through it.
 
 Traffic is plain HTTP. To use OpenVP across an untrusted network, put it behind a reverse proxy that adds HTTPS. Through the internet tunnel, Cloudflare provides HTTPS between the visitor and Cloudflare.
 
@@ -435,6 +538,7 @@ Traffic is plain HTTP. To use OpenVP across an untrusted network, put it behind 
 | `OpenVP:LocalRequiresKey` | `false` | Require the key from localhost too |
 | `OpenVP:PanelsRequireKey` | `false` | Require the key for browser panels (`/ws/panel`) |
 | `OpenVP:UnsupportedLog` | `docs/unsupported.md` in a source checkout, else `unsupported.md` in the data folder | Where the list of unsupported symbols is kept (see [Compatibility](#compatibility)); `off` keeps it in memory only |
+| `OpenVP:MetricsPublic` | `false` | `true` lets `GET /metrics` (Prometheus) be read without the access key. It is never served on the tunnel port. See [Prometheus and Grafana](#prometheus-and-grafana) |
 | `OpenVP:TunnelPort` | `8085` | Port of the second listener (on 127.0.0.1 only) that the internet tunnel points at. `0` switches Internet access off. Must differ from the console's port |
 | `OpenVP:CloudflaredPath` | | Path to `cloudflared`. If empty, OpenVP looks on the PATH, then in `data/tools` |
 | `OpenVP:TunnelAutoStart` | `false` | Start the tunnel when OpenVP starts (only if `cloudflared` is already installed; it never downloads by itself) |
@@ -448,7 +552,7 @@ Traffic is plain HTTP. To use OpenVP across an untrusted network, put it behind 
 
 ## REST API
 
-Every endpoint except `/api/info` and `/api/login` needs the access key (see [Security](#security)), for example `curl -H "Authorization: Bearer $(cat data/apikey.txt)" http://host:8080/api/slots`. An unknown slot number returns 404.
+Every endpoint except `/api/info`, `/api/login` and `POST /hooks/{token}` needs the access key (see [Security](#security)), for example `curl -H "Authorization: Bearer $(cat data/apikey.txt)" http://host:8080/api/slots`. An unknown slot number returns 404.
 
 | Method | Path | |
 |---|---|---|
@@ -527,6 +631,20 @@ Every endpoint except `/api/info` and `/api/login` needs the access key (see [Se
 | GET | `/api/unsupported` | Everything programs used that isn't supported yet, as the Markdown file (`?format=json` for JSON). See [Compatibility](#compatibility) |
 | GET | `/api/log?slot=n&max=500` · `/api/devices` | The slot's recent log lines (`time`, `level`, `message`, and `detail` for an exception's stack trace) · every IP ID. `/ws/trace?slot=n` streams them (`trace=0` for log lines only) |
 | GET | `/api/metrics` | CPU, memory, threads and per-slot activity; `?history=false` leaves out the five-minute history. `/ws/metrics` sends the same once a second |
+| GET | `/metrics` | Prometheus text format (see [Prometheus and Grafana](#prometheus-and-grafana)). Needs the access key unless `OpenVP:MetricsPublic=true`; not on the tunnel port |
+| GET · PUT | `/api/slots/{n}/signals/{name}` | One signal: `{slot, name, kind, value}` · set it from `1`, `true`, `"text"`, `{"value": 1}`, or plain `50%` / `pulse` (400 for a value that doesn't fit, 404 for an unknown signal, 409 with no program). The name must be URL-encoded |
+| POST | `/api/slots/{n}/signals/{name}/pulse` | Pulse a digital signal (high, then low) |
+| GET | `/api/slots/{n}/signals/{name}/stream` | Server-sent events: `event: value` with the current value, then `event: change` for each change (see [REST per signal](#rest-per-signal)) |
+| GET | `/api/integrations` | Status of all five: MQTT (with `status`), webhooks, hooks, OSC, Art-Net, Prometheus |
+| GET · PUT | `/api/integrations/mqtt` | Broker settings (`enabled`, `host`, `port`, `tls`, `username`, `clientId`, `baseTopic`, `homeAssistant`, `discoveryPrefix`) with `hasPassword`, `effectiveBase` and `status`. The PUT takes any of them plus `password` (kept if left out) or `clearPassword`; the password is never returned |
+| GET · PUT | `/api/integrations/osc` · `/api/integrations/artnet` | `{listenPort, targetHost, targetPort}` · `{enabled, target, port, rateHz, listen}`, each with its `status` |
+| GET | `/api/integrations/prometheus` | `{path, public, keyRequired, scrapes, lastScrape}` |
+| GET · PUT | `/api/slots/{n}/integrations` | The slot's `mqtt`, `osc`, `artnet` signal lists and `webhooks` (a webhook is `{id, name, url, headers, secret, signal or expression, enabled}`; a secret is never returned, only `hasSecret`, and is kept when left out of a PUT, removed by `""`). A PUT replaces just the sections it contains; 400 says what is wrong |
+| POST | `/api/slots/{n}/webhooks/{id}/test` | Send a sample event once and return the delivery |
+| GET | `/api/webhooks/deliveries?slot=&max=` | The delivery log, newest first |
+| GET · POST | `/api/hooks` | Incoming webhooks (`id`, `token`, `path`, `label`, `slot`, `allow`, `enabled`, `count`, `lastUsed`) · make one: `{"slot":1,"label":"Doorbell","allow":["Doorbell"]}` |
+| PUT · DELETE | `/api/hooks/{id}` | Change `label`, `allow` or `enabled` · revoke (the token stops working at once) |
+| POST | `/hooks/{token}` | **No access key; not on the tunnel port.** `{"signal":"Room_On","value":1}` or `{"pulse":"Button1"}`; 403 if the hook doesn't allow the signal, 404 for an unknown token, 429 when rate limited |
 | GET | `/api/welcome` · POST `/api/welcome/dismiss` | `{"show":true}` until someone finishes or skips the first-run welcome screen; dismiss remembers that for everyone (kept in `data/welcome.json`) |
 | GET / POST | `/api/shares` | List the active share links (id, token, `path` (`/s/{token}`), label, slot, IP ID, `kind` `ch5` or `test`, `hasPin`, created, expires, last used, `connected`) · create one with `{"slot":2,"ipId":"03","label":"Client","pin":"482913","expires":"1d"}` (`pin` optional, 4-8 digits; `expires` is `1h`, `1d`, `1w` or `never`) |
 | DELETE | `/api/shares/{id}` | Revoke a link; open connections close within a few seconds |
