@@ -6,12 +6,17 @@
   "main": "main.js",
   "private": true,
   "license": "MIT",
-  "author": "OpenVP contributors",
+  "author": {
+    "name": "OpenVP contributors",
+    "email": "noreply@users.noreply.github.com"
+  },
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win portable --x64 --publish never",
     "build:server": "dotnet publish ../src/OpenVP.Server -c Release -r win-x64 --self-contained true -o server",
-    "build": "npm run build:server && npm run dist"
+    "build": "npm run build:server && npm run dist",
+    "dist:linux": "electron-builder --linux AppImage deb --x64 --publish never",
+    "dist:mac": "electron-builder --mac dmg --publish never"
   },
   "devDependencies": {
     "electron": "33.2.1",
@@ -48,6 +53,46 @@
     },
     "portable": {
       "artifactName": "OpenVP.exe"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility",
+      "synopsis": "OpenVP virtual control processor",
+      "description": "OpenVP open-source virtual control processor, as a desktop app. Needs libicu installed.",
+      "publish": {
+        "provider": "github",
+        "owner": "qureshiumar1983-eng",
+        "repo": "openVirtualProcessor"
+      }
+    },
+    "appImage": {
+      "artifactName": "OpenVP-${version}-${arch}.AppImage"
+    },
+    "deb": {
+      "artifactName": "OpenVP-Desktop-${version}-${arch}.deb",
+      "packageCategory": "utils"
+    },
+    "mac": {
+      "icon": "build/icon.png",
+      "target": "dmg",
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "publish": {
+        "provider": "github",
+        "owner": "qureshiumar1983-eng",
+        "repo": "openVirtualProcessor"
+      }
+    },
+    "dmg": {
+      "artifactName": "OpenVP-${version}-${arch}.dmg"
     }
-  }
+  },
+  "homepage": "https://github.com/qureshiumar1983-eng/openVirtualProcessor"
 }
