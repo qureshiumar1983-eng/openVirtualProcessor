@@ -1155,6 +1155,24 @@ public static class OpenVpServer
         };
         slotApi.MapGet("/compat", (int n) => Results.Text(CompatText(processor.Slot(n))));
 
+        // The wiring check: pin order OpenVP assumes against what the program's own .smw, .lpz and .sig show. Local console only.
+        slotApi.MapGet("/wiring", (int n) =>
+        {
+            var slot = processor.Slot(n);
+            if (slot.ProgramPath is not { } path) return Results.Json(new { available = false, message = "No program loaded." });
+            try
+            {
+                var found = WiringCheck.FindFiles(path);
+                if (found.Missing != null)
+                    return Results.Json(new { available = false, message = $"The wiring check needs the .smw, .lpz and .sig together (missing: {found.Missing})." });
+                return Results.Json(new { available = true, report = WiringCheck.AnalyzeFiles(path) });
+            }
+            catch (Exception e) when (e is InvalidOperationException or IOException or InvalidDataException or UnauthorizedAccessException)
+            {
+                return Results.Json(new { available = false, message = e.Message });
+            }
+        });
+
         DebugEndpoints.Map(app, slotApi, processor, activity, sl => SummaryDto(SummaryOf(sl)), CompatText, Who);
 
         // ------------------------------------------------------------------ slot files (\NVRAM and \USER)

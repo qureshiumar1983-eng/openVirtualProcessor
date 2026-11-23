@@ -56,7 +56,7 @@ The compiler lowers SIMPL symbols into logic-engine primitives and flattens user
 
 Across the 101 programs there are **99 distinct types**. Types are identified by matching each record's output signals, by name via the `.sig`, against the source symbol that drives the same signals. 36 programs ship their source, which gives a clean one-to-one mapping (AND = 0, NOT = 1, OR = 2, Toggle = 10, Interlock = 11, One Shot = 15, Buffer = 18, Delay = 27, Analog Initialize = 38, Analog Equate = 51, Analog Buffer = 67, Serial Buffer = 88, Serial I/O = 97, …). The full table is in `src/OpenVP.Lpz/PrimitiveCatalog.cs`.
 
-Pins appear in the same order as on the SIMPL symbol. Unconnected pins point at signal 0 or 1. Times are in 1/100 s.
+Pins usually appear in the same order as on the SIMPL symbol (four symbols are the exception, below). Unconnected pins point at signal 0 or 1. Times are in 1/100 s.
 
 ### Pin order: compiled records and the .smw differ
 
@@ -70,6 +70,23 @@ The compiled record's pins are not the .smw symbol's pins for four symbols. Read
 | Multiple One Shots | 29 | t1..tN, then one spare | one spare, then t1..tN |
 
 The primitives take the compiled order; the .smw engine maps its pins with `LogicSymbol.SmwPinOrder`. A .smw symbol that has a compiled record in the `.lpz` beside it runs from that record, so it gets the compiled order directly. A Delay (type 27) can have several outputs: output k goes high after parameter k.
+
+### Checking pin order against real programs
+
+For a program that ships its `.smw`, `.lpz` and `.sig` together, OpenVP can check its own pin-order model automatically (`WiringCheck` in `src/OpenVP.Simpl`). A logic symbol's compiled record is found by its position below the Logic folder (the same pairing the runtime uses to borrow macros and SIMPL+ modules), and the signals on the record's pins have names in the `.sig` that match the signals on the `.smw` symbol's pins. Matching them by name shows which compiled pin sits behind which `.smw` pin. For each symbol the check compares that with what OpenVP assumes: the compiled order is the primitive's order, and the `.smw` lists the pins the same way unless `LogicSymbol.SmwPinOrder` says otherwise. It reports, per symbol type, how many instances agree, disagree or are ambiguous, and flags:
+
+- **order**: a pin sits somewhere other than the model says (the report gives the observed mapping, e.g. `smw I1 -> compiled 2 (OpenVP expects 1)`, and example symbol paths such as `S-2.1`).
+- **count**: the compiled record has more or fewer inputs or outputs than the model expects for that `.smw` symbol (spare pins).
+- **kind**: a matched pin is digital, analog or serial in the `.sig` but not in the model or the `.smw` pin group.
+- **identity**: the `.smw` symbol and the compiled record are different symbols (the `.smw` was edited after the compile).
+- **not modelled**: a compiled type OpenVP has no entry for.
+
+Constants (`0`, `1`) and unwired pins give no evidence. A signal that sits on several pins of one symbol is reported as **ambiguous** instead of guessed: only the weaker check that the model's pins carry that signal is made. Reports name symbol paths and types, never signals. Where to find it:
+
+- The Compatibility page has a **Wiring check** card per loaded program, and `GET /api/slots/{n}/wiring` returns the same report as JSON. It needs the `.smw`, `.lpz` and `.sig` together (same name in one folder, or the only one of each kind) and says so otherwise. A program loaded from its `.smw` also logs one line on load when a type disagrees.
+- The tests run it over the bundled samples and over small synthetic program pairs. Set `OPENVP_WIRING_CORPUS` to a folder of program folders (each holding a `.smw`, `.lpz` and `.sig`) and `dotnet run --project tests/OpenVP.Tests Wiring_corpus` checks every one of them and prints a per-type summary (symbol types and counts only); without it that test is skipped with a notice.
+
+When a new real program disagrees, read the observed mapping off the report, fix the catalog (`SmwPinOrder` or the primitive), and add a synthetic case to `tests/OpenVP.Tests/WiringCheckTests.cs`.
 
 ### Processor System Control
 
