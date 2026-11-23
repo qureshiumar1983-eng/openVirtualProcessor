@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "openvp.fullname" . }}
+  labels:
+    {{- include "openvp.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "openvp.selectorLabels" . | nindent 4 }}
+{{- if .Values.devices.enabled }}
+---
+# CIP for touch panels (and the telnet and SSH consoles when they are on): a TCP Service of its own.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "openvp.fullname" . }}-devices
+  labels:
+    {{- include "openvp.labels" . | nindent 4 }}
+  {{- with .Values.devices.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.devices.type }}
+  {{- if .Values.devices.externalTrafficPolicy }}
+  externalTrafficPolicy: {{ .Values.devices.externalTrafficPolicy }}
+  {{- end }}
+  {{- if and (eq .Values.devices.type "LoadBalancer") .Values.devices.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.devices.loadBalancerIP }}
+  {{- end }}
+  {{- if and (eq .Values.devices.type "LoadBalancer") .Values.devices.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+    {{- toYaml .Values.devices.loadBalancerSourceRanges | nindent 4 }}
+  {{- end }}
+  ports:
+    - name: cip
+      port: {{ .Values.devices.cipPort }}
+      targetPort: cip
+      protocol: TCP
+      {{- if and (eq .Values.devices.type "NodePort") .Values.devices.nodePort }}
+      nodePort: {{ .Values.devices.nodePort }}
+      {{- end }}
+    {{- if .Values.console.telnet.enabled }}
+    - name: telnet
+      port: {{ .Values.console.telnet.port }}
+      targetPort: telnet
+      protocol: TCP
+    {{- end }}
+    {{- if .Values.console.ssh.enabled }}
+    - name: ssh
+      port: {{ .Values.console.ssh.port }}
+      targetPort: ssh
+      protocol: TCP
+    {{- end }}
+  selector:
+    {{- include "openvp.selectorLabels" . | nindent 4 }}
+{{- end }}

@@ -1,0 +1,52 @@
+# OpenVP with Docker Compose.
+#
+#   cd deploy
+#   cp .env.example .env        # then set OPENVP_API_KEY (or leave it empty: OpenVP makes a key and prints it in the log)
+#   docker compose up -d --build
+#   docker compose logs openvp  # shows the access key if you didn't set one
+#
+# Then open http://<this-host>:8080 and enter the access key.
+#
+# Check this file with:  docker compose config
+services:
+  openvp:
+    image: openvp:latest
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        WITH_GIT: "true"          # git for Git-backed config; "false" leaves it out of the image
+    container_name: openvp
+    restart: unless-stopped       # comes back after a crash or a reboot
+    ports:
+      - "8080:8080"               # web console and REST API
+      - "41794:41794"             # CIP, for real touch panels and XPanel (experimental)
+      # - "41795:41795"           # telnet console; also set OpenVP__TelnetEnabled below
+      # - "22:22"                 # SSH console; also set OpenVP__SshEnabled below (frees port 22 on the host first)
+    environment:
+      # The access key for the console and API. Empty: OpenVP makes one on first start, saves it in the data volume and prints it in the log.
+      OpenVP__ApiKey: "${OPENVP_API_KEY:-}"
+      # Time zone for schedules, daily backups and reports (a tz database name such as Europe/Berlin). UTC if not set.
+      TZ: "${TZ:-UTC}"
+      OpenVP__Mdns: "false"       # openvp.local needs host networking, see below
+      # OpenVP__TelnetEnabled: "true"
+      # OpenVP__SshEnabled: "true"
+      # OpenVP__MetricsPublic: "true"   # let Prometheus scrape /metrics without the key
+      # OpenVP__Slots: "10"
+    volumes:
+      - openvp-data:/app/data     # programs, NVRAM and User files, settings, backups (data/backups), the access key
+      # Backups to a folder on the host, or a mounted network share, instead of the volume: mount it and set the folder under Backups.
+      # - /srv/openvp-backups:/backups
+    healthcheck:
+      test: ["CMD", "dotnet", "openvp.dll", "--healthcheck"]
+      interval: 30s
+      timeout: 6s
+      retries: 3
+      start_period: 30s
+    # Host networking: lets OpenVP advertise openvp.local (mDNS) and discover devices on your LAN, which a bridge network can't do on Linux.
+    # To use it: remove the "ports:" list above, uncomment the next two lines, and set OpenVP__Mdns to "true".
+    # (Host networking works on Linux only.)
+    # network_mode: host
+
+volumes:
+  openvp-data:
