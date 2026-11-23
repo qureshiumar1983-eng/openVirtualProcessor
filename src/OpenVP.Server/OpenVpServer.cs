@@ -7,6 +7,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
 using OpenVP.Core;
+using OpenVP.Core.Alerts;
 using OpenVP.Lpz;
 using OpenVP.Panels;
 using OpenVP.Simpl;
@@ -302,6 +303,15 @@ public static class OpenVpServer
         // MQTT, outgoing and incoming webhooks, OSC, Art-Net, Prometheus and REST per signal (OpenVP.Core.Integrations).
         var integrations = new OpenVP.Core.Integrations.IntegrationsHost(processor, () => new MqttNetTransport());
         IntegrationEndpoints.Map(app, slotApi, processor, integrations, auth, crash, (c, a, t, sl) => Note(c, a, t, sl));
+
+        // Alerts, uptime and metrics history, thresholds and health reports (OpenVP.Core.Alerts). OpenVP:Alerts=false turns the lot off.
+        AlertsHost? alerts = null;
+        if (cfg.GetValue("Alerts", true))
+        {
+            alerts = new AlertsHost(processor, activity, integrations.Store.Secrets, new MailKitEmailSender());
+            crash.Acted += alerts.Monitor.OnCrash;
+            AlertEndpoints.Map(app, processor, alerts, (c, a, t, sl) => Note(c, a, t, sl));
+        }
 
         // One upload per slot at a time; a second one waits instead of racing on the same folder.
         var uploadLocks = processor.Slots.Select(_ => new SemaphoreSlim(1, 1)).ToArray();
@@ -1389,6 +1399,7 @@ public static class OpenVpServer
             }
         }
         ShareEndpoints.Map(app, processor, shares, ch5Panels, tunnel, gate, tunnelUnavailable, activity, Who);
+        if (tunnel != null && alerts != null) tunnel.Changed += () => { var st = tunnel.Status(); alerts.Monitor.OnTunnel(st.State, st.State == TunnelState.Error ? st.Message : null); };
         if (tunnel != null && cfg.GetValue("TunnelAutoStart", false)) activity.Add("internet.on", "Internet access started at start-up (OpenVP:TunnelAutoStart)", null, Actors.Auto);
 
         // ------------------------------------------------------------------ autoload
@@ -1400,6 +1411,7 @@ public static class OpenVpServer
             if (int.TryParse(entry.Key.Replace("slot", "", StringComparison.OrdinalIgnoreCase), out var an) && processor.IsValidSlot(an) && !string.IsNullOrEmpty(entry.Value))
                 autoload[an] = entry.Value;
         var restorer = new StartupRestorer(processor);
+        if (alerts != null) restorer.Restored += alerts.Monitor.OnRestored;
         restorer.Restored += (e, error) => activity.Add("restore",
             error == null ? $"Restored slot {e.Slot} at start-up ({(e.Source == "config" ? "from the Autoload setting" : e.Memory?.File ?? "its remembered program")})"
                           : $"Couldn't restore slot {e.Slot} at start-up: {error}", e.Slot, Actors.Auto);
@@ -1502,7 +1514,7 @@ public static class OpenVpServer
         }, (c, a, t, sl) => Note(c, a, t, sl));
 
         app.Lifetime.ApplicationStarted.Register(() => { try { integrations.Start(); } catch (Exception e) { Console.WriteLine("Integrations not started: " + e.Message); } });
-        app.Lifetime.ApplicationStopping.Register(() => { integrations.Dispose(); telnet?.Dispose(); ssh?.Dispose(); mdns?.Dispose(); for (var i = 1; i <= watches.Length; i++) StopWatching(i); tunnel?.Dispose(); cip?.Dispose(); crash.Dispose(); trashTimer.Dispose(); recordings.Dispose(); processor.Dispose(); });
+        app.Lifetime.ApplicationStopping.Register(() => { alerts?.Dispose(); integrations.Dispose(); telnet?.Dispose(); ssh?.Dispose(); mdns?.Dispose(); for (var i = 1; i <= watches.Length; i++) StopWatching(i); tunnel?.Dispose(); cip?.Dispose(); crash.Dispose(); trashTimer.Dispose(); recordings.Dispose(); processor.Dispose(); });
         // If the process ends some other way (not a clean stop), still take cloudflared down with it.
         AppDomain.CurrentDomain.ProcessExit += (_, _) => tunnel?.Stop();
         return app;

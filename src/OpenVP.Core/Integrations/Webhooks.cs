@@ -30,6 +30,54 @@ public static class WebhookSigner
         CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(Sign(secret, timestamp, body)), Encoding.ASCII.GetBytes(signature ?? ""));
 }
 
+/// <summary>What one HTTP delivery came to, after any retries.</summary>
+public sealed record HttpDeliveryResult(bool Ok, int? Status, int Attempts, double Ms, string? Error);
+
+/// <summary>
+/// The one place a signed JSON POST with retries is made, for outgoing webhooks and for the alert channels (generic webhook,
+/// Teams, Slack, ntfy). A request that gets no answer within <c>timeout</c>, fails to connect, or is answered 5xx, 408 or 429
+/// is tried again after each pause in <c>pauses</c>; any other answer is final. With a secret it adds the
+/// <c>X-OpenVP-Timestamp</c> and <c>X-OpenVP-Signature</c> headers (see <see cref="WebhookSigner"/>).
+/// </summary>
+public static class WebhookHttp
+{
+    public static async Task<HttpDeliveryResult> PostAsync(HttpClient http, string url, byte[] body, IReadOnlyDictionary<string, string>? headers, string? secret,
+        string eventName, long deliveryId, TimeSpan[] pauses, TimeSpan timeout, CancellationToken ct)
+    {
+        var sw = Stopwatch.StartNew();
+        var attempts = 0; int? status = null; string? error = null; var ok = false;
+        for (var i = 0; ; i++)
+        {
+            attempts++;
+            var retryable = true;
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = new ByteArrayContent(body) };
+                req.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json") { CharSet = "utf-8" };
+                if (headers != null) foreach (var (k, v) in headers) req.Headers.TryAddWithoutValidation(k, v);
+                req.Headers.TryAddWithoutValidation("X-OpenVP-Event", eventName);
+                req.Headers.TryAddWithoutValidation("X-OpenVP-Delivery", deliveryId.ToString());
+                var ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
+                req.Headers.TryAddWithoutValidation("X-OpenVP-Timestamp", ts);
+                if (!string.IsNullOrEmpty(secret)) req.Headers.TryAddWithoutValidation("X-OpenVP-Signature", WebhookSigner.Sign(secret, ts, body));
+                using var attempt = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                attempt.CancelAfter(timeout);
+                using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, attempt.Token);
+                status = (int)resp.StatusCode;
+                if (resp.IsSuccessStatusCode) { ok = true; error = null; break; }
+                error = $"The server answered {(int)resp.StatusCode} {resp.ReasonPhrase}";
+                retryable = status >= 500 || status is 408 or 429;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { error = "Cancelled."; retryable = false; }
+            catch (OperationCanceledException) { error = $"No answer within {timeout.TotalSeconds:0} s."; }
+            catch (Exception e) { error = e is HttpRequestException { InnerException: { } inner } ? inner.Message : e.Message; }
+            if (!retryable || i >= pauses.Length || ct.IsCancellationRequested) break;
+            try { await Task.Delay(pauses[i], ct); } catch (OperationCanceledException) { break; }
+        }
+        return new HttpDeliveryResult(ok, status, attempts, Math.Round(sw.Elapsed.TotalMilliseconds, 1), error);
+    }
+}
+
 /// <summary>
 /// Sends outgoing webhooks. A rule fires when its signal changes, or when its condition (the watch language of
 /// <see cref="SignalExpression"/>, including <c>for 2s</c>) becomes true. Each rule has its own bounded queue and its own
@@ -242,42 +290,12 @@ public sealed class WebhookService : IDisposable
     {
         var body = Body(job);
         var id = Interlocked.Increment(ref _nextId);
-        var sw = Stopwatch.StartNew();
-        var attempts = 0; int? status = null; string? error = null; var ok = false;
-        var pauses = retry ? Backoff : [];
-        for (var i = 0; ; i++)
-        {
-            attempts++;
-            var retryable = true;
-            try
-            {
-                using var req = new HttpRequestMessage(HttpMethod.Post, job.Rule.Url) { Content = new ByteArrayContent(body) };
-                req.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json") { CharSet = "utf-8" };
-                foreach (var (k, v) in job.Rule.Headers) req.Headers.TryAddWithoutValidation(k, v);
-                req.Headers.TryAddWithoutValidation("X-OpenVP-Event", job.Event);
-                req.Headers.TryAddWithoutValidation("X-OpenVP-Delivery", id.ToString());
-                var ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
-                req.Headers.TryAddWithoutValidation("X-OpenVP-Timestamp", ts);
-                if (!string.IsNullOrEmpty(job.Rule.Secret)) req.Headers.TryAddWithoutValidation("X-OpenVP-Signature", WebhookSigner.Sign(job.Rule.Secret, ts, body));
-                using var attempt = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                attempt.CancelAfter(Timeout);
-                using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, attempt.Token);
-                status = (int)resp.StatusCode;
-                if (resp.IsSuccessStatusCode) { ok = true; error = null; break; }
-                error = $"The server answered {(int)resp.StatusCode} {resp.ReasonPhrase}";
-                retryable = status >= 500 || status is 408 or 429;
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested) { error = "Cancelled."; retryable = false; }
-            catch (OperationCanceledException) { error = $"No answer within {Timeout.TotalSeconds:0} s."; }
-            catch (Exception e) { error = e is HttpRequestException { InnerException: { } inner } ? inner.Message : e.Message; }
-            if (!retryable || i >= pauses.Length || ct.IsCancellationRequested) break;
-            try { await Task.Delay(pauses[i], ct); } catch (OperationCanceledException) { break; }
-        }
-        var d = new WebhookDelivery(id, DateTimeOffset.Now, job.Slot, job.Rule.Id, job.Rule.Label, job.Rule.Url, job.Event, ok, status, attempts, Math.Round(sw.Elapsed.TotalMilliseconds, 1), error, job.Event == "test");
+        var r = await WebhookHttp.PostAsync(_http, job.Rule.Url, body, job.Rule.Headers, job.Rule.Secret, job.Event, id, retry ? Backoff : [], Timeout, ct);
+        var d = new WebhookDelivery(id, DateTimeOffset.Now, job.Slot, job.Rule.Id, job.Rule.Label, job.Rule.Url, job.Event, r.Ok, r.Status, r.Attempts, r.Ms, r.Error, job.Event == "test");
         _log.Enqueue(d);
         while (_log.Count > LogSize && _log.TryDequeue(out _)) { }
         _lastDelivery = d.Time;
-        if (!job.Event.Equals("test")) Interlocked.Increment(ref ok ? ref _sent : ref _failed);
+        if (!job.Event.Equals("test")) Interlocked.Increment(ref r.Ok ? ref _sent : ref _failed);
         return d;
     }
 

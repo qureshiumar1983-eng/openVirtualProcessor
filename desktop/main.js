@@ -7,13 +7,15 @@
 //   - Dev (`npm start`): runs the server from source with `dotnet watch`, serves the web pages straight from
 //     src/OpenVP.Server/wwwroot, and reloads the windows when a page changes or the server restarts after a
 //     C# change. Needs the .NET 8 SDK.
-const { app, BrowserWindow, Menu, dialog, shell } = require('electron');
+const { app, BrowserWindow, Menu, Tray, Notification, nativeImage, dialog, shell } = require('electron');
 const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const http = require('http');
 const net = require('net');
 const path = require('path');
 const updater = require('./updater');
+const alertsStream = require('./alerts-stream');
+const { makeIcon } = require('./tray-icon');
 
 const PORT = 8080;
 const BASE = `http://localhost:${PORT}/`;
@@ -25,13 +27,23 @@ const WWWROOT_SRC = path.join(SERVER_SRC, 'wwwroot');
 let server = null;        // the server process, if we started it
 let quitting = false;
 let mainWindow = null;
+let tray = null;          // the tray icon, coloured by the alert status
+let stream = null;        // the alert stream subscription (see alerts-stream.js)
+let alertStatus = null;   // last { critical, warning, ..., color } from the server, or null while not connected
+
+// Settings of the app itself (not of the OpenVP server), kept in userData/desktop.json.
+const prefsPath = () => path.join(app.getPath('userData'), 'desktop.json');
+const prefs = { notifications: true, closeToTray: false };
+function loadPrefs() { try { Object.assign(prefs, JSON.parse(fs.readFileSync(prefsPath(), 'utf8'))); } catch { } }
+function savePrefs() { try { fs.mkdirSync(path.dirname(prefsPath()), { recursive: true }); fs.writeFileSync(prefsPath(), JSON.stringify(prefs, null, 2)); } catch { } }
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.focus(); }
+    if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.show(); mainWindow.focus(); }
   });
+  if (process.platform === 'win32') app.setAppUserModelId('org.openvp.desktop');   // Windows needs this to show notifications
   app.whenReady().then(start);
 }
 
@@ -184,9 +196,13 @@ function createWindow(width, height) {
 }
 
 async function start() {
+  loadPrefs();
   setMenu();
   mainWindow = createWindow(1280, 860);
+  // With "keep running in the tray" on, closing the window only hides it; OpenVP (and its programs) keep running until Quit in the tray menu.
+  mainWindow.on('close', e => { if (!quitting && prefs.closeToTray && tray) { e.preventDefault(); mainWindow.hide(); } });
   mainWindow.on('closed', () => { mainWindow = null; app.quit(); });
+  createTray();
   mainWindow.loadFile(path.join(__dirname, 'loading.html'));
 
   if (!(await isOpenVpRunning())) {
@@ -201,8 +217,77 @@ async function start() {
   }
   if (!mainWindow) return;
   mainWindow.loadURL(BASE);
+  startAlerts();
   if (DEV) watchForChanges();
   else updater.start({ getWindow: () => mainWindow, beforeRestart: restartInto });
+}
+
+// ---------------------------------------------------------------- alerts: tray icon and desktop notifications
+
+function showMainWindow() {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+const statusText = () => {
+  if (!alertStatus) return 'OpenVP: not connected';
+  const { critical = 0, warning = 0 } = alertStatus;
+  if (!critical && !warning) return 'OpenVP: all clear';
+  return 'OpenVP: ' + [critical && `${critical} critical`, warning && `${warning} warning${warning > 1 ? 's' : ''}`].filter(Boolean).join(', ');
+};
+
+function updateTray() {
+  if (!tray) return;
+  const color = alertStatus ? alertStatus.color : 'grey';
+  tray.setImage(nativeImage.createFromBuffer(makeIcon(color)));
+  tray.setToolTip(statusText());
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: statusText(), enabled: false },
+    { type: 'separator' },
+    { label: 'Open console', click: showMainWindow },
+    { label: 'Alerts…', click: () => openPopup(BASE + 'alerts.html', 'openvp-alerts') },
+    { label: 'Metrics…', click: () => openPopup(BASE + 'metrics.html', 'openvp-metrics') },
+    { type: 'separator' },
+    { label: 'Show desktop notifications', type: 'checkbox', checked: prefs.notifications, click: i => { prefs.notifications = i.checked; savePrefs(); } },
+    { label: 'Keep running in the tray when the window is closed', type: 'checkbox', checked: prefs.closeToTray, click: i => { prefs.closeToTray = i.checked; savePrefs(); } },
+    { type: 'separator' },
+    { label: 'Quit OpenVP', click: () => { quitting = true; app.quit(); } },
+  ]));
+}
+
+function createTray() {
+  try {
+    tray = new Tray(nativeImage.createFromBuffer(makeIcon('grey')));
+    tray.on('click', showMainWindow);
+    tray.on('double-click', showMainWindow);
+    updateTray();
+  } catch (e) { console.warn('No tray icon:', e.message); tray = null; }
+}
+
+/** One native notification for an alert the server streamed. Critical ones stay until dismissed where the OS allows. */
+function notify(a) {
+  if (!prefs.notifications || !Notification.isSupported()) return;
+  const mark = a.event === 'resolved' ? 'Resolved: ' : a.event === 'test' ? 'Test: ' : '';
+  const n = new Notification({
+    title: `OpenVP · ${mark}${a.title}`,
+    body: a.message || '',
+    urgency: a.severity === 'critical' && a.event !== 'resolved' ? 'critical' : 'normal',
+    timeoutType: a.severity === 'critical' && a.event !== 'resolved' ? 'never' : 'default',
+  });
+  n.on('click', () => { showMainWindow(); openPopup(BASE + 'alerts.html', 'openvp-alerts'); });
+  n.show();
+}
+
+function startAlerts() {
+  if (stream) return;
+  stream = alertsStream.subscribe({
+    base: BASE,
+    onAlert: notify,
+    onStatus: s => { alertStatus = s; updateTray(); },
+    onConnection: c => { if (!c) { alertStatus = null; updateTray(); } },
+  });
 }
 
 /** After an update: stop the server, wait for the port to free up, start the new OpenVP.exe and quit. */
@@ -244,7 +329,7 @@ function stopServer() {
   } catch { }
 }
 
-app.on('before-quit', stopServer);
+app.on('before-quit', () => { quitting = true; if (stream) stream.stop(); if (tray) { tray.destroy(); tray = null; } stopServer(); });
 app.on('window-all-closed', () => app.quit());
 process.on('exit', stopServer);
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { stopServer(); app.quit(); });

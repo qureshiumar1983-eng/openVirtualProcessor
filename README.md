@@ -361,7 +361,66 @@ Click **Metrics ↗** in the console header (or go to `/metrics.html`) for a liv
   - **Long-running background work:** a `CrestronInvoke` callback or SIMPL+ event handler has been running for 30 s or more.
   - **Backlog:** 1000 or more events are queued for a slot, or background work is waiting for thread-pool threads.
 
-The same numbers are available from the slot console: `cpuload`, `ramfree`, `taskstat` (threads and what the slot thread is doing) and `metrics` (all of it). From scripts, use `GET /api/metrics` or the `/ws/metrics` WebSocket.
+The same numbers are available from the slot console: `cpuload`, `ramfree`, `taskstat` (threads and what the slot thread is doing) and `metrics` (all of it). From scripts, use `GET /api/metrics` or the `/ws/metrics` WebSocket. The page's **History** and **Uptime** tabs are described in [Uptime and history](#uptime-and-history).
+
+### Alerts
+
+**Alerts ↗** in the console's top bar (or `/alerts.html`) turns events into notifications. A badge on the link counts what is wrong now. The engine is in `OpenVP.Core.Alerts` (`AlertEngine`) with unit tests; sending happens on other threads, each channel with its own bounded queue (100), so a slow mail server never holds up a program or another channel.
+
+**Events** it raises alerts for:
+
+| Kind | When | Severity |
+|---|---|---|
+| `slot.fault` | A slot goes to Error (a fault, or a program that failed to start); clears when the slot leaves Error | Critical |
+| `slot.stuck` | The slot thread has been inside one event for 5 s or more (the Metrics page's "Stuck") | Critical |
+| `slot.backlog` | 1000 or more events queued for a slot; clears below 500 | Warning |
+| `crash.restart` / `crash.giveup` | The [crash policy](#autostart-and-crash-policy) restarted a program, or left it stopped (clears when it runs again) | Warning / Critical |
+| `device.offline` | A panel or device that was online has been offline for more than N seconds (default 60) in a running slot; clears when it comes back | Warning |
+| `oscillation` | The [oscillation detector](#debugger) fired | Warning |
+| `watch` | A [watch expression](#debugger) became true | Warning |
+| `restore.failed` | A program couldn't be brought back at start-up | Critical |
+| `tunnel.stopped` | The internet tunnel stopped by itself (not when you turn it off) | Warning |
+| `disk.low` | Less than 1000 MB (settable) free on the drive of the data folder; Critical below a quarter of that | Warning |
+| `threshold` | A [threshold](#thresholds) was crossed | Warning / Critical |
+
+**Channels.** Add as many as you like, each with a **Test** button that sends one message, once, and shows what happened:
+
+- **Email (SMTP):** server, port, security (STARTTLS, implicit TLS or none), optional user name and password, from, and one or more recipients. Each message has a plain-text and an HTML part. Sent with [MailKit](https://github.com/jstedfast/MailKit) 4.13.0 (MIT; it brings MimeKit and BouncyCastle.Cryptography, both MIT).
+- **Microsoft Teams:** an incoming webhook address (a Workflows "Post to a channel when a webhook request is received" webhook, or a classic Incoming Webhook connector). It gets an Adaptive Card: a coloured title bar, the message, a table of facts and an "Open console" button.
+- **Slack:** an incoming webhook address. It gets Block Kit blocks (header, message, fields, context, button) in an attachment with a colour bar.
+- **ntfy:** a server (default `https://ntfy.sh`), a topic and an optional access token. Published as JSON with a priority (critical is 5), emoji tags and a click link.
+- **Generic webhook:** a JSON `POST` with `event` (`alert.raised`, `alert.reminder`, `alert.resolved`, `alert.test` or `report`), `kind`, `severity`, `slot`, `room`, `program`, `title`, `message`, `count` and `facts`, signed exactly like [outgoing webhooks](#webhooks) (`X-OpenVP-Timestamp`, `X-OpenVP-Signature`). It uses the same sender, so retries behave the same: a request that gets no answer in 15 s, fails to connect, or is answered 5xx, 408 or 429 is tried again after 1 s, 5 s and 30 s.
+- **Desktop:** the stream behind desktop and browser notifications (below). One exists out of the box.
+
+Passwords, tokens, signing secrets and the Teams and Slack addresses (the address is the credential) are kept in `data/integrations/secrets.json` like the MQTT password (DPAPI on Windows, an owner-only file elsewhere) and never sent back by the API or page; the settings are in `data/alerts/config.json`.
+
+**Rules** say which alerts go to which channels. A rule lists alert kinds and slots (empty means all), a minimum severity, its channels, optional **quiet hours** (local time, may wrap midnight; Critical alerts can still go out), its own repeat time, and whether to send a message when the alert clears. An alert goes once to every channel named by every rule it matches. A new install has one rule: Warning and worse to the desktop.
+
+**De-duplication and rate limiting.** The same alert (the same key, such as `slot.stuck:3`) is sent at most once per **15 minutes** per rule (changeable globally and per rule; 0 sends every time). This also holds across an alert that clears and comes back, so a flapping signal can't flood a channel. An alert that gets worse (Warning to Critical) is sent at once. One-off events (a watch firing) inside the window are grouped into one history entry with a count. When an alert clears, a **resolved** message goes to the channels that heard about it, and only to those.
+
+**History and acknowledge/mute.** The Alerts tab lists what is happening now and the last 500 alerts (`data/alerts/state.json`), each with every channel's delivery status: `sent`, `failed` (with the reason and number of tries), `queued`, or `suppressed` (with why: repeat limit, quiet hours, muted, acknowledged). **Acknowledge** stops repeat messages for an alert that is going on (the resolved message still goes and the tray stops counting it). **Mute…** silences that alert and later ones with the same key for 1 hour to 7 days, or until unmuted. What was active when OpenVP stopped starts the next run as ended; the sources check again.
+
+**Desktop notifications.** The server streams alerts at `GET /api/alerts/stream` (server-sent events: `status` with the counts and colour, then an `alert` event for each raise, resolve and test; a keep-alive comment every 15 s). In the **desktop app** the main process listens (`desktop/alerts-stream.js`, so it works even when the window is closed to the tray and nothing is added to `preload.js`) and shows native notifications (Critical ones stay until dismissed where the OS allows; clicking one opens the Alerts page). A **tray icon** shows the status colour (green all clear, amber warnings, red critical, grey when the server can't be reached) with a menu: Open console, Alerts, Metrics, Show desktop notifications, **Keep running in the tray when the window is closed** (off by default; otherwise closing the window quits as before) and Quit. These two settings are kept in `desktop.json` in the app's data folder. In a **browser**, tick *Show browser notifications* on the Alerts tab to use the Web Notifications API: the browser asks permission once, and notifications show only while a console page is open in that browser.
+
+### Uptime and history
+
+OpenVP records state changes in `data/history/uptime-yyyyMMdd.jsonl` (one file per UTC day, one JSON line per event, each day starting with a checkpoint of every state, 90 days kept; a heartbeat each minute shows OpenVP was running). It records each slot's state, each device's online/offline, and OpenVP starting and stopping. The **Uptime** tab of the Metrics page (`/metrics.html#uptime`) shows availability for 24 hours, 7, 30 or 90 days with a timeline bar for each slot and device (point at a segment for its time and percentage), the time down and the number of drops.
+
+- A slot is **up** while Running and **down** while it holds a program that isn't running (stopped, faulted, or OpenVP itself not running, from the last heartbeat to the next start). Empty slots aren't counted.
+- A panel or device is **up** while connected and **down** while registered and not connected, only while its slot is running. A device that has never connected since OpenVP started isn't counted until it first does.
+- Time before OpenVP began recording isn't counted; the page says since when it has data.
+
+**Offline heat map** (same tab): a row for each device that dropped and a column for each hour of the day (all days of the range added up) or each day, in your browser's time zone; the cell colour is the minutes offline, and hovering gives the device, the hour or day, the minutes and the drops. That shows which panels drop and when (for example every day around 14:00).
+
+**Metrics history** (the **History** tab, `/metrics.html#history`): the live once-a-second path is unchanged. A second sampler also keeps the last 5 minutes second by second in memory, **1-minute averages for 7 days** and **15-minute averages for 90 days** on disk as compact JSON lines (`data/history/metrics-1m-yyyyMMdd.jsonl`, `metrics-15m-yyyyMM.jsonl`, UTC). No database is used (a plain-file ring was enough, so there is no SQLite package). Each point holds the average and the highest value, so a short spike isn't averaged away (shown as the faint line). A range picker (5 min, 1 h, 24 h, 7 d, 30 d, 90 d) drives graphs of CPU, memory, slot busy percent, queue length, events per second, longest event and devices offline, with a slot picker for the per-slot graphs, a read-out when you point at a graph, and your [threshold](#thresholds) levels as dashed lines. Ranges up to 7 days use the 1-minute points, longer ones the 15-minute points, and more than 600 points are merged into wider steps. Files older than the retention are deleted. All of this (alerts, history, thresholds, reports) is switched off with `OpenVP:Alerts=false`.
+
+### Thresholds
+
+**Thresholds** (Alerts tab) raise an alert when a number stays at or above a **warning** or **critical** level for N seconds, and end it when the number has stayed below for 5 seconds (so a value hovering at the line doesn't flap). Measures: process CPU %, memory MB, slot thread busy % (each slot, or one), events waiting for a slot, longest event running now (ms; the event the slot thread is in at this moment, so a handler that never returns keeps climbing), events per second, and devices offline (all, or one slot's). Each has a warning and a critical level (either may be left empty). A threshold alert is kind `threshold` and goes out through your rules, with the usual de-duplication and a resolved message. The levels are drawn on the History graphs.
+
+### Reports
+
+A **health report** covers the last 24 hours (daily) or 7 days (weekly) and says, per slot: uptime %, crashes and restarts (from the Activity feed), alerts raised; then the most frequent events, devices that dropped (drops and time offline), peak CPU and memory, and programs loaded or changed (from the Activity feed). On the **Reports** tab choose daily or weekly, the time (this computer's time) and the channels. It goes out once per scheduled time; one missed while OpenVP was off goes out when it starts; turning it on doesn't send for a time already past. Email gets the report as a self-contained HTML page; Teams, Slack, ntfy and webhooks get a short summary (a webhook also gets the HTML). **Send report now** sends it through the ticked channels, **View report** opens the HTML page and **Download HTML** saves it. Sent reports appear in the alert history.
 
 ### Integrations
 
@@ -547,6 +606,7 @@ Traffic is plain HTTP. To use OpenVP across an untrusted network, put it behind 
 | `OpenVP:ConsoleMaxConnections` | `5` | Telnet and SSH sessions open at once (3 per address) |
 | `OpenVP:Mdns` | on, except in a container | Advertise `openvp.local` and an `_http._tcp` service over mDNS (see [openvp.local](#openvplocal-mdns)). In Docker it is off unless you set it (use host networking) |
 | `OpenVP:MdnsName` | `openvp` | The extra host name to answer for (`<name>.local`) |
+| `OpenVP:Alerts` | `true` | `false` turns off the alert engine, uptime and metrics history, thresholds and reports (the pages then say so). Settings and history are in `data/alerts` and `data/history`; see [Alerts](#alerts) |
 | `OpenVP:Autoload:slot1` | | Program file to load into slot 1 at startup. Wins over the slot's remembered program (see [Autostart](#autostart-and-crash-policy)) |
 | `Urls` | `http://0.0.0.0:8080` | Web console address |
 
@@ -631,6 +691,18 @@ Every endpoint except `/api/info`, `/api/login` and `POST /hooks/{token}` needs 
 | GET | `/api/unsupported` | Everything programs used that isn't supported yet, as the Markdown file (`?format=json` for JSON). See [Compatibility](#compatibility) |
 | GET | `/api/log?slot=n&max=500` · `/api/devices` | The slot's recent log lines (`time`, `level`, `message`, and `detail` for an exception's stack trace) · every IP ID. `/ws/trace?slot=n` streams them (`trace=0` for log lines only) |
 | GET | `/api/metrics` | CPU, memory, threads and per-slot activity; `?history=false` leaves out the five-minute history. `/ws/metrics` sends the same once a second |
+| GET | `/api/alerts?limit=` | `status` (`critical`, `warning`, `info`, `acknowledged`, `muted`, `color`), the `active` alerts, the `history` (newest first, each with its `deliveries`), `muted` keys and the number of stream `listeners`. Severities are words (`info`, `warning`, `critical`) |
+| POST | `/api/alerts/{id}/ack` · `mute` · `unmute` | Acknowledge · mute (`{"minutes":60}`, or `{}` until unmuted) · unmute |
+| GET · PUT | `/api/alerts/config` | `settings`, `channels` (no secrets, only `hasPassword`, `hasToken`, `hasSecret`, `hasUrl`), `rules`, `thresholds`, `report`, and the lists of `kinds` and `metrics`. A PUT takes any of `settings`, `rules`, `thresholds`, `report` (400 says what is wrong) |
+| POST · PUT · DELETE | `/api/alerts/channels` · `/{id}` | Add · change (`password`, `token`, `secret` and `url` for Teams and Slack are kept if left out, removed by `""`) · remove (also from the rules) |
+| POST | `/api/alerts/channels/{id}/test` | Send a test message once and return the delivery |
+| GET | `/api/alerts/stream` | Server-sent events: `status`, then `alert` for each raise, resolve and test (see [Alerts](#alerts)). Not on the tunnel port |
+| GET | `/api/alerts/status` · `/api/alerts/thresholds` | The counts and colour · the enabled thresholds (for graph lines) |
+| GET | `/api/uptime?range=24h\|7d\|30d\|90d&buckets=96` | Availability for each slot and device: `availability`, `upSeconds`, `downSeconds`, `drops`, `buckets` (timeline, -1 for no data), `outages` |
+| GET | `/api/uptime/heatmap?range=7d&mode=hour\|day&offset=minutes` | Offline minutes and drops per device by hour of the day or by day; `offset` is the viewer's offset from UTC |
+| GET | `/api/metrics/history?range=5m\|1h\|24h\|7d\|30d\|90d` | Averages and peaks for the process and each slot |
+| GET | `/api/reports/preview?period=daily\|weekly[&download=1]` · `/api/reports/data` | The health report as an HTML page (or a download) · as JSON |
+| POST | `/api/reports/send` | `{"period":"daily","channels":["id"]}` (the schedule's channels if left out); returns the history entry with each channel's result |
 | GET | `/metrics` | Prometheus text format (see [Prometheus and Grafana](#prometheus-and-grafana)). Needs the access key unless `OpenVP:MetricsPublic=true`; not on the tunnel port |
 | GET · PUT | `/api/slots/{n}/signals/{name}` | One signal: `{slot, name, kind, value}` · set it from `1`, `true`, `"text"`, `{"value": 1}`, or plain `50%` / `pulse` (400 for a value that doesn't fit, 404 for an unknown signal, 409 with no program). The name must be URL-encoded |
 | POST | `/api/slots/{n}/signals/{name}/pulse` | Pulse a digital signal (high, then low) |

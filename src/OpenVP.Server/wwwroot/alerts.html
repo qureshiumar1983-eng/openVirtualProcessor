@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<script src="openvp-theme.js"></script>
+<title>OpenVP alerts</title>
+<style>
+  :root { --bg:#0f1216; --card:#181d23; --line:#29303a; --text:#e6e9ee; --muted:#8b95a3; --ok:#2f9e6e; --warn:#d69e2e; --err:#e05252; --accent:#4c8dff; }
+  * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
+  html, body { height:100%; }
+  body { margin:0; font:14px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--text); display:flex; flex-direction:column; min-height:100dvh; }
+  header { padding:10px 16px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:6px 12px; flex-wrap:wrap; background:var(--card); }
+  header h1 { margin:0; font-size:17px; }
+  header .sp { flex:1; }
+  a { color:var(--accent); }
+  .muted { color:var(--muted); }
+  .mono { font-family:ui-monospace, Menlo, Consolas, monospace; font-size:12px; }
+  code { font-family:ui-monospace, Menlo, Consolas, monospace; font-size:12px; background:var(--well); border:1px solid var(--line); border-radius:4px; padding:0 4px; }
+  button, input, select, textarea { font:inherit; color:var(--text); background:var(--input); border:1px solid var(--line); border-radius:6px; padding:5px 9px; }
+  input[type=checkbox], input[type=radio] { padding:0; }
+  button { cursor:pointer; } button:hover { border-color:var(--accent); }
+  button:disabled { opacity:.5; cursor:default; }
+  button.primary { border-color:var(--accent); background:var(--active); }
+  button.small { font-size:12px; padding:2px 8px; }
+  button.danger:hover { border-color:var(--err); color:var(--err-fg); }
+  main { flex:1; min-height:0; display:flex; flex-direction:column; padding:12px 16px 24px; gap:10px; max-width:1100px; width:100%; margin:0 auto; }
+  .tabs { display:flex; flex-wrap:wrap; }
+  .tabs button { border-radius:0; margin-left:-1px; } .tabs button:first-child { border-radius:6px 0 0 6px; margin-left:0; } .tabs button:last-child { border-radius:0 6px 6px 0; }
+  .tabs button.active { background:var(--active); border-color:var(--accent); position:relative; }
+  .tabs .count { margin-left:6px; font-size:11px; padding:0 6px; border-radius:20px; background:var(--chip); }
+  .tabs .count.crit { background:var(--err-bg); color:var(--err-fg); } .tabs .count.warn { background:var(--warn-bg); color:var(--warn-fg); }
+  .pane { display:none; flex-direction:column; gap:10px; min-height:0; }
+  .pane.on { display:flex; }
+  .bar { display:flex; flex-wrap:wrap; gap:6px 8px; align-items:center; }
+  .bar .sp { flex:1; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
+  .card h2 { margin:0 0 6px; font-size:15px; display:flex; flex-wrap:wrap; gap:4px 8px; align-items:center; }
+  .card h3 { margin:10px 0 4px; font-size:13px; }
+  .pill { display:inline-block; font-size:11px; padding:1px 8px; border-radius:20px; background:var(--chip); color:var(--text2); white-space:nowrap; }
+  .pill.ok { background:var(--ok-bg); color:var(--ok-fg); } .pill.warn { background:var(--warn-bg); color:var(--warn-fg); } .pill.err { background:var(--err-bg); color:var(--err-fg); } .pill.info { background:var(--info-bg); color:var(--info-fg); }
+  .form { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:8px 12px; align-items:end; }
+  .form label { display:flex; flex-direction:column; gap:3px; font-size:12px; color:var(--muted); min-width:0; }
+  .form label.inline, label.inline { flex-direction:row; align-items:center; gap:6px; color:var(--text); font-size:13px; }
+  .form input:not([type=checkbox]):not([type=radio]), .form select { width:100%; }
+  .note { padding:6px 8px; border:1px solid var(--warn-line); background:var(--warn-box); border-radius:6px; font-size:12px; }
+  .err { color:var(--err-fg); min-height:1.3em; font-size:13px; overflow-wrap:anywhere; }
+  table { border-collapse:collapse; width:100%; }
+  th, td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:12px; color:var(--muted); font-weight:600; white-space:nowrap; }
+  td.num, th.num { text-align:right; }
+  .scroll-x { overflow-x:auto; }
+  #saved { color:var(--ok-fg); font-size:12px; min-width:4em; }
+  /* active alerts */
+  .alert { border:1px solid var(--line); border-left:4px solid var(--dim); border-radius:6px; padding:8px 10px; background:var(--tile); display:flex; flex-direction:column; gap:3px; }
+  .alert.critical { border-left-color:var(--err); } .alert.warning { border-left-color:var(--warn); } .alert.info { border-left-color:var(--accent); }
+  .alert .t { font-weight:600; overflow-wrap:anywhere; }
+  .alert .m { color:var(--text2); overflow-wrap:anywhere; }
+  .alerts-list { display:flex; flex-direction:column; gap:8px; }
+  .chips { display:flex; flex-wrap:wrap; gap:4px; }
+  .chip { font-size:11px; padding:1px 7px; border-radius:20px; background:var(--chip); white-space:nowrap; cursor:help; }
+  .chip.sent { background:var(--ok-bg); color:var(--ok-fg); } .chip.failed { background:var(--err-bg); color:var(--err-fg); } .chip.suppressed { background:var(--warn-bg); color:var(--warn-fg); } .chip.queued { background:var(--info-bg); color:var(--info-fg); }
+  .sev-critical { color:var(--err-fg); font-weight:600; } .sev-warning { color:var(--warn-fg); font-weight:600; } .sev-info { color:var(--info-fg); }
+  tr.resolved td { color:var(--muted); }
+  /* channels and rules */
+  .items { display:flex; flex-direction:column; gap:8px; }
+  .item { display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; border:1px solid var(--line); border-radius:6px; padding:8px 10px; background:var(--tile); }
+  .item .what { flex:1 1 260px; min-width:0; }
+  .item .what b { overflow-wrap:anywhere; }
+  .item .sub { color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
+  .item.off { opacity:.65; }
+  .testout { font-size:12px; flex-basis:100%; overflow-wrap:anywhere; }
+  .checks { display:flex; flex-direction:column; gap:2px; border:1px solid var(--line); border-radius:6px; background:var(--well); padding:4px 8px; max-height:30dvh; overflow:auto; }
+  .checks.row { flex-direction:row; flex-wrap:wrap; gap:4px 12px; }
+  dialog { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:16px; width:min(520px, calc(100vw - 24px)); max-height:92dvh; overflow:auto; }
+  dialog.wide { width:min(680px, calc(100vw - 24px)); }
+  dialog::backdrop { background:var(--overlay); }
+  dialog form { display:flex; flex-direction:column; gap:10px; margin:0; }
+  dialog .row { display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+  dialog label { display:flex; flex-direction:column; gap:3px; font-size:12px; color:var(--muted); }
+  dialog label.inline { flex-direction:row; align-items:center; gap:6px; color:var(--text); font-size:13px; }
+  dialog input:not([type=checkbox]):not([type=radio]), dialog select { width:100%; }
+  dialog .two { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  @media (max-width: 700px) {
+    table.cards thead { display:none; }
+    table.cards, table.cards tbody, table.cards tr, table.cards td { display:block; }
+    table.cards tr { border:1px solid var(--line); border-radius:8px; margin:0 0 8px; padding:6px 8px; }
+    table.cards td { border:none; padding:2px 0; text-align:left; }
+    table.cards td[data-l]::before { content:attr(data-l) " "; color:var(--muted); font-size:11px; }
+    .tabs button { padding:5px 8px; }
+    dialog .two { grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Alerts</h1>
+  <span id="status" class="pill">…</span>
+  <span id="saved" role="status" aria-live="polite"></span>
+  <span class="sp"></span>
+  <button class="theme-btn" data-theme-toggle></button>
+  <a href="metrics.html" target="openvp-metrics" title="Graphs, uptime and the offline heat map">Metrics</a>
+  <a href="/">Console</a>
+  <a href="help.html#alerts" target="openvp-help">Help</a>
+</header>
+<main>
+  <div id="fail" class="note" role="alert" hidden></div>
+  <div class="tabs" role="tablist">
+    <button id="t-alerts" class="active" role="tab" title="What is wrong now, and everything that was sent">Alerts<span class="count" id="c-alerts" hidden></span></button><button id="t-channels" role="tab" title="Where alerts go: email, Teams, Slack, ntfy, a webhook or the desktop">Channels</button><button id="t-rules" role="tab" title="Which events and slots go to which channels, and when to keep quiet">Rules</button><button id="t-thresholds" role="tab" title="Alert when CPU, memory, a slot's load or the number of offline devices stays too high">Thresholds</button><button id="t-report" role="tab" title="A daily or weekly health report">Reports</button>
+  </div>
+
+  <!-- ============================================================ alerts -->
+  <section id="pane-alerts" class="pane on">
+    <div class="card" id="notify-card">
+      <h2>Notifications on this computer</h2>
+      <div id="notify-desktop" class="muted" hidden>This is the OpenVP desktop app. It shows alerts itself as Windows notifications and keeps a coloured icon in the tray, so there is nothing to turn on here.</div>
+      <div id="notify-browser">
+        <label class="inline"><input type="checkbox" id="notify-on"> Show browser notifications while an OpenVP page is open</label>
+        <div class="muted" id="notify-note" style="margin-top:4px">Your browser asks for permission the first time. Notifications only appear while a console page is open in this browser; for alerts when nothing is open, add a channel (email, Teams, Slack or ntfy).</div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Happening now <span id="active-pill" class="pill"></span></h2>
+      <div id="active" class="alerts-list"></div>
+      <div id="active-empty" class="muted" hidden>Nothing is wrong. Alerts that are going on show here until they clear.</div>
+    </div>
+    <div class="card">
+      <h2>History
+        <span class="sp" style="flex:1"></span>
+        <label class="inline muted"><input type="checkbox" id="h-problems"> only problems with delivery</label>
+        <select id="h-kind" aria-label="Show one kind of alert"><option value="">All kinds</option></select>
+      </h2>
+      <div class="muted">Every alert with what was sent where. <b>sent</b> was delivered, <b>failed</b> shows why, <b>suppressed</b> was held back (the same alert was sent recently, quiet hours, muted or acknowledged). The last 500 are kept.</div>
+      <div class="scroll-x"><table id="hist" class="cards"><thead><tr><th>When</th><th>Alert</th><th>Slot</th><th>State</th><th>Sent to</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div id="hist-empty" class="muted" hidden>No alerts yet.</div>
+    </div>
+  </section>
+
+  <!-- ============================================================ channels -->
+  <section id="pane-channels" class="pane">
+    <div class="card">
+      <h2>Channels <span class="sp" style="flex:1"></span><button id="ch-add" class="small primary">Add channel…</button></h2>
+      <div class="muted">A channel is a place to send alerts. Press <b>Test</b> to send a test message and see whether it arrived. Passwords, tokens and webhook addresses are kept in a file only you can read (encrypted for your Windows account on Windows) and are never sent back to this page. Which alerts go to which channel is set under <b>Rules</b>.</div>
+      <div id="channels" class="items" style="margin-top:8px"></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ rules -->
+  <section id="pane-rules" class="pane">
+    <div class="card">
+      <h2>Rules <span class="sp" style="flex:1"></span><button id="rule-add" class="small primary">Add rule…</button></h2>
+      <div class="muted">A rule says which alerts go to which channels. An alert goes to every channel named by every rule it matches (once). A rule matches when the alert's kind and slot are listed (empty means all) and it is at least as bad as the rule's minimum severity.</div>
+      <div id="rules" class="items" style="margin-top:8px"></div>
+      <div id="rules-empty" class="note" hidden>There are no rules, so nothing is sent anywhere. Add one.</div>
+    </div>
+    <div class="card">
+      <h2>Defaults</h2>
+      <form id="settings-form" class="form" autocomplete="off">
+        <label>Send the same alert at most once every (minutes)<input id="s-repeat" type="number" min="0" max="1440"></label>
+        <label>A panel or device offline for (seconds) raises an alert<input id="s-offline" type="number" min="5" max="86400"></label>
+        <label>Alert when free disk space in the data folder is below (MB, 0 is off)<input id="s-disk" type="number" min="0"></label>
+        <label>Address of this console, for the "Open console" link in messages (optional)<input id="s-url" placeholder="http://openvp.local:8080" maxlength="200"></label>
+        <div class="bar" style="align-self:end"><button class="primary" id="s-save">Save</button></div>
+      </form>
+      <div id="s-err" class="err"></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ thresholds -->
+  <section id="pane-thresholds" class="pane">
+    <div class="card">
+      <h2>Thresholds <span class="sp" style="flex:1"></span><button id="th-add" class="small primary">Add threshold…</button></h2>
+      <div class="muted">A threshold raises an alert when a number stays at or above its <b>warning</b> or <b>critical</b> level for the time you set, and ends it when the number has stayed below for a few seconds. Alerts go out through your rules (kind <code>threshold</code>). The same levels are drawn as dashed lines on the graphs on the Metrics page.</div>
+      <div class="scroll-x"><table id="th" class="cards"><thead><tr><th>Measures</th><th>Slot</th><th class="num">Warning at</th><th class="num">Critical at</th><th class="num">For</th><th>On</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div id="th-empty" class="muted" hidden>No thresholds. Add one, for example CPU at 80% (warning) and 95% (critical) for 30 seconds.</div>
+    </div>
+  </section>
+
+  <!-- ============================================================ report -->
+  <section id="pane-report" class="pane">
+    <div class="card">
+      <h2>Health report</h2>
+      <div class="muted">A summary for each slot (uptime, crashes and restarts, alerts), the most frequent events, devices that dropped, peak CPU and memory, and programs loaded or changed. Email gets it as an HTML page; Teams, Slack and the others get a short summary.</div>
+      <form id="rep-form" class="form" style="margin-top:10px" autocomplete="off">
+        <label class="inline"><input type="checkbox" id="r-on"> Send it on a schedule</label>
+        <label>How often<select id="r-freq"><option value="daily">Every day</option><option value="weekly">Every week</option></select></label>
+        <label id="r-day-l">On<select id="r-day"><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option></select></label>
+        <label>At (this computer's time)<input id="r-time" type="time" value="08:00"></label>
+        <div style="grid-column:1/-1"><div class="muted" style="font-size:12px;margin-bottom:3px">Send it through</div><div id="r-chans" class="checks row"></div></div>
+        <div class="bar" style="align-self:end"><button class="primary" id="r-save">Save</button></div>
+      </form>
+      <div id="r-err" class="err"></div>
+      <div class="muted" id="r-last"></div>
+    </div>
+    <div class="card">
+      <h2>Now</h2>
+      <div class="bar">
+        <label class="inline muted">Covering <select id="r-period"><option value="daily">the last 24 hours</option><option value="weekly">the last 7 days</option></select></label>
+        <button id="r-send" class="primary" title="Send the report now through the channels ticked above (they need not be saved first)">Send report now</button>
+        <a id="r-view" class="small" target="openvp-report" href="/api/reports/preview?period=daily"><button type="button" class="small">View report</button></a>
+        <a id="r-dl" href="/api/reports/preview?period=daily&download=1"><button type="button" class="small">Download HTML</button></a>
+      </div>
+      <div id="r-out" class="testout"></div>
+    </div>
+  </section>
+</main>
+
+<!-- channel -->
+<dialog id="ch-dlg" class="wide"><form method="dialog" id="ch-form" autocomplete="off">
+  <b id="ch-title">Add a channel</b>
+  <label>Kind<select id="c-type"></select></label>
+  <label>Name<input id="c-name" maxlength="80"></label>
+  <div id="f-email" hidden>
+    <div class="two"><label>SMTP server<input id="c-host" placeholder="smtp.example.com" maxlength="253"></label><label>Port<input id="c-port" type="number" min="1" max="65535" value="587"></label></div>
+    <div class="two"><label>Security<select id="c-sec"><option value="starttls">STARTTLS (usually port 587)</option><option value="ssl">TLS from the start (usually port 465)</option><option value="none">None (port 25, trusted network only)</option></select></label><label>User name (if the server needs one)<input id="c-user" maxlength="200"></label></div>
+    <label>Password<input id="c-pass" type="password" autocomplete="new-password"></label>
+    <label class="inline" id="c-pass-keep" hidden><input type="checkbox" id="c-pass-clear"> Remove the saved password</label>
+    <div class="two"><label>From<input id="c-from" placeholder="openvp@example.com" maxlength="200"></label><label>To (separate several with commas)<input id="c-to" placeholder="ops@example.com" maxlength="500"></label></div>
+  </div>
+  <div id="f-hook" hidden>
+    <label><span id="c-hook-label">Incoming webhook address</span><input id="c-hook" type="password" autocomplete="off" maxlength="1000"></label>
+    <div class="muted" id="c-hook-note"></div>
+  </div>
+  <div id="f-ntfy" hidden>
+    <div class="two"><label>Server<input id="c-nserver" placeholder="https://ntfy.sh" maxlength="200"></label><label>Topic<input id="c-ntopic" placeholder="openvp-alerts" maxlength="100"></label></div>
+    <label>Access token (optional)<input id="c-ntoken" type="password" autocomplete="new-password"></label>
+    <label class="inline" id="c-ntoken-keep" hidden><input type="checkbox" id="c-ntoken-clear"> Remove the saved token</label>
+    <div class="muted">Anyone who knows a topic on ntfy.sh can read it, so pick a long random name or use your own server.</div>
+  </div>
+  <div id="f-webhook" hidden>
+    <label>Address (https://…)<input id="c-wurl" placeholder="https://example.com/openvp-alerts" maxlength="500"></label>
+    <label>Signing secret (optional)<input id="c-wsecret" type="password" autocomplete="new-password"></label>
+    <label class="inline" id="c-wsecret-keep" hidden><input type="checkbox" id="c-wsecret-clear"> Remove the saved secret</label>
+    <div class="muted">A JSON <code>POST</code> with the alert. With a secret each request carries <code>X-OpenVP-Timestamp</code> and <code>X-OpenVP-Signature: sha256=…</code>, the HMAC-SHA256 of <code>timestamp + "." + body</code>, like outgoing webhooks.</div>
+  </div>
+  <div id="f-desktop" class="muted" hidden>Shows alerts as notifications in the OpenVP desktop app and, if you allow it on the Alerts tab, in browsers with a console page open.</div>
+  <label class="inline"><input type="checkbox" id="c-on" checked> On</label>
+  <div id="ch-err" class="err"></div>
+  <div class="row"><button type="button" id="ch-cancel">Cancel</button><button class="primary" id="ch-ok" type="submit">Save</button></div>
+</form></dialog>
+
+<!-- rule -->
+<dialog id="ru-dlg" class="wide"><form method="dialog" id="ru-form" autocomplete="off">
+  <b id="ru-title">Add a rule</b>
+  <label>Name<input id="u-name" maxlength="80"></label>
+  <div><div class="muted" style="font-size:12px;margin-bottom:3px">Which alerts (none ticked means all)</div><div id="u-kinds" class="checks"></div></div>
+  <div class="two">
+    <label>Slots (numbers, separated by commas; empty means all)<input id="u-slots" placeholder="1, 2" maxlength="100"></label>
+    <label>At least this bad<select id="u-sev"><option value="info">Info</option><option value="warning">Warning</option><option value="critical">Critical</option></select></label>
+  </div>
+  <div><div class="muted" style="font-size:12px;margin-bottom:3px">Send to</div><div id="u-chans" class="checks row"></div></div>
+  <div class="two">
+    <label>Same alert at most once every (minutes, empty uses the default)<input id="u-repeat" type="number" min="0" max="1440"></label>
+    <label class="inline" style="align-self:end"><input type="checkbox" id="u-resolved" checked> Send a message when it clears</label>
+  </div>
+  <label class="inline"><input type="checkbox" id="u-quiet"> Quiet hours: send nothing between</label>
+  <div class="two" id="u-quiet-row"><label>From<input id="u-qs" type="time" value="22:00"></label><label>To<input id="u-qe" type="time" value="07:00"></label></div>
+  <label class="inline" id="u-qc-l"><input type="checkbox" id="u-qc" checked> Critical alerts are still sent during quiet hours</label>
+  <label class="inline"><input type="checkbox" id="u-on" checked> On</label>
+  <div id="ru-err" class="err"></div>
+  <div class="row"><button type="button" id="ru-cancel">Cancel</button><button class="primary" id="ru-ok" type="submit">Save</button></div>
+</form></dialog>
+
+<!-- threshold -->
+<dialog id="th-dlg"><form method="dialog" id="th-form" autocomplete="off">
+  <b id="th-title">Add a threshold</b>
+  <label>Measure<select id="t-metric"></select></label>
+  <label id="t-slot-l">Slot<select id="t-slot"></select></label>
+  <div class="two"><label>Warning at or above<input id="t-warn" type="number" min="0" step="any"></label><label>Critical at or above<input id="t-crit" type="number" min="0" step="any"></label></div>
+  <div class="muted" id="t-unit"></div>
+  <label>Stays there for (seconds)<input id="t-for" type="number" min="0" max="86400" value="30"></label>
+  <label class="inline"><input type="checkbox" id="t-on" checked> On</label>
+  <div id="th-err" class="err"></div>
+  <div class="row"><button type="button" id="th-cancel">Cancel</button><button class="primary" id="th-ok" type="submit">Save</button></div>
+</form></dialog>
+
+<!-- mute -->
+<dialog id="mu-dlg"><form method="dialog">
+  <b>Mute this alert</b><div class="muted" id="mu-text"></div>
+  <label>For<select id="mu-for"><option value="60">1 hour</option><option value="480">8 hours</option><option value="1440">24 hours</option><option value="10080">7 days</option><option value="0">Until I unmute it</option></select></label>
+  <div class="row"><button value="cancel">Cancel</button><button class="primary" value="ok">Mute</button></div>
+</form></dialog>
+
+<!-- confirm -->
+<dialog id="cf-dlg"><form method="dialog">
+  <b id="cf-title"></b><div id="cf-text" class="muted"></div>
+  <div class="row"><button value="cancel">Cancel</button><button class="primary danger" value="ok" id="cf-ok">OK</button></div>
+</form></dialog>
+
+<script src="openvp-auth.js"></script>
+<script src="openvp-alerts.js"></script>
+<script>
+openvpAuth.init();
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const TABS = ["alerts", "channels", "rules", "thresholds", "report"];
+let tab = TABS.includes((location.hash || "").slice(1)) ? location.hash.slice(1) : "alerts";
+let cfg = null, data = null, slotList = [], editing = null, failT = 0, savedT = 0;
+const KIND_WORD = { email: "Email", teams: "Microsoft Teams", slack: "Slack", ntfy: "ntfy", webhook: "Webhook", desktop: "Desktop" };
+
+async function api(path, method = "GET", body) {
+  const r = await fetch(path, { method, headers: body === undefined ? {} : { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+  if (openvpAuth.check(r)) throw new Error("Log in with the access key first.");
+  const ct = r.headers.get("content-type") || "";
+  const j = ct.includes("json") ? await r.json() : await r.text();
+  if (!r.ok) throw new Error((j && j.error) || j || r.statusText);
+  return j;
+}
+function fail(msg) { const b = $("#fail"); b.textContent = msg; b.hidden = false; clearTimeout(failT); failT = setTimeout(() => b.hidden = true, 9000); }
+function flash(t = "Saved") { const el = $("#saved"); el.textContent = t; clearTimeout(savedT); savedT = setTimeout(() => el.textContent = "", 2000); }
+const when = t => { const d = new Date(t); return isNaN(d) ? "" : d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" }); };
+const ago = t => { if (!t) return "never"; const s = Math.max(0, (Date.now() - new Date(t)) / 1000); return s < 2 ? "just now" : s < 90 ? `${Math.round(s)} s ago` : s < 5400 ? `${Math.round(s / 60)} min ago` : s < 129600 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`; };
+const sevName = s => s[0].toUpperCase() + s.slice(1);
+function confirmBox(title, text, ok = "OK") {
+  return new Promise(res => { const d = $("#cf-dlg"); $("#cf-title").textContent = title; $("#cf-text").textContent = text; $("#cf-ok").textContent = ok; d.onclose = () => res(d.returnValue === "ok"); d.returnValue = ""; d.showModal(); });
+}
+const chanName = id => cfg?.channels.find(c => c.id === id)?.name ?? id;
+
+// ---------------------------------------------------------------- tabs
+function showTab(t) {
+  tab = t; history.replaceState(null, "", "#" + t);
+  for (const x of TABS) { $("#t-" + x).classList.toggle("active", x === t); $("#pane-" + x).classList.toggle("on", x === t); }
+}
+for (const t of TABS) $("#t-" + t).onclick = () => showTab(t);
+
+// ---------------------------------------------------------------- alerts
+function kindLabel(k) { return cfg?.kinds.find(x => x.id === k)?.label ?? k; }
+function chips(a) {
+  return `<div class="chips">${a.deliveries.map(d => `<span class="chip ${esc(d.status)}" title="${esc(`${when(d.time)} · ${d.event}${d.note ? " · " + d.note : ""}${d.attempts > 1 ? " · " + d.attempts + " tries" : ""}`)}">${esc(d.channelName)}: ${esc(d.status)}${d.event === "resolved" ? " (resolved)" : ""}</span>`).join("") || '<span class="muted">nobody</span>'}</div>`;
+}
+function actions(a) {
+  const b = [];
+  if (a.state === "active" && !a.ackTime) b.push(`<button class="small" data-ack="${esc(a.id)}" title="Say you are looking at it. It stops repeating its message, and still sends one when it clears.">Acknowledge</button>`);
+  if (a.mutedUntil) b.push(`<button class="small" data-unmute="${esc(a.id)}" title="Muted until ${esc(when(a.mutedUntil))}">Unmute</button>`);
+  else if (a.kind !== "test" && a.kind !== "report") b.push(`<button class="small" data-mute="${esc(a.id)}" title="Send nothing about this alert for a while">Mute…</button>`);
+  return b.join(" ");
+}
+function paintAlerts() {
+  if (!data || !cfg) return;
+  const s = data.status;
+  const pill = $("#status");
+  pill.className = "pill " + (s.critical ? "err" : s.warning ? "warn" : "ok");
+  pill.textContent = s.critical ? `${s.critical} critical` + (s.warning ? `, ${s.warning} warning` : "") : s.warning ? `${s.warning} warning${s.warning > 1 ? "s" : ""}` : "all clear";
+  const c = $("#c-alerts"); const n = s.critical + s.warning + s.info;
+  c.hidden = !n; c.textContent = n; c.className = "count " + (s.critical ? "crit" : "warn");
+  $("#active-pill").className = "pill " + (data.active.length ? (s.critical ? "err" : "warn") : "ok");
+  $("#active-pill").textContent = data.active.length ? `${data.active.length} active` : "none";
+  $("#active-empty").hidden = data.active.length > 0;
+  $("#active").innerHTML = data.active.map(a => `<div class="alert ${esc(a.severity)}">
+      <div class="t"><span class="sev-${esc(a.severity)}">${sevName(esc(a.severity))}</span> · ${esc(a.title)}</div>
+      <div class="m">${esc(a.message)}</div>
+      <div class="muted">since ${esc(when(a.firstTime))} (${esc(ago(a.firstTime))})${a.count > 1 ? ` · ${a.count} times` : ""}${a.ackTime ? ` · acknowledged by ${esc(a.ackBy)}` : ""}${a.mutedUntil ? ` · muted until ${esc(a.mutedUntil.startsWith("9999") ? "unmuted" : when(a.mutedUntil))}` : ""}</div>
+      ${chips(a)}
+      <div class="bar">${actions(a)}</div></div>`).join("");
+
+  const kind = $("#h-kind").value, onlyBad = $("#h-problems").checked;
+  const rows = data.history.filter(a => (!kind || a.kind === kind) && (!onlyBad || a.deliveries.some(d => d.status === "failed")));
+  $("#hist-empty").hidden = rows.length > 0;
+  $("#hist tbody").innerHTML = rows.map(a => `<tr class="${esc(a.state)}">
+      <td data-l="When" title="${esc(a.lastTime !== a.firstTime ? "last " + when(a.lastTime) : "")}">${esc(when(a.firstTime))}</td>
+      <td data-l="Alert"><span class="sev-${esc(a.severity)}">${sevName(esc(a.severity))}</span> ${esc(a.title)}${a.count > 1 ? ` <span class="muted">×${a.count}</span>` : ""}<div class="muted">${esc(a.message)}</div></td>
+      <td data-l="Slot">${a.slot ?? ""}</td>
+      <td data-l="State"><span class="pill ${a.state === "active" ? "warn" : a.state === "resolved" ? "ok" : ""}">${esc(a.state === "resolved" ? "resolved " + ago(a.resolvedTime) : a.state)}</span>${a.ackTime ? `<div class="muted">acknowledged</div>` : ""}</td>
+      <td data-l="Sent to">${chips(a)}</td>
+      <td>${actions(a)}</td></tr>`).join("");
+}
+$("#h-kind").onchange = $("#h-problems").onchange = paintAlerts;
+document.addEventListener("click", async e => {
+  const t = e.target.closest("button"); if (!t) return;
+  try {
+    if (t.dataset.ack) { await api(`/api/alerts/${t.dataset.ack}/ack`, "POST"); await refresh(); flash("Acknowledged"); }
+    else if (t.dataset.unmute) { await api(`/api/alerts/${t.dataset.unmute}/unmute`, "POST"); await refresh(); flash("Unmuted"); }
+    else if (t.dataset.mute) {
+      const a = [...data.active, ...data.history].find(x => x.id === t.dataset.mute);
+      $("#mu-text").textContent = a ? `“${a.title}” and any later alert like it.` : "";
+      const d = $("#mu-dlg"); d.returnValue = ""; d.onclose = async () => {
+        if (d.returnValue !== "ok") return;
+        const m = +$("#mu-for").value;
+        try { await api(`/api/alerts/${t.dataset.mute}/mute`, "POST", m ? { minutes: m } : {}); await refresh(); flash("Muted"); } catch (er) { fail(er.message); }
+      }; d.showModal();
+    }
+  } catch (er) { fail(er.message); }
+});
+async function refresh() {
+  try { data = await api("/api/alerts"); paintAlerts(); } catch (e) { if (!/access key/.test(e.message)) fail(e.message); }
+}
+
+// browser notifications
+function paintNotify() {
+  const a = window.openvpAlerts;
+  $("#notify-desktop").hidden = !a.desktop; $("#notify-browser").hidden = a.desktop;
+  if (a.desktop) return;
+  $("#notify-on").checked = a.enabled();
+  if (!a.supported()) { $("#notify-on").disabled = true; $("#notify-note").textContent = "This browser can't show notifications."; }
+  else if (a.permission() === "denied") $("#notify-note").textContent = "Notifications are blocked for this site. Allow them in the browser's site settings, then tick the box again.";
+}
+$("#notify-on").onchange = async e => {
+  if (e.target.checked) { if (!(await openvpAlerts.enable())) { e.target.checked = false; fail("The browser didn't allow notifications."); } else flash("Notifications on"); }
+  else { openvpAlerts.disable(); flash("Notifications off"); }
+  paintNotify();
+};
+
+// ---------------------------------------------------------------- channels
+function chanSummary(c) {
+  switch (c.type) {
+    case "email": return `${c.host}:${c.port} (${c.security}) · from ${c.from} · to ${c.to}`;
+    case "teams": case "slack": return c.hasUrl ? `webhook ${c.urlHint}` : "no webhook address saved";
+    case "ntfy": return `${c.url} · topic ${c.topic}${c.hasToken ? " · token saved" : ""}`;
+    case "webhook": return `${c.url}${c.hasSecret ? " · signed" : ""}`;
+    default: return "Notifications in the desktop app and in browsers with a console page open";
+  }
+}
+function lastDelivery(id) {
+  const all = (data?.history ?? []).flatMap(a => a.deliveries.filter(d => d.channelId === id && d.status !== "suppressed"));
+  all.sort((a, b) => new Date(b.time) - new Date(a.time));
+  return all[0];
+}
+function paintChannels() {
+  if (!cfg) return;
+  $("#channels").innerHTML = cfg.channels.map(c => {
+    const l = lastDelivery(c.id);
+    return `<div class="item ${c.enabled ? "" : "off"}" data-id="${esc(c.id)}">
+      <div class="what"><b>${esc(c.name)}</b> <span class="pill info">${esc(KIND_WORD[c.type] || c.type)}</span> ${c.enabled ? "" : '<span class="pill">off</span>'}
+        <div class="sub">${esc(chanSummary(c))}</div>
+        <div class="sub">${l ? `last send ${esc(ago(l.time))}: <span class="chip ${esc(l.status)}">${esc(l.status)}</span>${l.status === "failed" && l.note ? " " + esc(l.note) : ""}` : "nothing sent yet"}</div></div>
+      <button class="small" data-test="${esc(c.id)}">Test</button><button class="small" data-edit-ch="${esc(c.id)}">Edit</button><button class="small danger" data-del-ch="${esc(c.id)}">Remove</button>
+      <div class="testout" id="test-${esc(c.id)}"></div></div>`;
+  }).join("") || `<div class="muted">No channels.</div>`;
+}
+$("#channels").addEventListener("click", async e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.test) {
+    const out = $("#test-" + b.dataset.test); out.textContent = "Sending…"; out.className = "testout muted"; b.disabled = true;
+    try {
+      const d = await api(`/api/alerts/channels/${b.dataset.test}/test`, "POST");
+      out.className = "testout " + (d.status === "sent" ? "pill ok" : "err");
+      out.textContent = d.status === "sent" ? `Sent (${d.ms.toFixed(0)} ms${d.note ? ", " + d.note : ""}).` : `Failed: ${d.note || "no reason given"}`;
+    } catch (er) { out.className = "testout err"; out.textContent = er.message; }
+    b.disabled = false; refresh();
+  } else if (b.dataset.editCh) openChannel(cfg.channels.find(c => c.id === b.dataset.editCh));
+  else if (b.dataset.delCh) {
+    const c = cfg.channels.find(x => x.id === b.dataset.delCh);
+    if (!(await confirmBox(`Remove “${c.name}”?`, "Rules that send to it stop sending there. Its saved password or address is deleted.", "Remove"))) return;
+    try { cfg = await api(`/api/alerts/channels/${c.id}`, "DELETE"); paintAll(); flash("Removed"); } catch (er) { fail(er.message); }
+  }
+});
+$("#ch-add").onclick = () => openChannel(null);
+function chType() { return $("#c-type").value; }
+function showChFields() {
+  const t = chType();
+  $("#f-email").hidden = t !== "email"; $("#f-hook").hidden = !(t === "teams" || t === "slack"); $("#f-ntfy").hidden = t !== "ntfy"; $("#f-webhook").hidden = t !== "webhook"; $("#f-desktop").hidden = t !== "desktop";
+  $("#c-hook-label").textContent = t === "teams" ? "Teams webhook address (a Workflows webhook or an Incoming Webhook connector)" : "Slack incoming webhook address";
+  $("#c-hook-note").textContent = t === "teams" ? "In Teams: Workflows, “Post to a channel when a webhook request is received”, then copy the address it gives you. Anyone with the address can post to the channel, so it is kept like a password." : "In Slack: create an app with Incoming Webhooks, add it to a channel and copy the address (https://hooks.slack.com/services/…). Anyone with the address can post to the channel, so it is kept like a password.";
+  if (!editing && !$("#c-name").dataset.touched) $("#c-name").value = KIND_WORD[t] || "";
+  if (!editing && t === "email" && !$("#c-host").value) $("#c-port").value = 587;
+}
+$("#c-type").onchange = showChFields;
+$("#c-name").oninput = () => $("#c-name").dataset.touched = "1";
+$("#c-sec").onchange = () => { if (!editing) $("#c-port").value = { starttls: 587, ssl: 465, none: 25 }[$("#c-sec").value]; };
+function openChannel(c) {
+  editing = c;
+  const types = cfg.types.filter(t => t !== "desktop" || c?.type === "desktop" || !cfg.channels.some(x => x.type === "desktop"));
+  $("#c-type").innerHTML = types.map(t => `<option value="${t}">${esc(KIND_WORD[t])}</option>`).join("");
+  $("#c-type").value = c?.type ?? "email"; $("#c-type").disabled = !!c;
+  $("#ch-title").textContent = c ? `Edit “${c.name}”` : "Add a channel";
+  $("#c-name").dataset.touched = c ? "1" : ""; $("#c-name").value = c?.name ?? "";
+  $("#c-on").checked = c?.enabled ?? true;
+  $("#c-host").value = c?.host ?? ""; $("#c-port").value = c?.port ?? 587; $("#c-sec").value = c?.security ?? "starttls"; $("#c-user").value = c?.username ?? ""; $("#c-from").value = c?.from ?? ""; $("#c-to").value = c?.to ?? "";
+  $("#c-pass").value = ""; $("#c-pass").placeholder = c?.hasPassword ? "saved: leave empty to keep it" : ""; $("#c-pass-keep").hidden = !c?.hasPassword; $("#c-pass-clear").checked = false;
+  $("#c-hook").value = ""; $("#c-hook").placeholder = c?.hasUrl ? `saved (${c.urlHint}): leave empty to keep it` : "https://…";
+  $("#c-nserver").value = c?.url ?? ""; $("#c-ntopic").value = c?.topic ?? ""; $("#c-ntoken").value = ""; $("#c-ntoken").placeholder = c?.hasToken ? "saved: leave empty to keep it" : ""; $("#c-ntoken-keep").hidden = !c?.hasToken; $("#c-ntoken-clear").checked = false;
+  $("#c-wurl").value = c?.type === "webhook" ? c.url ?? "" : ""; $("#c-wsecret").value = ""; $("#c-wsecret").placeholder = c?.hasSecret ? "saved: leave empty to keep it" : ""; $("#c-wsecret-keep").hidden = !c?.hasSecret; $("#c-wsecret-clear").checked = false;
+  $("#ch-err").textContent = ""; showChFields(); $("#ch-dlg").returnValue = ""; $("#ch-dlg").showModal();
+}
+$("#ch-cancel").onclick = () => $("#ch-dlg").close("cancel");
+$("#ch-form").onsubmit = async e => {
+  e.preventDefault();
+  const t = chType(), body = { type: t, name: $("#c-name").value, enabled: $("#c-on").checked };
+  if (t === "email") {
+    Object.assign(body, { host: $("#c-host").value, port: +$("#c-port").value, security: $("#c-sec").value, username: $("#c-user").value, from: $("#c-from").value, to: $("#c-to").value });
+    if ($("#c-pass-clear").checked) body.password = ""; else if ($("#c-pass").value) body.password = $("#c-pass").value;
+  } else if (t === "teams" || t === "slack") { if ($("#c-hook").value) body.url = $("#c-hook").value; else if (!editing?.hasUrl) body.url = ""; }
+  else if (t === "ntfy") {
+    Object.assign(body, { url: $("#c-nserver").value, topic: $("#c-ntopic").value });
+    if ($("#c-ntoken-clear").checked) body.token = ""; else if ($("#c-ntoken").value) body.token = $("#c-ntoken").value;
+  } else if (t === "webhook") {
+    body.url = $("#c-wurl").value;
+    if ($("#c-wsecret-clear").checked) body.secret = ""; else if ($("#c-wsecret").value) body.secret = $("#c-wsecret").value;
+  }
+  $("#ch-ok").disabled = true;
+  try {
+    const r = await api(editing ? `/api/alerts/channels/${editing.id}` : "/api/alerts/channels", editing ? "PUT" : "POST", body);
+    cfg = r.config; $("#ch-dlg").close("ok"); paintAll(); flash();
+  } catch (er) { $("#ch-err").textContent = er.message; }
+  $("#ch-ok").disabled = false;
+};
+
+// ---------------------------------------------------------------- rules
+function ruleSummary(r) {
+  const kinds = r.kinds.length ? r.kinds.map(kindLabel).join("; ") : "all alerts";
+  const slots = r.slots.length ? `slot${r.slots.length > 1 ? "s" : ""} ${r.slots.join(", ")}` : "any slot";
+  const to = r.channels.length ? r.channels.map(chanName).join(", ") : "nowhere";
+  return `${kinds} · ${slots} · ${sevName(r.minSeverity)} or worse → ${to}`
+    + (r.quiet.enabled ? ` · quiet ${r.quiet.start}–${r.quiet.end}${r.quiet.allowCritical ? " (not critical)" : ""}` : "")
+    + (r.repeatMinutes != null ? ` · repeat ${r.repeatMinutes} min` : "") + (r.notifyResolved ? "" : " · no resolved message");
+}
+function paintRules() {
+  if (!cfg) return;
+  $("#rules-empty").hidden = cfg.rules.length > 0;
+  $("#rules").innerHTML = cfg.rules.map(r => `<div class="item ${r.enabled ? "" : "off"}">
+      <div class="what"><b>${esc(r.name)}</b> ${r.enabled ? "" : '<span class="pill">off</span>'}<div class="sub">${esc(ruleSummary(r))}</div></div>
+      <button class="small" data-edit-ru="${esc(r.id)}">Edit</button><button class="small danger" data-del-ru="${esc(r.id)}">Remove</button></div>`).join("");
+  const s = cfg.settings;
+  if (document.activeElement?.closest("#settings-form") == null) { $("#s-repeat").value = s.repeatMinutes; $("#s-offline").value = s.deviceOfflineSeconds; $("#s-disk").value = s.diskLowMb; $("#s-url").value = s.consoleUrl ?? ""; }
+}
+$("#rules").addEventListener("click", async e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.editRu) openRule(cfg.rules.find(r => r.id === b.dataset.editRu));
+  else if (b.dataset.delRu) {
+    const r = cfg.rules.find(x => x.id === b.dataset.delRu);
+    if (!(await confirmBox(`Remove the rule “${r.name}”?`, "Alerts it matched may stop being sent.", "Remove"))) return;
+    try { cfg = await api("/api/alerts/config", "PUT", { rules: cfg.rules.filter(x => x.id !== r.id) }); paintAll(); flash("Removed"); } catch (er) { fail(er.message); }
+  }
+});
+$("#rule-add").onclick = () => openRule(null);
+const quietSync = () => { $("#u-quiet-row").hidden = $("#u-qc-l").hidden = !$("#u-quiet").checked; };
+$("#u-quiet").onchange = quietSync;
+function openRule(r) {
+  editing = r;
+  $("#ru-title").textContent = r ? `Edit “${r.name}”` : "Add a rule";
+  $("#u-name").value = r?.name ?? "";
+  const kinds = new Set(r?.kinds ?? []);
+  $("#u-kinds").innerHTML = cfg.kinds.map(k => `<label class="inline"><input type="checkbox" value="${esc(k.id)}" ${kinds.has(k.id) ? "checked" : ""}> ${esc(k.label)} <span class="muted mono">${esc(k.id)}</span></label>`).join("");
+  $("#u-slots").value = (r?.slots ?? []).join(", ");
+  $("#u-sev").value = r?.minSeverity ?? "warning";
+  const chans = new Set(r?.channels ?? []);
+  $("#u-chans").innerHTML = cfg.channels.map(c => `<label class="inline"><input type="checkbox" value="${esc(c.id)}" ${chans.has(c.id) ? "checked" : ""}> ${esc(c.name)}</label>`).join("") || `<span class="muted">Add a channel first.</span>`;
+  $("#u-repeat").value = r?.repeatMinutes ?? ""; $("#u-resolved").checked = r?.notifyResolved ?? true;
+  $("#u-quiet").checked = r?.quiet.enabled ?? false; $("#u-qs").value = r?.quiet.start ?? "22:00"; $("#u-qe").value = r?.quiet.end ?? "07:00"; $("#u-qc").checked = r?.quiet.allowCritical ?? true;
+  $("#u-on").checked = r?.enabled ?? true; quietSync();
+  $("#ru-err").textContent = ""; $("#ru-dlg").returnValue = ""; $("#ru-dlg").showModal();
+}
+$("#ru-cancel").onclick = () => $("#ru-dlg").close("cancel");
+$("#ru-form").onsubmit = async e => {
+  e.preventDefault();
+  const slots = $("#u-slots").value.split(/[,\s]+/).filter(Boolean).map(Number);
+  if (slots.some(n => !Number.isInteger(n) || n < 1)) { $("#ru-err").textContent = "Slots are numbers like 1, 2."; return; }
+  const rule = {
+    id: editing?.id ?? "", name: $("#u-name").value || "Rule", enabled: $("#u-on").checked,
+    kinds: [...$("#u-kinds").querySelectorAll("input:checked")].map(i => i.value), slots, minSeverity: $("#u-sev").value,
+    channels: [...$("#u-chans").querySelectorAll("input:checked")].map(i => i.value),
+    quiet: { enabled: $("#u-quiet").checked, start: $("#u-qs").value || "22:00", end: $("#u-qe").value || "07:00", allowCritical: $("#u-qc").checked },
+    repeatMinutes: $("#u-repeat").value === "" ? null : +$("#u-repeat").value, notifyResolved: $("#u-resolved").checked
+  };
+  const rules = editing ? cfg.rules.map(x => x.id === editing.id ? rule : x) : [...cfg.rules, rule];
+  try { cfg = await api("/api/alerts/config", "PUT", { rules }); $("#ru-dlg").close("ok"); paintAll(); flash(); } catch (er) { $("#ru-err").textContent = er.message; }
+};
+$("#settings-form").onsubmit = async e => {
+  e.preventDefault();
+  try {
+    cfg = await api("/api/alerts/config", "PUT", { settings: { repeatMinutes: +$("#s-repeat").value, deviceOfflineSeconds: +$("#s-offline").value, diskLowMb: +$("#s-disk").value, consoleUrl: $("#s-url").value.trim() || null } });
+    $("#s-err").textContent = ""; paintAll(); flash();
+  } catch (er) { $("#s-err").textContent = er.message; }
+};
+
+// ---------------------------------------------------------------- thresholds
+const metric = id => cfg.metrics.find(m => m.id === id);
+function paintThresholds() {
+  if (!cfg) return;
+  $("#th-empty").hidden = cfg.thresholds.length > 0;
+  const fmt = (v, m) => v == null ? "–" : `${v} ${m?.unit ?? ""}`;
+  $("#th tbody").innerHTML = cfg.thresholds.map(t => { const m = metric(t.metric); return `<tr class="${t.enabled ? "" : "resolved"}">
+      <td data-l="Measures">${esc(m?.label ?? t.metric)}</td><td data-l="Slot">${t.slot ?? (m?.each ? "each slot" : "all")}</td>
+      <td class="num" data-l="Warning">${esc(fmt(t.warn, m))}</td><td class="num" data-l="Critical">${esc(fmt(t.crit, m))}</td><td class="num" data-l="For">${t.forSeconds} s</td>
+      <td data-l="On"><input type="checkbox" data-th-on="${esc(t.id)}" ${t.enabled ? "checked" : ""} aria-label="On"></td>
+      <td><button class="small" data-edit-th="${esc(t.id)}">Edit</button> <button class="small danger" data-del-th="${esc(t.id)}">Remove</button></td></tr>`; }).join("");
+}
+async function saveThresholds(list) { cfg = await api("/api/alerts/config", "PUT", { thresholds: list }); paintAll(); flash(); }
+$("#th").addEventListener("click", async e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.editTh) openThreshold(cfg.thresholds.find(t => t.id === b.dataset.editTh));
+  else if (b.dataset.delTh) { try { await saveThresholds(cfg.thresholds.filter(t => t.id !== b.dataset.delTh)); } catch (er) { fail(er.message); } }
+});
+$("#th").addEventListener("change", async e => {
+  const id = e.target.dataset.thOn; if (!id) return;
+  try { await saveThresholds(cfg.thresholds.map(t => t.id === id ? { ...t, enabled: e.target.checked } : t)); } catch (er) { fail(er.message); paintThresholds(); }
+});
+$("#th-add").onclick = () => openThreshold(null);
+function thSync() {
+  const m = metric($("#t-metric").value);
+  $("#t-unit").textContent = m ? `Measured in ${m.unit}.` + (m.id === "longestEvent" ? " This is the event the slot thread is running right now, so a handler that never returns keeps climbing." : m.id === "devicesOffline" ? " Counts devices that were online before and are offline now, in running slots." : "") : "";
+  $("#t-slot-l").hidden = m && !m.each && m.id !== "devicesOffline";
+  $("#t-slot").options[0].textContent = m?.each ? "Each slot on its own" : "All slots together";
+}
+$("#t-metric").onchange = thSync;
+function openThreshold(t) {
+  editing = t;
+  $("#th-title").textContent = t ? "Edit threshold" : "Add a threshold";
+  $("#t-metric").innerHTML = cfg.metrics.map(m => `<option value="${esc(m.id)}">${esc(m.label)}</option>`).join(""); $("#t-metric").value = t?.metric ?? "cpu";
+  $("#t-slot").innerHTML = `<option value="">Each slot</option>` + slotList.map(s => `<option value="${s.number}">Slot ${s.number}${s.name ? " · " + esc(s.name) : ""}</option>`).join("");
+  $("#t-slot").value = t?.slot ?? "";
+  $("#t-warn").value = t?.warn ?? ""; $("#t-crit").value = t?.crit ?? ""; $("#t-for").value = t?.forSeconds ?? 30; $("#t-on").checked = t?.enabled ?? true;
+  $("#th-err").textContent = ""; thSync(); $("#th-dlg").returnValue = ""; $("#th-dlg").showModal();
+}
+$("#th-cancel").onclick = () => $("#th-dlg").close("cancel");
+$("#th-form").onsubmit = async e => {
+  e.preventDefault();
+  const m = metric($("#t-metric").value);
+  const def = { id: editing?.id ?? "", metric: m.id, slot: $("#t-slot-l").hidden || $("#t-slot").value === "" ? null : +$("#t-slot").value,
+    warn: $("#t-warn").value === "" ? null : +$("#t-warn").value, crit: $("#t-crit").value === "" ? null : +$("#t-crit").value, forSeconds: +$("#t-for").value || 0, enabled: $("#t-on").checked };
+  try { await saveThresholds(editing ? cfg.thresholds.map(t => t.id === editing.id ? def : t) : [...cfg.thresholds, def]); $("#th-dlg").close("ok"); } catch (er) { $("#th-err").textContent = er.message; }
+};
+
+// ---------------------------------------------------------------- report
+function paintReport() {
+  if (!cfg) return;
+  if (document.activeElement?.closest("#rep-form")) return;
+  const r = cfg.report;
+  $("#r-on").checked = r.enabled; $("#r-freq").value = r.frequency; $("#r-day").value = r.day; $("#r-time").value = r.time;
+  $("#r-day-l").hidden = r.frequency !== "weekly" && $("#r-freq").value !== "weekly";
+  const sel = new Set(r.channels);
+  $("#r-chans").innerHTML = cfg.channels.filter(c => c.type !== "desktop").map(c => `<label class="inline"><input type="checkbox" value="${esc(c.id)}" ${sel.has(c.id) ? "checked" : ""}> ${esc(c.name)}</label>`).join("") || `<span class="muted">Add an email, Teams, Slack, ntfy or webhook channel first.</span>`;
+  $("#r-last").textContent = cfg.reportLastSent ? `Last scheduled report: ${when(cfg.reportLastSent)}.` : r.enabled ? "The first one goes out at the next scheduled time." : "";
+}
+$("#r-freq").onchange = () => { $("#r-day-l").hidden = $("#r-freq").value !== "weekly"; };
+const repChans = () => [...$("#r-chans").querySelectorAll("input:checked")].map(i => i.value);
+$("#rep-form").onsubmit = async e => {
+  e.preventDefault();
+  try {
+    cfg = await api("/api/alerts/config", "PUT", { report: { enabled: $("#r-on").checked, frequency: $("#r-freq").value, day: +$("#r-day").value, time: $("#r-time").value || "08:00", channels: repChans() } });
+    $("#r-err").textContent = ""; paintAll(); flash();
+  } catch (er) { $("#r-err").textContent = er.message; }
+};
+$("#r-period").onchange = () => { const p = $("#r-period").value; $("#r-view").href = `/api/reports/preview?period=${p}`; $("#r-dl").href = `/api/reports/preview?period=${p}&download=1`; };
+$("#r-send").onclick = async () => {
+  const out = $("#r-out"); out.className = "testout muted"; out.textContent = "Sending…"; $("#r-send").disabled = true;
+  try {
+    const v = await api("/api/reports/send", "POST", { period: $("#r-period").value, channels: repChans() });
+    const bad = v.deliveries.filter(d => d.status === "failed");
+    out.className = "testout " + (bad.length ? "err" : "");
+    out.innerHTML = v.deliveries.map(d => `<span class="chip ${esc(d.status)}">${esc(d.channelName)}: ${esc(d.status)}${d.note && d.status === "failed" ? " (" + esc(d.note) + ")" : ""}</span>`).join(" ");
+  } catch (er) { out.className = "testout err"; out.textContent = er.message; }
+  $("#r-send").disabled = false; refresh();
+};
+
+// ---------------------------------------------------------------- start
+function paintAll() { paintChannels(); paintRules(); paintThresholds(); paintReport(); paintAlerts(); }
+(async () => {
+  paintNotify();
+  try {
+    cfg = await api("/api/alerts/config");
+    try { slotList = await api("/api/slots"); } catch { }
+    $("#h-kind").innerHTML = `<option value="">All kinds</option>` + cfg.kinds.map(k => `<option value="${esc(k.id)}">${esc(k.label)}</option>`).join("") + `<option value="test">Test messages</option><option value="report">Reports</option>`;
+    await refresh(); paintAll(); showTab(tab);
+  } catch (e) { if (!/access key/.test(e.message)) fail(e.message.includes("Not Found") || e.message.includes("404") ? "Alerts are switched off on this server (OpenVP:Alerts=false)." : e.message); }
+  setInterval(() => { if (!document.hidden) refresh().then(paintChannels); }, 3000);
+})();
+</script>
+</body>
+</html>

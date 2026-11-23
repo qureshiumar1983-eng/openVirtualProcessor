@@ -62,6 +62,8 @@
   .btile .bflags { margin-left:auto; display:flex; gap:4px; flex:none; }
   .btile .bprog { margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .btile .bstats { margin-top:4px; display:flex; gap:10px; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; flex-wrap:wrap; }
+  .abadge { display:inline-block; min-width:1.6em; text-align:center; margin-left:4px; font-size:11px; padding:0 6px; border-radius:20px; background:var(--warn-bg); color:var(--warn-fg); }
+  .abadge[data-color="red"] { background:var(--err-bg); color:var(--err-fg); }
   .bbadge { font-size:11px; padding:0 6px; border-radius:20px; background:var(--err-bg); color:var(--err-fg); cursor:help; white-space:nowrap; }
   .bbadge.auto { background:var(--info-bg); color:var(--info-fg); }
   .bbadge.osc { background:var(--warn-bg); color:var(--warn-fg); }
@@ -349,7 +351,7 @@
 <body>
 <header>
   <h1>OpenVP</h1><small>open-source virtual control processor</small>
-  <span style="flex:1"></span><span id="saved" role="status" aria-live="polite"></span><span id="sigfind-wrap"><input id="sigfind" type="search" placeholder="Find a signal in all slots" aria-label="Find a signal by name in every loaded slot" autocomplete="off" title="Finds signals by name across all loaded slots and opens that slot's debugger on the one you pick (press F)" data-help="signal-search"><div id="sigfind-res" hidden></div></span><button class="hbtn" id="pal-open" title="Search every action and every help topic (Ctrl+K or Cmd+K)" data-help="palette">Search ⌘K</button><button class="hbtn" id="keys-open" title="Keyboard shortcuts (?)" data-help="palette">?</button><button class="hbtn" id="tpl-open" title="Starter projects to download: a SIMPL# Pro program and a CH5 panel" data-help="templates">Templates</button><button class="theme-btn" data-theme-toggle data-help="top-bar"></button><a href="devices.html" id="devices-link" target="openvp-devices" data-help="devices" title="Device simulators, COM terminal, socket sniffer, network redirects and discovery for the selected slot">Devices ↗</a><a href="metrics.html" target="openvp-metrics" data-help="metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="integrations.html" id="integrations-link" target="openvp-integrations" data-help="integrations" title="MQTT and Home Assistant, webhooks, OSC, Art-Net and Prometheus for the selected slot">Integrations ↗</a><a href="panel.html" target="_blank" data-help="panel" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a><a href="#welcome" id="welcome-link" title="Show the welcome screen again">Welcome</a>
+  <span style="flex:1"></span><span id="saved" role="status" aria-live="polite"></span><span id="sigfind-wrap"><input id="sigfind" type="search" placeholder="Find a signal in all slots" aria-label="Find a signal by name in every loaded slot" autocomplete="off" title="Finds signals by name across all loaded slots and opens that slot's debugger on the one you pick (press F)" data-help="signal-search"><div id="sigfind-res" hidden></div></span><button class="hbtn" id="pal-open" title="Search every action and every help topic (Ctrl+K or Cmd+K)" data-help="palette">Search ⌘K</button><button class="hbtn" id="keys-open" title="Keyboard shortcuts (?)" data-help="palette">?</button><button class="hbtn" id="tpl-open" title="Starter projects to download: a SIMPL# Pro program and a CH5 panel" data-help="templates">Templates</button><button class="theme-btn" data-theme-toggle data-help="top-bar"></button><a href="devices.html" id="devices-link" target="openvp-devices" data-help="devices" title="Device simulators, COM terminal, socket sniffer, network redirects and discovery for the selected slot">Devices ↗</a><a href="metrics.html" target="openvp-metrics" data-help="metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="alerts.html" id="alerts-link" target="openvp-alerts" data-help="alerts" title="Alerts to email, Teams, Slack and your phone; thresholds and health reports">Alerts ↗<span class="abadge" id="alerts-badge" hidden></span></a><a href="integrations.html" id="integrations-link" target="openvp-integrations" data-help="integrations" title="MQTT and Home Assistant, webhooks, OSC, Art-Net and Prometheus for the selected slot">Integrations ↗</a><a href="panel.html" target="_blank" data-help="panel" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a><a href="#welcome" id="welcome-link" title="Show the welcome screen again">Welcome</a>
 </header>
 <div id="slot-strip" aria-label="Selected slot"><select id="strip-slot" aria-label="Slot"></select><button id="strip-start" title="Start">▶</button><button id="strip-stop" title="Stop">■</button><button id="strip-restart" title="Restart">↻</button></div>
 <div id="net-bar" data-help="internet">
@@ -656,6 +658,7 @@
   <div class="row"><button type="button" id="welcome-skip">Skip</button><button type="button" id="welcome-demo" title="Load the SIMPL# and SIMPL Windows samples into slots 1 and 2, linked over EISC, and open a test panel">Try the demo</button><button value="ok" id="welcome-go" autofocus>Get started</button></div>
 </form></dialog>
 <script src="openvp-auth.js"></script>
+<script src="openvp-alerts.js"></script>
 <script src="qrcode.js"></script>
 <script src="openvp-log.js"></script>
 <script>
@@ -2050,6 +2053,11 @@ function paletteItems() {
     add(`Share panel for IP ID ${d.ipId} (slot ${d.slot})`, "make a link", () => openShare(d.slot, d.ipId), "link qr pin");
   }
   add("Open metrics", "new window", () => openMetrics(0), "cpu memory");
+  add("Open alerts", "new window", () => window.open("alerts.html", "openvp-alerts"), "notify email teams slack ntfy threshold report");
+  add("Alerts: add a channel (email, Teams, Slack, ntfy)", "Alerts", () => window.open("alerts.html#channels", "openvp-alerts"), "notification smtp webhook");
+  add("Uptime and offline heat map", "Metrics", () => window.open("metrics.html#uptime", "openvp-metrics"), "availability history panels dropped");
+  add("Metrics history graphs", "Metrics", () => window.open("metrics.html#history", "openvp-metrics"), "cpu memory days week month");
+  add("Health report: view or send", "Alerts", () => window.open("alerts.html#report", "openvp-alerts"), "summary email daily weekly");
   add(`Open integrations for slot ${sel}`, "new window", () => window.open(`integrations.html?slot=${sel}`, "openvp-integrations"), "mqtt home assistant webhook osc art-net artnet dmx prometheus grafana");
   add("MQTT: connect a broker", "Integrations", () => window.open(`integrations.html?slot=${sel}#mqtt`, "openvp-integrations"), "mqtt broker home assistant publish");
   add("Webhooks: send and receive", "Integrations", () => window.open(`integrations.html?slot=${sel}#hooks`, "openvp-integrations"), "webhook http post incoming outgoing");
@@ -2459,6 +2467,7 @@ refreshHistory();
 setInterval(() => { if (!document.hidden) pollRecording(); }, 700);
 setInterval(refreshSlots, 3000);
 refreshBoard(); setInterval(refreshBoard, 2000);
+openvpAlerts.badge($("#alerts-badge"));
 refreshActivity(); setInterval(() => { if (!document.hidden) refreshActivity(); }, 3000);
 setInterval(() => { if (!document.hidden) refreshIpTable(); }, 2000);
 </script>

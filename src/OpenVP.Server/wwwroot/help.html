@@ -62,6 +62,7 @@
     <a href="#integrations">Integrations</a>
     <a href="#debugger">Debugger</a>
     <a href="#paths">Paths</a>
+    <a href="#alerts">Alerts</a>
     <a href="#metrics">Metrics</a>
     <a href="#panel">Test panel</a>
     <input type="search" id="find" placeholder="Find a button…" autocomplete="off">
@@ -596,6 +597,70 @@
     <dt>Tiles</dt><dd>CPU, memory, threads, thread pool and uptime of the OpenVP process, each with a small chart of the last few minutes.</dd>
     <dt><b>Slots</b> table</dt><dd>One row per program: events per second, how busy it is, how many events are waiting, and what it's running right now. Hold the mouse over a column heading for what it measures.</dd>
     <dt><b>Program threads and background work</b></dt><dd>Threads and background jobs that programs started, and how long each has been running.</dd>
+    <dt><span class="b">Live</span> · <span class="b">History</span> · <span class="b">Uptime</span></dt><dd>The tabs under the title. Live is everything above. History and Uptime are described next. The address ends in <code>#history</code> or <code>#uptime</code> to open one directly.</dd>
+    <dt><span class="b">Alerts</span> (top right)</dt><dd>Opens the Alerts page. The number is how many unacknowledged alerts are going on.</dd>
+  </dl>
+
+  <h3 id="metrics-history">History tab</h3>
+  <p class="muted">Graphs for as far back as 90 days. OpenVP keeps 1-minute averages for 7 days and 15-minute averages for 90 days, so the page still has the numbers after a restart.</p>
+  <dl>
+    <dt><span class="b">5 min</span> … <span class="b">90 days</span></dt><dd>How far back the graphs go. Up to 5 minutes is second by second. More than about 600 points are merged into wider steps; "one point every …" says how wide. The choice is remembered in this browser.</dd>
+    <dt>Slot picker</dt><dd>Shows the lines of one slot in the per-slot graphs (busy, waiting, events per second, longest event) instead of all of them.</dd>
+    <dt>Faint line</dt><dd>The highest value inside each step, so a short spike isn't averaged away. The solid line is the average.</dd>
+    <dt>Dashed lines</dt><dd>Your thresholds: amber for warning, red for critical. Set them on the Alerts page, Thresholds tab.</dd>
+    <dt>Pointing at a graph</dt><dd>A line follows the pointer and a box lists the time and each value (touch the graph on a phone). A gap in a line means OpenVP wasn't running then.</dd>
+  </dl>
+
+  <h3 id="metrics-uptime">Uptime tab</h3>
+  <p class="muted">How much of the time each slot and each panel was available.</p>
+  <dl>
+    <dt><span class="b">24 hours</span> … <span class="b">90 days</span></dt><dd>The period. The page says since when OpenVP has been recording; time before that isn't counted.</dd>
+    <dt>Slots</dt><dd>Available is the share of the time the slot's program was running. Down counts a program that is stopped, faulted, or OpenVP not running. Empty slots aren't counted. The bar is the timeline (green up, red down, grey no data); point at a segment for its time and percentage. Drops is how many times it went from up to down.</dd>
+    <dt>Panels and devices</dt><dd>Available is the share of the time a panel was connected, counted while its slot is running. A device that hasn't connected since OpenVP started isn't counted until it does.</dd>
+    <dt>Offline heat map</dt><dd>One row for each panel that dropped. <span class="b">By hour of the day</span> adds up all the days in the period for each hour (in your time zone), to show when panels tend to drop; <span class="b">By day</span> has a column for each day. Darker means more minutes offline. Point at a cell (or tab to it) for the panel, the time, the minutes and the number of drops.</dd>
+  </dl>
+</section>
+
+<section id="alerts">
+  <h2>Alerts</h2>
+  <p class="muted">Open it with <b>Alerts ↗</b> in the console's top bar. It sends a message when something goes wrong, to email, Microsoft Teams, Slack, ntfy, a webhook or the desktop, and says when it is fine again. Every change here is written to the Activity feed.</p>
+
+  <h3 id="alerts-tab">Alerts tab</h3>
+  <dl>
+    <dt>Notifications on this computer</dt><dd>In the desktop app, notifications and the tray icon are built in. In a browser, tick the box and allow notifications when the browser asks; they show only while an OpenVP page is open in that browser.</dd>
+    <dt>Happening now</dt><dd>Alerts that are still going on, worst first, with when they started and what was sent where.</dd>
+    <dt>History</dt><dd>The last 500 alerts. Each channel shows <b>sent</b>, <b>failed</b> (hover for the reason and tries), <b>queued</b> or <b>suppressed</b>. Suppressed means held back on purpose: the same alert was sent recently, it is quiet hours, the alert is muted or it was acknowledged. <b>only problems with delivery</b> shows alerts a channel failed to get.</dd>
+    <dt><span class="b">Acknowledge</span></dt><dd>Says you are looking at it. It stops repeat messages while it goes on; the message when it clears is still sent.</dd>
+    <dt><span class="b">Mute…</span></dt><dd>Sends nothing about this alert, or later alerts like it, for the time you choose. <span class="b">Unmute</span> undoes it.</dd>
+  </dl>
+
+  <h3 id="alerts-channels">Channels tab</h3>
+  <dl>
+    <dt><span class="b">Add channel…</span></dt><dd>Email needs an SMTP server, port, security (STARTTLS usually port 587, TLS from the start usually 465, none only on a trusted network), a user name and password if the server wants them, a From address and one or more To addresses. Teams and Slack need an incoming webhook address. ntfy needs a topic (and a server other than ntfy.sh, and a token, if you use them). A webhook needs an address and optionally a signing secret.</dd>
+    <dt><span class="b">Test</span></dt><dd>Sends one test message now and shows whether it arrived and why not if it didn't. The test also appears in the history.</dd>
+    <dt>Saved passwords</dt><dd>Passwords, tokens, secrets and Teams and Slack addresses are kept in a file only you can read and are never shown again. Leave the box empty when editing to keep the saved one, or tick Remove.</dd>
+  </dl>
+
+  <h3 id="alerts-rules">Rules tab</h3>
+  <dl>
+    <dt><span class="b">Add rule…</span></dt><dd>Choose which kinds of alert (none ticked means all), which slots (empty means all), the minimum severity, and the channels. An alert goes once to every channel named by every rule it matches.</dd>
+    <dt>Quiet hours</dt><dd>Nothing is sent between the two times (this computer's time; 22:00 to 07:00 crosses midnight). Tick the box under it to let Critical alerts through anyway. A held-back alert shows as suppressed in the history.</dd>
+    <dt>Same alert at most once every</dt><dd>On the rule, or in Defaults for all rules. The same alert isn't sent again within that time, even if it clears and comes back. 0 sends every time. An alert that gets worse is sent at once.</dd>
+    <dt>Send a message when it clears</dt><dd>A "Resolved" message goes to the channels that were told about the alert.</dd>
+    <dt>Defaults</dt><dd>The repeat time, how many seconds a panel or device must stay offline before it raises an alert, the free disk space (in the data folder) below which it alerts, and the address of this console, used for the "Open console" link in messages.</dd>
+  </dl>
+
+  <h3 id="alerts-thresholds">Thresholds tab</h3>
+  <dl>
+    <dt><span class="b">Add threshold…</span></dt><dd>Pick what to measure: CPU %, memory, how busy a slot is, events waiting, the longest event running right now, events per second or devices offline. Set a warning level, a critical level or both, and how many seconds the number must stay there before it counts. It ends when the number has stayed below for 5 seconds. For per-slot measures, "each slot" watches every slot on its own.</dd>
+    <dt>On</dt><dd>Switches one off without deleting it.</dd>
+  </dl>
+
+  <h3 id="alerts-report">Reports tab</h3>
+  <dl>
+    <dt>Send it on a schedule</dt><dd>Every day or every week at the time you set, through the ticked channels. Turning it on doesn't send for a time that has already passed.</dd>
+    <dt><span class="b">Send report now</span></dt><dd>Sends the last 24 hours or 7 days through the ticked channels and shows the result for each.</dd>
+    <dt><span class="b">View report</span> · <span class="b">Download HTML</span></dt><dd>Opens or saves the report as a web page: uptime for each slot, crashes and restarts, alerts, the most frequent events, devices that dropped, peak CPU and memory, and programs loaded or changed.</dd>
   </dl>
 </section>
 

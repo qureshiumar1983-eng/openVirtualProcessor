@@ -26,6 +26,7 @@
   <ItemGroup>
     <!-- SSH server for the processor-style console (MIT, no dependencies). Off unless OpenVP:SshEnabled=true. -->
     <PackageReference Include="FxSsh" Version="1.4.0" />
+    <PackageReference Include="MailKit" Version="4.13.0" />
     <PackageReference Include="MQTTnet" Version="4.3.7.1207" />
   </ItemGroup>
   <ItemGroup>

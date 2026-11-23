@@ -27,6 +27,8 @@
     "files": [
       "main.js",
       "updater.js",
+      "alerts-stream.js",
+      "tray-icon.js",
       "preload.js",
       "loading.html",
       "package.json"
