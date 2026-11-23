@@ -148,7 +148,7 @@
 [assembly: System.Runtime.CompilerServices.TypeForwardedTo(typeof(global::Crestron.SimplSharp.Net.Https.HttpsStreamRequestCallbackEx))]
 [assembly: System.Runtime.CompilerServices.TypeForwardedTo(typeof(global::Crestron.SimplSharp.Net.Https.HttpsStreamResponseCallbackEx))]
 [assembly: System.Runtime.CompilerServices.TypeForwardedTo(typeof(global::Crestron.SimplSharp.Net.Https.RequestType))]
-[assembly: System.Runtime.CompilerServices.TypeForwardedTo(typeof(global::Crestron.SimplSharp.Net.RequestType))]
+[assembly: System.Runtime.CompilerServices.TypeForwardedTo(typeof(global::Crestron.SimplSharp.Net.Https.UrlParser))]
 [assembly: System.Runtime.CompilerServices.TypeForwardedTo(typeof(global::Crestron.SimplSharp.ProgramStatusEventHandler))]
 [assembly: System.Runtime.CompilerServices.TypeForwardedTo(typeof(global::Crestron.SimplSharp.ReadOnlyDictionary<,>))]
 [assembly: System.Runtime.CompilerServices.TypeForwardedTo(typeof(global::Crestron.SimplSharp.Reflection.Activator))]
