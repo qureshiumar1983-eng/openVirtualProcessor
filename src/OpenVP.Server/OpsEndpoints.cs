@@ -564,6 +564,7 @@ public static class OpsEndpoints
             var t = s.Targets.Get(id);
             if (t == null || !s.Targets.Remove(id)) return Error(404, "There's no such target.");
             s.Activity.Add("target.delete", $"Removed the push target “{t.Name}”", null, s.Who(ctx));
+            s.TargetRemoved?.Invoke(id);
             return Results.Ok();
         });
 

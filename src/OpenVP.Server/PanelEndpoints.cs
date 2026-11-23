@@ -17,7 +17,7 @@ internal static class PanelEndpoints
     private static readonly FileExtensionContentTypeProvider Mime = new();
 
     public static void Map(WebApplication app, RouteGroupBuilder slotApi, Processor processor, Ch5Panels ch5, SmartGraphicsStore sg, PanelLayouts layouts,
-        Func<CipServer?> cip, ActivityLog activity, Func<HttpContext, string> actor, Func<int, bool> visible)
+        Func<CipServer?> cip, ActivityLog activity, Func<HttpContext, string> actor, Func<int, bool> visible, Func<object?>? remoteEisc = null)
     {
         var web = app.Environment.WebRootFileProvider;
         string Template(string name)
@@ -165,7 +165,7 @@ internal static class PanelEndpoints
 
         // ------------------------------------------------------------------ rack view
 
-        app.MapGet("/api/rack", () => Rack(processor, cip(), visible));
+        app.MapGet("/api/rack", () => Rack(processor, cip(), visible, remoteEisc));
     }
 
     private static string Inject(string html, string snippet)
@@ -179,7 +179,7 @@ internal static class PanelEndpoints
     }
 
     /// <summary>The processor as a rack: slots, the devices in each one's IP table with their clients and latency, and the EISC links between slots.</summary>
-    internal static object Rack(Processor processor, CipServer? cip, Func<int, bool> visible)
+    internal static object Rack(Processor processor, CipServer? cip, Func<int, bool> visible, Func<object?>? remoteEisc = null)
     {
         var links = new List<object>();
         var seen = new HashSet<string>();
@@ -190,7 +190,7 @@ internal static class PanelEndpoints
             foreach (var d in s.Devices.OrderBy(d => d.IpId))
             {
                 var clients = d.Connections;
-                var cls = clients.Any(c => c.Transport == "EISC") ? DeviceClass.Eisc : DeviceKinds.Classify(d.Type);
+                var cls = clients.Any(c => c.Transport is "EISC" or "Remote EISC") ? DeviceClass.Eisc : DeviceKinds.Classify(d.Type);
                 var peers = clients.Where(c => c.Transport == "EISC").ToList();
                 foreach (var c in peers)
                 {
@@ -208,7 +208,7 @@ internal static class PanelEndpoints
                     online = d.Online,
                     lastOnline = d.LastOnline,
                     lastOffline = d.LastOffline,
-                    clients = clients.Where(c => c.Transport != "EISC").Select(c =>
+                    clients = clients.Where(c => c.Transport is not ("EISC" or "Remote EISC")).Select(c =>
                     {
                         var h = c.LatencyHistory();
                         return new
@@ -230,7 +230,12 @@ internal static class PanelEndpoints
                             joinsOut = Interlocked.Read(ref c.JoinsOut)
                         };
                     }),
-                    eisc = peers.Select(c => new { peer = c.Peer, slot = c.GetDetail("Peer slot"), ipId = c.GetDetail("Peer IP ID") })
+                    eisc = peers.Select(c => new { peer = c.Peer, slot = c.GetDetail("Peer slot"), ipId = c.GetDetail("Peer IP ID") }),
+                    remote = clients.Where(c => c.Transport == "Remote EISC").Select(c => new
+                    {
+                        peer = c.Peer, link = c.GetDetail("Link"), remoteSlot = c.GetDetail("Remote slot"), remoteIpId = c.GetDetail("Remote IP ID"), connectedAt = c.ConnectedAt,
+                        latencyMs = c.LatencyMs < 0 ? (double?)null : c.LatencyMs, joinsIn = Interlocked.Read(ref c.JoinsIn), joinsOut = Interlocked.Read(ref c.JoinsOut)
+                    })
                 });
             }
             slots.Add(new
@@ -250,7 +255,8 @@ internal static class PanelEndpoints
             now = DateTimeOffset.Now,
             cip = cip == null ? null : new { port = cip.Port, sessions = cip.SessionCount, heartbeatProbe = cip.ProbeHeartbeats },
             slots,
-            links
+            links,
+            remoteEisc = remoteEisc?.Invoke()
         };
     }
 }

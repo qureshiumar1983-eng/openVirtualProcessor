@@ -298,7 +298,7 @@ public static class SecurityEndpoints
             var p = z.Resolve(ctx);
             try
             {
-                if (!Permissions.TryParseScope(Str(body, "scope"), out var scope)) return Error(400, "Choose a scope: read-only, operator, programmer or admin.");
+                if (!Permissions.TryParseScope(Str(body, "scope"), out var scope)) return Error(400, "Choose a scope: read-only, operator, programmer, admin or eisc-link.");
                 DateTimeOffset? expires = null;
                 if (Str(body, "expires") is { Length: > 0 } es) { if (!DateTimeOffset.TryParse(es, out var d)) return Error(400, "The expiry isn't a date and time."); expires = d; }
                 else if (Int(body, "expiresInDays") is { } days && days > 0) expires = DateTimeOffset.UtcNow.AddDays(days);

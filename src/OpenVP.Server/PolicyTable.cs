@@ -25,6 +25,9 @@ public static class PolicyTable
         # Browser panels: open unless OpenVP:PanelsRequireKey, then they need Signal.
         panel * /ws/panel
 
+        # The other end of a remote EISC link: an API token of scope eisc-link (or an Admin), and only when Remote EISC is on in Labs.
+        Eisc * /ws/eisc
+
         # Prometheus: open with OpenVP:MetricsPublic, else View.
         metrics GET /metrics
 
@@ -40,18 +43,23 @@ public static class PolicyTable
         View GET /api/devices
         View GET /api/discovery
         View GET /api/https/certificate
+        View GET /api/compat
+        View GET /api/examples
         View GET /api/integrations
         View GET /api/integrations/artnet
         View GET /api/integrations/mqtt
         View GET /api/integrations/osc
         View GET /api/integrations/prometheus
         View GET /api/locks
+        View GET /api/labs
         View GET /api/log
         View POST /api/me/password
         View GET /api/metrics
         View GET /api/metrics/history
         View GET /api/network
         View GET /api/panels
+        View GET /api/plugins
+        View * /api/plugins/{name}/{**path}
         View GET /api/panels/sg
         View GET /api/rack
         View GET /emulate/{ps:int}/{pi}/as/{ts:int}/{ti}
@@ -63,6 +71,8 @@ public static class PolicyTable
         View GET /api/slots/{n:int}/panels/{ipid}/sg/assets/{name}
         View GET /api/presence
         View GET /api/recent
+        View POST /api/report/draft
+        View POST /api/report/url
         View GET /api/reports/data
         View GET /api/reports/preview
         View GET /api/schedules
@@ -157,6 +167,7 @@ public static class PolicyTable
         LoadProgram POST /api/check
         LoadProgram POST /api/check/path
         LoadProgram POST /api/demo +all
+        LoadProgram POST /api/examples/{id}/load
         LoadProgram POST /api/inspect
         LoadProgram DELETE /api/recent/{id}
         LoadProgram DELETE /api/slots/{n:int}/panels/{ipid}/ch5
@@ -267,6 +278,13 @@ public static class PolicyTable
         Admin GET /api/backups/{id}/download
         Admin POST /api/backups/{id}/preview
         Admin POST /api/export
+        Admin GET /api/eisc-links
+        Admin POST /api/eisc-links
+        Admin PUT /api/eisc-links/{id}
+        Admin DELETE /api/eisc-links/{id}
+        Admin PUT /api/labs/{id}
+        Admin POST /api/plugin-admin/{name}/enable
+        Admin POST /api/plugin-admin/{name}/disable
         Admin GET /api/git
         Admin PUT /api/git
         Admin POST /api/git/commit

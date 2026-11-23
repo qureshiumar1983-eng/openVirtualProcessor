@@ -11,6 +11,7 @@
     <!-- Shipped next to the server (build and publish), so the demo and the starter projects work from OpenVP.exe and Docker too. -->
     <Content Include="../../templates/simpl-sharp/**" Link="templates/simpl-sharp/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../../templates/ch5-panel/**" Link="templates/ch5-panel/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../examples/programs/**" Link="examples/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../../samples/SimplWindows/SampleProgram.smw;../../samples/SimplWindows/SampleProgram.openvp.json" Link="samples/simpl-windows/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <!-- The built sample program and the API stub the SIMPL# starter builds against; picked up below from the projects' outputs. -->
     <ProjectReference Include="../../samples/SampleProgram/SampleProgram.csproj" ReferenceOutputAssembly="false" OutputItemType="BuiltSample" />

@@ -30,6 +30,8 @@ public sealed class OpsServices
     /// <summary>Loads files (the program first) into a slot as an upload. Call with the slot's lock held.</summary>
     public required Func<int, IReadOnlyList<(string Name, byte[] Data)>, bool, string, string, IResult> Install { get; init; }
     public required Action<int> StopWatching { get; init; }
+    /// <summary>Called with a push target's id after it was deleted (remote EISC links that used it go with it).</summary>
+    public Action<string>? TargetRemoved { get; set; }
 }
 
 /// <summary>Uploaded or backup export files waiting in <c>data/tmp/previews</c> between the preview and the import.</summary>

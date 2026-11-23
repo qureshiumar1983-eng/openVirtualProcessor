@@ -8,6 +8,10 @@ using System.Text.RegularExpressions;
 using System.Threading.Channels;
 using OpenVP.Core;
 using OpenVP.Core.Alerts;
+using OpenVP.Core.Community;
+using OpenVP.Core.Eisc;
+using OpenVP.Core.Labs;
+using OpenVP.Core.Plugins;
 using OpenVP.Core.Ops;
 using OpenVP.Core.Security;
 using OpenVP.Lpz;
@@ -913,6 +917,34 @@ public static class OpenVpServer
             Install = (n, files, start, who, how) => Install(n, files, start, who: who, how: how)
         };
         OpsEndpoints.Map(app, slotApi, ops);
+
+        // Community and Labs: experimental switches, remote EISC links, plugins, the compatibility dashboard with its issue report, and the example library.
+        var labs = new LabsStore(processor.DataDirectory, key => cfg.GetValue<bool?>(key));
+        var eiscLinks = new RemoteEiscStore(processor.DataDirectory);
+        var appVersion = typeof(OpenVpServer).Assembly.GetName().Version?.ToString(3) ?? "0.1.0";
+        var eisc = new RemoteEiscManager(processor, eiscLinks, pushTargets, () => labs.IsOn(LabsCatalog.RemoteEisc), RemoteEiscManager.LoadOrCreateInstanceId(processor.DataDirectory), appVersion);
+        var plugins = new PluginHost(processor, processor.DataDirectory, () => labs.IsOn(LabsCatalog.Plugins), (a, t) => activity.Add(a, t, null, Actors.Auto));
+        Redactor.Names = new[] { Environment.UserName, Environment.MachineName }.Where(x => !string.IsNullOrWhiteSpace(x)).ToArray();
+        void ApplyLabs()
+        {
+            if (cip != null) cip.ProbeHeartbeats = labs.IsOn(LabsCatalog.CipHeartbeatProbe);
+        }
+        ApplyLabs();
+        labs.Changed += (id, on) =>
+        {
+            ApplyLabs();
+            if (id == LabsCatalog.RemoteEisc) { if (!on) eisc.StopInbound("Remote EISC was switched off in Labs."); eisc.Reconcile(); }
+            if (id == LabsCatalog.Plugins) plugins.Apply();
+        };
+        ops.TargetRemoved = eiscLinks.RemoveForTarget;
+        var community = new CommunityServices
+        {
+            Processor = processor, Labs = labs, Links = eiscLinks, Eisc = eisc, Plugins = plugins, Targets = pushTargets, Activity = activity, Ops = ops, Who = Who, Visible = Visible,
+            ExamplesDirectory = cfg["ExamplesDirectory"] is { Length: > 0 } exd ? exd : Path.Combine(AppContext.BaseDirectory, "examples")
+        };
+        CommunityEndpoints.Map(app, community);
+        eisc.Start();
+        plugins.Start();
         app.MapGet("/healthz", () => Results.Text("ok"));
 
         // IP table: every IP ID in the slot with who is connected to it and what is known about them.
@@ -1637,7 +1669,7 @@ public static class OpenVpServer
         }
         ShareEndpoints.Map(app, processor, shares, ch5Panels, tunnel, gate, tunnelUnavailable, activity, Who);
         // Generated panel and layouts, the emulator, smart graphics and the rack view. None of it is served on the tunnel port (TunnelGate).
-        PanelEndpoints.Map(app, slotApi, processor, ch5Panels, new SmartGraphicsStore(processor.DataDirectory), new PanelLayouts(processor.DataDirectory), () => cip, activity, Who, Visible);
+        PanelEndpoints.Map(app, slotApi, processor, ch5Panels, new SmartGraphicsStore(processor.DataDirectory), new PanelLayouts(processor.DataDirectory), () => cip, activity, Who, Visible, () => CommunityEndpoints.RackLinks(community, Visible));
         if (tunnel != null && alerts != null) tunnel.Changed += () => { var st = tunnel.Status(); alerts.Monitor.OnTunnel(st.State, st.State == TunnelState.Error ? st.Message : null); };
         if (tunnel != null && cfg.GetValue("TunnelAutoStart", false)) activity.Add("internet.on", "Internet access started at start-up (OpenVP:TunnelAutoStart)", null, Actors.Auto);
 
@@ -1753,7 +1785,7 @@ public static class OpenVpServer
         }, (c, a, t, sl) => Note(c, a, t, sl));
 
         app.Lifetime.ApplicationStarted.Register(() => { try { integrations.Start(); } catch (Exception e) { Console.WriteLine("Integrations not started: " + e.Message); } });
-        app.Lifetime.ApplicationStopping.Register(() => { scheduler.Dispose(); backups.Dispose(); git.Dispose(); alerts?.Dispose(); integrations.Dispose(); telnet?.Dispose(); ssh?.Dispose(); mdns?.Dispose(); for (var i = 1; i <= watches.Length; i++) StopWatching(i); tunnel?.Dispose(); cip?.Dispose(); crash.Dispose(); trashTimer.Dispose(); lockTimer.Dispose(); acmeTimer.Dispose(); tokens.Flush(); recordings.Dispose(); processor.Dispose(); });
+        app.Lifetime.ApplicationStopping.Register(() => { scheduler.Dispose(); backups.Dispose(); git.Dispose(); alerts?.Dispose(); integrations.Dispose(); telnet?.Dispose(); ssh?.Dispose(); mdns?.Dispose(); for (var i = 1; i <= watches.Length; i++) StopWatching(i); tunnel?.Dispose(); cip?.Dispose(); crash.Dispose(); trashTimer.Dispose(); lockTimer.Dispose(); acmeTimer.Dispose(); tokens.Flush(); recordings.Dispose(); eisc.Dispose(); plugins.Dispose(); processor.Dispose(); });
         // If the process ends some other way (not a clean stop), still take cloudflared down with it.
         AppDomain.CurrentDomain.ProcessExit += (_, _) => tunnel?.Stop();
         return app;
