@@ -15,6 +15,8 @@
  *   view.clear()
  *   view.setCursor(timeMs | null)
  *   view.destroy()
+ *   // Lanes: digital signals are a level trace; analog signals are a stepped line graph scaled 0-65535 with a percent axis
+ *   // (opts.analogHeight sets the lane height, default 64); serial signals are labelled markers at each change.
  *   // additions: view.goLive(), view.setSpan(ms), view.isLive(), view.getView() -> {start,end,span,live},
  *   //            view.setMarker(timeMs | null), view.resize()
  */
@@ -22,7 +24,8 @@
   "use strict";
   if (window.WaveView) return;
 
-  var LH = 22;        // lane height
+  var LH = 22;        // lane height (digital, serial)
+  var AH = 64;        // analog lane height: tall enough for a graph with a percent axis
   var AX = 24;        // time axis height
   var GUTTER = 150;   // lane-name gutter width
   var MIN_SPAN = 0.05;            // ms
@@ -146,6 +149,8 @@
     var format = typeof opts.format === "function" ? opts.format : defFormat;
     var nowFn = typeof opts.now === "function" ? opts.now : Date.now;
     var cap = opts.maxChanges > 100 ? opts.maxChanges | 0 : 20000;
+    var analogH = opts.analogHeight >= 30 ? opts.analogHeight | 0 : AH;
+    var totalH = 0;            // sum of the lane heights
 
     var lanes = [];            // ordered lane objects
     var byName = Object.create(null);
@@ -251,7 +256,18 @@
       }
     }
 
-    // ---- lanes
+    // ---- lanes: each has its own height (analog lanes are taller), so y offsets are kept per lane
+    function place() {
+      var y = 0;
+      for (var i = 0; i < lanes.length; i++) { lanes[i].h = lanes[i].kind === "Analog" ? analogH : LH; lanes[i].y = y; y += lanes[i].h; }
+      totalH = y;
+    }
+    // first lane whose bottom edge is below y (binary search on the offsets)
+    function laneAtY(y) {
+      var lo = 0, hi = lanes.length - 1, r = lanes.length;
+      while (lo <= hi) { var m = (lo + hi) >> 1; if (lanes[m].y + lanes[m].h > y) { r = m; hi = m - 1; } else lo = m + 1; }
+      return r;
+    }
     function makeLane(sig) {
       var kind = canonKind(sig.kind);
       return { name: String(sig.name), kind: kind, t: [], v: [], init: sig.value === undefined ? undefined : normValue(kind, sig.value), el: null };
@@ -259,7 +275,8 @@
 
     var gwin = { a: -1, b: -1 };
     function buildGutter() {
-      lanesBox.style.height = lanes.length * LH + "px";
+      place();
+      lanesBox.style.height = totalH + "px";
       gwin.a = gwin.b = -1;      // lanes may have changed: rebuild the visible labels
       renderGutter();
     }
@@ -267,7 +284,7 @@
     function renderGutter() {
       if (dragName != null) return;
       var st = scroller.scrollTop, h = scroller.clientHeight || 300;
-      var a = Math.max(0, Math.floor(st / LH) - 2), b = Math.min(lanes.length, Math.ceil((st + h) / LH) + 2);
+      var a = Math.max(0, laneAtY(st) - 2), b = Math.min(lanes.length, laneAtY(st + h) + 3);
       if (a === gwin.a && b === gwin.b) return;
       gwin.a = a; gwin.b = b;
       while (lanesBox.firstChild) lanesBox.removeChild(lanesBox.firstChild);
@@ -278,10 +295,10 @@
     function makeLaneEl(l, i) {
         var el = document.createElement("div");
         el.className = "wv-lane wv-k-" + l.kind;
-        el.style.top = i * LH + "px";
+        el.style.top = l.y + "px"; el.style.height = l.h + "px";
         el.draggable = true;
         el.dataset.i = i;
-        var nm = document.createElement("span"); nm.className = "wv-name"; nm.textContent = l.name; nm.title = l.name + " (" + l.kind + ")";
+        var nm = document.createElement("span"); nm.className = "wv-name"; nm.textContent = l.name; nm.title = l.name + " (" + l.kind + (l.kind === "Analog" ? ", 0-65535" : "") + ")";
         var x = document.createElement("span"); x.className = "wv-x"; x.textContent = "×"; x.title = "Remove lane";
         x.addEventListener("click", function (e) { e.stopPropagation(); removeLane(l.name); });
         x.addEventListener("mousedown", function (e) { e.stopPropagation(); });
@@ -425,7 +442,7 @@
       var h = scroller.clientHeight;
       var w = plot.clientWidth;
       if (!h || !w) { plotW = 0; return; }
-      var contentH = AX + lanes.length * LH;
+      var contentH = AX + totalH;
       inner.style.minHeight = h + "px";
       stick.style.height = h + "px";
       gutter.style.minHeight = Math.max(h, contentH) + "px";
@@ -481,12 +498,12 @@
       // lane stripes + separators
       ctx.save();
       ctx.beginPath(); ctx.rect(0, AX, W, H - AX); ctx.clip();
-      var i0 = Math.max(0, Math.floor(sy / LH) - 1), i1 = Math.min(lanes.length, Math.ceil((sy + H) / LH) + 1);   // lanes in view
+      var i0 = Math.max(0, laneAtY(sy) - 1), i1 = Math.min(lanes.length, laneAtY(sy + H) + 2);   // lanes in view
       for (var i = i0; i < i1; i++) {
-        var y0 = AX + i * LH - sy;
-        if (y0 > H || y0 + LH < AX) continue;
-        if (i & 1) { ctx.fillStyle = "rgba(255,255,255,0.025)"; ctx.fillRect(0, y0, W, LH); }
-        ctx.fillStyle = col.line; ctx.fillRect(0, y0 + LH - 1, W, 1);
+        var y0 = AX + lanes[i].y - sy, lh = lanes[i].h;
+        if (y0 > H || y0 + lh < AX) continue;
+        if (i & 1) { ctx.fillStyle = "rgba(255,255,255,0.025)"; ctx.fillRect(0, y0, W, lh); }
+        ctx.fillStyle = col.line; ctx.fillRect(0, y0 + lh - 1, W, 1);
       }
 
       // grid + ticks
@@ -499,9 +516,8 @@
 
       // lanes
       for (i = i0; i < i1; i++) {
-        var ly = AX + i * LH - sy;
-        if (ly > H || ly + LH < AX) continue;
-        var l = lanes[i];
+        var l = lanes[i], ly = AX + l.y - sy;
+        if (ly > H || ly + l.h < AX) continue;
         if (l.kind === "Digital") drawDigital(l, ly, tStart, tEnd, ppm, W);
         else if (l.kind === "Analog") drawAnalog(l, ly, tStart, tEnd, ppm, W);
         else drawSerial(l, ly, tStart, tEnd, ppm, W);
@@ -531,19 +547,21 @@
         vline(hoverX, "rgba(230,233,238,0.55)", false);
         // per-lane values
         for (i = i0; i < i1; i++) {
-          var hy = AX + i * LH - sy;
-          if (hy > H || hy + LH < AX) continue;
-          var r = valueAt(lanes[i], ht);
+          var hl = lanes[i], hy = AX + hl.y - sy;
+          if (hy > H || hy + hl.h < AX) continue;
+          var r = valueAt(hl, ht);
           if (!r) continue;
-          var txt = format(lanes[i].kind, r.v);
+          var txt = format(hl.kind, r.v);
+          if (hl.kind === "Analog") txt += "  " + (Number(r.v) * 100 / 65535).toFixed(1) + "%";
           if (txt.length > 40) txt = txt.slice(0, 39) + "…";
           var tw = txt.length * charW + 8;
           var px = hoverX + 6;
           if (px + tw > W - 2) px = hoverX - 6 - tw;
-          var c = lanes[i].kind === "Digital" ? (r.v ? col.hi : col.lo) : lanes[i].kind === "Analog" ? col.ana : col.ser;
-          ctx.fillStyle = "rgba(15,18,22,0.92)"; ctx.fillRect(px, hy + 3, tw, LH - 7);
-          ctx.strokeStyle = c; ctx.lineWidth = 1; ctx.strokeRect(px + 0.5, hy + 3.5, tw - 1, LH - 8);
-          ctx.fillStyle = c; ctx.fillText(txt, px + 4, hy + LH / 2);
+          var c = hl.kind === "Digital" ? (r.v ? col.hi : col.lo) : hl.kind === "Analog" ? col.ana : col.ser;
+          var by = hy + hl.h / 2 - 8;
+          ctx.fillStyle = "rgba(15,18,22,0.92)"; ctx.fillRect(px, by, tw, 16);
+          ctx.strokeStyle = c; ctx.lineWidth = 1; ctx.strokeRect(px + 0.5, by + 0.5, tw - 1, 15);
+          ctx.fillStyle = c; ctx.fillText(txt, px + 4, by + 8);
         }
       }
       ctx.restore();
@@ -626,91 +644,100 @@
       ctx.lineWidth = 1; ctx.strokeStyle = col.hi; ctx.globalAlpha = 0.85; ctx.stroke(vP); ctx.globalAlpha = 1;
     }
 
+    // Analog lanes: a stepped line (a value holds until the next change), scaled 0-65535 with a 0/50/100 % axis.
     function drawAnalog(l, y0, tStart, tEnd, ppm, W) {
-      var T = l.t, V = l.v, n = T.length;
-      var top = y0 + 4, bot = y0 + LH - 5;
+      var T = l.t, V = l.v, n = T.length, h = l.h;
+      var top = y0 + 7, bot = y0 + h - 7;
       function yOf(v) { v = v < 0 ? 0 : v > 65535 ? 65535 : v; return Math.round(bot - (v / 65535) * (bot - top)) + 0.5; }
+      // percent axis: 0, 25, 50, 75 and 100 %
+      ctx.save();
+      ctx.lineWidth = 1; ctx.font = "10px ui-monospace, Menlo, Consolas, monospace";
+      for (var q = 0; q <= 4; q++) {
+        var gy = Math.round(bot - (q / 4) * (bot - top)) + 0.5;
+        ctx.strokeStyle = q === 0 || q === 4 ? "rgba(255,255,255,0.13)" : "rgba(255,255,255,0.06)";
+        if (q === 2) ctx.setLineDash([2, 3]);
+        ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
+        ctx.setLineDash([]);
+        if (q === 0 || q === 2 || q === 4) { ctx.fillStyle = col.muted; ctx.textAlign = "right"; ctx.fillText(q * 25 + "%", W - 3, q === 4 ? gy + 6 : q === 0 ? gy - 5 : gy - 5); }
+      }
+      ctx.restore();
+      ctx.textAlign = "left";
       var i = idxAt(T, tStart);
       var cur = i >= 0 ? V[i] : l.init;
-      var p = new Path2D(), f = new Path2D();
-      var known = cur !== undefined, y = known ? yOf(cur) : 0, j = i + 1, xs = 0;
+      var p = new Path2D(), f = new Path2D(), dots = [];
+      var known = cur !== undefined, y = known ? yOf(cur) : 0, j = i + 1;
       if (known) { p.moveTo(0, y); f.moveTo(0, bot + 0.5); f.lineTo(0, y); }
       for (; j < n && T[j] <= tEnd; j++) {
         var x = (T[j] - tStart) * ppm, ny = yOf(V[j]);
         if (!known) { p.moveTo(x, ny); f.moveTo(x, bot + 0.5); f.lineTo(x, ny); known = true; }
         else { p.lineTo(x, y); p.lineTo(x, ny); f.lineTo(x, y); f.lineTo(x, ny); }
-        y = ny; xs = x;
+        dots.push(x, ny);
+        y = ny;
       }
-      if (!known) return;
+      if (!known) {
+        ctx.save(); ctx.strokeStyle = col.line; ctx.setLineDash([2, 4]);
+        ctx.beginPath(); ctx.moveTo(0, y0 + h / 2); ctx.lineTo(W, y0 + h / 2); ctx.stroke(); ctx.restore();
+        return;
+      }
       p.lineTo(W, y); f.lineTo(W, y); f.lineTo(W, bot + 0.5); f.closePath();
-      ctx.globalAlpha = 0.09; ctx.fillStyle = col.ana; ctx.fill(f); ctx.globalAlpha = 1;
+      ctx.globalAlpha = 0.12; ctx.fillStyle = col.ana; ctx.fill(f); ctx.globalAlpha = 1;
       ctx.lineWidth = 1.5; ctx.strokeStyle = col.ana; ctx.stroke(p);
-      void xs;
-      // value labels where there is room
-      ctx.fillStyle = col.ana; ctx.textAlign = "left";
-      var k = i < 0 ? 0 : i; // segment index whose value starts the view
-      var sx = i >= 0 ? 0 : null;
+      ctx.fillStyle = col.ana;
+      for (var d = 0; d < dots.length; d += 2) { ctx.beginPath(); ctx.arc(dots[d], dots[d + 1], 2.2, 0, 6.2832); ctx.fill(); }
+      // value labels where there is room: the value, then its percent, just above or below the step
+      ctx.textAlign = "left";
+      var k = i < 0 ? 0 : i;
+      var lastLabelEnd = -1e9;
       for (; k < n; k++) {
         var xk = i >= 0 && k === i ? 0 : (T[k] - tStart) * ppm;
         if (xk > W) break;
         if (k > i && T[k] > tEnd) break;
         var xe = k + 1 < n ? (T[k + 1] - tStart) * ppm : W;
         var vv = V[k];
-        var txt = format("Analog", vv);
-        var w = txt.length * charW;
-        var sxx = Math.max(xk, 0) + 4;
-        if (Math.min(xe, W) - sxx >= w + 4) {
-          var yy = yOf(vv);
-          var ty = yy > y0 + LH / 2 ? y0 + 8 : y0 + LH - 7;
-          ctx.fillText(txt, sxx, ty);
+        var txt = format("Analog", vv) + " · " + (Number(vv) * 100 / 65535).toFixed(vv % 655.35 === 0 ? 0 : 1) + "%";
+        var w = txt.length * charW, sxx = Math.max(xk, 0) + 5;
+        if (Math.min(xe, W) - sxx >= w + 6 && sxx > lastLabelEnd + 4) {
+          var yy = yOf(vv), ty = yy > y0 + h / 2 ? yy - 7 : yy + 8;
+          ctx.fillStyle = col.ana; ctx.fillText(txt, sxx, ty);
+          lastLabelEnd = sxx + w;
         }
       }
       if (i < 0 && l.init !== undefined) {
         var xe0 = n && T[0] <= tEnd ? (T[0] - tStart) * ppm : W;
         var t0 = format("Analog", l.init), w0 = t0.length * charW;
-        if (xe0 - 4 >= w0 + 4) ctx.fillText(t0, 4, yOf(l.init) > y0 + LH / 2 ? y0 + 8 : y0 + LH - 7);
+        if (xe0 - 4 >= w0 + 4) { var y00 = yOf(l.init); ctx.fillStyle = col.ana; ctx.fillText(t0, 5, y00 > y0 + h / 2 ? y00 - 7 : y00 + 8); }
       }
-      void sx;
     }
 
+    // Serial lanes: a marker at every change, labelled with the new text (cut off where the next marker starts).
     function drawSerial(l, y0, tStart, tEnd, ppm, W) {
       var T = l.t, V = l.v, n = T.length;
-      var top = y0 + 4, bot = y0 + LH - 5, mid = (top + bot) / 2;
+      var top = y0 + 3, bot = y0 + LH - 4, mid = Math.round((top + bot) / 2) + 0.5;
       var i = idxAt(T, tStart);
-      var endNow = Math.max(nowT(), n ? T[n - 1] : 0);
       ctx.lineWidth = 1;
-      // idle baseline
-      ctx.strokeStyle = col.line; ctx.beginPath(); ctx.moveTo(0, Math.round(mid) + 0.5); ctx.lineTo(W, Math.round(mid) + 0.5); ctx.stroke();
-      var lastTick = -10;
+      ctx.strokeStyle = col.line; ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(W, mid); ctx.stroke();   // idle baseline
+      var lastX = -10;
       for (var k = Math.max(i, 0); k < n && T[k] <= tEnd; k++) {
         var v = V[k];
-        if (v === "") continue;
         var x0 = (T[k] - tStart) * ppm;
-        var x1 = ((k + 1 < n ? T[k + 1] : endNow) - tStart) * ppm;
-        if (x1 < 0) continue;
-        if (x1 - x0 < 3) {
-          var tx = Math.round(x0);
-          if (tx !== lastTick) {
-            ctx.strokeStyle = col.ser; ctx.beginPath(); ctx.moveTo(tx + 0.5, top); ctx.lineTo(tx + 0.5, bot); ctx.stroke();
-            lastTick = tx;
-          }
-          continue;
-        }
-        var c = Math.min(4, (x1 - x0) / 3);
-        ctx.beginPath();
-        ctx.moveTo(x0, mid); ctx.lineTo(x0 + c, top); ctx.lineTo(x1 - c, top); ctx.lineTo(x1, mid);
-        ctx.lineTo(x1 - c, bot); ctx.lineTo(x0 + c, bot); ctx.closePath();
-        ctx.globalAlpha = 0.16; ctx.fillStyle = col.ser; ctx.fill(); ctx.globalAlpha = 1;
-        ctx.strokeStyle = col.ser; ctx.stroke();
-        var vis0 = Math.max(x0 + c + 2, 3), vis1 = Math.min(x1 - c - 2, W);
-        if (vis1 - vis0 > charW * 2) {
-          var txt = format("Serial", v);
-          ctx.save();
-          ctx.beginPath(); ctx.rect(vis0, top, vis1 - vis0, bot - top); ctx.clip();
-          ctx.fillStyle = col.ser; ctx.textAlign = "left";
-          ctx.fillText(txt, vis0, mid + 0.5);
+        if (x0 < -1) continue;
+        var x1 = k + 1 < n ? (T[k + 1] - tStart) * ppm : W;
+        var tx = Math.round(x0) + 0.5;
+        ctx.strokeStyle = v === "" ? col.muted : col.ser;
+        ctx.beginPath(); ctx.moveTo(tx, top); ctx.lineTo(tx, bot); ctx.stroke();
+        ctx.fillStyle = v === "" ? col.muted : col.ser;
+        ctx.beginPath(); ctx.moveTo(tx, top); ctx.lineTo(tx + 5, top + 3.5); ctx.lineTo(tx, top + 7); ctx.closePath(); ctx.fill();   // the flag
+        var room = Math.min(x1, W) - tx - 10;
+        if (room > charW * 2 && tx - lastX >= 3) {
+          var txt = v === "" ? "∅ cleared" : format("Serial", v);
+          var cap = Math.floor(room / charW);
+          if (txt.length > cap) txt = cap > 1 ? txt.slice(0, cap - 1) + "…" : "";
+          ctx.save(); ctx.beginPath(); ctx.rect(tx + 7, top, Math.max(0, room), bot - top); ctx.clip();
+          ctx.textAlign = "left"; ctx.fillStyle = v === "" ? col.muted : col.ser;
+          ctx.fillText(txt, tx + 8, mid - 1);
           ctx.restore();
         }
+        lastX = tx;
       }
     }
 

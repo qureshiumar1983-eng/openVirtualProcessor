@@ -102,3 +102,12 @@ view.clear()
 view.setCursor(timeMs | null)            // optional highlight (e.g. step-back position)
 view.destroy()
 ```
+
+## 4. Debugger services (watches, traces, why)
+
+Server side of the debugger's panels; logic lives in `OpenVP.Core`, the endpoints are in `DebugEndpoints.cs` (full list in the README's REST table).
+
+- **Expressions.** Watches (`PUT /api/slots/{n}/watches`) and conditional breakpoints (`conditions` on `POST /api/slots/{n}/step`) use one small language (`SignalExpression`): `Room_On=1 && Proj_Power=0`, `Vol>50000`, `Src_Name contains "HDMI"`, an optional `for 2s`. Signal names are the ones in section 1; `[name]` quotes a name that has spaces or looks like a number.
+- **Cost.** `SlotMonitor` subscribes to `ProgramSlot.Traced` only while a watch, a breakpoint condition, the oscillation detector, never-changed tracking or an open debugger (`/ws/trace` with trace on) needs it. With none of them the slot's `TraceWanted` stays false and the runtimes take the untraced path. The monitor keeps the last value of each signal (for expressions) and, while a debugger is open, the last 20,000 changes (for `GET /api/slots/{n}/why`).
+- **Trace file.** Saved, exported and imported traces carry, per change: `time` (ISO 8601), `signal`, `kind` (`Digital`, `Analog`, `Serial`), `value` (bool, number, text), `source`, `symbol`, `cause`, `depth`, `chain` (section 2). JSON is `{"format":"openvp-trace","version":1,"slot":1,"program":"...","events":[...]}`; CSV has the same fields as columns, in that order, with RFC 4180 quoting. Both read back to the same rows. A bare JSON array of events is accepted too.
+- **Why.** `GET /api/slots/{n}/why?signal=NAME` follows `cause` from change to change (section 2) to a change with no symbol: a panel (`source` `IPIDxx`), a force (`debugger`), the start-up (`start`) or something outside the logic. A change whose cause isn't recorded (a delay or timer) continues from the symbol's input that changed last. Without a trace it lists the symbols that drive the signal and their inputs now. SIMPL# programs have no graph, so only the join and its source are known.

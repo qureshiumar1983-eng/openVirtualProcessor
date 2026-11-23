@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<link rel="stylesheet" href="openvp-ops.css">
+<script src="openvp-theme.js"></script>
+<title>OpenVP audit log</title>
+<style>
+  main { max-width:1300px; }
+  .filters { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:8px; align-items:end; }
+  .filters label { display:flex; flex-direction:column; gap:3px; font-size:12px; color:var(--muted); min-width:0; }
+  .filters input, .filters select { width:100%; }
+  td.t { white-space:nowrap; } td.txt { overflow-wrap:anywhere; }
+  .act-pill { font-family:ui-monospace, Menlo, Consolas, monospace; font-size:11px; }
+  #chain { display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; }
+  .hash { overflow-wrap:anywhere; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Audit log</h1>
+  <span id="saved" role="status" aria-live="polite"></span>
+  <span class="sp"></span>
+  <span id="who-chip"></span>
+  <button class="theme-btn" data-theme-toggle></button>
+  <a href="security.html">Security</a>
+  <a href="/">Console</a>
+  <a href="help.html#audit" target="openvp-help">Help</a>
+</header>
+<main>
+  <div id="fail" class="note" role="alert" hidden></div>
+  <div class="card">
+    <div id="chain">
+      <button class="primary" id="verify">Verify chain</button>
+      <span id="vres" role="status"></span>
+      <span class="sp" style="flex:1"></span>
+      <a id="csv" href="/api/audit/download" download>Download CSV</a>
+    </div>
+    <p class="muted" style="margin:6px 0 0">Every entry carries the SHA-256 of the one before it, so a changed, removed or reordered line is caught. This shows tampering; it can't stop someone who can rewrite the whole folder, so copy the newest hash somewhere else now and then. Newest entry: <span class="mono hash" id="head"></span></p>
+  </div>
+  <div class="card">
+    <form class="filters" id="ff" onsubmit="return false">
+      <label>Who<input id="f-user" placeholder="user name" list="f-users"></label><datalist id="f-users"></datalist>
+      <label>What<select id="f-action"><option value="">Anything</option><option value="login">Sign-ins</option><option value="logout">Sign-outs</option><option value="permission">Permission denied</option><option value="token">API tokens</option><option value="user">Users</option><option value="password">Passwords</option><option value="load">Program loads</option><option value="auto-reload">Auto-reloads</option><option value="force">Forces</option><option value="file">File edits</option><option value="export">Exports</option><option value="import">Imports</option><option value="share">Shared links</option><option value="integration">Integrations and hooks</option><option value="settings">Settings changes</option><option value="lock">Slot locks</option><option value="https">HTTPS</option><option value="audit">Audit</option></select></label>
+      <label>Contains<input id="f-q" placeholder="text, address…"></label>
+      <label>Slot<input id="f-slot" type="number" min="1" placeholder="any"></label>
+      <label>From<input id="f-from" type="date"></label>
+      <label>To<input id="f-to" type="date"></label>
+      <label>Show<select id="f-limit"><option>100</option><option selected>200</option><option>500</option><option>2000</option></select></label>
+      <button class="primary" id="f-go">Search</button>
+    </form>
+  </div>
+  <div class="card">
+    <div class="scroll-x"><table id="tbl" class="cards"><thead><tr><th>Time</th><th>Who</th><th>From</th><th>What</th><th>Slot</th><th>Details</th></tr></thead><tbody></tbody></table></div>
+    <div id="empty" class="muted" hidden>Nothing matches.</div>
+    <div id="count" class="muted"></div>
+  </div>
+</main>
+<script src="openvp-auth.js"></script>
+<script src="openvp-ops.js"></script>
+<script>
+openvpAuth.init();
+function qs() {
+  const p = new URLSearchParams();
+  for (const [k, id] of [["user", "f-user"], ["action", "f-action"], ["q", "f-q"], ["slot", "f-slot"], ["from", "f-from"], ["to", "f-to"], ["limit", "f-limit"]]) { const v = $("#" + id).value.trim(); if (v) p.set(k, v); }
+  return p.toString();
+}
+function exact(t) { const d = new Date(t); return isNaN(d) ? "" : `${when(t)}:${pad(d.getSeconds())}`; }
+async function load() {
+  let r;
+  try { r = await api("/api/audit?" + qs()); } catch (e) { if (e.status === 403) { fail("Only an Admin can read the audit log."); return; } fail(e.message); return; }
+  const tb = $("#tbl tbody"); tb.innerHTML = "";
+  const seen = new Set();
+  for (const e of r.entries) {
+    if (e.user) seen.add(e.user);
+    const bad = /denied|failed|locked/.test(e.action);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="t" data-l="Time" title="#${e.seq}">${esc(exact(e.time))}</td><td data-l="Who">${esc(e.user || "")}</td><td data-l="From" class="mono">${esc(e.ip)}</td>
+      <td data-l="What">${pill(bad ? "err" : "", e.action)}</td><td data-l="Slot">${e.slot ?? ""}</td><td class="txt" data-l="Details">${esc(e.text)}${e.detail ? `<br><span class="muted">${esc(e.detail)}</span>` : ""}</td>`;
+    tb.appendChild(tr);
+  }
+  $("#empty").hidden = r.entries.length > 0;
+  $("#count").textContent = r.entries.length ? `Showing ${r.entries.length} entr${r.entries.length === 1 ? "y" : "ies"}, newest first.` : "";
+  $("#head").textContent = `#${r.lastSeq} ${r.head}`;
+  const dl = $("#f-users"); if (!dl.children.length) dl.innerHTML = [...seen].map(u => `<option value="${esc(u)}">`).join("");
+  $("#csv").href = "/api/audit/download?" + qs();
+}
+$("#f-go").onclick = load;
+$("#verify").onclick = async () => {
+  const el = $("#vres"); el.textContent = "Checking…"; el.className = "";
+  try {
+    const v = await api("/api/audit/verify", "POST", {});
+    el.innerHTML = v.ok ? pill("ok", "Chain intact") + ` <span class="muted">${esc(v.message)} (${v.files} file${v.files === 1 ? "" : "s"})</span>` : pill("err", "Chain broken") + ` <b>${esc(v.message)}</b>`;
+    load();
+  } catch (e) { el.textContent = ""; fail(e.message); }
+};
+load();
+</script>
+</body>
+</html>

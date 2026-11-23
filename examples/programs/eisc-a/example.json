@@ -1,0 +1,17 @@
+{
+  "name": "EISC pair: A",
+  "kind": "SIMPL Windows",
+  "description": "Half of a pair of programs that talk over an EISC (IP ID 10). A toggle, a slider and a text send go to B; what B sends back shows on the panel. Load it with EISC pair B in another slot, or on another machine and link them with a remote EISC link (Labs).",
+  "panel": "XPanel at IP ID 03; EISC at IP ID 10",
+  "tryIt": "Press digital 1 to toggle, move analog 1, press digital 2 to send text to B. Digital 2 and analog 1 on this panel follow B's digital 1 and analog 1.",
+  "tags": [
+    "eisc",
+    "two slots",
+    "remote eisc"
+  ],
+  "id": "eisc-a",
+  "files": [
+    "EiscPairA.smw",
+    "EiscPairA.openvp.json"
+  ]
+}

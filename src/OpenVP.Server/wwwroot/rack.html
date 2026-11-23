@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en" data-openvp-page>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<link rel="stylesheet" href="openvp-ops.css">
+<script src="openvp-theme.js"></script>
+<title>OpenVP rack view</title>
+<style>
+  main { max-width:1200px; }
+  .rack { background:var(--well); border:2px solid var(--dim); border-radius:10px; padding:10px 34px; position:relative; display:flex; flex-direction:column; gap:8px; }
+  .rack::before, .rack::after { content:""; position:absolute; top:8px; bottom:8px; width:14px; background:repeating-linear-gradient(to bottom, var(--dim) 0 3px, transparent 3px 22px); opacity:.55; border-radius:3px; }
+  .rack::before { left:8px; } .rack::after { right:8px; }
+  .unit { background:var(--card); border:1px solid var(--line); border-left:5px solid var(--sc, var(--dim)); border-radius:6px; padding:8px 12px; display:grid; grid-template-columns:minmax(150px, 220px) 1fr; gap:6px 14px; align-items:start; }
+  .unit.empty { opacity:.6; padding-top:5px; padding-bottom:5px; }
+  .unit .id { display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .unit .id b { font-size:14px; } .unit .id .p { overflow-wrap:anywhere; color:var(--text2); font-size:12px; }
+  .led { width:10px; height:10px; border-radius:50%; display:inline-block; background:var(--dim); vertical-align:middle; box-shadow:0 0 0 1px #0004 inset; }
+  .led.run { background:var(--ok); box-shadow:0 0 6px var(--ok); } .led.stop { background:#d69e2e; } .led.err { background:var(--err); } .led.on { background:var(--ok); box-shadow:0 0 5px var(--ok); } .led.off { background:var(--err); opacity:.75; }
+  .devs { display:flex; flex-wrap:wrap; gap:8px; min-width:0; }
+  .dev { border:1px solid var(--line); border-radius:8px; background:var(--tile); padding:6px 9px; min-width:150px; max-width:100%; display:flex; flex-direction:column; gap:3px; font-size:12px; cursor:pointer; text-align:left; font:inherit; color:var(--text); }
+  .dev:hover { border-color:var(--accent); }
+  .dev.sel { border-color:var(--accent); background:var(--active); }
+  .dev .top { display:flex; align-items:center; gap:6px; }
+  .dev .top b { font-size:13px; }
+  .dev .ty { color:var(--muted); overflow-wrap:anywhere; }
+  .dev.kind-eisc { border-style:dashed; }
+  .lat { font:11px ui-monospace, Menlo, Consolas, monospace; padding:0 6px; border-radius:9px; border:1px solid var(--line); white-space:nowrap; }
+  .lat.good { color:var(--ok-fg); border-color:var(--ok); } .lat.mid { color:var(--warn-fg); border-color:var(--warn-line); } .lat.bad { color:var(--err-fg); border-color:var(--err); }
+  .links { display:flex; flex-wrap:wrap; gap:6px 14px; }
+  .links span { overflow-wrap:anywhere; }
+  .detail h3 { margin:0 0 6px; font-size:14px; }
+  .cl { border-top:1px solid var(--line); padding:6px 0; display:grid; grid-template-columns:1fr auto; gap:4px 12px; align-items:center; }
+  .cl:first-of-type { border-top:0; }
+  svg.spark { width:140px; height:28px; background:var(--well); border:1px solid var(--line); border-radius:4px; }
+  svg.spark polyline { fill:none; stroke:var(--accent); stroke-width:1.5; }
+  .sum { display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
+  @media (max-width:700px) {
+    header { padding:10px 16px; } main { padding:10px 16px 24px; }
+    .rack { padding:8px 16px; } .rack::before, .rack::after { display:none; }
+    .unit { grid-template-columns:1fr; }
+    .dev { min-width:0; flex:1 1 140px; }
+    .cl { grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Rack view</h1>
+  <span id="saved" role="status" aria-live="polite"></span>
+  <span class="sp"></span>
+  <span id="who-chip"></span>
+  <button class="theme-btn" data-theme-toggle></button>
+  <a href="autopanel.html">Generated panel</a>
+  <a href="emulate.html">Emulate</a>
+  <a href="/">Console</a>
+  <a href="help.html#rack" target="openvp-help">Help</a>
+</header>
+<main>
+  <div id="fail" class="note" role="alert" hidden></div>
+  <div class="card sum" id="sum" aria-live="polite"></div>
+  <div class="bar"><label class="inline"><input type="checkbox" id="empties"> show empty slots</label><span class="sp"></span><span class="muted" id="upd"></span></div>
+  <div class="rack" id="rack"></div>
+  <div class="card detail" id="detail" hidden></div>
+  <div class="card" id="linkcard" hidden><h2>EISC links</h2><div class="links" id="links"></div></div>
+  <div class="card" id="rlcard" hidden><h2>Remote EISC links <a href="eisc.html" style="font-size:12px;font-weight:400">manage</a></h2><div id="rl"></div></div>
+</main>
+<script src="openvp-auth.js"></script>
+<script src="openvp-ops.js"></script>
+<script>
+"use strict";
+let data = null, selKey = null;
+const latCls = ms => ms == null ? "" : ms < 50 ? "good" : ms < 200 ? "mid" : "bad";
+const latTxt = ms => ms == null ? "-- ms" : (ms < 10 ? ms.toFixed(1) : Math.round(ms)) + " ms";
+const stateLed = s => s === "Running" ? "run" : s === "Error" ? "err" : s === "Stopped" || s === "Loaded" ? "stop" : "";
+
+function spark(h) {
+  if (!h || h.length < 2) return `<svg class="spark" viewBox="0 0 140 28" aria-hidden="true"></svg>`;
+  const max = Math.max(...h, 1), step = 140 / (h.length - 1);
+  const pts = h.map((v, i) => `${(i * step).toFixed(1)},${(26 - (v / max) * 24).toFixed(1)}`).join(" ");
+  return `<svg class="spark" viewBox="0 0 140 28" role="img" aria-label="Last ${h.length} round trips, up to ${Math.round(max)} ms"><polyline points="${pts}"/></svg>`;
+}
+
+function bestLatency(d) {
+  const ms = d.clients.map(c => c.latencyMs).filter(x => x != null);
+  return ms.length ? Math.max(...ms) : null;
+}
+
+function draw() {
+  if (!data) return;
+  const showEmpty = $("#empties").checked;
+  let online = 0, offline = 0, clients = 0; const lats = [];
+  for (const s of data.slots) for (const d of s.devices) {
+    if (d.kind === "eisc") continue;
+    if (d.online) online++; else offline++;
+    for (const c of d.clients) { clients++; if (c.latencyMs != null) lats.push(c.latencyMs); }
+  }
+  const avg = lats.length ? lats.reduce((a, b) => a + b, 0) / lats.length : null;
+  $("#sum").innerHTML =
+    `${pill("ok", online + " panel" + (online === 1 ? "" : "s") + " online")} ${pill(offline ? "warn" : "", offline + " offline")} ${pill("info", clients + " client" + (clients === 1 ? "" : "s"))}` +
+    (avg != null ? ` <span class="lat ${latCls(avg)}" title="Average round trip over every connected client">avg ${latTxt(avg)}</span>` : "") +
+    (data.cip ? ` <span class="muted">CIP port ${data.cip.port}: ${data.cip.sessions} connection${data.cip.sessions === 1 ? "" : "s"}${data.cip.heartbeatProbe ? ", heartbeat probe on" : ""}</span>` : ` <span class="muted">CIP is off</span>`);
+
+  const rack = $("#rack");
+  let h = "";
+  for (const s of data.slots) {
+    if (!s.devices.length && !s.program && !showEmpty) continue;
+    const empty = !s.program;
+    h += `<div class="unit${empty ? " empty" : ""}" style="${s.color ? `--sc:${esc(s.color)}` : ""}" data-slot="${s.number}">
+      <div class="id"><b><span class="led ${stateLed(s.state)}" title="${esc(s.state)}"></span> Slot ${s.number}${s.name ? " · " + esc(s.name) : ""}</b>
+        <span class="p">${s.program ? esc(s.program) + " · " + esc(s.kind || "") : "empty"}${s.roomId ? " · room " + esc(s.roomId) : ""}</span>
+        ${s.program ? `<span class="p"><a href="autopanel.html?slot=${s.number}">Generated panel</a></span>` : ""}</div>
+      <div class="devs">${s.devices.length ? s.devices.map(d => devHtml(s, d)).join("") : `<span class="muted">${s.program ? "no devices in its IP table" : ""}</span>`}</div></div>`;
+  }
+  rack.innerHTML = h || `<div class="muted" style="padding:14px">Nothing loaded. Load a program in the console and its slot appears here with its panels.</div>`;
+  for (const b of rack.querySelectorAll(".dev")) b.onclick = () => { selKey = b.dataset.key; draw(); };
+
+  // links
+  const names = data.links.map(l => `<span><b>Slot ${l.a.slot}</b> IP ID ${esc(l.a.ipId)} ⇄ <b>Slot ${l.b.slot}</b> IP ID ${esc(l.b.ipId)}</span>`);
+  $("#linkcard").hidden = !names.length;
+  $("#links").innerHTML = names.join("");
+
+  // remote EISC links (another OpenVP, over the network)
+  const re = data.remoteEisc, rows = [];
+  if (re) {
+    for (const l of re.outbound) rows.push(`<div class="cl"><div><span class="led ${l.state === "connected" ? "on" : l.state === "off" ? "" : "off"}"></span> <b>${esc(l.name)}</b> <span class="pill ${l.state === "connected" ? "ok" : l.state === "reconnecting" || l.state === "connecting" ? "warn" : l.state === "error" ? "err" : ""}">${esc(l.state)}</span> <span class="muted">slot ${l.localSlot} EISC ${esc(l.localIpId)} ⇄ ${esc(l.remoteName || "?")} slot ${l.remoteSlot} EISC ${esc(l.remoteIpId)}${l.reconnects ? ` · ${l.reconnects} reconnect${l.reconnects === 1 ? "" : "s"}` : ""}</span>${l.message && l.state !== "connected" ? `<br><span class="muted">${esc(l.message)}</span>` : ""}</div><span class="lat ${latCls(l.latencyMs)}">${latTxt(l.latencyMs)}</span></div>`);
+    for (const i of re.inbound) rows.push(`<div class="cl"><div><span class="led on"></span> <b>Incoming</b> <span class="pill ok">connected</span> <span class="muted">to slot ${i.slot} EISC ${esc(i.ipId)}</span></div><span class="lat ${latCls(i.latencyMs)}">${latTxt(i.latencyMs)}</span></div>`);
+  }
+  $("#rlcard").hidden = !rows.length;
+  $("#rl").innerHTML = rows.join("");
+
+  // detail
+  const sel = selKey && findDev(selKey);
+  $("#detail").hidden = !sel;
+  if (sel) {
+    const { s, d } = sel;
+    $("#detail").innerHTML = `<h3><span class="led ${d.online ? "on" : "off"}"></span> Slot ${s.number} · IP ID ${esc(d.ipId)}${d.publicIpId !== d.ipId ? ` <span class="muted">(at ${esc(d.publicIpId)})</span>` : ""} · ${esc(d.type)}</h3>
+      <div class="muted">${d.online ? "Online" : `Offline${d.lastOnline ? ", last online " + ago(d.lastOnline) : ", never connected"}`}</div>
+      ${d.eisc.length ? `<p>EISC linked to: ${d.eisc.map(e => esc(e.peer || ("slot " + e.slot))).join(", ")}</p>` : ""}
+      ${(d.remote || []).map(r => `<p>Remote EISC link <b>${esc(r.link || "")}</b> to ${esc(r.peer || "")}${r.remoteSlot ? ` (slot ${esc(r.remoteSlot)}, EISC ${esc(r.remoteIpId || "")})` : ""}: ${latTxt(r.latencyMs)}, ${r.joinsIn} joins in, ${r.joinsOut} out, connected ${ago(r.connectedAt)}</p>`).join("")}
+      ${d.clients.map(c => `<div class="cl"><div><b>${esc(c.name)}</b> <span class="pill">${esc(c.transport)}</span> <span class="muted mono">${esc(c.address)}</span><br>
+          <span class="muted">connected ${ago(c.connectedAt)} · active ${ago(c.lastActivity)} · ${c.joinsIn} joins in, ${c.joinsOut} out</span><br>
+          <span class="lat ${latCls(c.latencyMs)}">${latTxt(c.latencyMs)}</span> ${c.latencySource ? `<span class="muted">via ${esc(c.latencySource)}</span>` : `<span class="muted">not measured yet</span>`}
+          ${c.latencyMin != null ? `<span class="muted"> · min ${latTxt(c.latencyMin)} · avg ${latTxt(c.latencyAvg)} · max ${latTxt(c.latencyMax)}</span>` : ""}</div>${spark(c.latencyHistory)}</div>`).join("") || `<p class="muted">Nobody is connected to this IP ID.</p>`}
+      <div class="bar"><a href="panel.html?ipid=${esc(d.publicIpId)}&slot=${s.number}" target="_blank">Open test panel</a><a href="autopanel.html?slot=${s.number}">Generated panel</a></div>`;
+  }
+  $("#upd").textContent = "updated " + new Date(data.now).toLocaleTimeString();
+}
+
+function devHtml(s, d) {
+  const key = s.number + ":" + d.ipId, lat = bestLatency(d);
+  const n = d.clients.length;
+  return `<button type="button" class="dev kind-${esc(d.kind)}${key === selKey ? " sel" : ""}" data-key="${key}" aria-label="Slot ${s.number} IP ID ${esc(d.ipId)}, ${d.online ? "online" : "offline"}">
+    <span class="top"><span class="led ${d.online ? "on" : "off"}"></span><b>${esc(d.ipId)}</b>${d.publicIpId !== d.ipId ? `<span class="muted">at ${esc(d.publicIpId)}</span>` : ""}${lat != null ? `<span class="lat ${latCls(lat)}">${latTxt(lat)}</span>` : ""}</span>
+    <span class="ty">${esc(d.type)}</span>
+    <span class="muted">${d.kind === "eisc" ? "EISC" + (d.eisc.length ? " ⇄ " + d.eisc.map(e => "slot " + e.slot).join(", ") : "") + ((d.remote || []).length ? " ⇄ remote " + d.remote.map(r => esc(r.link || r.peer)).join(", ") + (d.remote[0].latencyMs != null ? " (" + latTxt(d.remote[0].latencyMs) + ")" : "") : "") : d.online ? `${n} client${n === 1 ? "" : "s"}${n ? ": " + esc(d.clients[0].name) : ""}` : "offline"}</span></button>`;
+}
+function findDev(key) {
+  const [sn, ip] = key.split(":");
+  const s = data.slots.find(x => String(x.number) === sn); const d = s?.devices.find(x => x.ipId === ip);
+  return d ? { s, d } : null;
+}
+
+async function poll() {
+  try { data = await api("/api/rack"); draw(); } catch (e) { fail(e.message); }
+}
+$("#empties").onchange = draw;
+(async () => { await openvpAuth.init(); await poll(); setInterval(poll, 2000); })();
+</script>
+</body>
+</html>

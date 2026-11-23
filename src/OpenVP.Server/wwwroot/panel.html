@@ -1,8 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-openvp-page>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script>(function(){var K="openvp.theme",m=matchMedia("(prefers-color-scheme: light)");function g(){try{var v=localStorage.getItem(K);return v==="light"||v==="dark"?v:"auto"}catch(e){return"auto"}}function a(){var p=g();document.documentElement.dataset.theme=p==="auto"?(m.matches?"light":"dark"):p;var b=document.getElementById("theme");if(b){b.textContent={auto:"\u25d0 Auto",light:"\u2600 Light",dark:"\u263e Dark"}[p];b.title="Theme: "+p+". Click to change."}}window.__theme={cycle:function(){var o=["auto","light","dark"];try{localStorage.setItem(K,o[(o.indexOf(g())+1)%3])}catch(e){}a()},apply:a};a();document.addEventListener("DOMContentLoaded",a);if(m.addEventListener)m.addEventListener("change",a)})()</script>
 <title>OpenVP test panel</title>
 <style>
   :root { --bg:#111418; --card:#1b2027; --line:#2c333d; --text:#e6e9ee; --muted:#8b95a3; --on:#2f9e6e; --accent:#4c8dff; }
@@ -17,33 +18,53 @@
   section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; }
   h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:0 0 10px; }
   .grid { display:grid; grid-template-columns: repeat(5, 1fr); gap:8px; }
-  .btn { padding:14px 0; text-align:center; border-radius:8px; user-select:none; touch-action:none; cursor:pointer; }
+  .btn { background:#232a33; padding:14px 0; text-align:center; border-radius:8px; user-select:none; touch-action:none; cursor:pointer; }
   .btn.fb { background:var(--on); border-color:var(--on); }
   .btn.down { outline:2px solid var(--accent); }
   .row { display:grid; grid-template-columns: 40px 1fr 60px; gap:8px; align-items:center; margin-bottom:8px; }
   .srow { display:grid; grid-template-columns: 40px 1fr; gap:8px; align-items:center; margin-bottom:8px; }
   .fbtext { color:var(--muted); font-family: ui-monospace, monospace; font-size:12px; grid-column: 2; min-height:16px; }
   small { color:var(--muted); }
+  :root[data-theme="light"] { color-scheme:light; --bg:#f3f5f8; --card:#ffffff; --line:#d2d9e2; --text:#1b2330; --muted:#586374; --on:#1e7a52; --accent:#1d5fd6; }
+  :root[data-theme="light"] .btn { background:#e8edf3; }
+  :root[data-theme="light"] .btn.fb { color:#fff; }
+  :root[data-theme="light"] .dot { background:#c62828; } :root[data-theme="light"] .dot.ok { background:var(--on); }
+  #theme { font-size:12px; padding:3px 9px; white-space:nowrap; }
+  .lat { font:11px ui-monospace, Menlo, Consolas, monospace; padding:1px 7px; border-radius:10px; background:var(--card); border:1px solid var(--line); color:var(--muted); white-space:nowrap; }
+  .lat.good { color:var(--on); border-color:var(--on); } .lat.mid { color:#d69e2e; border-color:#d69e2e; } .lat.bad { color:#e05252; border-color:#e05252; }
+  header a { color:var(--accent); }
+  @media (max-width:700px) { header { padding:10px 16px; } main { padding:12px 16px; } }
 </style>
 </head>
 <body>
-<header>
-  <h1>OpenVP test panel</h1>
+<header data-chrome>
+  <h1 id="title">OpenVP test panel</h1>
   <span class="dot" id="dot"></span><span id="status">connecting…</span>
+  <span id="pickers" style="display:contents">
   <label title="The IP ID to connect as, in hex. It must be one the program registered.">IP ID <input id="ipid" size="3"></label>
   <label title="Program slot to connect to. Empty = any slot with that IP ID.">Slot <input id="slot" size="2" placeholder="any"></label>
   <label title="Connect by the slot's Room ID instead of its number. Usually left empty.">Room <input id="room" size="8" placeholder="any"></label>
   <button id="go" title="Reconnect using the IP ID, Slot and Room typed here">Connect</button>
+  </span>
+  <span class="lat" id="lat" title="Round-trip time to OpenVP (the server pings this page every few seconds)">-- ms</span>
   <small>Hold a button to keep the join high. Green = feedback from the program.</small>
-  <span style="flex:1"></span><a href="help.html#panel" target="openvp-help" title="What every control on this page does" style="color:var(--accent)">Help</a>
+  <span style="flex:1"></span><a id="kiosklink" href="#" title="Full screen with no menus, screen kept awake. Tap the top-left corner 5 times to leave.">Kiosk</a><button id="theme" onclick="__theme.cycle()"></button><a id="helplink" href="help.html#panel" target="openvp-help" title="What every control on this page does" style="color:var(--accent)">Help</a>
 </header>
-<main>
+<main id="panel-main">
   <section><h2>Digital joins 1–20</h2><div class="grid" id="digitals"></div></section>
   <section><h2>Analog joins 1–4, 10</h2><div id="analogs"></div></section>
   <section><h2>Serial joins 1–4, 10</h2><div id="serials"></div></section>
 </main>
 <script src="openvp-crcomlib.js"></script>
 <script>
+  // Opened from a share link (/s/{token}): the slot and IP ID are fixed by the link, so there is nothing to pick.
+  const SHARE = window.OPENVP_CONFIG && window.OPENVP_CONFIG.share ? window.OPENVP_CONFIG : null;
+  if (SHARE) {
+    document.getElementById("pickers").style.display = "none";
+    document.getElementById("helplink").style.display = "none";
+    document.getElementById("title").textContent = SHARE.label || "Panel";
+    document.title = SHARE.label || "Panel";
+  }
   const q = new URLSearchParams(location.search);
   document.getElementById("ipid").value = q.get("ipid") || "03";
   document.getElementById("slot").value = q.get("slot") || "";
@@ -54,10 +75,14 @@
     const rm = document.getElementById("room").value.trim(); if (rm) p.set("room", rm);
     location.search = p.toString();
   };
+  document.getElementById("kiosklink").onclick = e => { e.preventDefault(); const u = new URL(location.href); u.searchParams.set("kiosk", "1"); location.href = u.toString(); };
+  const lat = document.getElementById("lat");
+  OpenVP.on("latency", l => { lat.textContent = Math.round(l.ms) + " ms"; lat.title = `Round trip to OpenVP: ${Math.round(l.ms)} ms (min ${Math.round(l.min)}, avg ${Math.round(l.avg)}, max ${Math.round(l.max)} over the last ${l.history.length})`; lat.className = "lat " + (l.ms < 50 ? "good" : l.ms < 200 ? "mid" : "bad"); });
+  OpenVP.on("close", () => { lat.textContent = "-- ms"; lat.className = "lat"; });
   const dot = document.getElementById("dot"), status = document.getElementById("status");
-  OpenVP.on("open", () => { dot.className = "dot ok"; status.textContent = "connected to IPID " + OpenVP.config.ipid; });
+  OpenVP.on("open", () => { dot.className = "dot ok"; status.textContent = SHARE ? "connected" : "connected to IPID " + OpenVP.config.ipid; });
   OpenVP.on("close", () => { dot.className = "dot"; status.textContent = "disconnected, retrying…"; });
-  OpenVP.on("hello", m => status.textContent = `IPID ${m.ipid.toString(16).padStart(2,"0").toUpperCase()} · slot ${m.slot} · ${m.type}`);
+  OpenVP.on("hello", m => status.textContent = SHARE ? (m.type && m.type.startsWith("Panel (waiting") ? "connected, waiting for the program" : "connected") : `IPID ${m.ipid.toString(16).padStart(2,"0").toUpperCase()} · slot ${m.slot} · ${m.type}`);
 
   const dg = document.getElementById("digitals");
   for (let j = 1; j <= 20; j++) {

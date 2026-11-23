@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en" data-openvp-page>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>(function(){var K="openvp.theme",m=matchMedia("(prefers-color-scheme: light)");function g(){try{var v=localStorage.getItem(K);return v==="light"||v==="dark"?v:"auto"}catch(e){return"auto"}}function a(){var p=g();document.documentElement.dataset.theme=p==="auto"?(m.matches?"light":"dark"):p}a()})()</script>
+<title>OpenVP smart graphics panel</title>
+<style>
+  :root { color-scheme:dark; --bg:#111418; --card:#1b2027; --line:#2c333d; --text:#e6e9ee; --muted:#8b95a3; }
+  :root[data-theme="light"] { color-scheme:light; --bg:#f3f5f8; --card:#fff; --line:#d2d9e2; --text:#1b2330; --muted:#586374; }
+  * { box-sizing:border-box; } html, body { margin:0; }
+  body { font:14px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--text); padding:10px 12px; min-height:100dvh; }
+  #msg { color:var(--muted); padding:20px 4px; }
+  .bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; color:var(--muted); font-size:12px; }
+  .dot { width:9px; height:9px; border-radius:50%; background:#c0392b; display:inline-block; } .dot.ok { background:#2f9e6e; }
+  html.openvp-kiosk body { padding:0; }
+</style>
+</head>
+<body>
+<div class="bar" data-chrome><span class="dot" id="dot"></span><span id="st">connecting…</span><span id="info"></span></div>
+<div id="root"></div><div id="msg" hidden></div>
+<script src="openvp-crcomlib.js"></script>
+<script src="openvp-sg.js"></script>
+<script>
+const q = new URLSearchParams(location.search);
+const dot = document.getElementById("dot"), st = document.getElementById("st");
+const [ps, pi] = (q.get("src") || "").split(":");
+OpenVP.on("open", () => { dot.className = "dot ok"; st.textContent = "connected to IP ID " + OpenVP.config.ipid; });
+OpenVP.on("close", () => { dot.className = "dot"; st.textContent = "disconnected, retrying…"; });
+(async () => {
+  const msg = document.getElementById("msg");
+  try {
+    const r = await fetch(`/api/slots/${+ps}/panels/${encodeURIComponent(pi)}/sg`, { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status === 401 ? "Log in to OpenVP first (open the console in this browser)." : r.status === 404 ? "No smart-graphics project is stored for that slot and IP ID." : "Couldn't load the project (" + r.status + ").");
+    const project = await r.json();
+    document.title = project.name || "Smart graphics panel";
+    document.getElementById("info").textContent = `${project.name || ""} · ${project.format}`;
+    OpenVPSg.mount(document.getElementById("root"), project, { assetBase: `/api/slots/${+ps}/panels/${encodeURIComponent(pi)}/sg/assets/` });
+  } catch (e) { msg.hidden = false; msg.textContent = e.message; }
+})();
+</script>
+</body>
+</html>

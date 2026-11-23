@@ -1,0 +1,23 @@
+OpenVP {{ .Chart.AppVersion }} is installed as {{ include "openvp.fullname" . }}.
+
+Access key:
+  kubectl get secret {{ include "openvp.secretName" . }} -n {{ .Release.Namespace }} -o jsonpath='{.data.{{ include "openvp.secretKey" . }}}' | base64 -d; echo
+
+Web console:
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- else }}
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "openvp.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+  then open http://localhost:{{ .Values.service.port }} and enter the access key.
+{{- end }}
+{{- if .Values.devices.enabled }}
+
+Touch panels (CIP, TCP {{ .Values.devices.cipPort }}) connect to the address of the {{ include "openvp.fullname" . }}-devices Service:
+  kubectl get svc {{ include "openvp.fullname" . }}-devices -n {{ .Release.Namespace }}
+{{- end }}
+{{- if not .Values.persistence.enabled }}
+
+WARNING: persistence is off, so programs and settings are lost when the pod restarts.
+{{- end }}

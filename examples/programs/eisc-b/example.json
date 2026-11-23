@@ -1,0 +1,17 @@
+{
+  "name": "EISC pair: B",
+  "kind": "SIMPL Windows",
+  "description": "The other half of the EISC pair. It shows what A sends (toggle, level, text) on its panel and sends its own button and slider back to A.",
+  "panel": "XPanel at IP ID 03; EISC at IP ID 10",
+  "tryIt": "Watch digital 1, analog 1 and serial 1 follow A. Press digital 1 or move analog 1 here and see A's digital 2 and analog 2 follow.",
+  "tags": [
+    "eisc",
+    "two slots",
+    "remote eisc"
+  ],
+  "id": "eisc-b",
+  "files": [
+    "EiscPairB.smw",
+    "EiscPairB.openvp.json"
+  ]
+}

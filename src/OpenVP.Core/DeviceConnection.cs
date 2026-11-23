@@ -63,6 +63,32 @@ public sealed class DeviceConnection
     public long Errors;
     /// <summary>Round-trip time the client last reported or that was measured, in ms (-1 = unknown).</summary>
     public double LatencyMs = -1;
+    /// <summary>Where <see cref="LatencyMs"/> came from: "server ping" (measured here), "client ping" (the page reported it), "CIP heartbeat", "CIP handshake".</summary>
+    public string? LatencySource;
+    private readonly double[] _latencyRing = new double[30];
+    private int _latencyCount;
+    private readonly object _latencyGate = new();
+
+    /// <summary>Record a round-trip measurement. Keeps the last 30 so the rack view can show a trend, min, average and max.</summary>
+    public void RecordLatency(double ms, string source)
+    {
+        if (ms < 0 || double.IsNaN(ms)) return;
+        lock (_latencyGate) { _latencyRing[_latencyCount++ % _latencyRing.Length] = ms; }
+        LatencyMs = ms;
+        LatencySource = source;
+    }
+
+    /// <summary>The last measurements (oldest first), at most 30.</summary>
+    public double[] LatencyHistory()
+    {
+        lock (_latencyGate)
+        {
+            var n = Math.Min(_latencyCount, _latencyRing.Length);
+            var res = new double[n];
+            for (var i = 0; i < n; i++) res[i] = _latencyRing[(_latencyCount - n + i) % _latencyRing.Length];
+            return res;
+        }
+    }
 
     public DateTimeOffset LastActivity => new(Interlocked.Read(ref _lastActivityTicks), TimeSpan.Zero);
 

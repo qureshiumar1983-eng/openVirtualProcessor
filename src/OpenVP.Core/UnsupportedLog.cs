@@ -24,6 +24,7 @@ public sealed class UnsupportedLog : IDisposable
     private readonly Timer _saveTimer;
     private bool _dirty;
     private string? _path;
+    private Func<string, string, bool>? _isSupported;
 
     public UnsupportedLog(string? path = null)
     {
@@ -33,6 +34,27 @@ public sealed class UnsupportedLog : IDisposable
 
     /// <summary>The file the list is kept in, or null to keep it in memory only.</summary>
     public string? FilePath { get { lock (_gate) return _path; } }
+
+    /// <summary>
+    /// Tells the log which things OpenVP supports now (kind, name), so rows written by an older build stop being
+    /// listed: they are dropped when the file is read, left out of <see cref="Items"/> and the rewritten file, and
+    /// never reported again. Items already held are pruned at once (and the file rewritten).
+    /// </summary>
+    public void SetSupportCheck(Func<string, string, bool>? isSupported)
+    {
+        lock (_gate)
+        {
+            _isSupported = isSupported;
+            if (isSupported == null) return;
+            var gone = _items.Keys.Where(k => isSupported(k.Kind, k.Name)).ToList();
+            if (gone.Count == 0) return;
+            foreach (var k in gone) _items.Remove(k);
+            _dirty = true;
+            if (_path != null) _saveTimer.Change(500, Timeout.Infinite);
+        }
+    }
+
+    private bool Supported(string kind, string name) => _isSupported != null && _isSupported(kind, name);
 
     /// <summary>Raised (outside the lock) after a report adds a new item.</summary>
     public event Action<UnsupportedItem>? Added;
@@ -49,6 +71,7 @@ public sealed class UnsupportedLog : IDisposable
             {
                 foreach (var item in Parse(File.ReadAllLines(full)))
                 {
+                    if (Supported(item.Kind, item.Name)) { _dirty = true; _saveTimer.Change(500, Timeout.Infinite); continue; }
                     var key = (item.Kind, item.Name);
                     _items[key] = _items.TryGetValue(key, out var mine) ? Merge(mine, item) : item;
                 }
@@ -69,6 +92,7 @@ public sealed class UnsupportedLog : IDisposable
         kind = Clean(kind);
         name = Clean(name);
         detail = Clean(detail ?? "");
+        lock (_gate) if (Supported(kind, name)) return;
         var today = DateOnly.FromDateTime(DateTime.Now);
         UnsupportedItem? added = null;
         lock (_gate)
@@ -140,8 +164,9 @@ public sealed class UnsupportedLog : IDisposable
         sb.Append("Commit this file after running your programs so everyone can see what to build next; ");
         sb.Append("**Programs** counts the program loads that hit it, so the top of each kind is the most wanted. ");
         sb.Append("Only symbol names are recorded, never program names.\n\n");
-        sb.Append("When you implement one, delete its row. If a program still needs it, it comes back on the next run.\n\n");
+        sb.Append("When you implement one, delete its row (the server also drops rows for symbols the catalog supports now, whether matched by library name, SmC code or compiled type). If a program still needs it, it comes back on the next run.\n\n");
         sb.Append("Merging: if two people's edits clash, keep both rows; for the same row, add the Programs counts and keep the earliest First seen and latest Last seen.\n\n");
+        sb.Append(PanelSupportNotes.Markdown).Append("\n\n## Unsupported symbols and types seen in programs\n\n");
         sb.Append(Header).Append('\n');
         foreach (var i in Sorted(items))
             sb.Append($"| {Cell(i.Kind)} | {Cell(i.Name)} | {Cell(i.Detail)} | {i.Seen} | {i.FirstSeen:yyyy-MM-dd} | {i.LastSeen:yyyy-MM-dd} |\n");

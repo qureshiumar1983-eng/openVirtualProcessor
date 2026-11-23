@@ -1,0 +1,53 @@
+[Unit]
+Description=OpenVP virtual control processor
+Documentation=https://github.com/qureshiumar1983-eng/openVirtualProcessor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=openvp
+Group=openvp
+# Defaults first, then /etc/openvp/openvp.env, which wins. Settings in it use the form OpenVP__Slots=10.
+Environment=OpenVP__DataDirectory=/var/lib/openvp
+Environment=Urls=http://0.0.0.0:8080
+Environment=HOME=/var/lib/openvp
+Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
+Environment=DOTNET_NOLOGO=1
+EnvironmentFile=-/etc/openvp/openvp.env
+WorkingDirectory=/var/lib/openvp
+ExecStart=/usr/lib/openvp/openvp
+Restart=on-failure
+RestartSec=5
+# A slot that is stopping gets this long to finish before the service is killed.
+TimeoutStopSec=30
+# /var/lib/openvp (programs, slot files, users and tokens, backups) is made and owned by the openvp user.
+StateDirectory=openvp
+StateDirectoryMode=0750
+LimitNOFILE=65536
+UMask=0027
+
+# Hardening. The server only needs to write its data folder and to listen on the network. Ports below 1024
+# (for example the SSH console on port 22, off unless enabled) are allowed by the one capability below.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+# Not set, on purpose: MemoryDenyWriteExecute (.NET compiles code at run time) and SystemCallFilter (program
+# plug-ins and SIMPL# libraries can use any system call).
+
+[Install]
+WantedBy=multi-user.target

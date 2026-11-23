@@ -5,7 +5,8 @@ using System.Text;
 namespace OpenVP.Server;
 
 /// <summary>
-/// Access key for the web console, REST API and debugger stream.
+/// Access key for the web console, REST API and debugger stream. This class holds the key and the rules for "is this request from this machine" and "is it from another site";
+/// <see cref="Authz"/> decides who is calling (the key, an API token, a signed-in user, or this computer) and what they may do, and is the middleware.
 ///
 /// Anyone who can call the API can upload a program, and a SIMPL# program is .NET code that runs in this
 /// process, so the API needs a key whenever the server is reachable from other machines. The key comes from
@@ -15,7 +16,9 @@ namespace OpenVP.Server;
 ///
 /// Requests from this machine (loopback) don't need the key unless <c>OpenVP:LocalRequiresKey</c> is true,
 /// and never when they carry a proxy's forwarding header, since a reverse proxy on this machine would
-/// otherwise make every remote user look local. Panels (<c>/ws/panel</c>, CIP) can only press joins, so they
+/// otherwise make every remote user look local. The same goes for Cloudflare's headers (<c>Cf-Connecting-IP</c>,
+/// <c>Cf-Ray</c>, <c>CF-Visitor</c>), and for every request that arrives on the tunnel port (see
+/// <see cref="TunnelGate"/>), whatever its address or Host header. Panels (<c>/ws/panel</c>, CIP) can only press joins, so they
 /// stay open unless <c>OpenVP:PanelsRequireKey</c> is true.
 /// </summary>
 public sealed class ApiAuth
@@ -25,8 +28,9 @@ public sealed class ApiAuth
 
     private readonly byte[]? _key;
 
-    public ApiAuth(string? key, bool localRequiresKey, bool panelsRequireKey)
+    public ApiAuth(string? key, bool localRequiresKey, bool panelsRequireKey, bool metricsPublic = false)
     {
+        MetricsPublic = metricsPublic;
         _key = key is null ? null : Encoding.UTF8.GetBytes(key);
         LocalRequiresKey = localRequiresKey;
         PanelsRequireKey = panelsRequireKey;
@@ -35,6 +39,8 @@ public sealed class ApiAuth
     /// <summary>False when auth is switched off with <c>OpenVP:ApiKey=off</c>.</summary>
     public bool Enabled => _key != null;
     public bool LocalRequiresKey { get; }
+    /// <summary><c>OpenVP:MetricsPublic=true</c> lets <c>/metrics</c> (Prometheus) be read without the key. It is never served on the tunnel port either way.</summary>
+    public bool MetricsPublic { get; }
     public bool PanelsRequireKey { get; }
 
     /// <summary>Where the key came from, for the startup message.</summary>
@@ -46,10 +52,11 @@ public sealed class ApiAuth
         var configured = cfg["ApiKey"]?.Trim();
         var local = cfg.GetValue("LocalRequiresKey", false);
         var panels = cfg.GetValue("PanelsRequireKey", false);
+        var metricsPublic = cfg.GetValue("MetricsPublic", false);
         if (string.Equals(configured, "off", StringComparison.OrdinalIgnoreCase))
-            return new ApiAuth(null, local, panels) { Source = "off" };
+            return new ApiAuth(null, local, panels, metricsPublic) { Source = "off" };
         if (!string.IsNullOrEmpty(configured))
-            return new ApiAuth(configured, local, panels) { Source = "OpenVP:ApiKey", Key = configured };
+            return new ApiAuth(configured, local, panels, metricsPublic) { Source = "OpenVP:ApiKey", Key = configured };
 
         var file = Path.Combine(dataDirectory, "apikey.txt");
         var key = File.Exists(file) ? File.ReadAllText(file).Trim() : "";
@@ -61,7 +68,7 @@ public sealed class ApiAuth
             if (!OperatingSystem.IsWindows())
                 File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         }
-        return new ApiAuth(key, local, panels) { Source = file, Key = key };
+        return new ApiAuth(key, local, panels, metricsPublic) { Source = file, Key = key };
     }
 
     public bool Matches(string? candidate)
@@ -77,13 +84,17 @@ public sealed class ApiAuth
     /// </summary>
     public static bool IsDirectLocal(HttpContext ctx)
     {
+        // The tunnel's agent (cloudflared) connects from 127.0.0.1 and can send any Host header, so nothing
+        // that arrives on the tunnel port is ever "local".
+        if (ctx.Items.ContainsKey(TunnelGate.ItemKey)) return false;
         var ip = ctx.Connection.RemoteIpAddress;
         if (ip == null || !IPAddress.IsLoopback(ip)) return false;
         var host = ctx.Request.Host.Host.Trim('[', ']');
         if (!(host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || (IPAddress.TryParse(host, out var h) && IPAddress.IsLoopback(h))))
             return false;
         var hd = ctx.Request.Headers;
-        return !hd.ContainsKey("X-Forwarded-For") && !hd.ContainsKey("Forwarded") && !hd.ContainsKey("X-Real-IP");
+        return !hd.ContainsKey("X-Forwarded-For") && !hd.ContainsKey("Forwarded") && !hd.ContainsKey("X-Real-IP")
+            && !hd.ContainsKey("Cf-Connecting-IP") && !hd.ContainsKey("Cf-Ray") && !hd.ContainsKey("CF-Visitor");
     }
 
     /// <summary>A browser request from a page on another site (blocks cross-site WebSocket hijacking).</summary>
@@ -117,45 +128,4 @@ public sealed class ApiAuth
         });
 
     public void ClearCookie(HttpContext ctx) => ctx.Response.Cookies.Delete(CookieName);
-
-    private static bool IsProtected(PathString p, bool panelsRequireKey) =>
-        (p.StartsWithSegments("/api") && !p.StartsWithSegments("/api/info") && !p.StartsWithSegments("/api/login") && !p.StartsWithSegments("/api/logout"))
-        || p.StartsWithSegments("/ws/trace") || p.StartsWithSegments("/ws/metrics")
-        || (panelsRequireKey && p.StartsWithSegments("/ws/panel"));
-
-    /// <summary>The middleware: <c>?key=</c> login on pages, cross-origin check on WebSockets, 401 on protected paths.</summary>
-    public async Task Handle(HttpContext ctx, RequestDelegate next)
-    {
-        var path = ctx.Request.Path;
-
-        // A page on another site must never drive the API or open the debugger stream, whatever its cookies
-        // or the local exception. (Browsers send cross-site form uploads without a CORS preflight.)
-        if ((IsProtected(path, PanelsRequireKey) || path.StartsWithSegments("/api/login")) && IsCrossOrigin(ctx))
-        {
-            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
-            return;
-        }
-
-        // Opening /?key=KEY (or any page with ?key=) logs the browser in and strips the key from the address bar.
-        if (Enabled && HttpMethods.IsGet(ctx.Request.Method) && !path.StartsWithSegments("/api") && !path.StartsWithSegments("/ws")
-            && ctx.Request.Query.TryGetValue("key", out var qk))
-        {
-            var rest = string.Join('&', ctx.Request.Query.Where(q => q.Key != "key")
-                .SelectMany(q => q.Value.Select(v => $"{Uri.EscapeDataString(q.Key)}={Uri.EscapeDataString(v ?? "")}")));
-            if (Matches(qk.ToString())) SetCookie(ctx, qk.ToString());
-            ctx.Response.Redirect(path + (rest.Length > 0 ? "?" + rest : "") + (Matches(qk.ToString()) ? "" : (rest.Length > 0 ? "&" : "?") + "badkey=1"));
-            return;
-        }
-
-        if (IsProtected(path, PanelsRequireKey) && !IsAuthenticated(ctx))
-        {
-            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            ctx.Response.Headers.WWWAuthenticate = "Bearer realm=\"OpenVP\"";
-            if (!path.StartsWithSegments("/ws"))
-                await ctx.Response.WriteAsJsonAsync(new { error = "OpenVP access key required. Log in on the web console, or send it as 'Authorization: Bearer KEY'." });
-            return;
-        }
-
-        await next(ctx);
-    }
 }

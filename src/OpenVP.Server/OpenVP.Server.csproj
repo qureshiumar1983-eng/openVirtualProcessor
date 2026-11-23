@@ -8,6 +8,31 @@
     <Content Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Shipped next to the server (build and publish), so the demo and the starter projects work from OpenVP.exe and Docker too. -->
+    <Content Include="../../templates/simpl-sharp/**" Link="templates/simpl-sharp/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../templates/ch5-panel/**" Link="templates/ch5-panel/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../examples/programs/**" Link="examples/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../samples/SimplWindows/SampleProgram.smw;../../samples/SimplWindows/SampleProgram.openvp.json" Link="samples/simpl-windows/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- The built sample program and the API stub the SIMPL# starter builds against; picked up below from the projects' outputs. -->
+    <ProjectReference Include="../../samples/SampleProgram/SampleProgram.csproj" ReferenceOutputAssembly="false" OutputItemType="BuiltSample" />
+    <ProjectReference Include="../../samples/RefStub/SimplSharpPro.csproj" ReferenceOutputAssembly="false" OutputItemType="BuiltStub" />
+  </ItemGroup>
+  <Target Name="AddSampleContent" BeforeTargets="AssignTargetPaths" DependsOnTargets="ResolveProjectReferences">
+    <ItemGroup>
+      <Content Include="@(BuiltSample)" Link="samples/simpl-sharp/SampleProgram.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+      <Content Include="@(BuiltStub)" Link="templates/lib/SimplSharpPro.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+      <Content Include="@(BuiltStub->'%(RootDir)%(Directory)OpenVP.Core.dll')" Link="templates/lib/OpenVP.Core.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+  <ItemGroup>
+    <!-- SSH server for the processor-style console (MIT, no dependencies). Off unless OpenVP:SshEnabled=true. -->
+    <PackageReference Include="Certes" Version="4.1.0" />
+    <PackageReference Include="FxSsh" Version="1.4.0" />
+    <PackageReference Include="MailKit" Version="4.13.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="8.0.11" />
+    <PackageReference Include="MQTTnet" Version="4.3.7.1207" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../OpenVP.Core/OpenVP.Core.csproj" />
     <ProjectReference Include="../OpenVP.SimplSharpHost/OpenVP.SimplSharpHost.csproj" />
     <ProjectReference Include="../OpenVP.Simpl/OpenVP.Simpl.csproj" />

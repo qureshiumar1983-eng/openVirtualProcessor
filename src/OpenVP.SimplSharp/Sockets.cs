@@ -1,5 +1,6 @@
 using System;
 using System.Net.Sockets;
+using OpenVP.Core;
 using OpenVP.SimplSharp;
 
 namespace Crestron.SimplSharp.CrestronSockets
@@ -47,6 +48,7 @@ namespace Crestron.SimplSharp.CrestronSockets
         private System.Net.Sockets.TcpClient _client;
         private NetworkStream _stream;
         private SocketStatus _status = SocketStatus.SOCKET_STATUS_NO_CONNECT;
+        private SocketRecord _rec;
 
         public TCPClient() : this("", 0, 4096) { }
         public TCPClient(string addressToConnectTo, int portNumber, int bufferSize)
@@ -59,6 +61,10 @@ namespace Crestron.SimplSharp.CrestronSockets
 
         public TCPClient(string addressToConnectTo, int portNumber, int bufferSize, Crestron.SimplSharp.EthernetAdapterType adapter)
             : this(addressToConnectTo, portNumber, bufferSize) { }
+        public TCPClient(Crestron.SimplSharp.IPAddress address, int portNumber, int bufferSize)
+            : this(address?.ToString(), portNumber, bufferSize) { }
+        public TCPClient(Crestron.SimplSharp.IPAddress address, int portNumber, int bufferSize, Crestron.SimplSharp.EthernetAdapterType adapter)
+            : this(address?.ToString(), portNumber, bufferSize) { }
 
         public string AddressClientConnectedTo { get; set; }
         public int PortNumber { get; set; }
@@ -67,33 +73,56 @@ namespace Crestron.SimplSharp.CrestronSockets
         public int SocketSendOrReceiveTimeOutInMs { get; set; }
         public SocketStatus ClientStatus => _status;
         public bool DataAvailable => _stream?.DataAvailable ?? false;
+        public int LocalPortNumberOfClient => (_client?.Client?.LocalEndPoint as System.Net.IPEndPoint)?.Port ?? 0;
+        public string LocalAddressOfClient => (_client?.Client?.LocalEndPoint as System.Net.IPEndPoint)?.Address.ToString() ?? "";
 
         public event TCPClientSocketStatusChangeEventHandler SocketStatusChange;
 
         public SocketErrorCodes ConnectToServer()
         {
+            if (_status == SocketStatus.SOCKET_STATUS_CONNECTED) return SocketErrorCodes.SOCKET_INVALID_STATE;
+            if (string.IsNullOrWhiteSpace(AddressClientConnectedTo)) return SocketErrorCodes.SOCKET_NO_HOSTNAME_RESOLVE;
+            if (PortNumber < 1 || PortNumber > 65535) return SocketErrorCodes.SOCKET_INVALID_PORT_NUMBER;
             try
             {
                 Open();
-                _client.Connect(AddressClientConnectedTo, PortNumber);
+                var go = OpenVPBridge.Redirect(AddressClientConnectedTo, PortNumber);
+                if (go.Redirected && _rec != null) _rec.RedirectedTo = $"{go.Host}:{go.Port}";
+                var connect = _client.ConnectAsync(go.Host, go.Port);
+                if (SocketSendOrReceiveTimeOutInMs > 0 && !connect.Wait(SocketSendOrReceiveTimeOutInMs))
+                {
+                    try { _client.Dispose(); } catch { }
+                    throw new TimeoutException();
+                }
+                connect.GetAwaiter().GetResult();
                 Connected();
                 return SocketErrorCodes.SOCKET_OK;
             }
-            catch (Exception)
+            catch (Exception e)
             {
-                SetStatus(SocketStatus.SOCKET_STATUS_CONNECT_FAILED);
-                return SocketErrorCodes.SOCKET_CONNECT_FAILED;
+                _rec?.Close("connect failed");
+                var dns = Unwrap(e) is SocketException { SocketErrorCode: SocketError.HostNotFound or SocketError.NoData or SocketError.TryAgain };
+                SetStatus(dns ? SocketStatus.SOCKET_STATUS_DNS_FAILED : SocketStatus.SOCKET_STATUS_CONNECT_FAILED);
+                return dns ? SocketErrorCodes.SOCKET_NO_HOSTNAME_RESOLVE : SocketErrorCodes.SOCKET_CONNECT_FAILED;
             }
         }
+
+        private static Exception Unwrap(Exception e) => e is AggregateException { InnerException: { } i } ? i : e;
 
         public SocketErrorCodes ConnectToServerAsync(TCPClientConnectCallback callback)
         {
             if (_status == SocketStatus.SOCKET_STATUS_CONNECTED) return SocketErrorCodes.SOCKET_INVALID_STATE;
             Open();
             SetStatus(SocketStatus.SOCKET_STATUS_WAITING);
-            _client.ConnectAsync(AddressClientConnectedTo, PortNumber).ContinueWith(t =>
+            var go = OpenVPBridge.Redirect(AddressClientConnectedTo, PortNumber);
+            if (go.Redirected && _rec != null) _rec.RedirectedTo = $"{go.Host}:{go.Port}";
+            _client.ConnectAsync(go.Host, go.Port).ContinueWith(t =>
             {
-                if (t.IsFaulted) SetStatus(SocketStatus.SOCKET_STATUS_CONNECT_FAILED);
+                if (t.IsFaulted)
+                {
+                    _rec?.Close("connect failed");
+                    SetStatus(Unwrap(t.Exception) is SocketException { SocketErrorCode: SocketError.HostNotFound or SocketError.NoData or SocketError.TryAgain } ? SocketStatus.SOCKET_STATUS_DNS_FAILED : SocketStatus.SOCKET_STATUS_CONNECT_FAILED);
+                }
                 else Connected();
                 if (callback != null) OpenVPBridge.Post(() => callback(this));
             });
@@ -111,7 +140,7 @@ namespace Crestron.SimplSharp.CrestronSockets
         public SocketErrorCodes SendData(byte[] dataToSend, int offset, int lengthToSend)
         {
             if (_stream == null) return SocketErrorCodes.SOCKET_NOT_CONNECTED;
-            try { _stream.Write(dataToSend, offset, lengthToSend); return SocketErrorCodes.SOCKET_OK; }
+            try { _stream.Write(dataToSend, offset, lengthToSend); _rec?.Sent(dataToSend, offset, lengthToSend); return SocketErrorCodes.SOCKET_OK; }
             catch (Exception) { Close(SocketStatus.SOCKET_STATUS_BROKEN_REMOTELY); return SocketErrorCodes.SOCKET_NOT_CONNECTED; }
         }
 
@@ -130,6 +159,7 @@ namespace Crestron.SimplSharp.CrestronSockets
             {
                 var n = _stream.Read(IncomingDataBuffer, 0, IncomingDataBuffer.Length);
                 if (n == 0) Close(SocketStatus.SOCKET_STATUS_BROKEN_REMOTELY);
+                else _rec?.Received(IncomingDataBuffer, 0, n);
                 return n;
             }
             catch (Exception) { Close(SocketStatus.SOCKET_STATUS_BROKEN_REMOTELY); return 0; }
@@ -143,6 +173,7 @@ namespace Crestron.SimplSharp.CrestronSockets
             {
                 var n = t.IsFaulted || t.IsCanceled ? 0 : t.Result;
                 if (n == 0) Close(SocketStatus.SOCKET_STATUS_BROKEN_REMOTELY);
+                else _rec?.Received(IncomingDataBuffer, 0, n);
                 OpenVPBridge.Post(() => callback?.Invoke(this, n));
             });
             return SocketErrorCodes.SOCKET_OPERATION_PENDING;
@@ -157,12 +188,15 @@ namespace Crestron.SimplSharp.CrestronSockets
         private void Open()
         {
             _client?.Dispose();
+            _rec?.Close("closed");
             _client = new System.Net.Sockets.TcpClient { NoDelay = !Nagle };
+            _rec = OpenVPBridge.Sock("TCPClient", "client", "tcp", "", $"{AddressClientConnectedTo}:{PortNumber}");
         }
 
         private void Connected()
         {
             _stream = _client.GetStream();
+            _rec?.Connected(OpenVPBridge.Ep(_client.Client.LocalEndPoint));
             SetStatus(SocketStatus.SOCKET_STATUS_CONNECTED);
         }
 
@@ -172,6 +206,7 @@ namespace Crestron.SimplSharp.CrestronSockets
             _stream = null;
             try { _client?.Dispose(); } catch { }
             _client = null;
+            _rec?.Close(status == SocketStatus.SOCKET_STATUS_BROKEN_REMOTELY ? "closed by remote" : "closed");
             if (wasOpen) SetStatus(status);
         }
 

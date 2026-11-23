@@ -1,0 +1,16 @@
+{
+  "name": "Logic gates",
+  "kind": "SIMPL Windows",
+  "description": "Two buttons feed an AND, an OR, an XOR and two NOTs. The results light digital feedback 3 to 7, so you can see each gate's truth table by pressing the buttons.",
+  "panel": "XPanel at IP ID 03",
+  "tryIt": "On the test panel hold digital 1 and digital 2 in the four combinations and watch digital 3 (AND), 4 (OR), 5 (XOR), 6 (NOT 1) and 7 (NOT 2).",
+  "tags": [
+    "gates",
+    "logic"
+  ],
+  "id": "logic-gates",
+  "files": [
+    "LogicGates.smw",
+    "LogicGates.openvp.json"
+  ]
+}

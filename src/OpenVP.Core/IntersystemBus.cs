@@ -50,17 +50,20 @@ public sealed class IntersystemBus
         {
             var list = _links.GetOrAdd(endpoint.IpId, _ => new List<JoinDevice>());
             if (list.Contains(endpoint)) return list.Count - 1;
+            // A slot never links to itself. Another device of the same slot and IP ID is what a replaced program left behind (its
+            // runtime was swapped without a clean stop), so drop it and its links before the new one joins.
+            foreach (var stale in list.Where(e => e.Slot == endpoint.Slot).ToList()) DetachCore(list, stale);
             list.Add(endpoint);
             endpoint.FeedbackChanged += Forward;
 
             // Each endpoint counts its peers as connections, so it reports online once linked.
-            foreach (var peer in list.Where(p => p != endpoint))
+            foreach (var peer in list.Where(p => p != endpoint && p.Slot != endpoint.Slot))
             {
                 Link(peer, endpoint);
                 Link(endpoint, peer);
                 // Bring the newcomer up to date with what the peer already set.
-                foreach (var (k, v) in peer.FeedbackSnapshot()) endpoint.ReceiveInput(k, v);
-                foreach (var (k, v) in endpoint.FeedbackSnapshot()) peer.ReceiveInput(k, v);
+                foreach (var (k, v) in peer.FeedbackSnapshot()) endpoint.ReceiveInput(k, v, InputSource.Eisc);
+                foreach (var (k, v) in endpoint.FeedbackSnapshot()) peer.ReceiveInput(k, v, InputSource.Eisc);
             }
             return list.Count - 1;
         }
@@ -70,14 +73,26 @@ public sealed class IntersystemBus
     {
         lock (_gate)
         {
-            if (!_links.TryGetValue(endpoint.IpId, out var list) || !list.Remove(endpoint)) return;
-            endpoint.FeedbackChanged -= Forward;
-            foreach (var peer in list)
-            {
-                Unlink(peer, endpoint);
-                Unlink(endpoint, peer);
-            }
+            if (!_links.TryGetValue(endpoint.IpId, out var list)) return;
+            DetachCore(list, endpoint);
         }
+    }
+
+    private void DetachCore(List<JoinDevice> list, JoinDevice endpoint)
+    {
+        if (!list.Remove(endpoint)) return;
+        endpoint.FeedbackChanged -= Forward;
+        foreach (var peer in list)
+        {
+            Unlink(peer, endpoint);
+            Unlink(endpoint, peer);
+        }
+    }
+
+    /// <summary>How many other endpoints this one is linked to (0 when it isn't attached). For tests and the IP table.</summary>
+    public int PeerCount(JoinDevice endpoint)
+    {
+        lock (_gate) return _links.TryGetValue(endpoint.IpId, out var list) && list.Contains(endpoint) ? list.Count(p => p != endpoint) : 0;
     }
 
     private void Forward(JoinDevice source, JoinKey key, object value)
@@ -86,7 +101,7 @@ public sealed class IntersystemBus
         lock (_gate)
         {
             if (!_links.TryGetValue(source.IpId, out var list)) return;
-            peers = list.Where(p => p != source).ToList();
+            peers = list.Where(p => p != source && p.Slot != source.Slot).ToList();
             foreach (var p in peers)
             {
                 // source's connection to p carries the join out; p's connection to source brings it in.
@@ -94,6 +109,6 @@ public sealed class IntersystemBus
                 if (_peerLinks.TryGetValue((p, source), out var inLink)) { Interlocked.Increment(ref inLink.JoinsIn); inLink.RecordIn(0); }
             }
         }
-        foreach (var p in peers) p.ReceiveInput(key, value);
+        foreach (var p in peers) p.ReceiveInput(key, value, InputSource.Eisc);
     }
 }

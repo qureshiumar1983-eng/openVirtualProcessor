@@ -89,7 +89,7 @@ public static class MetricsTests
         Assert.Eventually(() => p.Metrics.Snapshot(false).Slots[0].EventsProcessed >= 20, "events processed");
         Assert.Eventually(() => p.Metrics.Snapshot().History.Count >= 1, "process sampled", 4000);
         var m = p.Metrics.Snapshot();
-        Assert.True(m.WorkingSetMb > 0 && m.ProcessThreads > 0, "process numbers filled in");
+        Assert.True(m.WorkingSetMb > 0 && m.PrivateMb > 0 && m.ProcessThreads > 0, "process numbers filled in");
         Assert.True(slot.RunConsoleCommand("ramfree").Contains("MB"), "ramfree");
         Assert.True(slot.RunConsoleCommand("cpuload").Contains("CPU"), "cpuload");
     }

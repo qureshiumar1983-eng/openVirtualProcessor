@@ -17,6 +17,15 @@ public static class Assert
             throw new AssertException($"{what}: expected <{expected}>, got <{actual}>");
     }
 
+    /// <summary>The action must throw exactly this exception type (or a subclass); returns it so the message can be checked.</summary>
+    public static T Throws<T>(Action action) where T : Exception
+    {
+        try { action(); }
+        catch (T e) { return e; }
+        catch (Exception e) { throw new AssertException($"Expected {typeof(T).Name}, got {e.GetType().Name}: {e.Message}"); }
+        throw new AssertException($"Expected {typeof(T).Name}, but nothing was thrown");
+    }
+
     /// <summary>Poll until the condition holds (events run on slot threads).</summary>
     public static void Eventually(Func<bool> cond, string what, int timeoutMs = 3000)
     {

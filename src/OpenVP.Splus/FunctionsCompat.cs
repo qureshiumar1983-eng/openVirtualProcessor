@@ -288,6 +288,9 @@ namespace Crestron.Logos.SplusLibrary
                 socket.Listener.Start();
                 socket.PortNumber = port;
                 socket.SocketStatus = 1;
+                socket.Rec?.Close("stopped");
+                socket.Rec = socket.Owner?.Slot?.Io.Sockets.Open("SIMPL+ TCP server", "server", "tcp", $"{(string.IsNullOrEmpty(address) ? "0.0.0.0" : address)}:{port}", "");
+                socket.Rec?.Connected();
                 socket.Raise(socket.OnSocketStatus);
                 _ = AcceptLoop(socket, socket.Listener);
                 return 0;
@@ -304,6 +307,8 @@ namespace Crestron.Logos.SplusLibrary
                 catch { return; }
                 if (socket.Client?.Connected == true) { client.Dispose(); continue; }
                 socket.Client = client;
+                socket.ClientRec = socket.Owner?.Slot?.Io.Sockets.Open("SIMPL+ TCP server connection", "server", "tcp", client.Client.LocalEndPoint?.ToString() ?? "", client.Client.RemoteEndPoint?.ToString() ?? "");
+                socket.ClientRec?.Connected();
                 socket.RemoteEndPoint = client.Client.RemoteEndPoint as IPEndPoint;
                 socket.SocketStatus = 2;
                 socket.Raise(socket.OnSocketConnect);
@@ -323,11 +328,13 @@ namespace Crestron.Logos.SplusLibrary
                 {
                     var n = await stream.ReadAsync(buf, 0, buf.Length);
                     if (n == 0) break;
+                    socket.ClientRec?.Received(buf, 0, n);
                     socket.SocketRxBuf.UpdateValue(S(socket.SocketRxBuf) + Encoding.Latin1.GetString(buf, 0, n));
                     socket.Raise(socket.OnSocketReceive);
                 }
             }
             catch { }
+            socket.ClientRec?.Close("closed by remote");
             client.Dispose();
             if (socket.Client == client) socket.Client = null;
             socket.Raise(socket.OnSocketDisconnect);
@@ -339,6 +346,7 @@ namespace Crestron.Logos.SplusLibrary
             if (socket == null) return -1;
             socket.Listener?.Stop(); socket.Listener = null;
             socket.Client?.Dispose(); socket.Client = null;
+            socket.ClientRec?.Close("closed"); socket.Rec?.Close("stopped");
             socket.SocketStatus = 0;
             socket.Raise(socket.OnSocketStatus);
             return 0;

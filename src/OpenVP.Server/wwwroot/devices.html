@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<script src="openvp-theme.js"></script>
+<title>OpenVP devices</title>
+<style>
+  :root { --bg:#0f1216; --card:#181d23; --line:#29303a; --text:#e6e9ee; --muted:#8b95a3; --ok:#2f9e6e; --warn:#d69e2e; --err:#e05252; --accent:#4c8dff; --tx:#7fb2ff; --rx:#7fe0b1; }
+  :root[data-theme="light"] { --tx:#1a4fb0; --rx:#14633f; }
+  * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
+  html, body { height:100%; }
+  body { margin:0; font:14px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--text); display:flex; flex-direction:column; min-height:100dvh; }
+  header { padding:10px 16px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:6px 12px; flex-wrap:wrap; background:var(--card); }
+  header h1 { margin:0; font-size:17px; }
+  header .sp { flex:1; }
+  a { color:var(--accent); }
+  .muted { color:var(--muted); }
+  .mono { font-family:ui-monospace, Menlo, Consolas, monospace; font-size:12px; }
+  button, input, select, textarea { font:inherit; color:var(--text); background:var(--input); border:1px solid var(--line); border-radius:6px; padding:5px 9px; }
+  textarea { width:100%; font-family:ui-monospace, Menlo, Consolas, monospace; font-size:12px; }
+  button { cursor:pointer; } button:hover { border-color:var(--accent); }
+  button.primary { border-color:var(--accent); background:var(--active); }
+  button.small { font-size:12px; padding:2px 8px; }
+  button.danger:hover { border-color:var(--err); color:var(--err-fg); }
+  main { flex:1; min-height:0; display:flex; flex-direction:column; padding:12px 16px 20px; gap:10px; }
+  .tabs { display:flex; flex-wrap:wrap; }
+  .tabs button { border-radius:0; margin-left:-1px; } .tabs button:first-child { border-radius:6px 0 0 6px; margin-left:0; } .tabs button:last-child { border-radius:0 6px 6px 0; }
+  .tabs button.active { background:var(--active); border-color:var(--accent); position:relative; }
+  .pane { display:none; flex-direction:column; gap:10px; min-height:0; }
+  .pane.on { display:flex; }
+  .bar { display:flex; flex-wrap:wrap; gap:6px 8px; align-items:center; }
+  .bar .sp { flex:1; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
+  .pill { display:inline-block; font-size:11px; padding:1px 8px; border-radius:20px; background:var(--chip); color:var(--text2); white-space:nowrap; }
+  .pill.ok { background:var(--ok-bg); color:var(--ok-fg); } .pill.warn { background:var(--warn-bg); color:var(--warn-fg); } .pill.err { background:var(--err-bg); color:var(--err-fg); } .pill.info { background:var(--info-bg); color:var(--info-fg); }
+  table { border-collapse:collapse; width:100%; }
+  th, td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:12px; color:var(--muted); font-weight:600; white-space:nowrap; }
+  td.num, th.num { text-align:right; }
+  tr.row { cursor:pointer; } tr.row:hover { background:var(--hover); } tr.row.sel { background:var(--selrow); }
+  .sim { display:flex; flex-direction:column; gap:8px; }
+  .sim h3 { margin:0; font-size:15px; display:flex; flex-wrap:wrap; gap:4px 8px; align-items:center; }
+  .sim .kv { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:4px 12px; }
+  .sim .kv div { background:var(--well); border:1px solid var(--line); border-radius:6px; padding:3px 8px; display:flex; justify-content:space-between; gap:8px; align-items:baseline; min-width:0; }
+  .sim .kv span { color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
+  .sim .kv b { font-family:ui-monospace, Menlo, Consolas, monospace; font-size:12px; cursor:pointer; overflow-wrap:anywhere; text-align:right; }
+  .sim details > summary { cursor:pointer; color:var(--muted); font-size:12px; }
+  .try { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .try input { flex:1; min-width:160px; }
+  .try-out { font-family:ui-monospace, Menlo, Consolas, monospace; font-size:12px; color:var(--text2); width:100%; }
+  .term { background:var(--well); border:1px solid var(--line); border-radius:6px; height:min(52vh, 460px); min-height:200px; overflow:auto; font-family:ui-monospace, Menlo, Consolas, monospace; font-size:12px; padding:4px 0; }
+  .term .ln { display:flex; gap:8px; padding:0 8px; align-items:baseline; }
+  .term .ln:hover { background:var(--hover); }
+  .term .t { color:var(--muted); flex:none; }
+  .term .d { flex:none; width:2.2em; font-weight:700; }
+  .term .ln.tx .d, .term .ln.tx .x { color:var(--tx); } .term .ln.rx .d, .term .ln.rx .x { color:var(--rx); }
+  .term .x { white-space:pre-wrap; overflow-wrap:anywhere; flex:1; min-width:0; }
+  .term .o { color:var(--muted); flex:none; font-size:11px; }
+  .term .empty { color:var(--muted); padding:10px 12px; font-family:system-ui, sans-serif; }
+  dialog { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:16px; width:min(460px, calc(100vw - 24px)); max-height:92dvh; overflow:auto; }
+  dialog.wide { width:min(980px, calc(100vw - 24px)); }
+  dialog::backdrop { background:var(--overlay); }
+  dialog form { display:flex; flex-direction:column; gap:10px; margin:0; }
+  dialog .row { display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+  dialog label { display:flex; flex-direction:column; gap:3px; font-size:12px; color:var(--muted); }
+  dialog label.inline { flex-direction:row; align-items:center; gap:6px; color:var(--text); font-size:13px; }
+  dialog input[type=text], dialog input:not([type]), dialog input[type=number], dialog select { width:100%; }
+  .err { color:var(--err-fg); min-height:1.3em; font-size:13px; }
+  .rule { border:1px solid var(--line); border-radius:8px; padding:8px; background:var(--soft); display:grid; grid-template-columns:2fr 2fr 90px; gap:6px 8px; }
+  .rule label { font-size:11px; }
+  .rule .full { grid-column:1/-1; }
+  .rule .opts { display:flex; gap:12px; flex-wrap:wrap; align-items:end; }
+  .note { padding:6px 8px; border:1px solid var(--warn-line); background:var(--warn-box); border-radius:6px; font-size:12px; }
+  .scroll-x { overflow-x:auto; }
+  @media (max-width: 700px) {
+    header, main { padding-left:12px; padding-right:12px; }
+    .rule { grid-template-columns:1fr; }
+    table.cards thead { display:none; }
+    table.cards, table.cards tbody, table.cards tr, table.cards td { display:block; }
+    table.cards tr { border:1px solid var(--line); border-radius:8px; margin:0 0 8px; padding:6px 8px; }
+    table.cards td { border:none; padding:2px 0; text-align:left; }
+    table.cards td[data-l]::before { content:attr(data-l) " "; color:var(--muted); font-size:11px; }
+    .term { height:44vh; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Devices</h1>
+  <select id="slot" aria-label="Program slot"></select>
+  <span id="prog" class="muted mono" style="overflow-wrap:anywhere"></span>
+  <span class="sp"></span>
+  <button class="theme-btn" data-theme-toggle></button>
+  <a href="/">Console</a>
+  <a href="help.html#devices" target="openvp-help">Help</a>
+</header>
+<main>
+  <div class="tabs" role="tablist">
+    <button id="t-sim" class="active" role="tab" title="Fake devices that answer the program's COM ports and TCP/UDP connections">Simulators</button><button id="t-com" role="tab" title="What the program sends and receives on its COM ports, and a way to send it text">COM terminal</button><button id="t-sock" role="tab" title="Every TCP and UDP socket the program opens">Sockets</button><button id="t-red" role="tab" title="Send the program's connections to a device's address to a simulator instead">Redirects</button><button id="t-disc" role="tab" title="Look for devices on this network">Discover</button>
+  </div>
+
+  <!-- ============================================================ simulators -->
+  <section id="pane-sim" class="pane on">
+    <div class="bar">
+      <button id="sim-new" class="primary" title="Add a fake device, from a generic profile">New simulator…</button>
+      <span class="muted">Generic made-up devices (not any maker's protocol). A simulator answers a COM port or a local TCP/UDP port; you edit its rules to match your device.</span>
+    </div>
+    <div id="sims" style="display:flex;flex-direction:column;gap:10px"></div>
+    <div id="sims-empty" class="muted card">No simulators in this slot yet. Click <b>New simulator…</b>, pick a profile (projector, display, DSP, video switcher) and the COM port it should answer.</div>
+  </section>
+
+  <!-- ============================================================ COM terminal -->
+  <section id="pane-com" class="pane">
+    <div class="bar">
+      <select id="com-port" aria-label="COM port" title="The COM ports the running program has opened"></select>
+      <span id="com-status" class="pill"></span>
+      <span class="sp"></span>
+      <label class="bar" style="gap:4px"><input type="radio" name="com-fmt" value="ascii" checked> ASCII</label>
+      <label class="bar" style="gap:4px"><input type="radio" name="com-fmt" value="hex"> Hex</label>
+      <label class="bar" style="gap:4px"><input type="checkbox" id="com-follow" checked> Follow</label>
+      <button id="com-clear" class="small">Clear</button>
+      <button id="com-save" class="small" title="Save what is shown as a text file">Save session…</button>
+    </div>
+    <div id="com-term" class="term" role="log" aria-label="COM port traffic"></div>
+    <div id="com-sim" class="muted"></div>
+    <form id="com-send" class="bar" autocomplete="off">
+      <input id="com-text" class="mono" style="flex:1;min-width:180px" placeholder="Text to send to the program as received data, e.g. PWR=1\r" aria-label="Text to send as RX" title="Escapes work: \r \n \t \xNN">
+      <label class="bar" style="gap:4px" title="Add a carriage return"><input type="checkbox" id="com-cr"> + \r</label>
+      <label class="bar" style="gap:4px" title="Add a line feed"><input type="checkbox" id="com-lf"> + \n</label>
+      <button class="primary" title="The program receives this on the port, as if the device sent it">Send as RX</button>
+    </form>
+    <div id="com-msg" class="muted"></div>
+  </section>
+
+  <!-- ============================================================ sockets -->
+  <section id="pane-sock" class="pane">
+    <div class="bar">
+      <label class="bar" style="gap:4px"><input type="checkbox" id="sock-closed" checked> Show closed</label>
+      <span class="muted">Sockets the program opened, live ones first. Bytes are always counted; the text is kept while this tab is open.</span>
+    </div>
+    <div class="scroll-x"><table id="socks" class="cards"><thead><tr><th>Kind</th><th>Local</th><th>Remote</th><th>State</th><th class="num">In</th><th class="num">Out</th><th>Opened</th></tr></thead><tbody></tbody></table></div>
+    <div id="socks-empty" class="muted card">The program hasn't opened any sockets.</div>
+    <div id="sock-view" hidden>
+      <div class="bar"><b id="sock-title"></b><span class="sp"></span>
+        <label class="bar" style="gap:4px"><input type="radio" name="sock-fmt" value="ascii" checked> ASCII</label>
+        <label class="bar" style="gap:4px"><input type="radio" name="sock-fmt" value="hex"> Hex</label>
+        <button id="sock-save" class="small">Save…</button></div>
+      <div id="sock-term" class="term" style="margin-top:6px" role="log"></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ redirects -->
+  <section id="pane-red" class="pane">
+    <div class="bar">
+      <button id="red-new" class="primary">New redirect…</button>
+      <span class="muted">When the program connects to the address under <b>Program connects to</b>, OpenVP connects to <b>Goes to</b> instead. The program is not changed. Works for SIMPL# TCPClient and UDPServer and SIMPL+ TCP and UDP sockets.</span>
+    </div>
+    <div class="scroll-x"><table id="reds" class="cards"><thead><tr><th>Program connects to</th><th>Goes to</th><th>Protocol</th><th>On</th><th>Note</th><th></th></tr></thead><tbody></tbody></table></div>
+    <div id="reds-empty" class="muted card">No redirects. Add one to point a device's address (say 192.168.1.50:23) at a simulator.</div>
+  </section>
+
+  <!-- ============================================================ discover -->
+  <section id="pane-disc" class="pane">
+    <div class="bar">
+      <button id="disc-go" class="primary" title="Looks on this computer's own subnets, only when you click. Gentle: a broadcast, an mDNS browse, a ping sweep and a quick check of a few control ports">Discover</button>
+      <button id="disc-stop" class="small" hidden>Stop</button>
+      <span id="disc-state" class="muted"></span>
+    </div>
+    <div id="disc-notes"></div>
+    <div class="scroll-x"><table id="disc" class="cards"><thead><tr><th>Address</th><th>Name</th><th>Model / firmware</th><th>MAC</th><th>Open ports</th><th>Found by</th><th></th></tr></thead><tbody></tbody></table></div>
+    <div id="disc-empty" class="muted card">Nothing yet. Click <b>Discover</b>. It checks Crestron autodiscovery (UDP 41794), mDNS and common control ports 23, 80, 443, 41794, 41795, 1515 and 4352 (PJLink) on hosts that answer ping or are in the ARP table.</div>
+  </section>
+</main>
+
+<!-- new simulator -->
+<dialog id="new-dlg"><form method="dialog" id="new-form">
+  <b>New simulator</b>
+  <label>Profile<select id="n-profile"></select></label>
+  <div id="n-desc" class="muted"></div>
+  <label>Name<input id="n-name" maxlength="80"></label>
+  <label>Attach to<select id="n-kind"><option value="com">A COM port of the program</option><option value="tcp">A local TCP port the program connects to</option><option value="udp">A local UDP port the program sends to</option></select></label>
+  <label id="n-com-l">COM port<input id="n-com" list="n-ports" placeholder="IP-ID-11/Slot-08/COM-01 or COM-01"><datalist id="n-ports"></datalist></label>
+  <label id="n-port-l" hidden>Local port (0 picks a free one)<input id="n-port" type="number" min="0" max="65535" value="0"></label>
+  <div id="n-err" class="err"></div>
+  <div class="row"><button value="cancel" type="button" id="n-cancel">Cancel</button><button class="primary" id="n-ok" type="submit">Add</button></div>
+</form></dialog>
+
+<!-- edit simulator -->
+<dialog id="edit-dlg" class="wide"><form method="dialog" id="edit-form">
+  <b id="e-title">Edit simulator</b>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px">
+    <label>Name<input id="e-name" maxlength="80"></label>
+    <label>Attach to<select id="e-kind"><option value="com">COM port</option><option value="tcp">Local TCP port</option><option value="udp">Local UDP port</option></select></label>
+    <label id="e-com-l">COM port<input id="e-com" list="n-ports"></label>
+    <label id="e-port-l">Local port (0 = free)<input id="e-port" type="number" min="0" max="65535"></label>
+    <label class="inline" style="align-self:end"><input type="checkbox" id="e-enabled"> On</label>
+  </div>
+  <b style="font-size:13px">Rules <span class="muted" style="font-weight:400">— when what the program sends matches, reply and change state. First match in the text wins; matched text is used up.</span></b>
+  <div id="e-rules" style="display:flex;flex-direction:column;gap:8px"></div>
+  <div><button type="button" id="e-addrule" class="small">Add rule</button>
+    <span class="muted">Escapes: \r \n \t \xNN. In a reply, {1} is a regex group, {name} is a state value, {vol:D3} formats a number. A set value like {vol}+5 is worked out.</span></div>
+  <b style="font-size:13px">Messages it sends on its own</b>
+  <div id="e-timers" style="display:flex;flex-direction:column;gap:6px"></div>
+  <div><button type="button" id="e-addtimer" class="small">Add timed message</button></div>
+  <label>Sent when a client connects, or the program opens the port (one per line)<textarea id="e-connect" rows="2"></textarea></label>
+  <label>Starting state (name=value, one per line)<textarea id="e-state" rows="4"></textarea></label>
+  <label class="inline"><input type="checkbox" id="e-reset"> Put the current state back to these starting values when saving</label>
+  <div id="e-err" class="err"></div>
+  <div class="row"><button value="cancel" type="button" id="e-cancel">Cancel</button><button class="primary" id="e-ok" type="submit">Save</button></div>
+</form></dialog>
+
+<!-- redirect -->
+<dialog id="red-dlg"><form method="dialog" id="red-form">
+  <b id="r-title">Network redirect</b>
+  <label>Program connects to (host or host:port)<input id="r-from" placeholder="192.168.1.50:23" autocomplete="off"></label>
+  <label>Send it to<select id="r-to"></select></label>
+  <label id="r-custom-l" hidden>Address (host:port)<input id="r-custom" placeholder="127.0.0.1:9100" autocomplete="off"></label>
+  <label>Protocol<select id="r-proto"><option value="any">TCP and UDP</option><option value="tcp">TCP only</option><option value="udp">UDP only</option></select></label>
+  <label>Note<input id="r-note" maxlength="200" placeholder="what this is for"></label>
+  <label class="inline"><input type="checkbox" id="r-on" checked> On</label>
+  <div id="r-err" class="err"></div>
+  <div class="row"><button value="cancel" type="button" id="r-cancel">Cancel</button><button class="primary" id="r-ok" type="submit">Save</button></div>
+</form></dialog>
+
+<!-- discovered device as a simulator target -->
+<dialog id="tgt-dlg"><form method="dialog" id="tgt-form">
+  <b>Add <span id="t-ip"></span> as a simulator target</b>
+  <div class="muted">The program connects to this device's address. This sends that connection to a simulator instead (it makes a network redirect).</div>
+  <label>Port the program uses<select id="t-port"></select></label>
+  <label>Simulator<select id="t-sim"></select></label>
+  <div id="t-err" class="err"></div>
+  <div class="row"><button value="cancel" type="button" id="t-cancel">Cancel</button><button class="primary" id="t-ok" type="submit">Add</button></div>
+</form></dialog>
+
+<script src="openvp-auth.js"></script>
+<script>
+openvpAuth.init();
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const q = new URLSearchParams(location.search);
+let slot = Number(q.get("slot")) || 1, tab = "sim", slots = [];
+
+async function api(path, method = "GET", body) {
+  const r = await fetch(path, { method, headers: body === undefined ? {} : { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+  if (openvpAuth.check(r)) throw new Error("Log in with the access key first.");
+  const ct = r.headers.get("content-type") || "";
+  const data = ct.includes("json") ? await r.json() : await r.text();
+  if (!r.ok) throw new Error((data && data.error) || data || r.statusText);
+  return data;
+}
+const S = p => `/api/slots/${slot}${p}`;
+const pad = (n, w = 2) => String(n).padStart(w, "0");
+const clock = t => { const d = new Date(t); return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`; };
+const bytes = n => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`;
+
+// ---- text views: ASCII with \x0D-style escapes, or hex ----
+function asAscii(s) { let o = ""; for (const ch of s) { const c = ch.charCodeAt(0); o += ch === "\\" ? "\\\\" : c === 13 ? "\\r" : c === 10 ? "\\n" : c === 9 ? "\\t" : (c < 32 || c > 126) ? "\\x" + c.toString(16).toUpperCase().padStart(2, "0") : ch; } return o; }
+const asHex = s => [...s].map(ch => (ch.charCodeAt(0) & 255).toString(16).toUpperCase().padStart(2, "0")).join(" ");
+const render = (s, fmt) => fmt === "hex" ? asHex(s) : asAscii(s);
+
+// A scrolling traffic view fed by entries {seq,time,dir,text,origin}.
+class Term {
+  constructor(el, fmt) { this.el = el; this.fmt = fmt; this.entries = []; this.follow = true; this.empty = "Nothing yet."; this.paint(); }
+  reset(entries = []) { this.entries = entries; this.paint(); }
+  add(list) { if (list.length) { this.entries.push(...list); if (this.entries.length > 3000) this.entries.splice(0, this.entries.length - 3000); this.paint(); } }
+  paint() {
+    const el = this.el, stick = this.follow;
+    el.innerHTML = this.entries.length ? this.entries.map(e => `<div class="ln ${e.dir}"><span class="t">${clock(e.time)}</span><span class="d">${e.dir === "tx" ? "TX" : "RX"}</span><span class="x">${esc(render(e.text, this.fmt))}</span><span class="o">${esc(e.origin || "")}</span></div>`).join("") : `<div class="empty">${esc(this.empty)}</div>`;
+    if (stick) el.scrollTop = el.scrollHeight;
+  }
+  text() { return this.entries.map(e => `${new Date(e.time).toISOString()} ${e.dir === "tx" ? "TX" : "RX"} ${render(e.text, this.fmt)}`).join("\n") + "\n"; }
+}
+function save(name, text) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
+
+// ---- tabs ----
+const TABS = { sim: "t-sim", com: "t-com", sock: "t-sock", red: "t-red", disc: "t-disc" };
+function showTab(t) {
+  tab = t;
+  for (const [k, id] of Object.entries(TABS)) { $("#" + id).classList.toggle("active", k === t); $("#pane-" + k).classList.toggle("on", k === t); }
+  try { history.replaceState(null, "", `?slot=${slot}#${t}`); } catch { }
+  poll();
+}
+for (const [k, id] of Object.entries(TABS)) $("#" + id).onclick = () => showTab(k);
+
+// ---- slot ----
+async function loadSlots() {
+  slots = await api("/api/slots");
+  const sel = $("#slot"); sel.innerHTML = "";
+  for (const s of slots) { const o = document.createElement("option"); o.value = s.number; o.textContent = `Slot ${s.number}${s.name ? " · " + s.name : ""}${s.program ? " · " + s.program : ""}`; sel.appendChild(o); }
+  if (!slots.some(s => s.number === slot)) slot = 1;
+  sel.value = slot;
+  setProg();
+}
+function setProg() { const s = slots.find(x => x.number === slot); $("#prog").textContent = s ? (s.program ? `${s.program} · ${s.state}` : "no program loaded") : ""; }
+$("#slot").onchange = e => { slot = Number(e.target.value); comKey = null; sockSel = null; lastSeq = 0; setProg(); showTab(tab); };
+
+// ---- simulators ----
+let simData = null, profiles = [], simPorts = [];
+function simStatus(s) {
+  if (s.error) return `<span class="pill err" title="${esc(s.error)}">${esc(s.error)}</span>`;
+  if (!s.enabled) return `<span class="pill">off</span>`;
+  if (s.kind === "com") return s.comActive ? `<span class="pill ok">port open, answering</span>` : `<span class="pill warn" title="The program has not opened this port yet (it must be loaded and running)">waiting for the program to open the port</span>`;
+  return s.listening ? `<span class="pill ok">listening on 127.0.0.1:${s.listenPort}${s.connections ? ` · ${s.connections} connected` : ""}</span>` : `<span class="pill warn">not listening</span>`;
+}
+const simWhere = s => s.kind === "com" ? `COM port ${esc(s.com || "(none chosen)")}` : `${s.kind.toUpperCase()} ${s.listening ? "127.0.0.1:" + s.listenPort : "port " + (s.port || "auto")}`;
+
+async function refreshSims() {
+  let d; try { d = await api(S("/simulators")); } catch (e) { return; }
+  simData = d; profiles = d.profiles; simPorts = d.ports;
+  $("#sims-empty").hidden = d.simulators.length > 0;
+  const root = $("#sims");
+  const open = new Set([...root.querySelectorAll("details[open]")].map(x => x.dataset.k));
+  const tries = {}; for (const i of root.querySelectorAll(".try input")) tries[i.dataset.id] = i.value;
+  const tryOut = {}; for (const o of root.querySelectorAll(".try-out")) tryOut[o.dataset.id] = o.innerHTML;
+  const focus = document.activeElement?.dataset?.id && document.activeElement.tagName === "INPUT" ? document.activeElement.dataset.id : null;
+  root.innerHTML = d.simulators.map(s => `
+    <div class="card sim" data-id="${s.id}">
+      <h3>${esc(s.name)} ${simStatus(s)} <span class="pill info">${simWhere(s)}</span>
+        ${s.profile ? `<span class="pill">${esc(s.profile)}</span>` : ""}<span style="flex:1"></span>
+        <button class="small" data-act="toggle">${s.enabled ? "Turn off" : "Turn on"}</button>
+        <button class="small" data-act="edit">Edit rules…</button>
+        <button class="small" data-act="reset" title="Put the state back to its starting values">Reset state</button>
+        <button class="small danger" data-act="del">Remove</button></h3>
+      <div class="kv">${Object.entries(s.state).map(([k, v]) => `<div title="Click the value to change it"><span>${esc(k)}</span><b data-k="${esc(k)}">${esc(v)}</b></div>`).join("") || `<span class="muted">No state values.</span>`}</div>
+      <div class="try"><input data-id="${s.id}" class="mono" placeholder="Try a message on a copy, e.g. PWR ON\\r" aria-label="Try a message"><button class="small" data-act="try">Try</button><span class="muted">${s.matched} matched · ${s.unmatched} unmatched · ${bytes(s.bytesIn)} in · ${bytes(s.bytesOut)} out</span><div class="try-out" data-id="${s.id}"></div></div>
+      <details data-k="${s.id}"><summary>Recent activity</summary><div class="mono" style="margin-top:4px">${s.activity.length ? s.activity.slice().reverse().map(a => `<div><span class="muted">${clock(a.time)}</span> <b>${esc(a.kind)}</b> ${esc(a.text)}</div>`).join("") : "<span class='muted'>None yet.</span>"}</div></details>
+    </div>`).join("");
+  for (const x of root.querySelectorAll("details")) x.open = open.has(x.dataset.k);
+  for (const i of root.querySelectorAll(".try input")) if (tries[i.dataset.id]) i.value = tries[i.dataset.id];
+  for (const o of root.querySelectorAll(".try-out")) if (tryOut[o.dataset.id]) o.innerHTML = tryOut[o.dataset.id];
+  if (focus) root.querySelector(`.try input[data-id="${focus}"]`)?.focus();
+}
+$("#sims").addEventListener("click", async e => {
+  const card = e.target.closest(".sim"); if (!card) return;
+  const id = card.dataset.id, s = simData.simulators.find(x => x.id === id);
+  const act = e.target.dataset.act;
+  try {
+    if (e.target.matches(".kv b")) {
+      const k = e.target.dataset.k;
+      editState(id, k, s.state[k]);
+    } else if (act === "toggle") { await api(S(`/simulators/${id}`), "PUT", { enabled: !s.enabled }); refreshSims(); }
+    else if (act === "reset") { await api(S(`/simulators/${id}/state`), "POST", { reset: true }); refreshSims(); }
+    else if (act === "del") { if (await ask(`Remove the simulator “${s.name}”?`, "Remove")) { await api(S(`/simulators/${id}`), "DELETE"); refreshSims(); } }
+    else if (act === "edit") openEdit(s);
+    else if (act === "try") {
+      const inp = card.querySelector(".try input"), out = card.querySelector(".try-out");
+      const r = await api(S(`/simulators/${id}/try`), "POST", { text: inp.value });
+      out.innerHTML = r.replies.length ? r.replies.map(x => `reply after ${x.delayMs} ms: <b>${esc(x.text)}</b>`).join("<br>") : (r.matched ? "Matched, no reply." : "No rule matched.");
+    }
+  } catch (err) { say(err.message); }
+});
+$("#sims").addEventListener("keydown", e => { if (e.key === "Enter" && e.target.matches(".try input")) { e.preventDefault(); e.target.closest(".try").querySelector("[data-act=try]").click(); } });
+// A message in a <dialog> instead of window.confirm / alert.
+const askDlg = document.createElement("dialog");
+askDlg.innerHTML = `<form method="dialog"><div id="ask-t"></div><div class="row"><button value="no" id="ask-no">Cancel</button><button class="primary" value="yes" id="ask-yes"></button></div></form>`;
+document.body.appendChild(askDlg);
+function ask(text, yes = "OK") {
+  return new Promise(res => {
+    $("#ask-t").textContent = text; $("#ask-yes").textContent = yes;
+    askDlg.onclose = () => res(askDlg.returnValue === "yes");
+    askDlg.returnValue = "no"; askDlg.showModal();
+  });
+}
+const toast = document.createElement("div");
+toast.setAttribute("role", "status");
+toast.style.cssText = "position:fixed;left:12px;right:12px;bottom:12px;max-width:560px;margin:0 auto;padding:8px 12px;border-radius:8px;background:var(--err-bg);color:var(--err-fg);border:1px solid var(--err);display:none;z-index:50";
+document.body.appendChild(toast);
+let toastTimer; function say(m) { toast.textContent = m; toast.style.display = "block"; clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.style.display = "none", 6000); }
+
+// A small dialog for one state value (no window.prompt).
+const stateDlg = document.createElement("dialog");
+stateDlg.innerHTML = `<form method="dialog"><b id="sd-t"></b><label>Value<input id="sd-v" autocomplete="off"></label><div class="row"><button value="cancel" type="button" id="sd-c">Cancel</button><button class="primary">Set</button></div></form>`;
+document.body.appendChild(stateDlg);
+function editState(id, key, val) {
+  $("#sd-t").textContent = `Set ${key}`; $("#sd-v").value = val; stateDlg.showModal(); $("#sd-v").select();
+  $("#sd-c").onclick = () => stateDlg.close();
+  stateDlg.querySelector("form").onsubmit = async () => { try { await api(S(`/simulators/${id}/state`), "POST", { key, value: $("#sd-v").value }); refreshSims(); } catch (e) { say(e.message); } };
+}
+
+// new simulator
+function fillPortList() { $("#n-ports").innerHTML = simPorts.map(p => `<option value="${esc(p)}">`).join(""); }
+function kindFields(prefix) { const k = $(`#${prefix}-kind`).value; $(`#${prefix}-com-l`).hidden = k !== "com"; $(`#${prefix}-port-l`).hidden = k === "com"; }
+$("#n-kind").onchange = () => kindFields("n");
+$("#e-kind").onchange = () => kindFields("e");
+$("#n-profile").onchange = () => { const p = profiles.find(x => x.id === $("#n-profile").value); $("#n-desc").textContent = p ? p.description : ""; if (p && !$("#n-name").dataset.touched) $("#n-name").value = p.name; };
+$("#n-name").oninput = () => { $("#n-name").dataset.touched = "1"; };
+$("#sim-new").onclick = async () => {
+  await refreshSims(); fillPortList();
+  $("#n-profile").innerHTML = profiles.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join("");
+  delete $("#n-name").dataset.touched; $("#n-profile").onchange();
+  $("#n-kind").value = "com"; $("#n-com").value = simPorts[0] || ""; $("#n-port").value = 0; $("#n-err").textContent = ""; kindFields("n");
+  $("#new-dlg").showModal();
+};
+$("#n-cancel").onclick = () => $("#new-dlg").close();
+$("#new-form").onsubmit = async e => {
+  e.preventDefault();
+  try {
+    const kind = $("#n-kind").value;
+    await api(S("/simulators"), "POST", { profile: $("#n-profile").value, name: $("#n-name").value, kind, com: kind === "com" ? $("#n-com").value : "", port: Number($("#n-port").value) || 0 });
+    $("#new-dlg").close(); refreshSims();
+  } catch (err) { $("#n-err").textContent = err.message; }
+};
+
+// rule editor
+let editing = null;
+function ruleHtml(r = {}) {
+  const set = Object.entries(r.set || r.Set || {}).map(([k, v]) => `${k}=${v}`).join("\n");
+  return `<div class="rule">
+    <label>When received<input class="r-match mono" value="${esc(r.match ?? "")}" placeholder="PWR ON\\r"></label>
+    <label>Reply<input class="r-reply mono" value="${esc(r.reply ?? "")}" placeholder="PWR=1\\r"></label>
+    <label>After (ms)<input class="r-delay" type="number" min="0" max="60000" value="${r.delayMs ?? 0}"></label>
+    <label class="full">Set state (name=value, one per line)<textarea class="r-set" rows="1" placeholder="power=1">${esc(set)}</textarea></label>
+    <div class="opts full"><label class="inline"><input type="checkbox" class="r-regex" ${r.regex ? "checked" : ""}> Regular expression</label>
+      <label class="inline"><input type="checkbox" class="r-case" ${r.ignoreCase ? "checked" : ""}> Ignore case</label>
+      <label style="flex:1;min-width:120px">Name<input class="r-name" value="${esc(r.name ?? "")}" maxlength="80"></label>
+      <button type="button" class="small danger r-del">Remove rule</button></div></div>`;
+}
+const timerHtml = (t = {}) => `<div class="bar tm"><label class="bar" style="gap:4px">every <input class="t-every" type="number" min="50" value="${t.everyMs ?? 1000}" style="width:90px"> ms</label><input class="t-text mono" style="flex:1;min-width:160px" value="${esc(t.text ?? "")}" placeholder="TEMP={temp}\\r"><button type="button" class="small danger t-del">Remove</button></div>`;
+function openEdit(s) {
+  editing = s; fillPortList();
+  $("#e-title").textContent = `Edit simulator: ${s.name}`;
+  $("#e-name").value = s.name; $("#e-kind").value = s.kind; $("#e-com").value = s.com || ""; $("#e-port").value = s.port || 0; $("#e-enabled").checked = s.enabled;
+  $("#e-rules").innerHTML = s.rules.map(ruleHtml).join("");
+  $("#e-timers").innerHTML = s.unsolicited.map(timerHtml).join("");
+  $("#e-connect").value = s.onConnect.join("\n");
+  $("#e-state").value = Object.entries(s.initialState).map(([k, v]) => `${k}=${v}`).join("\n");
+  $("#e-reset").checked = false; $("#e-err").textContent = ""; kindFields("e");
+  $("#edit-dlg").showModal();
+}
+$("#e-addrule").onclick = () => { $("#e-rules").insertAdjacentHTML("beforeend", ruleHtml()); $("#e-rules").lastElementChild.querySelector(".r-match").focus(); };
+$("#e-addtimer").onclick = () => $("#e-timers").insertAdjacentHTML("beforeend", timerHtml());
+$("#e-rules").addEventListener("click", e => { if (e.target.matches(".r-del")) e.target.closest(".rule").remove(); });
+$("#e-timers").addEventListener("click", e => { if (e.target.matches(".t-del")) e.target.closest(".tm").remove(); });
+$("#e-cancel").onclick = () => $("#edit-dlg").close();
+const pairs = text => Object.fromEntries(text.split("\n").map(l => l.trim()).filter(l => l.includes("=")).map(l => { const i = l.indexOf("="); return [l.slice(0, i).trim(), l.slice(i + 1).trim()]; }));
+$("#edit-form").onsubmit = async e => {
+  e.preventDefault();
+  const kind = $("#e-kind").value;
+  const body = {
+    name: $("#e-name").value, kind, com: kind === "com" ? $("#e-com").value : "", port: Number($("#e-port").value) || 0, enabled: $("#e-enabled").checked,
+    rules: [...document.querySelectorAll("#e-rules .rule")].map(r => ({ name: r.querySelector(".r-name").value, match: r.querySelector(".r-match").value, regex: r.querySelector(".r-regex").checked, ignoreCase: r.querySelector(".r-case").checked, reply: r.querySelector(".r-reply").value, delayMs: Number(r.querySelector(".r-delay").value) || 0, set: pairs(r.querySelector(".r-set").value) })),
+    unsolicited: [...document.querySelectorAll("#e-timers .tm")].map(t => ({ everyMs: Number(t.querySelector(".t-every").value) || 1000, text: t.querySelector(".t-text").value })).filter(t => t.text),
+    onConnect: $("#e-connect").value.split("\n").filter(l => l.length),
+    initialState: pairs($("#e-state").value), resetState: $("#e-reset").checked,
+  };
+  try { await api(S(`/simulators/${editing.id}`), "PUT", body); $("#edit-dlg").close(); refreshSims(); }
+  catch (err) { $("#e-err").textContent = err.message; }
+};
+
+// ---- COM terminal ----
+let comKey = null, lastSeq = 0, comTerm = new Term($("#com-term"), "ascii"), comPorts = [];
+comTerm.empty = "Nothing has been sent or received on this port yet.";
+const fmtOf = name => document.querySelector(`input[name=${name}]:checked`).value;
+for (const r of document.querySelectorAll("input[name=com-fmt]")) r.onchange = () => { comTerm.fmt = fmtOf("com-fmt"); comTerm.paint(); };
+$("#com-follow").onchange = e => { comTerm.follow = e.target.checked; comTerm.paint(); };
+$("#com-term").addEventListener("wheel", () => { const t = $("#com-term"); if (t.scrollTop + t.clientHeight < t.scrollHeight - 4) { comTerm.follow = false; $("#com-follow").checked = false; } });
+$("#com-clear").onclick = async () => { if (comKey) { try { await api(S("/ports/clear"), "POST", { key: comKey }); } catch { } } comTerm.reset([]); lastSeq = 0; };
+$("#com-save").onclick = () => save(`com-${(comKey || "port").replace(/[^\w.-]+/g, "_")}.txt`, `# OpenVP COM terminal, slot ${slot}, ${comKey}, ${fmtOf("com-fmt")}\n` + comTerm.text());
+$("#com-port").onchange = () => { comKey = $("#com-port").value; lastSeq = 0; comTerm.reset([]); pollCom(); };
+
+async function pollCom() {
+  let ports; try { ports = await api(S("/ports")); } catch { return; }
+  comPorts = ports;
+  const sel = $("#com-port");
+  const sig = ports.map(p => p.key).join("|");
+  if (sel.dataset.sig !== sig) {
+    sel.dataset.sig = sig;
+    sel.innerHTML = ports.length ? ports.map(p => `<option value="${esc(p.key)}">${esc(p.label)} (${esc(p.key)})</option>`).join("") : `<option value="">No COM ports (load and start a program)</option>`;
+    if (!ports.some(p => p.key === comKey)) { comKey = ports[0]?.key || null; lastSeq = 0; comTerm.reset([]); }
+    sel.value = comKey || "";
+  }
+  const p = ports.find(x => x.key === comKey);
+  const st = $("#com-status");
+  st.className = "pill " + (p ? (p.open ? "ok" : "warn") : ""); st.textContent = p ? (p.open ? `open · TX ${bytes(p.txBytes)} · RX ${bytes(p.rxBytes)}` : "closed (program stopped)") : "no port";
+  $("#com-sim").textContent = p?.simulator ? `Simulator attached: ${p.simulator.name}. It answers what the program sends.` : p ? "No simulator is attached to this port. Anything the program sends goes nowhere; type a reply below to give it RX." : "";
+  if (!comKey) return;
+  try {
+    const t = await api(S(`/ports/traffic?key=${encodeURIComponent(comKey)}&after=${lastSeq}`));
+    if (t.key !== comKey) return;
+    if (t.entries.length) { lastSeq = t.last; comTerm.add(t.entries); }
+  } catch { }
+}
+$("#com-send").onsubmit = async e => {
+  e.preventDefault();
+  if (!comKey) return;
+  let text = $("#com-text").value + ($("#com-cr").checked ? "\\r" : "") + ($("#com-lf").checked ? "\\n" : "");
+  if (!text) return;
+  try { await api(S("/ports/send"), "POST", { key: comKey, text }); $("#com-msg").textContent = "Sent."; $("#com-text").select(); pollCom(); }
+  catch (err) { $("#com-msg").textContent = err.message; }
+};
+
+// ---- sockets ----
+let sockSel = null, sockSeq = 0, sockTerm = new Term($("#sock-term"), "ascii"), socksData = [];
+sockTerm.empty = "No traffic seen on this socket yet.";
+for (const r of document.querySelectorAll("input[name=sock-fmt]")) r.onchange = () => { sockTerm.fmt = fmtOf("sock-fmt"); sockTerm.paint(); };
+$("#sock-closed").onchange = () => paintSocks();
+$("#sock-save").onclick = () => save(`socket-${sockSel}.txt`, `# OpenVP socket ${sockSel}, slot ${slot}\n` + sockTerm.text());
+function paintSocks() {
+  const showClosed = $("#sock-closed").checked;
+  const list = socksData.filter(s => showClosed || !s.closed);
+  $("#socks-empty").hidden = list.length > 0;
+  $("#socks tbody").innerHTML = list.map(s => `<tr class="row ${s.id === sockSel ? "sel" : ""}" data-id="${s.id}">
+    <td data-l="Kind"><b>${esc(s.kind)}</b><br><small class="muted">${esc(s.role)} · ${esc(s.protocol)}</small></td>
+    <td class="mono" data-l="Local">${esc(s.local || "—")}</td>
+    <td class="mono" data-l="Remote">${esc(s.remote || "—")}${s.redirectedTo ? `<br><small class="muted">redirected to ${esc(s.redirectedTo)}</small>` : ""}</td>
+    <td data-l="State"><span class="pill ${s.closed ? "" : "ok"}">${esc(s.state)}</span></td>
+    <td class="num" data-l="In">${bytes(s.bytesIn)}</td><td class="num" data-l="Out">${bytes(s.bytesOut)}</td>
+    <td data-l="Opened" class="mono">${clock(s.opened)}${s.closed ? `<br><small class="muted">closed ${clock(s.closed)}</small>` : ""}</td></tr>`).join("");
+}
+$("#socks tbody").addEventListener("click", e => { const tr = e.target.closest("tr"); if (!tr) return; sockSel = Number(tr.dataset.id); sockSeq = 0; sockTerm.reset([]); paintSocks(); pollSocks(); });
+async function pollSocks() {
+  try { socksData = await api(S("/sockets")); } catch { return; }
+  paintSocks();
+  const s = socksData.find(x => x.id === sockSel);
+  $("#sock-view").hidden = !s;
+  if (!s) return;
+  $("#sock-title").textContent = `${s.kind} ${s.local || ""} → ${s.remote || ""}${s.redirectedTo ? " (redirected to " + s.redirectedTo + ")" : ""}`;
+  try {
+    const t = await api(S(`/sockets/${sockSel}/traffic?after=${sockSeq}`));
+    if (t.entries.length) { sockSeq = t.last; sockTerm.add(t.entries); }
+  } catch { }
+}
+
+// ---- redirects ----
+let redData = null, redEdit = null;
+async function refreshReds() {
+  try { redData = await api(S("/redirects")); } catch { return; }
+  $("#reds-empty").hidden = redData.redirects.length > 0;
+  $("#reds tbody").innerHTML = redData.redirects.map(r => {
+    const sim = r.to.startsWith("sim:") ? redData.simulators.find(s => s.id === r.to.slice(4)) : null;
+    return `<tr data-id="${r.id}"><td class="mono" data-l="Connects to"><b>${esc(r.from)}</b></td>
+      <td class="mono" data-l="Goes to">${esc(r.to)}${sim ? `<br><small class="muted">${esc(sim.name)} · ${sim.listenPort ? "127.0.0.1:" + sim.listenPort : "not listening"}</small>` : r.to.startsWith("sim:") ? `<br><small class="muted">no such simulator</small>` : ""}</td>
+      <td data-l="Protocol">${esc(r.proto)}</td><td data-l="On"><input type="checkbox" class="r-tog" ${r.enabled ? "checked" : ""} aria-label="On"></td><td data-l="Note">${esc(r.note)}</td>
+      <td><button class="small" data-act="edit">Edit</button> <button class="small danger" data-act="del">Delete</button></td></tr>`;
+  }).join("");
+}
+$("#reds tbody").addEventListener("click", async e => {
+  const tr = e.target.closest("tr"); if (!tr) return;
+  const r = redData.redirects.find(x => x.id === tr.dataset.id);
+  try {
+    if (e.target.dataset.act === "edit") openRed(r);
+    else if (e.target.dataset.act === "del") { await api(S(`/redirects/${r.id}`), "DELETE"); refreshReds(); }
+    else if (e.target.matches(".r-tog")) { await api(S(`/redirects/${r.id}`), "PUT", { ...r, enabled: e.target.checked }); refreshReds(); }
+  } catch (err) { say(err.message); }
+});
+function fillRedTargets(current) {
+  const opts = redData.simulators.map(s => `<option value="sim:${s.id}">Simulator: ${esc(s.name)} (${s.kind.toUpperCase()}${s.listenPort ? " " + s.listenPort : ""})</option>`);
+  opts.push(`<option value="custom">Another address…</option>`);
+  $("#r-to").innerHTML = opts.join("");
+  const isSim = current && redData.simulators.some(s => "sim:" + s.id === current);
+  $("#r-to").value = current ? (isSim ? current : "custom") : (opts.length > 1 ? $("#r-to").options[0].value : "custom");
+  $("#r-custom").value = current && !isSim ? current : "";
+  $("#r-custom-l").hidden = $("#r-to").value !== "custom";
+}
+$("#r-to").onchange = () => { $("#r-custom-l").hidden = $("#r-to").value !== "custom"; };
+async function openRed(r, prefill) {
+  await refreshReds();
+  redEdit = r || null;
+  $("#r-title").textContent = r ? "Edit network redirect" : "New network redirect";
+  $("#r-from").value = r ? r.from : (prefill?.from || ""); $("#r-proto").value = r ? r.proto : "any"; $("#r-note").value = r ? r.note : (prefill?.note || ""); $("#r-on").checked = r ? r.enabled : true;
+  fillRedTargets(r ? r.to : null); $("#r-err").textContent = "";
+  $("#red-dlg").showModal();
+}
+$("#red-new").onclick = () => openRed(null);
+$("#r-cancel").onclick = () => $("#red-dlg").close();
+$("#red-form").onsubmit = async e => {
+  e.preventDefault();
+  const to = $("#r-to").value === "custom" ? $("#r-custom").value.trim() : $("#r-to").value;
+  const body = { from: $("#r-from").value.trim(), to, proto: $("#r-proto").value, note: $("#r-note").value, enabled: $("#r-on").checked };
+  try { await api(redEdit ? S(`/redirects/${redEdit.id}`) : S("/redirects"), redEdit ? "PUT" : "POST", body); $("#red-dlg").close(); refreshReds(); }
+  catch (err) { $("#r-err").textContent = err.message; }
+};
+
+// ---- discovery ----
+let discData = null;
+async function pollDisc() {
+  try { discData = await api("/api/discovery"); } catch { return; }
+  paintDisc();
+}
+function paintDisc() {
+  const d = discData; if (!d) return;
+  $("#disc-go").disabled = d.running; $("#disc-stop").hidden = !d.running;
+  $("#disc-state").textContent = d.running ? `Scanning: ${d.stage}… ${d.seconds.toFixed(0)} s` : d.started ? `Done in ${d.seconds.toFixed(1)} s · ${d.devices.length} device${d.devices.length === 1 ? "" : "s"} · ${d.subnets.join(", ") || "no network found"}` : "";
+  $("#disc-notes").innerHTML = d.notes.map(n => `<div class="note" style="margin-bottom:4px">${esc(n)}</div>`).join("");
+  $("#disc-empty").hidden = d.devices.length > 0 || d.running || !!d.started && d.devices.length > 0;
+  $("#disc-empty").innerHTML = d.started && !d.running ? "No devices answered. That is normal on a network with no Crestron gear, or where multicast and ping are blocked." : $("#disc-empty").dataset.first || ($("#disc-empty").dataset.first = $("#disc-empty").innerHTML);
+  $("#disc tbody").innerHTML = d.devices.map((x, i) => `<tr data-i="${i}"><td class="mono" data-l="Address"><b>${esc(x.ip)}</b></td>
+    <td data-l="Name">${esc(x.hostname || "—")}${x.services.length ? `<br><small class="muted">${esc(x.services.join(", "))}</small>` : ""}</td>
+    <td data-l="Model">${esc(x.model || "—")}${x.firmware ? `<br><small class="muted">fw ${esc(x.firmware)}</small>` : ""}</td>
+    <td class="mono" data-l="MAC">${esc(x.mac || "—")}</td>
+    <td class="mono" data-l="Open ports">${x.openPorts.join(", ") || "—"}</td><td data-l="Found by"><small class="muted">${esc(x.sources.join(", "))}</small></td>
+    <td style="white-space:nowrap"><button class="small" data-act="tgt">Add as simulator target</button> <button class="small" data-act="red">Use in network redirect</button></td></tr>`).join("");
+}
+$("#disc-go").onclick = async () => { try { discData = await api("/api/discovery", "POST"); } catch (e) { say(e.message); } paintDisc(); };
+$("#disc-stop").onclick = async () => { discData = await api("/api/discovery", "DELETE"); paintDisc(); };
+$("#disc tbody").addEventListener("click", async e => {
+  const tr = e.target.closest("tr"); if (!tr || !e.target.dataset.act) return;
+  const x = discData.devices[Number(tr.dataset.i)];
+  const port = x.openPorts.find(p => [23, 4352, 41795, 80].includes(p)) ?? x.openPorts[0];
+  if (e.target.dataset.act === "red") openRed(null, { from: port ? `${x.ip}:${port}` : x.ip, note: x.hostname || x.model || "" });
+  else openTarget(x);
+});
+async function openTarget(x) {
+  await refreshReds(); await refreshSims();
+  $("#t-ip").textContent = x.ip;
+  $("#t-port").innerHTML = (x.openPorts.length ? x.openPorts : [23]).map(p => `<option value="${p}">${p}</option>`).join("") + `<option value="">Any port</option>`;
+  const opts = redData.simulators.map(s => `<option value="sim:${s.id}">${esc(s.name)} (${s.kind.toUpperCase()})</option>`);
+  opts.push(...profiles.map(p => `<option value="new:${p.id}">New TCP simulator: ${esc(p.name)}</option>`));
+  $("#t-sim").innerHTML = opts.join(""); $("#t-err").textContent = "";
+  $("#tgt-dlg").dataset.ip = x.ip; $("#tgt-dlg").dataset.name = x.hostname || x.model || "";
+  $("#tgt-dlg").showModal();
+}
+$("#t-cancel").onclick = () => $("#tgt-dlg").close();
+$("#tgt-form").onsubmit = async e => {
+  e.preventDefault();
+  const ip = $("#tgt-dlg").dataset.ip, port = $("#t-port").value;
+  try {
+    let to = $("#t-sim").value;
+    if (to.startsWith("new:")) {
+      const prof = to.slice(4), p = profiles.find(x => x.id === prof);
+      const sim = await api(S("/simulators"), "POST", { profile: prof, kind: "tcp", name: `${p.name} (${ip})`, port: 0 });
+      to = "sim:" + sim.id;
+    }
+    await api(S("/redirects"), "POST", { from: port ? `${ip}:${port}` : ip, to, proto: "any", note: $("#tgt-dlg").dataset.name || "from discovery" });
+    $("#tgt-dlg").close(); showTab("red");
+  } catch (err) { $("#t-err").textContent = err.message; }
+};
+
+// ---- polling ----
+let timer = null;
+function poll() {
+  clearInterval(timer);
+  const run = () => { if (document.hidden) return; ({ sim: refreshSims, com: pollCom, sock: pollSocks, red: refreshReds, disc: pollDisc })[tab](); };
+  run();
+  timer = setInterval(run, tab === "com" ? 600 : tab === "disc" ? 1000 : 1500);
+}
+document.addEventListener("visibilitychange", poll);
+
+(async () => {
+  await loadSlots();
+  await refreshSims();
+  const h = location.hash.slice(1);
+  showTab(TABS[h] ? h : "sim");
+})();
+</script>
+</body>
+</html>

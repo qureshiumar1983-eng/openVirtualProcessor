@@ -17,15 +17,32 @@ namespace Crestron.SimplSharpPro
         /// <summary>Called once after the constructor. Put device registration and setup here.</summary>
         public virtual void InitializeSystem() { }
 
-        // A virtual processor, like VC-4, has no physical ports.
-        public bool SupportsComPort => false;
+        // A virtual processor, like VC-4, has no physical ports; its COM ports are virtual (see ComPort).
+        public bool SupportsComPort => true;
         public bool SupportsIROut => false;
         public bool SupportsRelay => false;
         public bool SupportsVersiport => false;
         public bool SupportsDigitalInput => false;
         public bool SupportsEthernet => true;
         public bool SupportsCresnet => false;
-        public int NumberOfComPorts => 0;
+        public int NumberOfComPorts => 8;
+
+        private CrestronCollection<ComPort> _comPorts;
+
+        /// <summary>The virtual processor's COM ports 1-8. They carry no hardware: see <see cref="ComPort"/>.</summary>
+        public CrestronCollection<ComPort> ComPorts
+        {
+            get
+            {
+                if (_comPorts == null)
+                {
+                    var c = new CrestronCollection<ComPort>();
+                    for (uint i = 1; i <= 8; i++) c.Add(i, new ComPort(i));
+                    _comPorts = c;
+                }
+                return _comPorts;
+            }
+        }
         public int NumberOfIROutputPorts => 0;
         public int NumberOfRelayPorts => 0;
         public int NumberOfVersiPorts => 0;

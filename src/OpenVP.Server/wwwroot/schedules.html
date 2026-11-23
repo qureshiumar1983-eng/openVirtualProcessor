@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<link rel="stylesheet" href="openvp-ops.css">
+<script src="openvp-theme.js"></script>
+<title>OpenVP schedules</title>
+</head>
+<body>
+<header>
+  <h1>Schedules</h1>
+  <span id="clock" class="muted"></span>
+  <span id="saved" role="status" aria-live="polite"></span>
+  <span class="sp"></span>
+  <button class="theme-btn" data-theme-toggle></button>
+  <a href="/">Console</a>
+  <a href="help.html#schedules" target="openvp-help">Help</a>
+</header>
+<main>
+  <div id="fail" class="note" role="alert" hidden></div>
+  <div class="card">
+    <h2>Scheduled actions <span class="sp" style="flex:1"></span><button class="primary small" id="add">New schedule…</button></h2>
+    <p class="muted">Do something at a time: restart a slot every night, start or stop a program, load a program version or a file, run a backup, or set or pulse a signal. Times are the processor's local time (<b id="zone"></b>), and change with daylight saving. A time that doesn't exist on the day the clocks go forward runs just after the gap; a time that happens twice runs the first time.</p>
+    <div class="scroll-x"><table id="tbl" class="cards"><thead><tr><th>On</th><th>Name</th><th>What</th><th>When</th><th>Next run</th><th>Last run</th><th></th></tr></thead><tbody></tbody></table></div>
+    <div id="empty" class="muted" hidden>No schedules yet. Click <b>New schedule…</b>, for example to restart a slot every night.</div>
+  </div>
+  <div class="card">
+    <h2>Run history</h2>
+    <div class="scroll-x"><table id="hist" class="cards"><thead><tr><th>When</th><th>Schedule</th><th>Result</th><th>Message</th></tr></thead><tbody></tbody></table></div>
+    <div id="hist-empty" class="muted" hidden>Nothing has run yet.</div>
+  </div>
+</main>
+
+<dialog id="ed-dlg" class="wide" aria-labelledby="ed-title"><form method="dialog" id="ed-form" onsubmit="return false" class="stack" autocomplete="off">
+  <h2 id="ed-title">New schedule</h2>
+  <label>Name<input id="ed-name" maxlength="80" placeholder="Nightly restart of slot 1"></label>
+  <div class="form">
+    <label>What<select id="ed-type">
+      <option value="restart">Restart a slot (load its program again and start it)</option>
+      <option value="start">Start a slot</option>
+      <option value="stop">Stop a slot</option>
+      <option value="loadVersion">Load a program version into a slot</option>
+      <option value="loadPath">Load a program file from this computer</option>
+      <option value="setSignal">Set a signal to a value</option>
+      <option value="pulse">Pulse a digital signal</option>
+      <option value="backup">Back up the processor</option>
+    </select></label>
+    <label id="ed-slot-l">Slot<select id="ed-slot"></select></label>
+    <label id="ed-ver-l">Version<select id="ed-ver"></select></label>
+    <label id="ed-path-l" style="grid-column:1/-1">Full path of the file (must exist on this computer when it runs)<input id="ed-path" class="mono" maxlength="1000"></label>
+    <label id="ed-sig-l">Signal<input id="ed-sig" list="ed-sigs" maxlength="200" placeholder="Room_On"><datalist id="ed-sigs"></datalist></label>
+    <label id="ed-val-l"><span>Value (<code>1</code>, <code>0</code>, <code>50%</code>, <code>pulse</code>, or text)</span><input id="ed-val" maxlength="1000"></label>
+    <label class="inline" id="ed-start-l"><input type="checkbox" id="ed-start" checked> Start the program after loading it</label>
+  </div>
+  <div class="form">
+    <label>When<select id="ed-mode"><option value="daily">Every day</option><option value="weekly">On certain days</option><option value="once">Once</option><option value="cron">Advanced (cron)</option></select></label>
+    <label id="ed-time-l">At<input type="time" id="ed-time" value="03:00"></label>
+    <label id="ed-at-l">On (date and time)<input type="datetime-local" id="ed-at"></label>
+    <label id="ed-cron-l" style="grid-column:1/-1">Cron: minute hour day-of-month month day-of-week<input id="ed-cron" class="mono" value="30 3 * * *" maxlength="100"></label>
+    <div id="ed-days-l" class="checks" style="grid-column:1/-1"></div>
+  </div>
+  <div class="muted" id="ed-next"></div>
+  <label class="inline"><input type="checkbox" id="ed-missed"> If OpenVP wasn't running at that time, run it once when OpenVP starts (within 24 hours). Otherwise a missed run is skipped.</label>
+  <label class="inline"><input type="checkbox" id="ed-on" checked> Turned on</label>
+  <div class="err" id="ed-err"></div>
+  <div class="row"><button type="button" data-close>Cancel</button><button type="button" class="primary" id="ed-save">Save</button></div>
+</form></dialog>
+<dialog id="cf-dlg" aria-labelledby="cf-title"><form method="dialog" id="cf-form">
+  <h2 id="cf-title"></h2><div id="cf-text" style="white-space:pre-wrap"></div>
+  <div class="row"><button type="button" data-close>Cancel</button><button value="ok" id="cf-ok" class="primary">OK</button></div>
+</form></dialog>
+<script src="openvp-auth.js"></script>
+<script src="openvp-ops.js"></script>
+<script>
+openvpAuth.init();
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const TYPES = { restart: "Restart", start: "Start", stop: "Stop", loadVersion: "Load version", loadPath: "Load file", setSignal: "Set signal", pulse: "Pulse signal", backup: "Back up" };
+let st = null, slots = [], editing = null, sigsFor = 0;
+$("#ed-days-l").innerHTML = DAYS.map((d, i) => `<label><input type="checkbox" class="ed-day" value="${i}"> ${d}</label>`).join("");
+
+function actionText(a) {
+  const s = a.slot ? `slot ${a.slot}` : "";
+  switch (a.type) {
+    case "restart": return `Restart ${s}`; case "start": return `Start ${s}`; case "stop": return `Stop ${s}`;
+    case "loadVersion": return `Load version ${(a.versionId || "").slice(0, 7)} into ${s}${a.startAfter === false ? " (no start)" : ""}`;
+    case "loadPath": return `Load ${(a.path || "").split(/[\\/]/).pop()} into ${s}`;
+    case "setSignal": return `Set ${a.signal} to ${a.value} in ${s}`; case "pulse": return `Pulse ${a.signal} in ${s}`; case "backup": return "Back up the processor";
+  } return a.type;
+}
+async function load() {
+  try { st = await api("/api/schedules"); } catch (e) { fail(e.message); return; }
+  $("#zone").textContent = st.zone; $("#clock").textContent = `Now ${st.now}`;
+  const tb = $("#tbl tbody"); tb.innerHTML = "";
+  $("#empty").hidden = st.schedules.length > 0; $("#tbl").hidden = st.schedules.length === 0;
+  for (const s of st.schedules) {
+    const tr = document.createElement("tr");
+    const last = s.lastRun ? `${s.lastOk === false ? pill("err", "failed", s.lastResult) : s.lastOk ? pill("ok", "ok", s.lastResult) : pill("warn", "skipped", s.lastResult)} <span class="muted">${esc(s.lastRunLocal)}</span>` : `<span class="muted">never</span>`;
+    tr.innerHTML = `<td data-l="On"><input type="checkbox" ${s.enabled ? "checked" : ""} ${s.done ? "disabled" : ""} aria-label="Turn ${esc(s.name)} on or off" title="${s.done ? "A one-off that has run" : "Turn this schedule on or off"}"></td>
+      <td class="wrap" data-l="Name"><b>${esc(s.name)}</b>${s.runMissed ? ` <span class="muted" title="Runs once at start-up if its time was missed">· catches up</span>` : ""}${s.running ? " " + pill("info", "running") : ""}</td>
+      <td class="wrap" data-l="What">${esc(actionText(s.action))}</td><td class="wrap" data-l="When">${esc(s.summary)}</td>
+      <td data-l="Next run">${s.done ? pill("", "done") : s.enabled && s.nextRunLocal ? esc(s.nextRunLocal) : `<span class="muted">${s.enabled ? "none" : "off"}</span>`}</td>
+      <td class="wrap" data-l="Last run">${last}</td><td class="act"></td>`;
+    tr.querySelector("input").onchange = async e => { try { await api(`/api/schedules/${s.id}`, "PUT", toBody(s, e.target.checked)); flash(); load(); } catch (x) { fail(x.message); load(); } };
+    const act = tr.querySelector(".act");
+    const btn = (label, title, fn, cls = "") => { const x = document.createElement("button"); x.textContent = label; x.title = title; x.className = "small " + cls; x.onclick = fn; act.appendChild(x); act.append(" "); };
+    btn("Run now", "Run this action now, whatever the time", async () => { try { const r = await api(`/api/schedules/${s.id}/run`, "POST"); flash(r.run.status === "ok" ? "Ran" : "Failed: " + r.run.message); } catch (x) { fail(x.message); } load(); });
+    btn("Edit…", "Change this schedule", () => edit(s));
+    btn("Delete", "Delete this schedule", async () => { if (!await confirmBox("Delete this schedule?", `“${s.name}” will be deleted.`, "Delete", true)) return; try { await api(`/api/schedules/${s.id}`, "DELETE"); load(); } catch (x) { fail(x.message); } }, "danger");
+    tb.appendChild(tr);
+  }
+  const hb = $("#hist tbody"); hb.innerHTML = "";
+  $("#hist-empty").hidden = st.history.length > 0; $("#hist").hidden = st.history.length === 0;
+  for (const h of st.history) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td data-l="When">${esc(h.local)}</td><td class="wrap" data-l="Schedule">${esc(h.name)}${h.trigger !== "schedule" ? ` <span class="muted">(${esc(h.trigger === "missed" ? "run late: missed time" : h.trigger)})</span>` : ""}</td><td data-l="Result">${pill(h.status === "ok" ? "ok" : h.status === "failed" ? "err" : "warn", h.status)}</td><td class="wrap" data-l="Message">${esc(h.message)}</td>`;
+    hb.appendChild(tr);
+  }
+}
+function toBody(s, enabled) { return { name: s.name, enabled, mode: s.mode, time: s.time, days: s.days, cron: s.cron, at: s.at, runMissed: s.runMissed, action: s.action }; }
+
+// ---- editor
+function syncForm() {
+  const t = $("#ed-type").value, m = $("#ed-mode").value;
+  $("#ed-slot-l").hidden = t === "backup"; $("#ed-ver-l").hidden = t !== "loadVersion"; $("#ed-path-l").hidden = t !== "loadPath";
+  $("#ed-sig-l").hidden = !(t === "setSignal" || t === "pulse"); $("#ed-val-l").hidden = t !== "setSignal"; $("#ed-start-l").hidden = !(t === "loadVersion" || t === "loadPath");
+  $("#ed-time-l").hidden = !(m === "daily" || m === "weekly"); $("#ed-days-l").hidden = m !== "weekly"; $("#ed-at-l").hidden = m !== "once"; $("#ed-cron-l").hidden = m !== "cron";
+  if (t === "loadVersion") fillVersions(); if (t === "setSignal" || t === "pulse") fillSignals();
+  previewSoon();
+}
+async function fillVersions(sel) {
+  const n = Number($("#ed-slot").value) || 1; const cur = sel ?? $("#ed-ver").value;
+  try { const v = await api(`/api/slots/${n}/versions`); $("#ed-ver").innerHTML = v.versions.length ? v.versions.map(x => `<option value="${x.id}">${esc(x.name)} · ${esc(when(x.loadedAt))} · ${esc(x.id.slice(0, 7))}${x.note ? " · " + esc(x.note.slice(0, 30)) : ""}</option>`).join("") : `<option value="">(this slot has no versions yet)</option>`; if (cur) $("#ed-ver").value = cur; }
+  catch (e) { $("#ed-ver").innerHTML = `<option value="">${esc(e.message)}</option>`; }
+}
+async function fillSignals() {
+  const n = Number($("#ed-slot").value) || 1; if (sigsFor === n) return; sigsFor = n;
+  try { const l = await api(`/api/slots/${n}/signals`); $("#ed-sigs").innerHTML = l.slice(0, 2000).map(s => `<option value="${esc(s.name)}">${esc(String(s.kind).toLowerCase())}</option>`).join(""); } catch { $("#ed-sigs").innerHTML = ""; }
+}
+let pT = 0;
+function previewSoon() { clearTimeout(pT); pT = setTimeout(preview, 300); }
+function whenBody() {
+  const mode = $("#ed-mode").value;
+  return { name: $("#ed-name").value || "x", mode, time: $("#ed-time").value, days: $$(".ed-day").filter(c => c.checked).map(c => Number(c.value)), cron: $("#ed-cron").value, at: $("#ed-at").value, action: { type: "backup" } };
+}
+async function preview() {
+  const el = $("#ed-next");
+  try { const r = await api("/api/schedules/preview", "POST", whenBody()); el.innerHTML = r.next.length ? `Next: ${r.next.map(x => esc(x.local)).join(" · ")}` : `<span class="note">That time has already passed, so it won't run.</span>`; }
+  catch (e) { el.innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+}
+function edit(s) {
+  editing = s?.id || null; $("#ed-title").textContent = s ? "Edit schedule" : "New schedule"; $("#ed-err").textContent = ""; sigsFor = 0;
+  $("#ed-slot").innerHTML = slots.map(x => `<option value="${x.number}">${esc(slotLabel(x))}</option>`).join("");
+  const a = s?.action || { type: "restart", slot: 1 };
+  $("#ed-name").value = s?.name || ""; $("#ed-type").value = a.type; $("#ed-slot").value = a.slot || 1; $("#ed-path").value = a.path || ""; $("#ed-sig").value = a.signal || ""; $("#ed-val").value = a.value ?? ""; $("#ed-start").checked = a.startAfter !== false;
+  $("#ed-mode").value = s?.mode || "daily"; $("#ed-time").value = s?.time || "03:00"; $("#ed-cron").value = s?.cron || "30 3 * * *"; $("#ed-at").value = s?.at || "";
+  $$(".ed-day").forEach(c => c.checked = (s?.days || [1, 2, 3, 4, 5]).includes(Number(c.value)));
+  $("#ed-missed").checked = !!s?.runMissed; $("#ed-on").checked = s ? s.enabled : true;
+  syncForm(); if (a.type === "loadVersion") fillVersions(a.versionId);
+  $("#ed-dlg").showModal(); $("#ed-name").focus();
+}
+for (const id of ["ed-type", "ed-mode"]) $("#" + id).onchange = syncForm;
+$("#ed-slot").onchange = () => { sigsFor = 0; syncForm(); };
+for (const id of ["ed-time", "ed-cron", "ed-at"]) $("#" + id).oninput = previewSoon;
+$("#ed-days-l").onchange = previewSoon;
+$("#add").onclick = () => edit(null);
+$("#ed-save").onclick = async () => {
+  const t = $("#ed-type").value;
+  const action = { type: t, slot: t === "backup" ? null : Number($("#ed-slot").value) };
+  if (t === "loadVersion") action.versionId = $("#ed-ver").value;
+  if (t === "loadPath") action.path = $("#ed-path").value.trim();
+  if (t === "setSignal" || t === "pulse") action.signal = $("#ed-sig").value.trim();
+  if (t === "setSignal") action.value = $("#ed-val").value;
+  if (t === "loadVersion" || t === "loadPath") action.startAfter = $("#ed-start").checked;
+  const w = whenBody();
+  const body = { name: $("#ed-name").value, enabled: $("#ed-on").checked, mode: w.mode, time: w.time, days: w.days, cron: w.cron, at: w.at, runMissed: $("#ed-missed").checked, action };
+  $("#ed-err").textContent = "";
+  try { await api(editing ? `/api/schedules/${editing}` : "/api/schedules", editing ? "PUT" : "POST", body); $("#ed-dlg").close(); flash(); load(); }
+  catch (e) { $("#ed-err").textContent = e.message; }
+};
+(async () => { try { slots = await api("/api/slots"); } catch (e) { fail(e.message); } await load(); setInterval(load, 5000); if (location.hash === "#new") edit(null); })();
+</script>
+</body>
+</html>

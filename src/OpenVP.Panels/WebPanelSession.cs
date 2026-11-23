@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Diagnostics;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -35,6 +36,10 @@ public sealed class WebPanelSession
     private readonly Channel<Out> _outbox = Channel.CreateUnbounded<Out>(new UnboundedChannelOptions { SingleReader = true });
     private JoinDevice? _device;
     private readonly DeviceConnection _conn;
+    private long _pingId;
+    private long _pingStarted;   // Stopwatch timestamp of the ping in flight, 0 = none
+    /// <summary>How often the server pings the page to measure the round trip.</summary>
+    public static TimeSpan PingInterval { get; set; } = TimeSpan.FromSeconds(5);
 
     public WebPanelSession(WebSocket socket, Processor processor, uint ipId, int? slot)
         : this(socket, processor, ipId, slot, new DeviceConnection("Web panel")) { }
@@ -59,6 +64,7 @@ public sealed class WebPanelSession
         ClientIdentifier.Begin(_conn);
         Attach();
         var sender = SendLoop(cts.Token);
+        var pinger = PingLoop(cts.Token);
         try { await ReceiveLoop(cts.Token); }
         catch (WebSocketException) { }
         catch (OperationCanceledException) { }
@@ -69,6 +75,7 @@ public sealed class WebPanelSession
             _outbox.Writer.TryComplete();
             cts.Cancel();
             try { await sender; } catch { }
+            try { await pinger; } catch { }
             if (_socket.State == WebSocketState.Open)
                 try { await _socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "bye", CancellationToken.None); } catch { }
         }
@@ -105,6 +112,23 @@ public sealed class WebPanelSession
     {
         Interlocked.Increment(ref _conn.JoinsOut);
         _outbox.Writer.TryWrite(new Out(key, value, null));
+    }
+
+    /// <summary>Sends {"t":"sping","id":n} every few seconds; a current openvp-crcomlib.js answers {"t":"spong","id":n}. Older pages ignore it.</summary>
+    private async Task PingLoop(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(300, ct);
+            while (!ct.IsCancellationRequested && _socket.State == WebSocketState.Open)
+            {
+                var id = Interlocked.Increment(ref _pingId);
+                Volatile.Write(ref _pingStarted, Stopwatch.GetTimestamp());
+                Queue(new JsonObject { ["t"] = "sping", ["id"] = id });
+                await Task.Delay(PingInterval, ct);
+            }
+        }
+        catch (OperationCanceledException) { }
     }
 
     private void Queue(JsonObject msg) => _outbox.Writer.TryWrite(new Out(default, null, msg.ToJsonString()));
@@ -199,11 +223,20 @@ public sealed class WebPanelSession
             if (t == "ping")
             {
                 Interlocked.Increment(ref _conn.Heartbeats);
-                if (root.TryGetProperty("rtt", out var rtt) && rtt.ValueKind == JsonValueKind.Number) _conn.LatencyMs = rtt.GetDouble();
+                // The page's own measurement is only used until the server has measured one itself (below).
+                if (root.TryGetProperty("rtt", out var rtt) && rtt.ValueKind == JsonValueKind.Number && _conn.LatencySource is null or "client ping")
+                    _conn.RecordLatency(rtt.GetDouble(), "client ping");
                 Queue(new JsonObject { ["t"] = "pong" });
                 return;
             }
             if (t == "info") { ApplyClientInfo(root); return; }
+            if (t == "spong")
+            {
+                // The answer to the server's own ping: the round trip is measured here, so it doesn't depend on the page's clock.
+                if (root.TryGetProperty("id", out var pid) && pid.TryGetInt64(out var id) && Interlocked.Read(ref _pingId) == id && _pingStarted != 0)
+                    _conn.RecordLatency(Stopwatch.GetElapsedTime(_pingStarted).TotalMilliseconds, "server ping");
+                return;
+            }
             var kind = JoinKey.ParseKind(t);
             var join = root.GetProperty("j").GetUInt32();
             var v = root.GetProperty("v");

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using OpenVP.Core;
 
 namespace OpenVP.Lpz;
 
@@ -81,4 +82,37 @@ public sealed class NullPortBridge : IPortBridge
     public void Close(PortInfo port) { }
     public void SendCom(PortInfo port, string data) { }
     public void SendIr(PortInfo port, int command, string name) { }
+}
+
+/// <summary>
+/// The bridge every runtime gets by default: the program's COM ports are listed in the slot's <see cref="PortHub"/>, so the
+/// COM terminal can show their traffic and send text to the program, and a device simulator can answer them. If another bridge
+/// was installed (<see cref="LpzRuntime.PortBridgeFactory"/>), it is called too.
+/// </summary>
+public sealed class SlotPortBridge : IPortBridge
+{
+    private readonly ProgramSlot _slot;
+    private readonly IPortBridge? _inner;
+
+    public SlotPortBridge(ProgramSlot slot, IPortBridge? inner = null) { _slot = slot; _inner = inner; }
+
+    public void Open(PortInfo port, Action<string> received)
+    {
+        if (port.Kind == PortKind.Com) _slot.Io.Ports.Open(port.Path, port.Label, received);
+        _inner?.Open(port, received);
+    }
+
+    public void Close(PortInfo port)
+    {
+        if (port.Kind == PortKind.Com) _slot.Io.Ports.Close(port.Path);
+        _inner?.Close(port);
+    }
+
+    public void SendCom(PortInfo port, string data)
+    {
+        _slot.Io.Ports.Find(port.Path)?.FromProgram(data);
+        _inner?.SendCom(port, data);
+    }
+
+    public void SendIr(PortInfo port, int command, string name) => _inner?.SendIr(port, command, name);
 }

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<link rel="stylesheet" href="openvp-ops.css">
+<script src="openvp-theme.js"></script>
+<title>OpenVP program versions</title>
+</head>
+<body>
+<header>
+  <h1>Program versions</h1>
+  <label class="muted" style="display:flex;gap:6px;align-items:center">Slot <select id="slot" aria-label="Program slot"></select></label>
+  <span id="prog" class="muted mono" style="overflow-wrap:anywhere"></span>
+  <span id="saved" role="status" aria-live="polite"></span>
+  <span class="sp"></span>
+  <button class="theme-btn" data-theme-toggle></button>
+  <a href="/">Console</a>
+  <a href="help.html#versions" target="openvp-help">Help</a>
+</header>
+<main>
+  <div id="fail" class="note" role="alert" hidden></div>
+  <div class="card">
+    <h2>Versions of the programs loaded into slot <span id="slotn"></span></h2>
+    <p class="muted">Every program loaded into the slot is kept here with its <code>.sig</code> and sidecar files, whether it was uploaded, loaded from a path, reloaded when its file changed, rolled back to or imported. Loading the same files again is the same version. The newest versions are kept; older ones are deleted with their files.</p>
+    <div class="bar">
+      <label class="muted" style="display:flex;gap:6px;align-items:center">Keep the last <input type="number" id="keep" min="1" max="1000" style="width:5.5em"> versions per slot</label>
+      <button id="keep-save" class="small">Save</button>
+      <span class="sp"></span>
+      <button id="cmp-open" title="Compare two versions, or a version with the program loaded now">Compare…</button>
+    </div>
+    <div class="scroll-x"><table id="tbl" class="cards"><thead><tr><th>Last loaded</th><th>Program</th><th>How</th><th class="num">Loads</th><th class="num">Size</th><th>Note</th><th></th></tr></thead><tbody></tbody></table></div>
+    <div id="empty" class="muted" hidden>No versions yet. Load a program into this slot.</div>
+  </div>
+  <div class="card" id="report-card" hidden>
+    <h2>Comparison <span class="sp" style="flex:1"></span><button class="small" id="report-copy">Copy as text</button><button class="small" id="report-close">Close</button></h2>
+    <div id="report" class="diff"></div>
+  </div>
+</main>
+
+<dialog id="cmp-dlg" aria-labelledby="cmp-title"><form method="dialog" id="cmp-form" onsubmit="return false" class="stack">
+  <h2 id="cmp-title">Compare programs</h2>
+  <p class="muted" style="margin:0">Reads both programs without starting anything: devices and IP IDs, signals, and, for a SIMPL Windows source file, the symbols and their wiring.</p>
+  <label>Before<select id="cmp-a"></select></label>
+  <label>After<select id="cmp-b"></select></label>
+  <div class="err" id="cmp-err"></div>
+  <div class="row"><button type="button" data-close>Cancel</button><button type="button" class="primary" id="cmp-go">Compare</button></div>
+</form></dialog>
+<dialog id="cf-dlg" aria-labelledby="cf-title"><form method="dialog" id="cf-form">
+  <h2 id="cf-title"></h2><div id="cf-text" style="white-space:pre-wrap"></div>
+  <div class="row"><button type="button" data-close>Cancel</button><button value="ok" id="cf-ok" class="primary">OK</button></div>
+</form></dialog>
+<dialog id="in-dlg" aria-labelledby="in-title"><form method="dialog" id="in-form">
+  <h2 id="in-title"></h2><label><span id="in-label"></span><textarea id="in-text" rows="3" maxlength="500"></textarea></label>
+  <div class="row"><button type="button" data-close>Cancel</button><button value="ok" id="in-ok" class="primary">Save</button></div>
+</form></dialog>
+<script src="openvp-auth.js"></script>
+<script src="openvp-ops.js"></script>
+<script>
+openvpAuth.init();
+const q = new URLSearchParams(location.search);
+let slot = Number(q.get("slot")) || 1, slots = [], data = null, lastText = "";
+const S = p => `/api/slots/${slot}${p}`;
+
+async function init() {
+  slots = await api("/api/slots");
+  $("#slot").innerHTML = slots.map(s => `<option value="${s.number}">${esc(slotLabel(s))}</option>`).join("");
+  if (!slots.some(s => s.number === slot)) slot = 1;
+  $("#slot").value = slot; $("#slot").onchange = () => { slot = Number($("#slot").value); history.replaceState(null, "", "?slot=" + slot); load(); };
+  const k = await api("/api/versions/settings"); $("#keep").value = k.keep;
+  load();
+}
+async function load() {
+  $("#slotn").textContent = slot; $("#report-card").hidden = true;
+  const s = slots.find(x => x.number === slot); $("#prog").textContent = s?.program ? `${s.program} (${s.state})` : "empty";
+  try { data = await api(S("/versions")); } catch (e) { fail(e.message); return; }
+  const tb = $("#tbl tbody"); tb.innerHTML = "";
+  $("#empty").hidden = data.versions.length > 0; $("#tbl").hidden = data.versions.length === 0;
+  for (const v of data.versions) {
+    const tr = document.createElement("tr");
+    const how = v.how === v.lastHow ? v.how : `${v.how}, last by ${v.lastHow}`;
+    tr.innerHTML = `<td data-l="Last loaded">${esc(when(v.loadedAt))}<br><span class="muted">${esc(ago(v.loadedAt))}</span></td>
+      <td class="wrap" data-l="Program"><b>${esc(v.name)}</b> ${v.current ? pill("ok", "loaded now") : ""}${v.available ? "" : pill("err", "files missing")}<br><span class="muted mono">${esc(v.file)}${v.files.length > 1 ? ` + ${v.files.length - 1} file${v.files.length === 2 ? "" : "s"}` : ""} · ${esc(v.kind || "")} · ${esc(v.id.slice(0, 7))}</span></td>
+      <td class="wrap" data-l="How">${esc(how)}<br><span class="muted">${esc(v.lastWho)}</span></td>
+      <td class="num" data-l="Loads">${num(v.loads)}</td><td class="num muted" data-l="Size">${fmtSize(v.size)}</td>
+      <td class="wrap" data-l="Note">${v.note ? esc(v.note) : `<span class="muted">—</span>`}</td><td class="act"></td>`;
+    const act = tr.querySelector(".act");
+    const btn = (label, title, fn, cls = "", dis = false) => { const x = document.createElement("button"); x.textContent = label; x.title = title; x.className = "small " + cls; x.disabled = dis; x.onclick = fn; act.appendChild(x); act.append(" "); };
+    btn("Load this version", "Load these files into the slot and start them. The current state is saved as a snapshot first.", () => loadVersion(v), "primary", !v.available);
+    btn("Download", "Download the program (a zip when it has a .sig or sidecar files)", () => { location.href = S(`/versions/${v.id}/download`); }, "", !v.available);
+    btn("Note…", "Add or change a note about this version", () => editNote(v));
+    btn("Compare…", "Compare this version with another", () => openCompare(v.id));
+    btn("Push…", "Push this version to other OpenVP machines", () => { location.href = `targets.html?slot=${slot}&version=${v.id}#push`; });
+    btn("Delete", "Forget this version and delete its files", () => del(v), "danger", v.current);
+    tb.appendChild(tr);
+  }
+}
+async function loadVersion(v) {
+  const s = slots.find(x => x.number === slot);
+  if (!await confirmBox("Load this version?", `Load ${v.file} (${v.id.slice(0, 7)}) into slot ${slot} and start it.${s?.program ? `\n\nThe program running now (${s.program}) is stopped and replaced. A snapshot of it, with its NVRAM and User files, is saved first.` : ""}`, "Load and start")) return;
+  try { await api(S(`/versions/${v.id}/load`), "POST", { start: true }); flash("Loaded"); slots = await api("/api/slots"); await load(); }
+  catch (e) { fail(e.message); load(); }
+}
+async function editNote(v) {
+  const t = await askText("Note for this version", "What changed, or why it matters (up to 500 characters)", v.note || ""); if (t === null) return;
+  try { await api(S(`/versions/${v.id}`), "PUT", { note: t }); flash(); load(); } catch (e) { fail(e.message); }
+}
+async function del(v) {
+  if (!await confirmBox("Delete this version?", `${v.name} (${v.id.slice(0, 7)}) and its files are deleted from the history. This can't be undone.`, "Delete", true)) return;
+  try { await api(S(`/versions/${v.id}`), "DELETE"); load(); } catch (e) { fail(e.message); }
+}
+$("#keep-save").onclick = async () => { try { await api("/api/versions/settings", "PUT", { keep: Number($("#keep").value) }); flash(); load(); } catch (e) { fail(e.message); } };
+
+// Compare
+function openCompare(a) {
+  const opts = `<option value="loaded">The program loaded now</option>` + (data?.versions || []).map(v => `<option value="${v.id}">${esc(v.name)} · ${esc(when(v.loadedAt))} · ${esc(v.id.slice(0, 7))}${v.note ? " · " + esc(v.note.slice(0, 30)) : ""}</option>`).join("");
+  $("#cmp-a").innerHTML = opts; $("#cmp-b").innerHTML = opts;
+  $("#cmp-a").value = a || (data.versions[1]?.id ?? "loaded"); $("#cmp-b").value = a ? "loaded" : (data.versions[0]?.id ?? "loaded");
+  $("#cmp-err").textContent = ""; $("#cmp-dlg").showModal();
+}
+$("#cmp-open").onclick = () => openCompare(null);
+$("#cmp-go").onclick = async () => {
+  const a = $("#cmp-a").value, b = $("#cmp-b").value; $("#cmp-err").textContent = "";
+  $("#cmp-go").disabled = true; $("#cmp-go").textContent = "Comparing…";
+  try {
+    const r = await api(S("/versions/diff"), "POST", { a, b });
+    lastText = r.text; $("#report").innerHTML = diffHtml(r); $("#report-card").hidden = false; $("#cmp-dlg").close(); $("#report-card").scrollIntoView({ behavior: "smooth" });
+  } catch (e) { $("#cmp-err").textContent = e.message; }
+  $("#cmp-go").disabled = false; $("#cmp-go").textContent = "Compare";
+};
+$("#report-close").onclick = () => { $("#report-card").hidden = true; };
+$("#report-copy").onclick = async () => { try { await navigator.clipboard.writeText(lastText); flash("Copied"); } catch { fail("Couldn't copy. Select the report and copy it."); } };
+init().catch(e => fail(e.message));
+</script>
+</body>
+</html>

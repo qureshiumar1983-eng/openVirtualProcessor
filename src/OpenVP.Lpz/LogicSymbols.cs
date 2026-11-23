@@ -81,6 +81,9 @@ public static class LogicSymbolCatalog
         C("Logic Wave Pulse", "Digital", () => new WavePulsePrim(), "in: i1..iN · out: one-wave pulse", [409, 1309], [204]),
         C("Logic Wave Delay", "Digital", () => new WaveDelayPrim(), "in: i1..iN · out: o1..oN · params: waves", [408], [203]),
 
+        D("Digital Multiplexer", "Digital", () => new MuxPrim(Core.SigKind.Digital), "in: select (analog), i1..iN · out: i(select), low if none", "Digital Mux"),
+        D("Digital Demultiplexer", "Digital", () => new DemuxPrim(Core.SigKind.Digital), "in: select (analog), i · out: o1..oN, only o(select) follows", "Digital Demux"),
+
         // ---------------------------------------------------------------- timers
         C("Oscillator", "Timers", () => new OscillatorPrim(), "in: enable · out: o · params: high time, low time", [8], [14]),
         C("One Shot", "Timers", () => new OneShotPrim(false), "in: trigger, -, cancel · out: o, o* · params: time", [9], [15]),
@@ -122,6 +125,19 @@ public static class LogicSymbolCatalog
         D("Analog Negation", "Analog", () => new AnalogNegatePrim(), "in: a1..aN · out: -a1..-aN (two's complement)"),
         D("Analog Debounce", "Analog", () => new AnalogDebouncePrim(), "in: a · out: a once stable · params: time"),
 
+        D("Analog Subtract", "Analog", () => new AnalogMathPrim(AnalogMathPrim.Op.Subtract), "in: a1..aN · out: a1 - a2 - ... (wraps at 16 bits)", "Analog Subtractor", "Analog Difference"),
+        D("Analog Multiplier", "Analog", () => new AnalogMathPrim(AnalogMathPrim.Op.Multiply), "in: a1..aN · out: product (low 16 bits)", "Analog Multiply"),
+        D("Analog Divider", "Analog", () => new AnalogMathPrim(AnalogMathPrim.Op.Divide), "in: a1..aN · out: a1 / a2 / ... (integer; divide by 0 gives 0)", "Analog Divide"),
+        D("Analog Minimum", "Analog", () => new AnalogMathPrim(AnalogMathPrim.Op.Min), "in: a1..aN · out: smallest wired input", "Analog Min"),
+        D("Analog Maximum", "Analog", () => new AnalogMathPrim(AnalogMathPrim.Op.Max), "in: a1..aN · out: largest wired input", "Analog Max"),
+        D("Analog Average", "Analog", () => new AnalogMathPrim(AnalogMathPrim.Op.Average), "in: a1..aN · out: mean of the wired inputs, rounded down"),
+        D("Analog Delay", "Analog", () => new ValueDelayPrim(Core.SigKind.Analog), "in: a · out: a, every change P1 later · params: time"),
+        D("Up/Down Counter", "Analog", () => new UpDownCounterPrim(), "in: up, down, reset · out: count (stops at the limits) · params: min, max, initial", "Analog Counter", "Counter"),
+        D("Hex to Analog", "Analog", () => new HexToAnalogPrim(), "in: hex text · out: a (0 if not hex)"),
+        D("Analog Multiplexer", "Analog", () => new MuxPrim(Core.SigKind.Analog), "in: select, a1..aN · out: a(select), 0 if none", "Analog Mux"),
+        D("Analog Demultiplexer", "Analog", () => new DemuxPrim(Core.SigKind.Analog), "in: select, a · out: o1..oN, only o(select) follows", "Analog Demux"),
+        D("Time Split", "Analog", () => new TimeSplitPrim(), "in: time of day text · out: hour, minute, second", "Time to Analog"),
+
         // ---------------------------------------------------------------- serial
         C("Serial Buffer", "Serial", () => new HoldBufferPrim(Core.SigKind.Serial), "in: enable, s1..sN · out: s1..sN (hold while disabled)", [56], [88]),
         C("Serial Send", "Serial", () => new SerialSendPrim(), "in: t1..tN · out: s · params: strings", [89], [58]),
@@ -143,6 +159,17 @@ public static class LogicSymbolCatalog
         C("String Length", "Serial", () => new StringLengthPrim(), "in: s · out: a", [2506], [254]),
         C("Make String Permanent", "Serial", () => new PermanentPrim(), "in: s1..sN (kept across restarts)", [858], [205]),
         C("Intersystem Communications", "Serial", () => new XsigPrim(), "in: xsig, joins · out: xsig, joins · params: offset", [327], [85]),
+
+        D("Serial Delay", "Serial", () => new ValueDelayPrim(Core.SigKind.Serial), "in: s · out: s, every change P1 later · params: time"),
+        D("Serial to Hex", "Serial", () => new SerialToHexPrim(), "in: s · out: two hex digits per character"),
+        D("Hex to Serial", "Serial", () => new HexToSerialPrim(), "in: hex text · out: the characters"),
+        D("Analog to Hex", "Serial", () => new AnalogToHexPrim(), "in: a · out: upper-case hex text · params: digits (1-4, default 4)"),
+        D("Serial Equate", "Serial", () => new SerialEquatePrim(), "in: s, enable · out: o1..oN, high while s = string parameter k") with { UnwiredHigh = static p => p == 2 },
+        D("Serial Compare", "Serial", () => new SerialComparePrim(), "in: s1, s2 · out: same, different"),
+        D("Serial RAM", "Serial", () => new SerialRamPrim(), "in: s1..sN, store, recall, bank selects · out: s1..sN"),
+        D("Serial Multiplexer", "Serial", () => new MuxPrim(Core.SigKind.Serial), "in: select (analog), s1..sN · out: s(select), empty if none", "Serial Mux"),
+        D("Serial Demultiplexer", "Serial", () => new DemuxPrim(Core.SigKind.Serial), "in: select (analog), s · out: o1..oN, only o(select) follows", "Serial Demux"),
+        D("Time Join", "Serial", () => new TimeJoinPrim(), "in: hour, minute, second · out: HH:MM:SS", "Analog to Time"),
 
         // ---------------------------------------------------------------- system
         C("Clock Driver", "System", () => new ClockPrim(), "out: time of day", [43, 3078], [62], "Clock Driver w/out DST"),

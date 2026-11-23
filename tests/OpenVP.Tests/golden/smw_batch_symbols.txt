@@ -1,0 +1,92 @@
+slot1 1 D=1 <- start
+slot1 count A=1 <- Up/Down Counter
+slot1 chosen_hex S="0000" <- Analog to Hex
+slot1 #53 S="00:00:00" <- Time Join
+-- up
+slot1 d1_press D=1 <- IPID03
+slot1 count A=2 <- Up/Down Counter
+-- up released
+slot1 d1_press D=0 <- IPID03
+-- up held twice (one edge)
+slot1 d1_press D=1 <- IPID03
+slot1 count A=3 <- Up/Down Counter
+-- up released
+slot1 d1_press D=0 <- IPID03
+-- up at the limit
+slot1 d1_press D=1 <- IPID03
+-- up released
+slot1 d1_press D=0 <- IPID03
+-- down
+slot1 d2_press D=1 <- IPID03
+slot1 count A=2 <- Up/Down Counter
+-- down released
+slot1 d2_press D=0 <- IPID03
+-- reset held, then up ignored
+slot1 d3_press D=1 <- IPID03
+slot1 count A=1 <- Up/Down Counter
+slot1 d1_press D=1 <- IPID03
+-- all released
+slot1 d3_press D=0 <- IPID03
+slot1 d1_press D=0 <- IPID03
+-- x = 300
+slot1 a2_press A=300 <- IPID03
+slot1 #43 A=300 <- Analog Subtract
+-- y = 5
+slot1 a3_press A=5 <- IPID03
+slot1 #42 A=1500 <- Analog Multiplier
+slot1 #43 A=295 <- Analog Subtract
+-- x = 2 (subtract wraps)
+slot1 a2_press A=2 <- IPID03
+slot1 #42 A=10 <- Analog Multiplier
+slot1 #43 A=65533 <- Analog Subtract
+-- select 1 (x)
+slot1 a1_press A=1 <- IPID03
+slot1 chosen A=2 <- Analog Mux
+slot1 chosen_hex S="0002" <- Analog to Hex
+-- select 2 (y)
+slot1 a1_press A=2 <- IPID03
+slot1 chosen A=5 <- Analog Mux
+slot1 chosen_hex S="0005" <- Analog to Hex
+-- select 3 (past the last input)
+slot1 a1_press A=3 <- IPID03
+slot1 chosen A=0 <- Analog Mux
+slot1 chosen_hex S="0000" <- Analog to Hex
+-- select 7 (still past)
+slot1 a1_press A=7 <- IPID03
+-- x = 65535, select 1
+slot1 a2_press A=65535 <- IPID03
+slot1 #42 A=65531 <- Analog Multiplier
+slot1 #43 A=65530 <- Analog Subtract
+slot1 a1_press A=1 <- IPID03
+slot1 chosen A=65535 <- Analog Mux
+slot1 chosen_hex S="FFFF" <- Analog to Hex
+-- text ON
+slot1 s1_press S="ON" <- IPID03
+slot1 #51 S="4F4E" <- Serial to Hex
+slot1 #45 D=1 <- Serial Equate
+-- text on
+slot1 s1_press S="on" <- IPID03
+slot1 #51 S="6F6E" <- Serial to Hex
+slot1 #45 D=0 <- Serial Equate
+-- text 13:45:07
+slot1 s1_press S="13:45:07" <- IPID03
+slot1 #51 S="31333A34353A3037" <- Serial to Hex
+slot1 #46 A=13 <- Time Split
+slot1 #47 A=45 <- Time Split
+slot1 #48 A=7 <- Time Split
+slot1 #53 S="13:00:00" <- Time Join
+slot1 #53 S="13:45:00" <- Time Join
+slot1 #53 S="13:45:07" <- Time Join
+-- text 1:05 PM
+slot1 s1_press S="1:05 PM" <- IPID03
+slot1 #51 S="313A303520504D" <- Serial to Hex
+slot1 #47 A=5 <- Time Split
+slot1 #48 A=0 <- Time Split
+slot1 #53 S="13:05:07" <- Time Join
+slot1 #53 S="13:05:00" <- Time Join
+-- hex 414a0d
+slot1 s2_press S="414a0d" <- IPID03
+slot1 #52 S="AJ" <- Hex to Serial
+-- hex 41G2
+slot1 s2_press S="41G2" <- IPID03
+slot1 #52 S="A" <- Hex to Serial

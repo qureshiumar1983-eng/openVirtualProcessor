@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<link rel="stylesheet" href="openvp-ops.css">
+<script src="openvp-theme.js"></script>
+<title>OpenVP examples</title>
+<style>
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap:10px; }
+  .ex { display:flex; flex-direction:column; gap:6px; }
+  .ex h2 { margin:0; }
+  .ex .dl { margin:0; display:grid; grid-template-columns:max-content 1fr; gap:2px 10px; font-size:13px; }
+  .ex dt { color:var(--muted); } .ex dd { margin:0; overflow-wrap:anywhere; }
+  .ex .go { margin-top:auto; padding-top:6px; }
+  .done { border-color:var(--ok); }
+  @media (max-width:600px) { .ex .dl { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Examples</h1>
+  <span id="saved" role="status" aria-live="polite"></span>
+  <span class="sp"></span>
+  <span id="who-chip"></span>
+  <button class="theme-btn" data-theme-toggle></button>
+  <a href="compat.html">Compatibility</a>
+  <a href="/">Console</a>
+  <a href="help.html#examples" target="openvp-help">Help</a>
+</header>
+<main>
+  <div id="fail" class="note" role="alert" hidden></div>
+  <div class="card"><p>Small programs written for OpenVP, to learn from or to test with. Pick a slot and load one in a click. They are original and free to change; nothing here is Crestron's. Loading needs the <b>Programmer</b> role.</p></div>
+  <div id="ok" class="note done" role="status" hidden></div>
+  <div class="grid" id="list"></div>
+  <div id="empty" class="card muted" hidden>No examples are installed with this copy of OpenVP.</div>
+</main>
+<dialog id="cf-dlg" aria-labelledby="cf-title"><form method="dialog" id="cf-form">
+  <h2 id="cf-title"></h2><div id="cf-text" style="white-space:pre-wrap"></div>
+  <div class="row"><button type="button" data-close>Cancel</button><button value="ok" id="cf-ok" class="primary">OK</button></div>
+</form></dialog>
+<script src="openvp-auth.js"></script>
+<script src="openvp-ops.js"></script>
+<script>
+"use strict";
+openvpAuth.init();
+let slots = [], examples = [];
+const firstFree = () => (slots.find(s => !s.program && s.state === "Empty") || slots[0] || { number: 1 }).number;
+
+function draw() {
+  $("#empty").hidden = examples.length > 0;
+  const list = $("#list"); list.innerHTML = "";
+  for (const e of examples) {
+    const c = document.createElement("div"); c.className = "card ex";
+    c.innerHTML = `<h2>${esc(e.name)} ${pill("info", e.kind)}</h2><p>${esc(e.description)}</p>
+      <dl class="dl">${e.panel ? `<dt>Devices</dt><dd>${esc(e.panel)}</dd>` : ""}${e.tryIt ? `<dt>Try it</dt><dd>${esc(e.tryIt)}</dd>` : ""}<dt>Files</dt><dd class="mono">${e.files.map(esc).join(", ")}</dd></dl>
+      <div class="bar go"><label class="inline">Slot <select aria-label="Slot for ${esc(e.name)}">${slots.map(s => `<option value="${s.number}"${s.number === firstFree() ? " selected" : ""}>${s.number}${s.program ? " (in use)" : ""}</option>`).join("")}</select></label>
+        <button class="primary" data-perm="LoadProgram" ${e.available ? "" : "disabled"}>Load into slot</button>${e.available ? "" : `<span class="muted">not installed</span>`}</div>`;
+    const sel = c.querySelector("select"), btn = c.querySelector("button");
+    sel.onchange = () => { btn.textContent = "Load into slot " + sel.value; }; btn.textContent = "Load into slot " + sel.value;
+    btn.onclick = () => load(e, +sel.value, false, btn);
+    list.appendChild(c);
+  }
+  openvpAuth.apply();
+}
+async function load(e, n, replace, btn) {
+  btn.disabled = true;
+  try {
+    const r = await api(`/api/examples/${encodeURIComponent(e.id)}/load`, "POST", { slot: n, replace });
+    const ip = /IP ID (\w\w)/.exec(e.panel || "");
+    $("#ok").hidden = false;
+    $("#ok").innerHTML = `Loaded <b>${esc(e.name)}</b> into slot ${n} (${esc(r.state)}). <a href="/?slot=${n}">Open it in the console</a>${ip ? ` · <a href="panel.html?ipid=${ip[1]}&slot=${n}" target="_blank">Open the test panel</a>` : ""}${e.tryIt ? `<br><span class="muted">${esc(e.tryIt)}</span>` : ""}`;
+    slots = await api("/api/slots"); draw();
+  } catch (x) {
+    if (x.status === 409 && x.data?.occupied) {
+      if (await confirmBox("Replace the program in slot " + n + "?", `Slot ${n} already runs ${x.data.program || "a program"}. Loading the example replaces it. Check first that you don't need it.`, "Replace", true)) { btn.disabled = false; return load(e, n, true, btn); }
+    } else fail(x.message);
+  }
+  btn.disabled = false;
+}
+(async () => { try { [slots, examples] = await Promise.all([api("/api/slots"), api("/api/examples")]); draw(); } catch (e) { fail(e.message); } })();
+document.addEventListener("openvp-me", () => openvpAuth.apply());
+</script>
+</body>
+</html>

@@ -11,6 +11,9 @@ public enum JoinDirection
     FromDevice
 }
 
+/// <summary>Who sent an input to a device: a panel (browser, CIP, or a program's own device) or the other end of an EISC link.</summary>
+public enum InputSource { Panel, Eisc }
+
 /// <summary>
 /// A device that talks to a program through joins: a touch panel, XPanel, CH5 project or EISC.
 /// One instance per IP ID per slot. Transports (WebSocket, CIP) attach to it; program runtimes
@@ -65,6 +68,12 @@ public sealed class JoinDevice
     /// <summary>Raised when a device sends a press/value. Program runtimes subscribe.</summary>
     public event Action<JoinDevice, JoinKey, object>? InputReceived;
 
+    /// <summary>
+    /// Raised for every input just before <see cref="InputReceived"/>, saying where it came from. The recorder uses it, so
+    /// its timestamp comes before anything the program does in response. Handlers can run on any thread and must be cheap.
+    /// </summary>
+    public event Action<JoinDevice, JoinKey, object, InputSource>? InputObserved;
+
     public event Action<JoinDevice, bool>? OnlineChanged;
 
     public object GetFeedback(JoinKey key) => _toDevice.TryGetValue(key, out var v) ? v : SigValue.Default(key.Kind);
@@ -97,7 +106,10 @@ public sealed class JoinDevice
     }
 
     /// <summary>Transport side: the device pressed a button or sent a value.</summary>
-    public void ReceiveInput(JoinKey key, object value)
+    public void ReceiveInput(JoinKey key, object value) => ReceiveInput(key, value, InputSource.Panel);
+
+    /// <summary>Transport side, saying where the input came from (a panel, or the other end of an EISC link).</summary>
+    public void ReceiveInput(JoinKey key, object value, InputSource source)
     {
         value = SigValue.Coerce(key.Kind, value);
         var old = GetInput(key);
@@ -105,6 +117,7 @@ public sealed class JoinDevice
         if (!SigValue.AreEqual(old, value) || key.Kind == SigKind.Serial)
         {
             Interlocked.Increment(ref _inputsReceived);
+            InputObserved?.Invoke(this, key, value, source);
             InputReceived?.Invoke(this, key, value);
         }
     }

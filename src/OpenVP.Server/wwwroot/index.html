@@ -3,119 +3,463 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<script src="openvp-theme.js"></script>
 <title>OpenVP</title>
 <style>
   :root { --bg:#0f1216; --card:#181d23; --line:#29303a; --text:#e6e9ee; --muted:#8b95a3; --ok:#2f9e6e; --warn:#d69e2e; --err:#e05252; --accent:#4c8dff; }
   * { box-sizing:border-box; }
   body { margin:0; font:14px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--text); }
-  header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; align-items:baseline; gap:12px; }
+  header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; align-items:baseline; gap:4px 12px; flex-wrap:wrap; }
   header h1 { margin:0; font-size:18px; }
   header small, .muted { color:var(--muted); }
   a { color:var(--accent); }
   main { display:grid; grid-template-columns: 420px 1fr; gap:16px; padding:16px; align-items:start; }
-  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  @media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
+  main > div { min-width:0; }
   section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; }
   h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 10px; }
   table { width:100%; border-collapse:collapse; }
   td, th { text-align:left; padding:6px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
   th { color:var(--muted); font-weight:500; font-size:12px; }
   tr.slot { cursor:pointer; }
-  tr.slot.sel { background:#1f2630; }
-  .state { font-size:12px; padding:2px 8px; border-radius:20px; background:#252c36; }
-  .Running { background:#173a2c; color:#7fe0b1; } .Error { background:#3d1b1b; color:#ff9b9b; } .Stopped { background:#3a321a; color:#f2cf7a; }
-  button, input, select { font:inherit; color:var(--text); background:#111519; border:1px solid var(--line); border-radius:6px; padding:5px 9px; }
+  tr.slot.sel { background:var(--selrow); }
+  .state { font-size:12px; padding:2px 8px; border-radius:20px; background:var(--chip); }
+  .Running { background:var(--ok-bg); color:var(--ok-fg); } .Error { background:var(--err-bg); color:var(--err-fg); } .Stopped { background:var(--warn-bg); color:var(--warn-fg); }
+  button, input, select { font:inherit; color:var(--text); background:var(--input); border:1px solid var(--line); border-radius:6px; padding:5px 9px; }
   button { cursor:pointer; } button:hover { border-color:var(--accent); }
   .bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
+  [hidden] { display:none !important; }
   .mono { font-family: ui-monospace, Menlo, monospace; font-size:12px; }
-  #log, #console-out { height:220px; overflow:auto; background:#0b0e11; border:1px solid var(--line); border-radius:6px; padding:8px; white-space:pre-wrap; }
-  #log, #console-out { resize:vertical; min-height:120px; }
+  #log, #console-out { height:220px; overflow:auto; background:var(--well); border:1px solid var(--line); border-radius:6px; padding:8px; white-space:pre-wrap; }
+  #log, #console-out { resize:vertical; min-height:120px; overflow-wrap:anywhere; }
   .sec-head { display:flex; align-items:center; gap:6px; margin-bottom:10px; }
   .sec-head h2 { margin:0; flex:1; }
   .sec-head button { padding:2px 8px; font-size:12px; }
   section.max { position:fixed; inset:16px; z-index:50; display:flex; flex-direction:column; box-shadow:0 10px 40px #000c; }
   section.max #log, section.max #console-out { flex:1; height:auto !important; resize:none; }
-  .lv-Error { color:var(--err); } .lv-Warning { color:var(--warn); } .lv-Notice { color:#9ecbff; } .lv-Console { color:#cfd6df; }
+  section.max #logw { flex:1; min-height:0; display:flex; flex-direction:column; } section.max #logw .ovl { flex:1; }
+  #log { padding:4px 0; }
+  .lv-Error { color:var(--err); } .lv-Warning { color:var(--warn); } .lv-Notice { color:var(--info-fg); } .lv-Console { color:var(--text2); }
   .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
   @media (max-width: 1200px) { .grid2 { grid-template-columns: 1fr; } }
   .dev { font-size:12px; color:var(--muted); }
   .on { color:var(--ok); }
+  /* Status board */
+  #board { margin:16px 16px 0; }
+  #board-tiles { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px; }
+  .btile { position:relative; background:var(--tile); border:1px solid var(--line); border-left:4px solid var(--line); border-radius:8px; padding:8px 10px; cursor:pointer; min-width:0; }
+  .btile:hover { border-color:var(--accent); }
+  .btile:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+  .btile.sel { background:var(--active); border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+  .btile.st-Running { border-left-color:var(--ok); } .btile.st-Stopped { border-left-color:var(--warn); } .btile.st-Error { border-left-color:var(--err); }
+  .btile.st-Empty { border-left-color:var(--dim); } .btile.st-Empty .bprog { color:var(--muted); }
+  .btile .btop { display:flex; align-items:center; gap:2px 6px; flex-wrap:wrap; }
+  .btile .bdot { width:9px; height:9px; border-radius:50%; background:var(--dim); flex:none; }
+  .btile.st-Running .bdot { background:var(--ok); box-shadow:0 0 0 3px var(--ok-glow); } .btile.st-Stopped .bdot { background:var(--warn); } .btile.st-Error .bdot { background:var(--err); }
+  .btile .bnum { font-weight:600; }
+  .btile .broom { flex:none; font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+  .btile .bflags { margin-left:auto; display:flex; gap:4px; flex:none; }
+  .btile .bprog { margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .btile .bstats { margin-top:4px; display:flex; gap:10px; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; flex-wrap:wrap; }
+  .abadge { display:inline-block; min-width:1.6em; text-align:center; margin-left:4px; font-size:11px; padding:0 6px; border-radius:20px; background:var(--warn-bg); color:var(--warn-fg); }
+  .abadge[data-color="red"] { background:var(--err-bg); color:var(--err-fg); }
+  .bbadge { font-size:11px; padding:0 6px; border-radius:20px; background:var(--err-bg); color:var(--err-fg); cursor:help; white-space:nowrap; }
+  .bbadge.auto { background:var(--info-bg); color:var(--info-fg); }
+  .bbadge.osc { background:var(--warn-bg); color:var(--warn-fg); }
+  #log-sec .sec-head .lnk { font-size:12px; padding:2px 8px; }
+  #exc-det { margin-top:8px; } #exc-det > summary { cursor:pointer; color:var(--muted); }
+  #exc-box { margin-top:6px; max-height:320px; overflow:auto; }
+  #sigfind-wrap { position:relative; }
+  #sigfind { width:200px; font-size:13px; padding:3px 8px; }
+  #sigfind-res { position:absolute; right:0; top:100%; z-index:90; width:min(460px, 92vw); max-height:60vh; overflow:auto; background:var(--menu); border:1px solid var(--line); border-radius:8px; margin-top:4px; box-shadow:0 8px 30px #0006; }
+  #sigfind-res div { padding:5px 10px; cursor:pointer; border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
+  #sigfind-res div:hover, #sigfind-res div.on { background:var(--active); }
+  #sigfind-res small { color:var(--muted); display:block; }
+  @media (max-width: 600px) { #sigfind { width:130px; } }
   /* IP table */
   #ipt td { font-size:13px; }
   #ipt tr.client { cursor:pointer; }
-  #ipt tr.client:hover { background:#1b222b; }
-  #ipt tr.client.sel { background:#1f2630; }
+  #ipt tr.client:hover { background:var(--hover); }
+  #ipt tr.client.sel { background:var(--selrow); }
   #ipt .who b { display:block; }
   #ipt .who small { color:var(--muted); }
   #ipt tr.nobody td { color:var(--muted); }
-  .pill { font-size:11px; padding:1px 7px; border-radius:20px; background:#252c36; white-space:nowrap; }
-  .pill.ok { background:#173a2c; color:#7fe0b1; } .pill.off { background:#2a2f37; color:var(--muted); }
+  .pill { font-size:11px; padding:1px 7px; border-radius:20px; background:var(--chip); white-space:nowrap; }
+  .pill.ok { background:var(--ok-bg); color:var(--ok-fg); } .pill.off { background:var(--chip2); color:var(--muted); }
   .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
   #ipt-detail { margin-top:12px; display:none; }
   .kv { display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:10px 16px; }
   .kv h3 { grid-column:1/-1; margin:8px 0 0; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
   .kv div { border-bottom:1px solid var(--line); padding-bottom:4px; min-width:0; overflow-wrap:anywhere; }
   .kv div span { display:block; color:var(--muted); font-size:11px; }
-  pre.out { background:#0b0e11; border:1px solid var(--line); border-radius:6px; padding:8px; margin:4px 0 0; white-space:pre-wrap; max-height:220px; overflow:auto; font-size:12px; }
+  pre.out { background:var(--well); border:1px solid var(--line); border-radius:6px; padding:8px; margin:4px 0 0; white-space:pre-wrap; max-height:220px; overflow:auto; font-size:12px; }
   #login-form { display:none; gap:8px; flex-wrap:wrap; align-items:center; margin-top:8px; }
   .scroll-x { overflow-x:auto; }
   .tabs { display:flex; gap:0; }
   .tabs button { border-radius:0; } .tabs button:first-child { border-radius:6px 0 0 6px; } .tabs button:last-child { border-radius:0 6px 6px 0; margin-left:-1px; }
-  .tabs button.active { background:#1f2a3a; border-color:var(--accent); }
+  .tabs button.active { background:var(--active); border-color:var(--accent); }
   #crumbs a { cursor:pointer; text-decoration:none; } #crumbs .sep { color:var(--muted); margin:0 4px; }
   #files-table td.name a { cursor:pointer; text-decoration:none; }
   #files-table td.act { text-align:right; white-space:nowrap; }
   #files-table td.act button { padding:2px 7px; font-size:12px; }
   #files-drop { border:1px dashed transparent; border-radius:8px; }
-  #files-drop.over { border-color:var(--accent); background:#141b25; }
+  #files-drop.over { border-color:var(--accent); background:var(--soft); }
   dialog { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:16px; min-width:340px; }
-  dialog::backdrop { background:#0008; }
+  dialog::backdrop { background:var(--overlay); }
   dialog form { display:flex; flex-direction:column; gap:10px; margin:0; }
+  #welcome { width:min(560px, calc(100vw - 24px)); max-height:calc(100dvh - 24px); box-sizing:border-box; overflow:auto; min-width:0; }
+  #welcome h2 { margin:0 0 8px; font-size:20px; }
+  #welcome h3 { margin:14px 0 4px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+  #welcome p, #welcome li { margin:0 0 6px; overflow-wrap:anywhere; }
+  #welcome ol, #welcome ul { margin:0; padding-left:22px; }
+  #welcome .row { margin-top:14px; flex-wrap:wrap; }
   dialog .row { display:flex; gap:8px; justify-content:flex-end; }
-  #files-hint { margin:0 0 10px; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:#141a21; }
-  #files-missing { margin:0 0 10px; padding:8px 10px; border:1px solid #6b5a2a; border-radius:6px; background:#1d1a12; }
+  #ed-dlg { width:min(900px, calc(100vw - 24px)); max-width:none; padding:12px; }
+  #ed-dlg .bar { align-items:center; }
+  .ed-wrap { display:flex; border:1px solid var(--line); border-radius:6px; background:var(--well); height:min(60dvh, 560px); min-height:180px; overflow:hidden; }
+  #ed-gutter { margin:0; padding:8px 6px; width:4.2em; flex:none; text-align:right; color:var(--muted); font:12px/18px ui-monospace, Menlo, Consolas, monospace; overflow:hidden; border-right:1px solid var(--line); user-select:none; background:var(--soft); }
+  #ed-gutter .bad { color:var(--err-fg); background:var(--err-bg); display:block; }
+  #ed-gutter span { display:block; }
+  #ed-text { flex:1; min-width:0; border:0; border-radius:0; resize:none; white-space:pre; overflow:auto; padding:8px; font:12px/18px ui-monospace, Menlo, Consolas, monospace; background:transparent; color:var(--text); tab-size:2; }
+  #ed-banner { padding:6px 8px; border:1px solid var(--warn-line); background:var(--warn-box); border-radius:6px; font-size:13px; display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; }
+  #ed-banner.err { border-color:var(--err); background:var(--err-bg); }
+  #ed-banner.ok { border-color:var(--ok); background:var(--ok-bg); color:var(--ok-fg); }
+  #ed-status.bad { color:var(--err-fg); } #ed-status.good { color:var(--ok-fg); }
+  #files-hint { margin:0 0 10px; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:var(--soft); }
+  #files-missing { margin:0 0 10px; padding:8px 10px; border:1px solid var(--warn-line); border-radius:6px; background:var(--warn-box); }
   #files-missing ul { margin:6px 0 0; padding:0; list-style:none; }
   #files-missing li { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:4px 0; border-top:1px solid var(--line); }
   #files-missing li:first-child { border-top:none; }
   #files-missing .path { flex:1 1 220px; overflow-wrap:anywhere; }
+  #hist-table td.act { text-align:right; white-space:nowrap; }
+  #hist-table td.act button { padding:2px 7px; font-size:12px; }
+  #hist-table td.prog { overflow-wrap:anywhere; }
+  @media (max-width: 600px) {
+    #hist-table thead { display:none; }
+    #hist-table, #hist-table tbody, #hist-table tr, #hist-table td { display:block; }
+    #hist-table tr { border-bottom:1px solid var(--line); padding:6px 0; }
+    #hist-table td { border:none; padding:2px 6px; }
+    #hist-table td.num, #hist-table td.act { text-align:left; }
+  }
+  /* Recordings */
+  .bbadge.rec { background:var(--err-bg); color:var(--err-fg); } .bbadge.play { background:var(--info-bg); color:var(--info-fg); }
+  #rec-table td.act { text-align:left; padding-top:0; }
+  #rec-table tr.datarow td { border-bottom:none; }
+  #rec-table td.act button { padding:2px 7px; font-size:12px; }
+  #rec-table td.nm { overflow-wrap:anywhere; }
+  #rec-toggle.recording { background:var(--err-bg); border-color:var(--err); color:var(--err-fg); }
+  #rec-toggle:not(.recording) .rdot { color:var(--err); }
+  button:disabled { opacity:.45; cursor:default; } button:disabled:hover { border-color:var(--line); }
+  #rec-replay { margin:0 0 10px; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:var(--soft); }
+  .pbar { height:8px; border-radius:4px; background:var(--well); border:1px solid var(--line); overflow:hidden; margin:6px 0 0; }
+  .pbar > div { height:100%; width:0; background:var(--accent); transition:width .3s linear; }
+  #rec-notice { margin:0 0 10px; padding:8px 10px; border:1px solid var(--warn-line); border-radius:6px; background:var(--warn-box); overflow-wrap:anywhere; }
+  .rr { margin-top:12px; padding:10px 12px; border:1px solid var(--line); border-left:5px solid var(--line); border-radius:8px; background:var(--tile); }
+  .rr.pass { border-left-color:var(--ok); } .rr.fail { border-left-color:var(--err); }
+  .rr-head { display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 12px; }
+  .rr-big { font-size:22px; font-weight:700; letter-spacing:.04em; }
+  .rr.pass .rr-big { color:var(--ok-fg); } .rr.fail .rr-big { color:var(--err-fg); }
+  .rr-sum { margin:6px 0; color:var(--muted); overflow-wrap:anywhere; }
+  .rr ul { margin:6px 0; padding-left:18px; color:var(--muted); }
+  .rr details { margin-top:8px; }
+  .rr summary { cursor:pointer; color:var(--muted); }
+  table.diffs td, table.diffs th { font-size:13px; }
+  table.diffs .k { white-space:nowrap; }
+  table.diffs tr.warn td { color:var(--muted); }
+  .pill.pass { background:var(--ok-bg); color:var(--ok-fg); } .pill.fail { background:var(--err-bg); color:var(--err-fg); }
+  @media (max-width: 600px) {
+    #rec-table thead, table.diffs thead { display:none; }
+    #rec-table, #rec-table tbody, #rec-table tr, #rec-table td, table.diffs, table.diffs tbody, table.diffs tr, table.diffs td { display:block; }
+    #rec-table tr, table.diffs tr { border-bottom:1px solid var(--line); padding:6px 0; }
+    #rec-table td, table.diffs td { border:none; padding:2px 6px; }
+    #rec-table td.act, #rec-table td.num { text-align:left; white-space:normal; }
+    #rec-table tr.datarow { border-bottom:none; padding-bottom:0; }
+    table.diffs td::before { content:attr(data-l) " "; color:var(--muted); font-size:11px; }
+  }
   #files-missing .disk { flex-basis:100%; font-size:12px; overflow-wrap:anywhere; }
+  /* Sharing */
+  #share-dlg { width:min(480px, calc(100vw - 24px)); max-height:calc(100dvh - 24px); overflow:auto; min-width:0; }
+  #share-dlg h2 { margin:0 0 4px; font-size:18px; text-transform:none; letter-spacing:0; color:var(--text); }
+  #share-dlg label.f { display:flex; flex-direction:column; gap:3px; font-size:12px; color:var(--muted); }
+  #share-dlg label.f input, #share-dlg label.f select { font-size:14px; color:var(--text); }
+  #share-dlg .pinrow { display:flex; gap:6px; } #share-dlg .pinrow input { flex:1; min-width:0; }
+  #share-dlg .what { margin:0; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:var(--soft); overflow-wrap:anywhere; }
+  #share-dlg .err { color:var(--err-fg); min-height:18px; overflow-wrap:anywhere; }
+  #share-url { width:100%; }
+  #share-qr { display:grid; place-items:center; padding:10px; background:#fff; border-radius:8px; width:max-content; max-width:100%; margin:0 auto; }
+  #share-qr svg { width:min(220px, 60vw); height:auto; display:block; }
+  .warnbox { padding:8px 10px; border:1px solid var(--warn-line); border-radius:6px; background:var(--warn-box); overflow-wrap:anywhere; }
+  #shares-table td.act { white-space:nowrap; text-align:right; }
+  #shares-table td.act button { padding:2px 7px; font-size:12px; }
+  #shares-table td.nm { overflow-wrap:anywhere; }
+  #ipt td.act { text-align:right; white-space:nowrap; }
+  #ipt td.act button { padding:2px 7px; font-size:12px; }
+  #d-ch5 { margin:6px 0; display:flex; gap:6px 10px; align-items:center; flex-wrap:wrap; }
+  @media (max-width: 600px) {
+    #shares-table thead { display:none; }
+    #shares-table, #shares-table tbody, #shares-table tr, #shares-table td { display:block; }
+    #shares-table tr { border-bottom:1px solid var(--line); padding:6px 0; }
+    #shares-table td { border:none; padding:2px 6px; }
+    #shares-table td.act { text-align:left; white-space:normal; }
+    #shares-table td::before { content:attr(data-l) " "; color:var(--muted); font-size:11px; }
+    #shares-table td.act::before, #shares-table td.nm::before { content:""; }
+  }
+  /* Internet access */
+  #net-bar { margin:12px 16px 0; padding:8px 12px; border:1px solid var(--line); border-radius:10px; background:var(--card); display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; }
+  #net-bar b { font-weight:600; }
+  .switch { position:relative; width:42px; height:24px; flex:none; border-radius:12px; border:1px solid var(--line); background:var(--input); padding:0; cursor:pointer; }
+  .switch::after { content:""; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:var(--muted); transition:left .15s, background .15s; }
+  .switch[aria-checked="true"] { background:var(--ok-bg); border-color:var(--ok); }
+  .switch[aria-checked="true"]::after { left:20px; background:var(--ok-fg); }
+  .switch.busy::after { background:var(--warn); }
+  .switch:disabled { opacity:.45; cursor:default; }
+  #net-state { font-size:12px; padding:1px 9px; border-radius:20px; background:var(--chip); }
+  #net-state.on { background:var(--ok-bg); color:var(--ok-fg); } #net-state.err { background:var(--err-bg); color:var(--err-fg); } #net-state.wait { background:var(--warn-bg); color:var(--warn-fg); }
+  #net-url { font-family:ui-monospace, Menlo, monospace; font-size:13px; overflow-wrap:anywhere; }
+  #net-help { flex-basis:100%; margin:0; font-size:12px; color:var(--muted); }
+  #net-msg { flex-basis:100%; margin:0; font-size:13px; overflow-wrap:anywhere; }
+  #net-msg.err { color:var(--err-fg); }
+  #net-bar button { padding:2px 9px; font-size:12px; }
+  #net-bar details { flex-basis:100%; font-size:12px; color:var(--muted); } #net-bar details pre { margin:4px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; max-height:160px; overflow:auto; }
+
+  /* ---- header buttons, saved indicator, toasts */
+  header .hbtn, .theme-btn { font-size:12px; padding:2px 9px; white-space:nowrap; }
+  #saved { font-size:12px; color:var(--ok-fg); background:var(--ok-bg); border-radius:20px; padding:1px 9px; opacity:0; transition:opacity .25s; pointer-events:none; min-width:60px; text-align:center; }
+  #saved.show { opacity:1; }
+  #toasts { position:fixed; left:50%; bottom:16px; transform:translateX(-50%); z-index:200; display:flex; flex-direction:column; gap:8px; align-items:center; width:min(520px, calc(100vw - 24px)); pointer-events:none; }
+  .toast { pointer-events:auto; display:flex; align-items:center; gap:10px; width:100%; background:var(--menu); color:var(--text); border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:8px; padding:8px 10px 8px 12px; box-shadow:0 6px 24px #0006; }
+  .toast.err { border-left-color:var(--err); }
+  .toast span { flex:1; overflow-wrap:anywhere; }
+  .toast button { padding:3px 12px; }
+  .toast button.undo { background:var(--active); border-color:var(--accent); font-weight:600; }
+  /* ---- command palette and shortcut overlay */
+  #pal-back, #keys-back { position:fixed; inset:0; z-index:150; background:var(--overlay); display:none; align-items:flex-start; justify-content:center; padding:12vh 12px 12px; }
+  #pal-back.open, #keys-back.open { display:flex; }
+  #pal, #keys { width:min(600px, 100%); max-height:76vh; display:flex; flex-direction:column; background:var(--menu); border:1px solid var(--line); border-radius:10px; box-shadow:0 12px 40px #0007; overflow:hidden; }
+  #pal-in { border:0; border-bottom:1px solid var(--line); border-radius:0; padding:12px 14px; font-size:16px; background:transparent; outline:none; }
+  #pal-list { overflow:auto; padding:4px 0; margin:0; list-style:none; }
+  #pal-list li { padding:7px 14px; cursor:pointer; display:flex; gap:10px; align-items:baseline; }
+  #pal-list li .h { margin-left:auto; color:var(--muted); font-size:12px; white-space:nowrap; }
+  #pal-list li.on, #pal-list li:hover { background:var(--selrow); color:var(--text); }
+  #pal-list li.on { box-shadow:inset 3px 0 0 var(--accent); }
+  #pal-foot, #keys-foot { padding:6px 14px; border-top:1px solid var(--line); color:var(--muted); font-size:12px; }
+  #keys { padding:14px 18px; overflow:auto; } #keys h2 { margin:0 0 8px; }
+  #keys dl { display:grid; grid-template-columns:auto 1fr; gap:6px 16px; margin:0; }
+  #keys dt { text-align:right; white-space:nowrap; } #keys dd { margin:0; }
+  kbd { font:12px ui-monospace, Menlo, Consolas, monospace; background:var(--input); border:1px solid var(--line); border-bottom-width:2px; border-radius:4px; padding:0 5px; }
+  /* ---- drop anywhere */
+  #drop-ov { position:fixed; inset:0; z-index:120; display:none; place-items:center; background:var(--overlay); pointer-events:none; }
+  #drop-ov.open { display:grid; }
+  #drop-ov div { background:var(--card); border:3px dashed var(--accent); border-radius:16px; padding:28px 40px; font-size:20px; text-align:center; max-width:calc(100vw - 32px); overflow-wrap:anywhere; }
+  #drop-ov small { display:block; font-size:13px; color:var(--muted); margin-top:6px; }
+  /* ---- recent menu */
+  .menu-wrap { position:relative; display:inline-block; }
+  #recent-menu { position:absolute; left:0; top:calc(100% + 4px); z-index:60; width:min(440px, calc(100vw - 32px)); max-height:60vh; overflow:auto; background:var(--menu); border:1px solid var(--line); border-radius:8px; box-shadow:0 8px 28px #0006; padding:4px 0; }
+  #recent-menu button { display:block; width:100%; text-align:left; border:0; border-radius:0; background:transparent; padding:7px 12px; }
+  #recent-menu button:hover:not(:disabled) { background:var(--selrow); }
+  #recent-menu small { display:block; color:var(--muted); overflow-wrap:anywhere; }
+  #recent-menu .none { padding:10px 12px; color:var(--muted); }
+  /* ---- slot name / colour, bulk selection, crash info */
+  .cdot { display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--sc, transparent); border:1px solid var(--line); vertical-align:baseline; margin-right:5px; }
+  .btile[style*="--sc"] { border-top:3px solid var(--sc); }
+  .btile .bname { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:0 1 auto; }
+  .btile .bsel { margin:0 2px 0 0; width:16px; height:16px; flex:none; accent-color:var(--accent); }
+  .bbadge.pol { background:var(--chip); color:var(--text2); }
+  .bbadge.lockb { background:var(--warn-bg); color:var(--warn-fg); border:1px solid var(--warn-line); }
+  .bpres { display:flex; gap:3px; flex-wrap:wrap; margin-top:3px; min-height:0; }
+  .av { width:20px; height:20px; border-radius:50%; background:var(--active); border:1px solid var(--accent); display:inline-grid; place-items:center; font-size:9px; font-weight:700; color:var(--text); cursor:help; flex:none; }
+  .av.dbg { border-color:var(--warn); background:var(--warn-bg); color:var(--warn-fg); }
+  #lock-banner { margin:6px 0; padding:6px 8px; border:1px solid var(--warn-line); background:var(--warn-box); border-radius:6px; }
+  #pres-sel { display:inline-flex; gap:4px; align-items:center; flex-wrap:wrap; }
+  .bcrash { margin-top:4px; font-size:12px; color:var(--warn-fg); overflow-wrap:anywhere; }
+  tr.slot td:first-child { box-shadow:inset 4px 0 0 var(--sc, transparent); }
+  #slots input.bsel { width:16px; height:16px; margin:0; accent-color:var(--accent); vertical-align:middle; }
+  #bulk-bar { display:none; margin-top:10px; padding:8px 10px; border:1px solid var(--accent); border-radius:8px; background:var(--active); align-items:center; gap:6px 8px; flex-wrap:wrap; }
+  #bulk-bar.open { display:flex; }
+  #slot-set { margin-top:10px; border-top:1px solid var(--line); padding-top:8px; }
+  #slot-set summary { cursor:pointer; color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.06em; }
+  #slot-set .fld { display:flex; flex-direction:column; gap:3px; font-size:12px; color:var(--muted); min-width:0; }
+  #slot-set .frow { display:flex; flex-wrap:wrap; gap:10px 14px; margin:8px 0; align-items:flex-end; }
+  #slot-set input[type=text], #slot-set input[type=number], #slot-set select { color:var(--text); font-size:14px; }
+  #slot-set input[type=number] { width:84px; }
+  #set-colors { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  #set-colors button { width:26px; height:26px; padding:0; border-radius:50%; background:var(--c); border:2px solid var(--line); }
+  #set-colors button.on { border-color:var(--text); box-shadow:0 0 0 2px var(--accent); }
+  #set-colors button.none { background:var(--input); font-size:12px; width:auto; padding:0 9px; border-radius:13px; }
+  #slot-set .chk { flex-direction:row; align-items:center; gap:6px; color:var(--text); font-size:14px; }
+  #slot-strip { display:none; }
+  #log-filter { flex:1; min-width:120px; }
+  /* ---- readiness check, program summary, demo, templates, activity, help-on-hover */
+  .ready { margin:0 0 10px; }
+  .rd { border:1px solid var(--line); border-left:5px solid var(--line); border-radius:8px; padding:8px 10px; background:var(--tile); overflow-wrap:anywhere; }
+  .rd.rd-will-run { border-left-color:var(--ok); } .rd.rd-partly { border-left-color:var(--warn); } .rd.rd-wont-run { border-left-color:var(--err); }
+  .rd-head { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; }
+  .rd-badge { font-weight:600; padding:1px 10px; border-radius:20px; background:var(--chip); }
+  .rd-will-run .rd-badge { background:var(--ok-bg); color:var(--ok-fg); } .rd-partly .rd-badge { background:var(--warn-bg); color:var(--warn-fg); } .rd-wont-run .rd-badge { background:var(--err-bg); color:var(--err-fg); }
+  .rd-sum, .rd-why, .rd-note { margin-top:6px; } .rd-note { font-size:12px; color:var(--muted); }
+  .rd details { margin-top:6px; } .rd summary { cursor:pointer; color:var(--muted); } .rd ul { margin:6px 0 0; padding-left:20px; max-height:200px; overflow:auto; }
+  .rd li small { color:var(--muted); }
+  #sel-summary { margin:4px 0 0; overflow-wrap:anywhere; }
+  #demo-dlg, #tpl-dlg, #drop-dlg { width:min(560px, calc(100vw - 24px)); max-height:calc(100dvh - 24px); overflow:auto; min-width:0; }
+  #demo-dlg h2, #tpl-dlg h2, #drop-dlg h2 { margin:0; font-size:18px; text-transform:none; letter-spacing:0; color:var(--text); }
+  #demo-dlg p, #tpl-dlg p, #drop-dlg p { margin:0; overflow-wrap:anywhere; }
+  #demo-dlg ol { margin:0; padding-left:22px; } #demo-dlg li { margin:0 0 6px; }
+  .tpl { border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:var(--tile); display:flex; flex-direction:column; gap:6px; }
+  .tpl a.dl { align-self:flex-start; text-decoration:none; padding:5px 12px; border:1px solid var(--accent); border-radius:6px; background:var(--active); color:var(--text); }
+  .tpl small { color:var(--muted); }
+  #act-table td { font-size:13px; } #act-table td.when { white-space:nowrap; color:var(--muted); } #act-table td.who { white-space:nowrap; }
+  #act-table td.what { overflow-wrap:anywhere; }
+  #help-q { position:fixed; z-index:160; width:20px; height:20px; padding:0; min-height:0; border-radius:50%; font-size:12px; line-height:18px; text-align:center; background:var(--accent); color:#fff; border:1px solid var(--accent); box-shadow:0 2px 8px #0005; }
+  #help-q:hover { filter:brightness(1.15); }
+  body.help-shift [data-help] { cursor:help; }
+  @media (max-width: 600px) {
+    #act-table thead { display:none; }
+    #act-table, #act-table tbody, #act-table tr, #act-table td { display:block; }
+    #act-table tr { border-bottom:1px solid var(--line); padding:6px 0; }
+    #act-table td { border:none; padding:2px 6px; }
+    #act-table td.when::after { content:" · " attr(data-who); }
+    #act-table td.who, #act-table td.num { display:none; }
+  }
+  /* ---- phone: collapsible sections, big touch targets, sticky slot selector, cards instead of wide tables */
+  section h2.sec-t { cursor:default; }
+  @media (max-width: 700px) {
+    body { font-size:15px; }
+    header { padding:10px 12px; } header small { display:none; }
+    header a, header .hbtn, .theme-btn { padding:8px 6px; }
+    #net-bar { margin:10px 12px 0; } #board { margin:12px 12px 0; }
+    main { padding:12px; gap:12px; }
+    main section, #board { padding:12px; }
+    button, input, select { min-height:40px; font-size:16px; }
+    button { padding:6px 12px; }
+    input[type=checkbox] { min-height:0; }
+    #file { max-width:100%; }
+    .bar { gap:8px; }
+    .btile { padding:10px; min-height:84px; }
+    #board-tiles { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+    #slot-strip { display:flex; position:sticky; top:0; z-index:40; gap:8px; align-items:center; padding:8px 12px; background:var(--bg); border-bottom:1px solid var(--line); }
+    #slot-strip select { flex:1; min-width:0; }
+    #slot-strip button { min-width:44px; padding:6px 10px; }
+    section h2.sec-t { cursor:pointer; display:flex; align-items:center; min-height:36px; user-select:none; }
+    section h2.sec-t::after { content:"▾"; margin-left:auto; padding-left:10px; }
+    section.collapsed h2.sec-t::after { content:"▸"; }
+    section.collapsed > :not(h2):not(.sec-head) { display:none !important; }
+    section.collapsed h2.sec-t { margin-bottom:0; }
+    .sec-head h2.sec-t { min-height:0; }
+    #ipt thead, #files-table thead, #slots thead { display:none; }
+    #ipt, #ipt tbody, #ipt tr, #ipt td, #files-table, #files-table tbody, #files-table tr, #files-table td { display:block; }
+    #ipt tr, #files-table tr { border:1px solid var(--line); border-radius:8px; margin:0 0 8px; padding:6px 8px; }
+    #ipt td, #files-table td { border:none; padding:2px 0; }
+    #ipt td[data-l]::before, #files-table td[data-l]::before { content:attr(data-l) " "; color:var(--muted); font-size:11px; }
+    #ipt td.num, #ipt td.act, #files-table td.num, #files-table td.act { text-align:left; white-space:normal; }
+    #files-table td.act button, #ipt td.act button, #hist-table td.act button, #rec-table td.act button, #shares-table td.act button { min-height:36px; padding:4px 10px; }
+    #slots .roomcol { display:none; }
+    .kv { grid-template-columns:minmax(0, 1fr); }
+    #crumbs, #files-ppath { overflow-wrap:anywhere; }
+    dialog { min-width:0; width:calc(100vw - 24px); max-width:none; }
+    #recent-menu { left:-12px; }
+    #toasts { bottom:8px; }
+    .scroll-x { overflow-x:visible; }
+    pre.out, #log, #console-out { max-width:100%; }
+    #pal-back, #keys-back { padding-top:8vh; }
+  }
 </style>
 </head>
 <body>
 <header>
   <h1>OpenVP</h1><small>open-source virtual control processor</small>
-  <span style="flex:1"></span><a href="metrics.html" target="openvp-metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="panel.html" target="_blank" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a>
+  <span style="flex:1"></span><span id="saved" role="status" aria-live="polite"></span><span id="sigfind-wrap"><input id="sigfind" type="search" placeholder="Find a signal in all slots" aria-label="Find a signal by name in every loaded slot" autocomplete="off" title="Finds signals by name across all loaded slots and opens that slot's debugger on the one you pick (press F)" data-help="signal-search"><div id="sigfind-res" hidden></div></span><button class="hbtn" id="pal-open" title="Search every action and every help topic (Ctrl+K or Cmd+K)" data-help="palette">Search ⌘K</button><button class="hbtn" id="keys-open" title="Keyboard shortcuts (?)" data-help="palette">?</button><button class="hbtn" id="tpl-open" title="Starter projects to download: a SIMPL# Pro program and a CH5 panel" data-help="templates">Templates</button><button class="theme-btn" data-theme-toggle data-help="top-bar"></button><a href="devices.html" id="devices-link" target="openvp-devices" data-help="devices" title="Device simulators, COM terminal, socket sniffer, network redirects and discovery for the selected slot">Devices ↗</a><a href="metrics.html" target="openvp-metrics" data-help="metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="alerts.html" id="alerts-link" target="openvp-alerts" data-help="alerts" title="Alerts to email, Teams, Slack and your phone; thresholds and health reports">Alerts ↗<span class="abadge" id="alerts-badge" hidden></span></a><a href="integrations.html" id="integrations-link" target="openvp-integrations" data-help="integrations" title="MQTT and Home Assistant, webhooks, OSC, Art-Net and Prometheus for the selected slot">Integrations ↗</a><a href="backup.html" id="backup-link" target="openvp-backup" data-help="backups" title="Export the whole processor, daily backups, and Git-backed config">Backups ↗</a><a href="schedules.html" target="openvp-schedules" data-help="schedules" title="Restart a slot nightly, load a program, run a backup or set a signal at a time">Schedules ↗</a><a href="targets.html" target="openvp-push" data-help="push" title="Push programs and exports to other OpenVP machines">Push ↗</a><a href="panel.html" target="_blank" data-help="panel" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="autopanel.html" id="autopanel-link" target="openvp-autopanel" title="A panel generated from the selected slot's signals, with saved layouts">Generated panel ↗</a><a href="emulate.html" target="openvp-emulate" title="Run a CH5 or smart-graphics project in the browser against a slot, without a real panel">Emulate ↗</a><a href="rack.html" target="openvp-rack" title="The processor as a rack: slots, panels per IP ID online or offline, EISC links and round-trip latency">Rack ↗</a><a href="examples.html" target="openvp-examples" title="Small example programs you can load into a slot in one click">Examples ↗</a><a href="compat.html" target="openvp-compat" title="What OpenVP supports: primitives, SIMPL# APIs and panel features, and a one-click report to the project">Compatibility ↗</a><span id="plugin-menu" style="display:contents"></span><a href="labs.html" target="openvp-labs" title="Experimental features, off by default">Labs ↗</a><a href="security.html" id="security-link" data-perm="Admin" data-perm-hide target="openvp-security" title="Users, API tokens, HTTPS, single sign-on and the audit log">Security ↗</a><span id="who-chip"></span><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a><a href="#welcome" id="welcome-link" title="Show the welcome screen again">Welcome</a>
 </header>
+<div id="slot-strip" aria-label="Selected slot"><select id="strip-slot" aria-label="Slot"></select><button id="strip-start" title="Start">▶</button><button id="strip-stop" title="Stop">■</button><button id="strip-restart" title="Restart">↻</button></div>
+<div id="net-bar" data-help="internet">
+  <button id="net-switch" class="switch" role="switch" aria-checked="false" aria-labelledby="net-label" title="Turn the internet tunnel on or off"></button>
+  <b id="net-label">Internet access</b>
+  <span id="net-state">off</span>
+  <span id="net-url" hidden></span>
+  <button id="net-copy" hidden title="Copy the public address">Copy</button>
+  <button id="net-stop" hidden title="Turn the tunnel off. Everyone outside is cut off at once.">Stop</button>
+  <span id="net-ask" hidden><button id="net-dl" title="Download Cloudflare's official cloudflared into this program's data folder (tools), then start the tunnel">Download cloudflared and start</button> <button id="net-dl-no">Cancel</button></span>
+  <p id="net-msg" hidden></p>
+  <p id="net-help">Lets people outside your network open the panels you share, through a free Cloudflare tunnel (cloudflared, no account needed). Only shared-panel links work through it: the console, the API and the debugger are never reachable from the internet. Turn it off and all outside access stops.</p>
+  <details id="net-log" hidden><summary>cloudflared output</summary><pre></pre></details>
+</div>
+<section id="board" data-help="status-board">
+  <h2 class="sec-t" title="Every slot at a glance. Click a tile to select that slot. Tick the boxes to start, stop, restart or unload several at once.">Status board</h2>
+  <div id="board-tiles"></div>
+  <div id="bulk-bar" role="group" aria-label="Selected slots"><b id="bulk-count"></b>
+    <button data-bulk="start" title="Start the program in each selected slot">Start</button><button data-bulk="stop" title="Stop each selected slot's program">Stop</button><button data-bulk="restart" title="Load each selected slot's program again and start it">Restart</button><button data-bulk="unload" title="Unload each selected slot. You can undo it for a few seconds.">Unload</button>
+    <span style="flex:1"></span><button id="bulk-all" title="Tick every slot">Select all</button><button id="bulk-clear" title="Untick every slot">Clear</button></div>
+</section>
 <main>
   <div>
-    <section>
-      <h2>Program slots</h2>
-      <table id="slots"><thead><tr><th>#</th><th class="roomcol">Room</th><th>Program</th><th>State</th></tr></thead><tbody></tbody></table>
+    <section id="slots-sec" data-help="program-slots">
+      <h2 class="sec-t">Program slots</h2>
+      <table id="slots"><thead><tr><th><input type="checkbox" id="slots-all" class="bsel" aria-label="Select all slots" title="Tick every slot to act on several at once"></th><th>#</th><th class="roomcol">Room</th><th>Program</th><th>State</th></tr></thead><tbody></tbody></table>
     </section>
-    <section style="margin-top:16px">
-      <h2>Slot <span id="sel-num">1</span></h2>
+    <section style="margin-top:16px" id="slot-sec" data-help="slot">
+      <h2 class="sec-t">Slot <span id="sel-num">1</span> <span id="sel-name" class="muted"></span></h2>
       <div class="bar">
-        <input type="file" id="file" accept=".cpz,.dll,.zip,.smw,.json,.lpz,.sig" multiple title="Pick the program: .cpz or .dll (SIMPL# Pro), .lpz (add its .sig for signal names) or .smw">
-        <button id="upload" title="Upload the chosen file(s) into this slot and start the program. Replaces what was in the slot.">Load &amp; start</button>
-        <button id="inspect" title="Report what OpenVP can run in a compiled .lpz (add its .sig for names)">Inspect .lpz</button>
+        <input type="file" id="file" accept=".cpz,.dll,.zip,.smw,.json,.lpz,.sig" multiple data-help="choose-files" title="Pick the program: .cpz or .dll (SIMPL# Pro), .lpz (add its .sig for signal names) or .smw. OpenVP checks it and says whether it will run.">
+        <button id="upload" data-help="load-start" title="Upload the chosen file(s) into this slot and start the program. Replaces what was in the slot. You can also drop a program anywhere on this page.">Load &amp; start</button>
+        <span class="menu-wrap"><button id="recent-btn" data-help="recent" aria-haspopup="true" aria-expanded="false" title="Load one of the last programs again into this slot">Recent ▾</button><div id="recent-menu" role="menu" hidden></div></span>
+        <button id="inspect" data-help="inspect" title="Report what OpenVP can run in a compiled .lpz (add its .sig for names)">Inspect .lpz</button>
+        <button id="demo-btn" data-help="demo" title="Load the SIMPL# and SIMPL Windows samples into slots 1 and 2, linked over EISC, start them and open a test panel">Try the demo</button>
+      </div>
+      <div id="ready" class="ready" data-help="readiness" hidden aria-live="polite"></div>
+      <div class="bar" id="disk-bar" hidden>
+        <label data-help="reload-on-change" title="Load the program from where it is on this computer and load it again whenever it changes, for example each time you compile in SIMPL Windows"><input type="checkbox" id="watch"> Reload when the file changes</label>
+        <button id="from-path" data-help="load-from-path" hidden title="Type the full path of a program on this computer. Its .sig and sidecar files are loaded with it.">Load from path…</button>
+      </div>
+      <div class="bar" id="watch-bar" hidden>
+        <span class="muted">Reloads when this changes:</span> <span id="watch-path" class="mono" style="word-break:break-all"></span>
+        <button id="watch-stop" data-help="stop-watching" title="Keep the program running but stop reloading it when the file changes">Stop watching</button>
       </div>
       <div class="bar">
-        <button data-act="start" title="Start the program loaded in this slot">Start</button><button data-act="stop" title="Stop the program but keep it loaded">Stop</button><button data-act="unload" title="Stop the program and remove it from this slot. NVRAM and User files are kept.">Unload</button>
-        <button id="compat" title="List what the loaded program uses that OpenVP does not support yet (shown in the Console box)">Compatibility</button>
+        <button data-act="start" data-help="start" title="Start the program loaded in this slot">Start</button><button data-act="stop" data-help="stop" title="Stop the program but keep it loaded">Stop</button><button data-act="restart" data-help="restart" title="Load the program again from its file and start it">Restart</button><button data-act="unload" data-help="unload" title="Stop the program and remove it from this slot. NVRAM and User files are kept. You can undo it for a few seconds.">Unload</button>
+        <button id="compat" data-help="compat" title="List what the loaded program uses that OpenVP does not support yet (shown in the Console box)">Compatibility</button>
       </div>
       <div class="bar" id="room-bar" style="display:none">
         <span class="muted">Room ID</span> <b id="room-id" class="mono"></b>
-        <button id="room-edit" title="Virtual Control Room ID for this slot (panels can connect with ?room=ID)">Edit…</button>
+        <button id="room-edit" data-help="room-id" title="Virtual Control Room ID for this slot (panels can connect with ?room=ID)">Edit…</button>
       </div>
+      <div class="bar" id="lock-row">
+        <button id="lock-btn" data-perm="LockSlot" title="Lock this slot for a live event. Only an Admin or you can then load, stop, restart, force or edit it. Panels and shared links keep working.">Lock slot…</button>
+        <button id="unlock-btn" data-perm="LockSlot" hidden>Unlock</button>
+        <span id="pres-sel" class="muted"></span>
+      </div>
+      <div id="lock-banner" hidden role="status"></div>
       <div id="sel-info" class="muted mono"></div>
+      <div id="sel-summary" class="muted" data-help="summary" hidden></div>
+      <details id="slot-set" data-help="slotsettings"><summary>Slot settings</summary>
+        <div class="frow">
+          <label class="fld">Name<input type="text" id="set-name" maxlength="40" placeholder="e.g. Boardroom" autocomplete="off"></label>
+          <div class="fld">Colour<div id="set-colors" role="group" aria-label="Slot colour"></div></div>
+        </div>
+        <div class="frow">
+          <label class="fld chk" title="Bring this slot's program back (and start it, if it was running) when OpenVP starts"><input type="checkbox" id="set-autostart"> Autostart</label>
+          <label class="fld" title="Slots come back in this order, lowest first">Start order<input type="number" id="set-order" min="1" max="999"></label>
+          <label class="fld" title="Seconds to wait before this slot comes back, after the one before it">Delay (s)<input type="number" id="set-delay" min="0" max="3600"></label>
+        </div>
+        <div class="frow">
+          <label class="fld" title="What to do when the program crashes">If it crashes
+            <select id="set-crash"><option value="stop">Stay stopped</option><option value="restart">Restart</option><option value="limited">Restart a few times, then stop</option></select></label>
+          <label class="fld" id="set-max-l" title="At most this many restarts in the window below">Restarts<input type="number" id="set-max" min="1" max="100"></label>
+          <label class="fld" id="set-win-l" title="Counting restarts over this many minutes">in (minutes)<input type="number" id="set-win" min="1" max="1440"></label>
+          <label class="fld" title="Count the slot as crashed when one event runs this long (the stuck-slot detector). 0 = never. At least 2.">Stuck after (s)<input type="number" id="set-stuck" min="0" max="3600"></label>
+          <label class="fld chk" title="An unhandled exception in a program's event handler counts as a crash. Off: it is only logged."><input type="checkbox" id="set-fault"> Unhandled exception = crash</label>
+          <label class="fld chk" title="Web API (CWS): a program's HttpCwsServer is served at /cws/{slot}/... Normally it needs a sign-in with the Signal permission. Tick this to let anyone who can reach this console call it with no sign-in (on the internet tunnel it is never served)."><input type="checkbox" id="set-cws"> Web API (CWS) is public: no sign-in <span id="set-cws-note" class="muted"></span></label>
+        </div>
+        <div class="muted">Saved as you change it.</div>
+      </details>
       <div id="devices" class="muted" style="margin-top:8px"></div>
     </section>
   </div>
   <div>
-    <section>
-      <h2>IP table · slot <span class="sel-num2">1</span><span class="room-tag"></span></h2>
+    <section id="ipt-sec" data-help="ip-table">
+      <h2 class="sec-t">IP table · slot <span class="sel-num2">1</span><span class="room-tag"></span></h2>
       <div class="scroll-x">
       <table id="ipt">
-        <thead><tr><th>Connected client</th><th>Address</th><th>IP ID</th><th>Type</th><th>Status</th><th class="num">Connected</th><th class="num">Joins in / out</th></tr></thead>
+        <thead><tr><th>Connected client</th><th>Address</th><th>IP ID</th><th>Type</th><th>Status</th><th class="num">Connected</th><th class="num">Joins in / out</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
       </div>
@@ -125,7 +469,11 @@
           <b id="d-title"></b><span style="flex:1"></span>
           <button id="d-identify" title="Run reverse DNS and Crestron autodiscovery again">Re-identify</button>
           <button id="d-login-toggle" title="Log in over SSH and read hostname, firmware, uptime, network and IP table (read-only commands)">Log in &amp; read…</button>
+          <button id="d-remap" data-help="ip-remap" title="Make panels reach this program IP ID at a different number, without recompiling">Remap IP ID…</button>
+          <button id="d-remap-reset" data-help="ip-remap" title="Panels connect to the program's own IP ID again" style="display:none">Undo remap</button>
+          <button id="d-share" data-help="sharing" title="Make a link that opens this panel for someone else">Share…</button>
           <a id="d-panel" target="_blank" title="Open a browser touch panel connected to this IP ID">open test panel</a>
+          <a id="d-emulate" target="openvp-emulate" title="Run an uploaded CH5 or smart-graphics project at this IP ID">emulate…</a>
           <button id="d-close" title="Close">✕</button>
         </div>
         <form id="login-form" autocomplete="off">
@@ -136,18 +484,27 @@
           <span class="muted">Used once for this login, never saved. Runs read-only commands: hostname, ver, uptime, ipconfig, ipt, time.</span>
         </form>
         <div id="d-status" class="muted" style="margin:6px 0"></div>
+        <div id="d-ch5" class="muted"></div>
         <div id="d-body" class="kv"></div>
       </div>
     </section>
-    <section style="margin-top:16px">
-      <h2>Debugger · slot <span class="sel-num2">1</span></h2>
+    <section style="margin-top:16px" id="shares-sec" data-help="shared-panels">
+      <h2 class="sec-t" title="Links you have given out. Revoke one and it stops working at once.">Shared panels</h2>
+      <div id="shares-empty" class="muted">No shared panels. Click <b>Share…</b> on an IP ID in the table above to make a link someone else can open.</div>
+      <div class="scroll-x"><table id="shares-table" hidden>
+        <thead><tr><th>Link</th><th>Slot · IP ID</th><th>Panel</th><th>Expires</th><th>Last used</th><th>Now</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </section>
+    <section style="margin-top:16px" id="dbg-sec" data-help="debugger-button">
+      <h2 class="sec-t">Debugger · slot <span class="sel-num2">1</span></h2>
       <div class="bar">
         <button id="open-debugger" title="Watch and change this slot's signals live, in its own window">Open debugger ↗</button>
         <span class="muted">Signal list and trace window for this slot, in its own window. Open one per slot to debug several programs at once.</span>
       </div>
     </section>
-    <section style="margin-top:16px">
-      <h2>Files · slot <span class="sel-num2">1</span></h2>
+    <section style="margin-top:16px" id="files-sec" data-help="files">
+      <h2 class="sec-t">Files · slot <span class="sel-num2">1</span></h2>
       <div class="bar">
         <div class="tabs"><button data-root="nvram" class="active" title="The slot's \NVRAM folder">NVRAM</button><button data-root="user" title="The slot's \USER folder">User</button></div>
         <span style="flex:1"></span>
@@ -165,10 +522,49 @@
         <div id="files-empty" class="muted" style="padding:10px 6px" hidden>Empty. Drop files here, or use Upload.</div>
       </div>
     </section>
+    <section style="margin-top:16px" id="hist-sec" data-help="history">
+      <h2 class="sec-t">History · slot <span class="sel-num2">1</span></h2>
+      <div class="bar">
+        <button id="hist-now" data-help="snapshot-now" title="Save a copy of this slot's program, NVRAM and User files now">Snapshot now</button>
+        <button id="hist-versions" data-help="versions" title="Every program loaded into this slot: load an older one, download it, add a note or compare two">Versions…</button>
+        <span class="muted">A snapshot is saved before every load. The last 10 are kept.</span>
+      </div>
+      <table id="hist-table"><thead><tr><th>Time</th><th>Program</th><th>Reason</th><th class="num">Size</th><th></th></tr></thead><tbody></tbody></table>
+      <div id="hist-empty" class="muted" style="padding:10px 6px" hidden>No snapshots yet.</div>
+    </section>
+    <section style="margin-top:16px" id="rec-sec" data-help="recordings">
+      <h2 class="sec-t">Recordings · slot <span class="sel-num2">1</span></h2>
+      <div class="bar">
+        <button id="rec-toggle" data-help="record" title="Record every input to this slot's program (panels, EISC, forced signals) and the feedback it sends back"><span class="rdot">●</span> <span id="rec-toggle-label">Record</span></button>
+        <span id="rec-status" class="mono muted"></span>
+        <span style="flex:1"></span>
+        <label class="muted" title="Also send the inputs that came from the other end of an EISC link. Turn this off if the other slot is running and drives the EISC itself."><input type="checkbox" id="rec-eisc" checked> include EISC inputs</label>
+        <button id="rec-up" title="Add a recording file you downloaded earlier">Upload</button>
+        <input type="file" id="rec-pick" accept=".json,application/json" hidden>
+      </div>
+      <div id="rec-notice" hidden></div>
+      <div id="rec-replay" hidden>
+        <div class="bar" style="margin:0"><span id="rec-replay-text"></span><span style="flex:1"></span><button id="rec-cancel" title="Stop the replay now">Cancel</button></div>
+        <div class="pbar"><div id="rec-fill"></div></div>
+      </div>
+      <table id="rec-table"><thead><tr><th>Name</th><th>Recorded</th><th class="num">Length</th><th class="num">Inputs / feedback</th><th>Last replay</th></tr></thead><tbody></tbody></table>
+      <div id="rec-empty" class="muted" style="padding:10px 6px" hidden>No recordings yet. Press Record, use the room, then Stop.</div>
+      <div id="rec-result"></div>
+    </section>
+    <section style="margin-top:16px" id="act-sec" data-help="activity">
+      <h2 class="sec-t">Activity</h2>
+      <div class="bar">
+        <label class="muted" for="act-filter">Show</label>
+        <select id="act-filter" title="Show everything the processor did, or only one slot's"><option value="all">all slots</option></select>
+        <span class="muted">Who did what and when: loads, starts, roll backs, shares, Internet access, settings, crashes and restores.</span>
+      </div>
+      <table id="act-table"><thead><tr><th>When</th><th>Who</th><th>Slot</th><th>What</th></tr></thead><tbody></tbody></table>
+      <div id="act-empty" class="muted" style="padding:10px 6px" hidden>Nothing yet.</div>
+    </section>
     <div class="grid2" style="margin-top:16px">
-      <section id="console-sec">
+      <section id="console-sec" data-help="console-box">
         <div class="sec-head">
-          <h2>Console</h2>
+          <h2 class="sec-t">Console</h2>
           <button id="console-smaller" title="Make the console shorter">−</button>
           <button id="console-bigger" title="Make the console taller">+</button>
           <button id="console-max" title="Fill the window with the console (Esc to restore)">Maximize</button>
@@ -176,59 +572,288 @@
         <div class="bar"><input id="console-in" class="mono" style="flex:1" placeholder="help, ipt, metrics, taskstat, cpuload, ramfree, or a program command"><button id="console-run" title="Send the command to this slot (Enter does the same). Type help for the list of commands.">Run</button></div>
         <div id="console-out" class="mono" title="Drag the bottom-right corner to resize"></div>
       </section>
-      <section id="log-sec">
+      <section id="log-sec" data-help="log">
         <div class="sec-head">
-          <h2>Log</h2>
+          <h2 class="sec-t">Log</h2>
           <button id="log-smaller" title="Make the log shorter">−</button>
           <button id="log-bigger" title="Make the log taller">+</button>
           <button id="log-max" title="Fill the window with the log (Esc to restore)">Maximize</button>
+          <button id="log-full" class="lnk" title="Open the log on its own page, for this slot">Full page ↗</button>
+          <button id="splus-open" class="lnk" title="Show the SIMPL+ source of this slot's program, with highlighting">SIMPL+ source ↗</button>
+          <button id="bundle-open" class="lnk" title="Download a zip with this slot's log, recent trace, report and settings, to send when asking for help">Support bundle…</button>
         </div>
-        <div id="log" class="mono" title="Drag the bottom-right corner to resize"></div>
+        <div id="logw"></div>
+        <details id="exc-det" hidden><summary id="exc-sum">Exceptions</summary><div id="exc-box"></div></details>
       </section>
     </div>
   </div>
 </main>
+<div id="toasts" aria-live="polite"></div>
+<div id="drop-ov" aria-hidden="true"><div id="drop-text">Drop to load</div></div>
+<div id="pal-back"><div id="pal" role="dialog" aria-modal="true" aria-label="Search actions">
+  <input id="pal-in" role="combobox" aria-expanded="true" aria-controls="pal-list" aria-autocomplete="list" placeholder="Type to search: start slot 2, debugger, snapshot, or a help topic…" autocomplete="off" spellcheck="false">
+  <ul id="pal-list" role="listbox"></ul>
+  <div id="pal-foot">↑ ↓ to move · Enter to run · Esc to close</div>
+</div></div>
+<div id="keys-back"><div id="keys" role="dialog" aria-modal="true" aria-labelledby="keys-title">
+  <h2 id="keys-title" style="text-transform:none;letter-spacing:0;font-size:18px;color:var(--text)">Keyboard shortcuts</h2>
+  <dl id="keys-list"></dl>
+  <div id="keys-foot">Shortcuts don't fire while you are typing in a box. Esc or ? closes this.</div>
+</div></div>
+<dialog id="ed-dlg" aria-labelledby="ed-title"><form method="dialog" onsubmit="return false">
+  <div class="bar"><h2 id="ed-title" style="margin:0;font-size:15px;text-transform:none;letter-spacing:0;color:var(--text)">Edit file</h2><span class="muted mono" id="ed-path" style="overflow-wrap:anywhere"></span><span style="flex:1"></span><span id="ed-dirty" class="muted"></span></div>
+  <div id="ed-banner" role="alert" hidden></div>
+  <div class="ed-wrap"><pre id="ed-gutter" aria-hidden="true"></pre><textarea id="ed-text" spellcheck="false" wrap="off" autocomplete="off" aria-label="File content"></textarea></div>
+  <div class="bar"><span id="ed-status" class="mono muted" role="status" aria-live="polite"></span><span style="flex:1"></span><button type="button" id="ed-reload" title="Read the file from disk again, dropping what you typed">Reload from disk</button><button type="button" id="ed-close">Close</button><button type="button" id="ed-save" class="primary" title="Save (Ctrl+S). The old content is kept for Undo.">Save</button></div>
+</form></dialog>
+<dialog id="edq-dlg" aria-labelledby="edq-text"><form method="dialog">
+  <div id="edq-text"></div>
+  <div class="row"><button type="button" id="edq-no">Cancel</button><button value="ok" id="edq-ok" class="primary">OK</button></div>
+</form></dialog>
 <dialog id="ask"><form method="dialog">
   <label id="ask-label" for="ask-in"></label>
   <input id="ask-in" class="mono" autocomplete="off">
   <div class="row"><button type="button" id="ask-cancel">Cancel</button><button value="ok" id="ask-ok">OK</button></div>
 </form></dialog>
+<dialog id="share-dlg" aria-labelledby="share-title"><form method="dialog" id="share-form" autocomplete="off">
+  <h2 id="share-title">Share panel</h2>
+  <div id="share-v1" style="display:flex;flex-direction:column;gap:10px">
+    <p class="what" id="share-what"></p>
+    <div id="share-ch5" class="muted"></div>
+    <label class="f">Label (only you see it)<input id="share-label" maxlength="80" placeholder="Client - boardroom"></label>
+    <label class="f">PIN (optional, 4 to 8 digits)
+      <span class="pinrow"><input id="share-pin" inputmode="numeric" maxlength="8" placeholder="none" autocomplete="off"><button type="button" id="share-pin-gen" title="Fill in a random 6-digit PIN">Random</button></span></label>
+    <label class="f">Expires<select id="share-exp"><option value="1h">in 1 hour</option><option value="1d" selected>in 1 day</option><option value="1w">in 1 week</option><option value="never">never</option></select></label>
+    <div class="err" id="share-err" role="alert"></div>
+    <div class="row"><button type="button" id="share-cancel">Cancel</button><button type="button" id="share-create">Create link</button></div>
+  </div>
+  <div id="share-v2" hidden style="display:flex;flex-direction:column;gap:10px">
+    <p class="what" id="share-what2"></p>
+    <label class="f" id="share-addr-l">Address in the link<select id="share-addr"></select></label>
+    <div class="warnbox" id="share-addr-note" hidden></div>
+    <input id="share-url" class="mono" readonly aria-label="Link">
+    <div class="row" style="justify-content:flex-start"><button type="button" id="share-copy">Copy link</button><span class="muted" id="share-copied"></span></div>
+    <div id="share-qr" aria-label="QR code for the link"></div>
+    <p class="muted" id="share-pin-note" style="margin:0"></p>
+    <div class="row"><button type="submit" value="ok" id="share-done">Done</button></div>
+  </div>
+</form></dialog>
+<dialog id="demo-dlg" aria-labelledby="demo-title"><form method="dialog" onsubmit="return false">
+  <h2 id="demo-title">Try the demo</h2>
+  <div id="demo-v1" style="display:flex;flex-direction:column;gap:10px">
+    <p>This loads the SIMPL# Pro sample into slot 1 and the SIMPL Windows sample into slot 2, links them over an EISC, starts them and opens slot 1's test panel.</p>
+    <div id="demo-warn" class="warnbox" hidden></div>
+    <div id="demo-err" class="warnbox" role="alert" hidden></div>
+    <div class="row"><button type="button" id="demo-cancel">Cancel</button><button type="button" id="demo-go" autofocus>Load the demo</button></div>
+  </div>
+  <div id="demo-v2" hidden style="display:flex;flex-direction:column;gap:10px">
+    <p><b>The demo is running.</b> A test panel for slot 1 (IP ID 03) opened in a new window.</p>
+    <ol>
+      <li>On that panel, press and hold the button labelled <b>10</b> (digital join 10).</li>
+      <li>Slot 1's SIMPL# program passes it over the EISC to slot 2's SIMPL Windows program, which lights <b>digital 10</b> on its own panel. Open <b>slot 2's panel</b> to see its button 10 turn green while you hold the one on slot 1.</li>
+      <li>It works the other way too: press 10 on slot 2's panel and slot 1's button 10 lights up.</li>
+    </ol>
+    <p class="muted">Both programs are in the Program slots table; the Log shows what they do. Load your own program into a slot any time.</p>
+    <div class="row" style="flex-wrap:wrap"><button type="button" id="demo-p1">Open slot 1's panel</button><button type="button" id="demo-p2">Open slot 2's panel</button><button type="button" id="demo-done">Done</button></div>
+  </div>
+</form></dialog>
+<dialog id="tpl-dlg" aria-labelledby="tpl-title"><form method="dialog">
+  <h2 id="tpl-title">Templates</h2>
+  <p class="muted">Starter projects to build on. Both work with OpenVP as they are.</p>
+  <div id="tpl-list" style="display:flex;flex-direction:column;gap:10px"></div>
+  <div class="row"><button value="ok" autofocus>Close</button></div>
+</form></dialog>
+<dialog id="drop-dlg" aria-labelledby="drop-title"><form method="dialog" onsubmit="return false">
+  <h2 id="drop-title">Load into slot</h2>
+  <div id="drop-ready" class="ready"></div>
+  <div class="row"><button type="button" id="drop-cancel">Cancel</button><button type="button" id="drop-go" autofocus>Load &amp; start</button></div>
+</form></dialog>
+<dialog id="bundle-dlg" aria-labelledby="bundle-title"><form method="dialog" onsubmit="return false">
+  <b id="bundle-title">Support bundle for slot <span id="bundle-slot"></span></b>
+  <p class="muted" style="margin:0">A zip with the slot's log, its recent trace (if a debugger was open), compatibility report, program summary, metrics, settings, activity and the OpenVP version and OS. It never contains the access key, and leaves out the program, its NVRAM and User files unless you tick the box.</p>
+  <label><input type="checkbox" id="bundle-prog"> Include the program files, NVRAM and User files</label>
+  <div class="row"><button type="button" id="bundle-cancel">Cancel</button><button type="button" id="bundle-go" style="border-color:var(--accent)">Download</button></div>
+</form></dialog>
+<dialog id="welcome" aria-labelledby="welcome-title"><form method="dialog">
+  <h2 id="welcome-title">Welcome to OpenVP</h2>
+  <p>OpenVP runs Crestron SIMPL# Pro (.cpz, .dll) and SIMPL Windows (.lpz, .smw) programs on any computer. There is no license server. You get up to 10 slots, browser test panels and a debugger. It is not affiliated with Crestron.</p>
+  <h3>What to do first</h3>
+  <ol>
+    <li>Pick a slot in <b>Program slots</b>.</li>
+    <li>Choose your program file and click <b>Load &amp; start</b>. In the desktop app the <code>.sig</code> comes along, and the slot can reload when you recompile.</li>
+    <li>In the <b>IP table</b>, click a device and open a test panel.</li>
+    <li>Click <b>Open debugger</b> to watch signals change.</li>
+  </ol>
+  <p>No program yet? <b>Try the demo</b> loads two samples that talk to each other, and <b>Templates</b> in the top bar has starter projects to download.</p>
+  <h3>Good to know</h3>
+  <ul>
+    <li>The <b>Status board</b> shows every slot at a glance.</li>
+    <li><b>History</b> takes snapshots of a slot and rolls back to them. <b>Recordings</b> record joins and replay them.</li>
+    <li>The <b>Help</b> link on every page explains each button. Hold <kbd>Shift</kbd> and click a button, or hover it and click the <b>?</b>, to open its help.</li>
+    <li>OpenVP tells you whether a program will run as soon as you choose it, and <b>Activity</b> lists who did what.</li>
+  </ul>
+  <div class="row"><button type="button" id="welcome-skip">Skip</button><button type="button" id="welcome-demo" title="Load the SIMPL# and SIMPL Windows samples into slots 1 and 2, linked over EISC, and open a test panel">Try the demo</button><button value="ok" id="welcome-go" autofocus>Get started</button></div>
+</form></dialog>
+<dialog id="pres-dlg" aria-labelledby="pres-title" style="background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:16px;width:min(440px,calc(100vw - 24px))">
+  <form method="dialog" onsubmit="return false" style="display:flex;flex-direction:column;gap:10px;margin:0">
+    <h2 id="pres-title" style="margin:0;font-size:16px;text-transform:none;letter-spacing:0;color:var(--text)"></h2>
+    <div id="pres-text" class="muted"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" id="pres-cancel">Cancel</button><button id="pres-ok" style="border-color:var(--warn)">Go ahead</button></div>
+  </form></dialog>
+<dialog id="lock-dlg" aria-labelledby="lock-title" style="background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:16px;width:min(440px,calc(100vw - 24px))">
+  <form method="dialog" id="lock-form" onsubmit="return false" style="display:flex;flex-direction:column;gap:10px;margin:0">
+    <h2 id="lock-title" style="margin:0;font-size:16px;text-transform:none;letter-spacing:0;color:var(--text)">Lock slot</h2>
+    <div class="muted">While it is locked only an Admin, or you, can load, unload, stop, restart, force signals, edit files, roll back, import or push to this slot, and schedules skip it. Panels and shared links keep working.</div>
+    <label class="fld">Reason (shown to everyone)<input id="lock-reason" maxlength="300" placeholder="Live event until 17:00" autocomplete="off"></label>
+    <label class="fld">Unlock automatically<select id="lock-for"><option value="">When I unlock it</option><option value="1">After 1 hour</option><option value="4">After 4 hours</option><option value="8">After 8 hours</option><option value="24">After 24 hours</option></select></label>
+    <div id="lock-err" class="muted" role="alert" style="color:var(--err-fg)"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" id="lock-cancel">Cancel</button><button id="lock-ok" style="border-color:var(--accent)">Lock slot</button></div>
+  </form></dialog>
 <script src="openvp-auth.js"></script>
+<script src="openvp-alerts.js"></script>
+<script src="qrcode.js"></script>
+<script src="openvp-log.js"></script>
 <script>
 openvpAuth.init();
+// Pages that enabled UI plugins add to the top bar (Labs: Plugins).
+fetch("/api/plugins").then(r => r.ok ? r.json() : null).then(d => {
+  if (!d || !d.active) return;
+  const m = document.getElementById("plugin-menu");
+  for (const p of d.plugins) if (p.enabled && p.hasUi && p.menu) { const a = document.createElement("a"); a.href = `/api/plugins/${encodeURIComponent(p.name)}/ui/${encodeURI(p.uiPage || "")}`; a.target = "_blank"; a.textContent = p.menu + " ↗"; m.appendChild(a); }
+}).catch(() => {});
 const $ = s => document.querySelector(s);
-let sel = 1, ws = null, curRoom;
+let sel = 1, ws = null, curRoom, bulkSel = new Set();
+
+// What each control needs. The server checks every request; this only dims what your account can't use.
+const PERM_MAP = {
+  "#upload, #recent-btn, #inspect, #demo-btn, #from-path, #watch-stop, #room-edit, #slot-set input, #slot-set select, #slot-set button, [data-bulk=unload]": "LoadProgram",
+  "[data-act=start], [data-act=stop], [data-act=restart], #strip-start, #strip-stop, #strip-restart, [data-bulk=start], [data-bulk=stop], [data-bulk=restart]": "Operate",
+  "#files-mkdir, #files-up, #files-updir": "Files", "#hist-now": "Snapshot", "#rec-toggle, #rec-up": "Recording", "#console-run, #console-in": "Console",
+  "#d-identify, #d-login-toggle": "IpTable", "#d-remap, #d-remap-reset": "Simulator", "#d-share, .share-btn": "Share",
+};
+function permsApply() {
+  for (const [selector, perm] of Object.entries(PERM_MAP)) for (const el of document.querySelectorAll(selector)) el.dataset.perm = perm;
+  openvpAuth.apply();
+}
+document.addEventListener("openvp-me", () => { permsApply(); try { refreshSlots(); } catch { } });
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
   if (openvpAuth.check(r)) throw new Error("Log in with the access key first.");
   const ct = r.headers.get("content-type") || "";
   const body = ct.includes("json") ? await r.json() : await r.text();
-  if (!r.ok) throw new Error(body.error || body || r.statusText);
+  if (!r.ok) { const err = new Error(body.error || body || r.statusText); err.data = body; err.status = r.status; throw err; }
   return body;
 }
 
 async function refreshSlots() {
   const slots = await api("/api/slots");
+  boardSlots = slots; renderBoard(); renderStrip(); fillActivityFilter();
   const tb = $("#slots tbody"); tb.innerHTML = "";
   for (const s of slots) {
     const tr = document.createElement("tr");
     tr.className = "slot" + (s.number === sel ? " sel" : "");
-    tr.innerHTML = `<td>${s.number}</td><td class="roomcol mono">${esc(s.roomId)}</td><td>${s.program ? `${s.program} <span class="muted">· ${s.kind}</span>` : '<span class="muted">empty</span>'}</td><td><span class="state ${s.state}">${s.state}</span></td>`;
-    tr.onclick = () => select(s.number);
+    if (s.color) tr.style.setProperty("--sc", s.color);
+    tr.innerHTML = `<td><input type="checkbox" class="bsel" data-n="${s.number}" aria-label="Select slot ${s.number}" ${bulkSel.has(s.number) ? "checked" : ""}></td><td>${s.number}</td><td class="roomcol mono">${esc(s.roomId)}</td><td style="overflow-wrap:anywhere">${s.name ? `<b>${esc(s.name)}</b> · ` : ""}${s.program ? `${esc(s.program)} <span class="muted">· ${esc(s.kind)}</span>` : '<span class="muted">empty</span>'}</td><td><span class="state ${s.state}">${s.state}</span></td>`;
+    tr.onclick = e => { if (!e.target.closest(".bsel")) select(s.number); };
     tb.appendChild(tr);
     if (s.number === sel) {
       curRoom = s.roomId;
+      document.title = `OpenVP · slot ${s.number}${s.name ? " " + s.name : ""}`;
+      $("#sel-name").textContent = s.name ? "· " + s.name : "";
+      fillSettings(s); renderLockPresence(s);
       document.querySelectorAll(".room-tag").forEach(e => e.textContent = typeof s.roomId === "string" ? ` · room ${s.roomId}` : "");
       const hasRoom = typeof s.roomId === "string";
       document.querySelectorAll(".roomcol").forEach(e => e.style.display = hasRoom ? "" : "none");
       $("#room-bar").style.display = hasRoom ? "" : "none";
       $("#room-id").textContent = s.roomId ?? "";
+      $("#watch-bar").hidden = !s.watching;
+      $("#watch-path").textContent = s.watching || "";
       $("#sel-info").textContent = s.file ? `${s.file}${s.error ? "\n" + s.error.split("\n")[0] : ""}` : "No program loaded.";
+      $("#sel-summary").hidden = !s.summary; $("#sel-summary").textContent = s.summary?.text || "";
       const online = s.devices.filter(d => d.online).length;
       $("#devices").textContent = s.devices.length ? `${s.devices.length} IP ID${s.devices.length === 1 ? "" : "s"}, ${online} online. Who's connected is in the IP table.` : "";
     }
   }
+  renderBulk();
+  permsApply();
+}
+
+// ---------------- Status board ----------------
+// One tile per slot. Problems come straight from /api/metrics (the same per-slot warnings the Metrics page lists)
+// plus the slot's own error state.
+let boardSlots = [], boardMetrics = null, boardHtml = "";
+
+function lockText(l) { return `Locked by ${l.by}${l.reason ? ": " + l.reason : ""}${l.expires ? " (until " + new Date(l.expires).toLocaleString() + ")" : ""}`; }
+function lockBadge(s) { return s.locked ? `<span class="bbadge lockb" title="${esc(lockText(s.locked) + "\nOnly an Admin or the one who locked it can load, stop, restart, force or edit this slot. Panels and shared links still work.")}">locked</span>` : ""; }
+function presenceHtml(s) {
+  const p = s.presence || [];
+  if (!p.length) return "";
+  return `<div class="bpres" title="${esc(p.map(x => x.name + (x.kind === "debugging" ? " (debugger open)" : " (viewing)")).join("\n"))}">` + p.slice(0, 6).map(x => `<span class="av ${x.kind === "debugging" ? "dbg" : ""}" aria-label="${esc(x.name + (x.kind === "debugging" ? ", debugging" : ", viewing"))}">${esc(x.initials)}</span>`).join("") + (p.length > 6 ? `<span class="muted">+${p.length - 6}</span>` : "") + `</div>`;
+}
+// The selected slot: its lock, and who has it open.
+function renderLockPresence(s) {
+  const l = s.locked, me = openvpAuth.me;
+  $("#lock-banner").hidden = !l; $("#lock-banner").textContent = l ? lockText(l) + ". Only an Admin or the one who locked it can change this slot; panels and shared links keep working." : "";
+  $("#lock-btn").hidden = !!l; $("#unlock-btn").hidden = !l;
+  const mine = l && me && (me.perms?.includes("Admin") || (me.kind === "user" && l.by === me.name));
+  // For anyone else the buttons that would change the locked slot are dimmed (the server refuses them anyway).
+  const blocked = !!l && !mine;
+  for (const el of document.querySelectorAll("#upload, #recent-btn, #from-path, #demo-btn, #watch-stop, [data-act=stop], [data-act=restart], [data-act=unload], #strip-stop, #strip-restart, #files-mkdir, #files-up, #files-updir")) {
+    if (blocked) { if (!el.hasAttribute("data-lock-off")) { el.dataset.lockTitle = el.title || ""; el.setAttribute("data-lock-off", ""); } el.disabled = true; el.title = lockText(l); }
+    else if (el.hasAttribute("data-lock-off")) { el.removeAttribute("data-lock-off"); el.disabled = false; el.title = el.dataset.lockTitle || ""; }
+  }
+  $("#unlock-btn").title = mine || !l ? "Let people change this slot again" : "Only an Admin or " + l.by + " can unlock it";
+  const p = s.presence || [];
+  $("#pres-sel").innerHTML = p.length ? "Open now: " + p.map(x => `<span class="av ${x.kind === "debugging" ? "dbg" : ""}" title="${esc(x.name + (x.kind === "debugging" ? " has the debugger open" : " is viewing"))}">${esc(x.initials)}</span> ${esc(x.name)}`).join(", ") : "";
+}
+function crashLabel(c) { return c.mode === "restart" ? "restart on crash" : c.mode === "limited" ? `restart up to ${c.maxRestarts} in ${c.windowMinutes} min` : ""; }
+function renderBoard() {
+  const bySlot = {};
+  for (const m of boardMetrics?.slots ?? []) bySlot[m.number] = m;
+  const html = boardSlots.map(s => {
+    const m = bySlot[s.number];
+    const st = s.program || s.state === "Error" ? s.state : "Empty";
+    const problems = [];
+    if (s.state === "Error") problems.push("The program failed to load or run." + (s.error ? " " + s.error.split("\n")[0] : ""));
+    for (const w of m?.warnings ?? []) problems.push(w[0].toUpperCase() + w.slice(1));
+    const online = s.devices.filter(d => d.online).length;
+    const eps = m ? `${m.eventsPerSecond.toFixed(1)} ev/s` : "– ev/s";
+    const pol = crashLabel(s.crash);
+    const flags = lockBadge(s) + (problems.length ? `<span class="bbadge" title="${esc(problems.join("\n"))}">${problems.length > 1 ? problems.length + " problems" : "problem"}</span>` : "")
+      + (s.alerts > 0 ? `<span class="bbadge osc" title="${esc((s.alertText || "A signal is racing or oscillating") + "\nOpen the debugger's Alerts panel for the list.")}">⚠ ${s.alerts > 1 ? s.alerts + " oscillating" : "oscillating"}</span>` : "")
+      + (s.exceptions > 0 ? `<span class="bbadge" title="${esc("The program threw " + s.exceptions + " unhandled exception" + (s.exceptions > 1 ? "s" : "") + ". See Exceptions under the log.")}">${s.exceptions} exception${s.exceptions > 1 ? "s" : ""}</span>` : "")
+      + (s.recording === "recording" ? `<span class="bbadge rec" title="This slot is recording its inputs and feedback">● recording</span>` : "")
+      + (s.recording === "replaying" ? `<span class="bbadge play" title="A recording is being replayed into this slot">▶ replaying</span>` : "")
+      + (s.watching ? `<span class="bbadge auto" title="${esc("Reloads when this file changes: " + s.watching)}">auto-reload</span>` : "")
+      + (pol ? `<span class="bbadge pol" title="${esc("Crash policy: " + pol + (s.crash.stuckSeconds ? `; counts the slot as crashed after ${s.crash.stuckSeconds} s stuck` : ""))}">↻ ${s.crash.mode === "restart" ? "restart" : "≤" + s.crash.maxRestarts + "/" + s.crash.windowMinutes + "m"}</span>` : "");
+    const last = s.crash.last;
+    const crashLine = last ? `<div class="bcrash" title="${esc(last.reason || "")}">↯ ${esc(new Date(last.time).toLocaleTimeString())} crashed: ${esc(last.action)}${s.crash.restarts ? ` (${s.crash.restarts} restart${s.crash.restarts === 1 ? "" : "s"} in the window)` : ""}</div>` : "";
+    const nm = s.name ? `<span class="bname" title="${esc(s.name)}">${esc(s.name)}</span>` : "";
+    const room = typeof s.roomId === "string" ? `<span class="broom mono">${esc(s.roomId)}</span>` : "";
+    const label = `Slot ${s.number}${s.name ? " " + s.name : ""}${typeof s.roomId === "string" ? ", room " + s.roomId : ""}: ${s.program ?? "empty"}, ${st}`;
+    return `<div class="btile st-${st}${s.number === sel ? " sel" : ""}" data-n="${s.number}" role="button" tabindex="0" aria-label="${esc(label)}" title="${esc("Select slot " + s.number + (s.name ? " · " + s.name : "") + (typeof s.roomId === "string" ? " · room " + s.roomId : "") + (s.summary ? "\n" + (s.program ?? "") + "\n" + s.summary.text : ""))}"${s.color ? ` style="--sc:${esc(s.color)}"` : ""}>
+      <div class="btop"><input type="checkbox" class="bsel" data-n="${s.number}" aria-label="Select slot ${s.number} for bulk actions" ${bulkSel.has(s.number) ? "checked" : ""}><span class="bdot"></span><span class="bnum">${s.number}</span>${nm || room}<span class="bflags">${flags}</span></div>
+      <div class="bprog" title="${esc((s.program ?? "") + (s.summary ? "\n" + s.summary.text : ""))}">${s.program ? `${esc(s.program)} <span class="muted">· ${esc(s.kind)}</span>` : "empty"}</div>
+      ${presenceHtml(s)}
+      <div class="bstats">${st === "Empty" ? "" : `<span>${st}</span>`}<span title="Panels online / IP IDs in this slot's IP table">${online}/${s.devices.length} online</span><span title="Events per second on the slot thread">${eps}</span></div>${crashLine}
+    </div>`;
+  }).join("");
+  if (html === boardHtml) return; // unchanged: leave the DOM (and any open tooltip) alone
+  boardHtml = html;
+  $("#board-tiles").innerHTML = html;
+}
+$("#board-tiles").addEventListener("click", e => { if (e.target.closest(".bsel")) return; const t = e.target.closest(".btile"); if (t) select(+t.dataset.n); });
+$("#board-tiles").addEventListener("keydown", e => {
+  const t = e.target.closest(".btile");
+  if (t && !e.target.closest(".bsel") && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); select(+t.dataset.n); }
+});
+
+async function refreshBoard() {
+  try {
+    const [slots, metrics] = await Promise.all([api("/api/slots"), api("/api/metrics?history=false").catch(() => null)]);
+    boardSlots = slots; boardMetrics = metrics; renderBoard();
+  } catch { }
 }
 
 function esc(t) { return String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
@@ -246,6 +871,11 @@ function ago(t) {
 }
 function bytes(n) { return n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`; }
 function when(t) { return t ? `${new Date(t).toLocaleString()} (${ago(t)} ago)` : "—"; }
+
+// The number panels connect to: the program's own IP ID, unless it was remapped (then publicIpId differs).
+const pubId = d => d.publicIpId || d.ipId;
+const ipIdCell = d => d.remapped ? `<b>${d.ipId}</b><br><small class="muted" title="Panels connect to ${pubId(d)}; the program still sees ${d.ipId}">at ${pubId(d)}</small>` : `<b>${d.ipId}</b>`;
+function shareCell(d) { return `<td class="act"><button class="share-btn" title="Make a link that opens this panel for someone else, with an optional PIN and expiry">Share…</button></td>`; }
 
 function whoCell(c) {
   // An EISC is about the slot on the other end; anything else is about the machine.
@@ -270,20 +900,22 @@ async function refreshIpTable() {
       const tr = document.createElement("tr");
       if (c) {
         tr.className = "client" + (iptSel && iptSel.ipId === d.ipId && iptSel.clientId === c.id ? " sel" : "");
-        tr.innerHTML = `<td>${whoCell(c)}</td><td class="mono">${esc(c.endpoint || "—")}<br><small class="muted">${esc(c.transport)}</small></td>
-          <td class="mono"><b>${d.ipId}</b></td><td>${esc(d.type)}</td><td>${status}</td>
-          <td class="num">${ago(c.connectedAt)}</td><td class="num">${c.joinsIn} / ${c.joinsOut}</td>`;
+        tr.innerHTML = `<td>${whoCell(c)}</td><td class="mono" data-l="Address">${esc(c.endpoint || "—")}<br><small class="muted">${esc(c.transport)}</small></td>
+          <td class="mono" data-l="IP ID">${ipIdCell(d)}</td><td data-l="Type">${esc(d.type)}</td><td data-l="Status">${status}</td>
+          <td class="num" data-l="Connected">${ago(c.connectedAt)}</td><td class="num" data-l="Joins in / out">${c.joinsIn} / ${c.joinsOut}</td>${shareCell(d)}`;
         tr.onclick = () => showDetail(d.ipId, c.id);
       } else {
         tr.className = "client nobody" + (iptSel && iptSel.ipId === d.ipId && !iptSel.clientId ? " sel" : "");
-        tr.innerHTML = `<td><i>Nobody connected</i>${d.lastOffline ? `<br><small>last seen ${ago(d.lastOffline)} ago</small>` : ""}</td><td>—</td>
-          <td class="mono"><b>${d.ipId}</b></td><td>${esc(d.type)}</td><td>${status}</td><td class="num">—</td><td class="num">—</td>`;
+        tr.innerHTML = `<td><i>Nobody connected</i>${d.lastOffline ? `<br><small>last seen ${ago(d.lastOffline)} ago</small>` : ""}</td><td></td>
+          <td class="mono" data-l="IP ID">${ipIdCell(d)}</td><td data-l="Type">${esc(d.type)}</td><td data-l="Status">${status}</td><td class="num"></td><td class="num"></td>${shareCell(d)}`;
         tr.onclick = () => showDetail(d.ipId, null);
       }
+      tr.querySelector(".share-btn")?.addEventListener("click", e => { e.stopPropagation(); openShare(d.slot, pubId(d)); });
       tb.appendChild(tr);
     }
   }
   renderDetail();
+  permsApply();
 }
 
 function showDetail(ipId, clientId) {
@@ -307,7 +939,11 @@ function renderDetail() {
   if (iptSel.clientId && !c) { $("#d-status").textContent = "That client disconnected."; iptSel.clientId = null; }
   box.style.display = "block";
   $("#d-title").textContent = c ? `${(c.transport === "EISC" ? c.peer : null) || c.hostname || c.model || c.peer || c.endpoint || "Client"} → IP ID ${d.ipId}` : `IP ID ${d.ipId}`;
-  $("#d-panel").href = `panel.html?ipid=${d.ipId}&slot=${d.slot}`;
+  $("#d-panel").href = `panel.html?ipid=${pubId(d)}&slot=${d.slot}`;
+  $("#d-emulate").href = `emulate.html?slot=${d.slot}&ip=${pubId(d)}`;
+  fillCh5($("#d-ch5"), d.slot, pubId(d));
+  $("#d-remap-reset").style.display = d.remapped ? "" : "none";
+  $("#d-remap").textContent = d.remapped ? "Change remap…" : "Remap IP ID…";
   $("#d-login-toggle").style.display = c && c.transport !== "EISC" && c.address ? "" : "none";
   $("#d-identify").style.display = d.clients.some(x => x.transport !== "EISC") ? "" : "none";
 
@@ -335,6 +971,7 @@ function renderDetail() {
     }
   }
   h += `<h3>IP ID ${d.ipId}</h3>`;
+  h += d.remapped ? kv("Answers at (panels connect to)", `${pubId(d)} — the program still sees ${d.ipId}`) : "";
   h += kv("Type", d.type) + kv("Description", d.description) + kv("Status", d.online ? `online · ${d.connections} connection${d.connections === 1 ? "" : "s"}` : "offline")
      + kv("Registered", when(d.registeredAt)) + kv("Last came online", d.lastOnline ? when(d.lastOnline) : "never")
      + kv("Last went offline", d.lastOffline ? when(d.lastOffline) : null) + kv("Connections since registered", d.totalConnects)
@@ -344,6 +981,26 @@ function renderDetail() {
 }
 
 $("#d-close").onclick = () => { iptSel = null; renderDetail(); refreshIpTable(); };
+// Remap: panels use another number to reach this program IP ID. Stored per slot, applied to browser panels, CIP and share links.
+$("#d-remap").onclick = async () => {
+  const d = iptSel && iptData.find(x => x.ipId === iptSel.ipId); if (!d) return;
+  const v = await askName(`The program's IP ID ${d.ipId} should answer at (two hex digits, 01 to FE). Panels connect to that number; the program still sees ${d.ipId}.`, pubId(d));
+  if (v === null) return;
+  if (!/^[0-9A-Fa-f]{1,2}$/.test(v)) return toast("An IP ID is one or two hex digits, like 0A.");
+  try {
+    await api(`/api/slots/${sel}/ipremap`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ program: d.ipId, public: v.toUpperCase().padStart(2, "0") }) });
+    toast(`IP ID ${d.ipId} now answers at ${v.toUpperCase().padStart(2, "0")}. Existing share links use the old number: make new ones.`);
+  } catch (e) { toast(e.message); }
+  refreshSlots(); refreshIpTable();
+};
+$("#d-remap-reset").onclick = async () => {
+  const d = iptSel && iptData.find(x => x.ipId === iptSel.ipId); if (!d) return;
+  try { await api(`/api/slots/${sel}/ipremap/${d.ipId}`, { method: "DELETE" }); toast(`IP ID ${d.ipId} answers at its own number again.`); } catch (e) { toast(e.message); }
+  refreshSlots(); refreshIpTable();
+};
+$("#autopanel-link").onclick = e => { e.preventDefault(); window.open(`autopanel.html?slot=${sel}`, "openvp-autopanel"); };
+$("#devices-link").onclick = e => { e.preventDefault(); window.open(`devices.html?slot=${sel}`, "openvp-devices"); };
+$("#integrations-link").onclick = e => { e.preventDefault(); window.open(`integrations.html?slot=${sel}`, "openvp-integrations"); };
 $("#d-identify").onclick = async () => {
   if (!iptSel) return;
   $("#d-status").textContent = "Identifying… (reverse DNS and Crestron autodiscovery, a few seconds)";
@@ -387,14 +1044,25 @@ function connectLog() {
     for (const m of Array.isArray(data) ? data : [data]) {
       const t = new Date(m.time).toLocaleTimeString();
       if (m.t === "log") {
-        line($("#log"), `${t}  ${m.level}  ${m.message}`, "lv-" + m.level);
-        if (/Loaded|started|stopped/.test(m.message)) refreshSlots();
+        logw.add({ time: m.time, level: m.level, message: m.message, detail: m.detail });
+        if (/^\s*Loaded .* program/.test(m.message)) logw.refreshSignals(true);
+        if (m.level === "Error" && m.detail) refreshExceptions();
+        if (/Loaded|started|stopped|Crash policy|faulted|Restored/.test(m.message)) { refreshSlots(); refreshBoard(); }
+        if (/snapshot|Rolled back/i.test(m.message)) refreshHistorySoon();
         if (/^The program looked for /.test(m.message)) refreshFilesSoon();
       }
     }
   };
 }
 
+const logw = OpenVPLog.create($("#logw"), {
+  slot: 1, listId: "log", filterId: "log-filter",
+  onLink(kind, value, s) {
+    if (kind === "slot") select(+value);
+    else if (kind === "ipid") gotoIp(s, value);
+    else if (kind === "path") gotoFiles(s, value);
+  }
+});
 // Log / Console size: drag the corner, use −/+, or Maximize to fill the window. Heights are remembered.
 function resizable(name, box) {
   const el = $(box), sec = $(`#${name}-sec`), KEY = `openvp.${name}Height`;
@@ -418,36 +1086,141 @@ resizable("log", "#log");
 resizable("console", "#console-out");
 
 async function loadLog() {
-  $("#log").innerHTML = "";
-  for (const e of await api(`/api/log?slot=${sel}&max=200`)) line($("#log"), `${new Date(e.time).toLocaleTimeString()}  ${e.level}  ${e.message}`, "lv-" + e.level);
+  const my = sel;
+  logw.setSlot(sel);
+  const entries = await api(`/api/log?slot=${sel}&max=1000`);
+  if (my !== sel) return;
+  logw.setEntries(entries);
+  logw.refreshSignals(true);
+  refreshExceptions();
 }
 
+// Exceptions a SIMPL# program threw, listed under the log with their stack traces.
+async function refreshExceptions() {
+  const my = sel;
+  let list = [];
+  try { list = await api(`/api/slots/${my}/exceptions`); } catch { }
+  if (my !== sel) return;
+  $("#exc-det").hidden = !list.length;
+  $("#exc-sum").textContent = `Exceptions (${list.length})`;
+  OpenVPLog.renderExceptions($("#exc-box"), list, undefined, { slot: my });
+}
+
+// Links from log lines and the full-page log: #slot:N  #ipid:N:XX  #files:N:root|path
+function gotoIp(slot, ipid) {
+  const go = () => { $("#ipt-sec").classList.remove("collapsed"); $("#ipt-sec").scrollIntoView({ block: "start" });
+    const row = [...document.querySelectorAll("#ipt tr")].find(r => r.textContent.toUpperCase().includes(ipid)); row?.click(); };
+  if (slot !== sel) { select(slot); setTimeout(go, 700); } else go();
+}
+function gotoFiles(slot, spec) {
+  const [root, ...rest] = spec.split("|"), path = rest.join("|"), parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+  const go = () => { fRoot = root === "user" ? "user" : "nvram"; fPath = parent; refreshFiles(); const sec = $("#files-sec"); sec.classList.remove("collapsed"); sec.scrollIntoView({ block: "start" }); };
+  if (slot !== sel) { select(slot); setTimeout(go, 700); } else go();
+}
+function applyHash() {
+  const raw = decodeURIComponent(location.hash.slice(1)), [k, a, b] = raw.split(":");
+  if (k === "slot" && +a) select(+a);
+  else if (k === "ipid" && +a) gotoIp(+a, (b || "").toUpperCase());
+  else if (k === "files" && +a) gotoFiles(+a, raw.split(":").slice(2).join(":"));
+  if (k === "slot" || k === "ipid" || k === "files") history.replaceState(null, "", location.pathname + location.search);
+}
+addEventListener("hashchange", applyHash);
+
+$("#log-full").onclick = () => window.open(`log.html?slot=${sel}`, `openvp-log-${sel}`);
+$("#splus-open").onclick = () => window.open(`splus.html?slot=${sel}`, `openvp-splus-${sel}`);
+$("#bundle-open").onclick = () => { $("#bundle-slot").textContent = sel; $("#bundle-dlg").showModal(); };
+$("#bundle-cancel").onclick = () => $("#bundle-dlg").close();
+$("#bundle-go").onclick = () => {
+  const a = document.createElement("a");
+  a.href = `/api/slots/${sel}/support-bundle` + ($("#bundle-prog").checked ? "?includeProgram=true" : "");
+  document.body.appendChild(a); a.click(); a.remove();
+  $("#bundle-dlg").close(); toast(`Downloading the support bundle for slot ${sel}…`, { ms: 3000 });
+};
+
 function select(n) {
+  if (pendingSet) flushSettings();
   if (n !== sel) iptSel = null;
   sel = n; $("#sel-num").textContent = n; document.querySelectorAll(".sel-num2").forEach(e => e.textContent = n);
-  refreshSlots(); refreshIpTable(); connectLog(); loadLog(); fPath = ""; refreshFiles();
+  refreshSlots(); refreshIpTable(); connectLog(); loadLog(); fPath = ""; refreshFiles(); refreshHistory();
+  if (typeof resetRecordings === "function") resetRecordings();
 }
 
 $("#open-debugger").onclick = () => window.open(`debugger.html?slot=${sel}`, `openvp-debugger-${sel}`);
 
-$("#upload").onclick = async () => {
-  const files = $("#file").files; if (!files.length) return alert("Choose a .cpz, .dll or .smw first.");
-  const fd = new FormData();
-  const main = [...files].find(f => /\.(lpz|cpz|dll|zip|smw)$/i.test(f.name)) || files[0];
-  // A compiled program without its .sig runs fine but the debugger can only show signal numbers.
-  if (/\.lpz$/i.test(main.name) && ![...files].some(f => /\.sig$/i.test(f.name)) &&
-      !confirm(`No .sig selected with ${main.name}.\n\nThe program will run, but the debugger will show signal numbers (#123) instead of names. ` +
-               `The .sig is written next to the .smw when you compile; select it together with the .lpz (Ctrl+click).\n\nLoad without names?`)) return;
-  fd.append("file", main);
-  for (const f of files) if (f !== main) fd.append("extra", f);
-  try { await api(`/api/slots/${sel}/program`, { method: "POST", body: fd }); }
-  catch (e) { alert(e.message); }
+// Programs can be loaded from where they are on disk when the page runs in the desktop app (which can say where a
+// picked file is) or on the OpenVP computer itself (type the path). Then the .sig and sidecar files next to the
+// program come along without picking them, and the slot can reload whenever the file changes.
+const desktop = window.openvpDesktop;
+const onThisComputer = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+const WATCH_KEY = "openvp.reloadOnChange";
+if (desktop || onThisComputer) {
+  $("#disk-bar").hidden = false;
+  $("#from-path").hidden = !!desktop;
+  try { $("#watch").checked = localStorage.getItem(WATCH_KEY) !== "0"; } catch { $("#watch").checked = true; }
+  $("#watch").onchange = () => { try { localStorage.setItem(WATCH_KEY, $("#watch").checked ? "1" : "0"); } catch {} };
+}
+
+async function loadFromPath(path, others = []) {
+  try {
+    await api(`/api/slots/${sel}/program/path`, { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path, files: others, watch: $("#watch").checked }) });
+    toast(`Loaded ${path.split(/[\\/]/).pop()} into slot ${sel}.`);
+  } catch (e) { alert(e.message); }
+  refreshAllSoon(sel);
+}
+
+$("#from-path").onclick = async () => {
+  const path = await askName("Full path of the program on this computer (.lpz, .smw, .cpz or .dll)");
+  if (path) loadFromPath(path.replace(/^"|"$/g, ""));
+};
+
+$("#watch-stop").onclick = async () => {
+  try { await api(`/api/slots/${sel}/watch`, { method: "DELETE" }); } catch (e) { alert(e.message); }
   refreshSlots();
 };
 
+// Load a program (and the files that belong with it) into the selected slot. Used by the Load button and by dropping files on the page.
+async function loadFiles(list) {
+  if (!await warnDebuggers(sel, "Loading a program")) return;
+  const files = [...list].filter(f => f.name);
+  if (!files.length) return alert("Choose a .cpz, .dll, .lpz or .smw first.");
+  const main = pickMain(files) || (list === $("#file").files ? files[0] : null);
+  if (!main) return toast("That isn't a program. Drop a .cpz, .dll, .lpz or .smw (with its .sig and sidecar files).", { error: true });
+  const others = files.filter(f => f !== main);
+  // In the desktop app, load it from disk: OpenVP finds the .sig itself and can watch the file.
+  const mainPath = desktop?.pathForFile(main);
+  if (mainPath) return loadFromPath(mainPath, others.map(f => desktop.pathForFile(f)).filter(Boolean));
+  // A compiled program without its .sig runs fine but the debugger can only show signal numbers.
+  if (/\.lpz$/i.test(main.name) && !files.some(f => /\.sig$/i.test(f.name)) &&
+      !confirm(`No .sig selected with ${main.name}.\n\nThe program will run, but the debugger will show signal numbers (#123) instead of names. ` +
+               `The .sig is written next to the .smw when you compile; select it together with the .lpz (Ctrl+click).\n\nLoad without names?`)) return;
+  const fd = new FormData();
+  fd.append("file", main);
+  for (const f of others) fd.append("extra", f);
+  try { await api(`/api/slots/${sel}/program`, { method: "POST", body: fd }); toast(`Loaded ${main.name} into slot ${sel}.`); renderReady($("#ready"), null); }
+  catch (e) { alert(e.message); }
+  refreshAllSoon(sel);
+}
+
+// A program dropped on the page: say whether it will run, then let the person choose (it never blocks the load).
+async function dropLoad(list) {
+  const files = [...list].filter(f => f.name), main = pickMain(files);
+  if (!main) return toast("That isn't a program. Drop a .cpz, .dll, .lpz or .smw (with its .sig and sidecar files).", { error: true });
+  const d = $("#drop-dlg"), box = $("#drop-ready"), s = boardSlots.find(x => x.number === sel), n = sel;
+  $("#drop-title").textContent = `Load ${main.name} into slot ${n}${s?.name ? " · " + s.name : ""}?`;
+  box.innerHTML = `<div class="rd"><div class="rd-head"><span class="rd-badge">Checking…</span></div></div>`;
+  $("#drop-go").onclick = () => { d.close(); sel === n || select(n); loadFiles(files); };
+  $("#drop-cancel").onclick = () => d.close();
+  if (!d.open) d.showModal();
+  $("#drop-go").focus();
+  let rep = null;
+  try { rep = await checkProgram(files); } catch { }
+  renderReady(box, rep, (s?.program ? `This replaces ${s.program}; a snapshot of it is saved first. ` : "") + "The check is advice only: you can still load it.");
+}
+$("#upload").onclick = () => loadFiles($("#file").files);
+
 document.querySelectorAll("[data-act]").forEach(b => b.onclick = async () => {
-  try { await api(`/api/slots/${sel}/${b.dataset.act}`, { method: "POST" }); } catch (e) { alert(e.message); }
-  refreshSlots();
+  try { await slotAction(sel, b.dataset.act); } catch (e) { alert(e.message); }
 });
 
 $("#inspect").onclick = async () => {
@@ -455,6 +1228,21 @@ $("#inspect").onclick = async () => {
   const fd = new FormData(); for (const f of files) fd.append("file", f);
   try { $("#console-out").textContent = await api("/api/inspect", { method: "POST", body: fd }); }
   catch (e) { alert(e.message); }
+};
+
+// Lock a slot for a live event (and unlock it). The server decides who may.
+$("#lock-btn").onclick = () => { $("#lock-reason").value = ""; $("#lock-for").value = ""; $("#lock-err").textContent = ""; $("#lock-title").textContent = `Lock slot ${sel}`; $("#lock-dlg").showModal(); $("#lock-reason").focus(); };
+$("#lock-cancel").onclick = () => $("#lock-dlg").close();
+$("#lock-dlg").addEventListener("click", e => { if (e.target === $("#lock-dlg")) $("#lock-dlg").close(); });
+$("#lock-form").onsubmit = async () => {
+  try {
+    const h = $("#lock-for").value;
+    await api(`/api/slots/${sel}/lock`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reason: $("#lock-reason").value, hours: h ? +h : undefined }) });
+    $("#lock-dlg").close(); refreshSlots(); refreshBoard(); refreshActivity();
+  } catch (e) { $("#lock-err").textContent = e.message; }
+};
+$("#unlock-btn").onclick = async () => {
+  try { await api(`/api/slots/${sel}/lock`, { method: "DELETE" }); refreshSlots(); refreshBoard(); refreshActivity(); } catch (e) { alert(e.message); }
 };
 
 $("#compat").onclick = async () => { $("#console-out").textContent = await api(`/api/slots/${sel}/compat`); };
@@ -487,7 +1275,11 @@ $("#room-edit").onclick = async () => {
   const v = await askName("Room ID (1-64 letters, digits, _ - .)", curRoom || "");
   if (v === null || v === curRoom) return;
   if (!ROOM_RE.test(v)) return alert("Invalid Room ID. Use 1-64 letters, digits, '_', '-' or '.'.");
-  try { await api(`/api/slots/${sel}/room`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ roomId: v }) }); }
+  const n = sel, old = curRoom;
+  try {
+    await api(`/api/slots/${n}/room`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ roomId: v }) });
+    toast(`Room ID of slot ${n} changed to ${v}.`, { undo: async () => { await api(`/api/slots/${n}/room`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ roomId: old }) }); refreshSlots(); } });
+  }
   catch (e) { alert(e.message); }
   refreshSlots();
 };
@@ -521,12 +1313,13 @@ async function refreshFiles() {
   for (const e of d.entries) {
     const path = join(d.path, e.name);
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td class="name mono"></td><td class="num muted">${fmtSize(e.size)}</td><td class="muted">${new Date(e.modified).toLocaleString()}</td><td class="act"></td>`;
+    tr.innerHTML = `<td class="name mono"></td><td class="num muted" data-l="Size">${fmtSize(e.size)}</td><td class="muted" data-l="Modified">${new Date(e.modified).toLocaleString()}</td><td class="act"></td>`;
     const nameCell = tr.querySelector(".name");
     if (e.folder) { const a = document.createElement("a"); a.textContent = "📁 " + e.name; a.onclick = () => { fPath = path; refreshFiles(); }; nameCell.appendChild(a); }
     else nameCell.textContent = e.name;
     const act = tr.querySelector(".act");
     const btn = (label, title, fn) => { const b = document.createElement("button"); b.textContent = label; b.title = title; b.onclick = fn; act.appendChild(b); act.append(" "); };
+    if (!e.folder && e.editable) btn("Edit", "Edit this text file in the browser (up to 2 MB). The old content is kept for Undo.", () => openEditor(sel, fRoot, path, e.name));
     if (!e.folder) btn("⤓", "Download this file", () => { location.href = `/api/slots/${sel}/files/download?${q({ root: fRoot, path })}`; });
     btn("Rename", "Rename this file or folder", async () => {
       const name = await askName(`Rename '${e.name}' to:`, e.name); if (!name || name === e.name) return;
@@ -535,14 +1328,153 @@ async function refreshFiles() {
       refreshFiles();
     });
     btn("✕", e.folder ? "Delete this folder and everything in it" : "Delete this file", async () => {
-      if (!confirm(e.folder ? `Delete folder '${e.name}' and everything in it?` : `Delete '${e.name}'?`)) return;
-      try { await api(`/api/slots/${sel}/files?${q({ root: fRoot, path })}`, { method: "DELETE" }); }
+      const n = sel;
+      try {
+        const r = await api(`/api/slots/${n}/files?${q({ root: fRoot, path })}`, { method: "DELETE" });
+        if (r.undo) toast(`Deleted ${e.folder ? "folder " : ""}${e.name}.`, { undo: async () => { await restoreTrash(r.undo); if (n === sel) refreshFiles(); } });
+      }
       catch (err) { alert(err.message); }
       refreshFiles();
     });
     tb.appendChild(tr);
   }
 }
+
+// ---- File editor: a textarea with line numbers, JSON/XML checks that name the line, a "changed on disk" warning, and Undo for each save.
+const ED = { n: 0, root: "", path: "", name: "", kind: "text", tag: "", text: "", size: 0, modified: 0, dirty: false, vT: 0, pollT: 0, badLine: 0, lines: 0 };
+const edText = () => $("#ed-text");
+function edGutter() {
+  const n = edText().value.split("\n").length;
+  if (n === ED.lines && !ED.gutterDirty) return;
+  ED.lines = n; ED.gutterDirty = false;
+  let h = ""; for (let i = 1; i <= n; i++) h += i === ED.badLine ? `<span class="bad">${i}</span>` : `<span>${i}</span>`;
+  $("#ed-gutter").innerHTML = h; $("#ed-gutter").scrollTop = edText().scrollTop;
+}
+function edCursor() {
+  const ta = edText(), before = ta.value.slice(0, ta.selectionStart), line = before.split("\n").length, col = ta.selectionStart - before.lastIndexOf("\n");
+  return { line, col };
+}
+function edStatus(text, cls = "") { const s = $("#ed-status"); s.textContent = text; s.className = "mono " + (cls || "muted"); }
+function edUpdateStatus() { const c = edCursor(); if (ED.problem) return; edStatus(`Line ${c.line}, column ${c.col} · ${edText().value.length.toLocaleString()} characters${ED.kind !== "text" ? " · valid " + ED.kind.toUpperCase() : ""}`, ED.kind !== "text" ? "good" : ""); }
+function edBanner(html, kind = "") { const b = $("#ed-banner"); b.hidden = !html; b.className = kind === true ? "err" : kind || ""; b.innerHTML = html || ""; }
+function edGoto(line) { const ta = edText(); const lines = ta.value.split("\n"); let idx = 0; for (let i = 0; i < line - 1 && i < lines.length; i++) idx += lines[i].length + 1; ta.focus(); ta.setSelectionRange(idx, idx + (lines[line - 1]?.length || 0)); ta.scrollTop = Math.max(0, (line - 4) * 18); }
+function edSetProblem(p) {
+  ED.problem = p; const old = ED.badLine; ED.badLine = p ? p.line : 0; if (old !== ED.badLine) ED.gutterDirty = true; edGutter();
+  if (p) edStatus(`Line ${p.line}: ${p.error.replace(/^Line \d+: /, "")}`, "bad"); else edUpdateStatus();
+}
+function edDirty() { ED.dirty = edText().value !== ED.text; $("#ed-dirty").textContent = ED.dirty ? "● unsaved changes" : ""; }
+function edValidateSoon() {
+  clearTimeout(ED.vT);
+  if (ED.kind === "text") return;
+  ED.vT = setTimeout(async () => {
+    try { const r = await api(`/api/slots/${ED.n}/files/validate`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: ED.name, text: edText().value }) }); edSetProblem(r.ok ? null : { line: r.line, error: r.error }); }
+    catch { /* leave the last answer */ }
+  }, 450);
+}
+async function openEditor(n, root, path, name) {
+  let d;
+  try { d = await api(`/api/slots/${n}/files/text?${q({ root, path })}`); } catch (e) { toast(e.message, { error: true }); return; }
+  Object.assign(ED, { n, root, path, name, kind: d.kind, tag: d.tag, text: d.text, size: d.size, modified: new Date(d.modified).getTime(), dirty: false, badLine: 0, lines: 0, problem: null, gutterDirty: true });
+  $("#ed-title").textContent = `Edit ${name}`; $("#ed-path").textContent = `slot ${n} · ${root.toUpperCase()}\\${path.replace(/\//g, "\\")}`;
+  edText().value = d.text; edBanner(""); edGutter(); edDirty(); edStatus(""); edUpdateStatus(); edValidateSoon();
+  const dlg = $("#ed-dlg"); if (!dlg.open) dlg.showModal(); edText().focus(); edText().setSelectionRange(0, 0); edText().scrollTop = 0;
+  clearInterval(ED.pollT); ED.pollT = setInterval(edCheckDisk, 4000);
+}
+async function edCheckDisk() {
+  if (!$("#ed-dlg").open || ED.checking) return; ED.checking = true;
+  try {
+    const dir = ED.path.includes("/") ? ED.path.slice(0, ED.path.lastIndexOf("/")) : "";
+    const d = await api(`/api/slots/${ED.n}/files?${q({ root: ED.root, path: dir })}`);
+    const e = d.entries.find(x => x.name === ED.name);
+    if (!e) edBanner(`This file was deleted or renamed on disk after you opened it. Saving will create it again.`);
+    else if (e.size !== ED.size || Math.abs(new Date(e.modified).getTime() - ED.modified) > 1500)
+      edBanner(`This file changed on disk after you opened it. <button type="button" id="ed-b-reload">Reload from disk</button> <button type="button" id="ed-b-keep">Keep my version</button>`);
+    wireBanner();
+  } catch { /* the page's other calls report problems */ } finally { ED.checking = false; }
+}
+function wireBanner() {
+  const r = $("#ed-b-reload"), k = $("#ed-b-keep"), f = $("#ed-b-force"), a = $("#ed-b-anyway");
+  if (r) r.onclick = () => edReload(true); if (k) k.onclick = () => edBanner("");
+  if (f) f.onclick = () => edSave({ force: true }); if (a) a.onclick = () => edSave({ allowInvalid: true });
+}
+// A question in a dialog of our own (the editor is itself a dialog, and window.confirm doesn't suit the desktop app).
+function edConfirm(text, ok = "OK") {
+  return new Promise(res => {
+    const d = $("#edq-dlg"); $("#edq-text").textContent = text; $("#edq-ok").textContent = ok;
+    d.onclose = () => res(d.returnValue === "ok"); d.returnValue = ""; $("#edq-no").onclick = () => d.close("cancel"); d.showModal();
+  });
+}
+async function edReload(ask) {
+  if (ask && ED.dirty && !await edConfirm("Drop what you typed and read the file from disk again?", "Reload")) return;
+  await openEditor(ED.n, ED.root, ED.path, ED.name);
+}
+async function edSave(opts = {}) {
+  const text = edText().value, n = ED.n, name = ED.name;
+  $("#ed-save").disabled = true;
+  try {
+    const r = await api(`/api/slots/${n}/files/text?${q({ root: ED.root, path: ED.path })}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, tag: ED.tag, force: !!opts.force, allowInvalid: !!opts.allowInvalid }) });
+    ED.tag = r.tag; ED.text = text; ED.size = r.size; ED.modified = new Date(r.modified).getTime(); edDirty(); edSetProblem(null);
+    // The Undo toast sits behind this dialog, so the dialog offers Undo itself too.
+    edBanner(`Saved ${esc(name)}. <button type="button" id="ed-b-undo">Undo this save</button>`, "ok");
+    $("#ed-b-undo").onclick = async () => {
+      try { await restoreTrash(r.undo); } catch (e) { edBanner(esc(e.message), true); return; }
+      await openEditor(n, ED.root, ED.path, name); edBanner("Undone: the earlier content is back.", "ok"); if (n === sel) refreshFiles();
+    };
+    toast(`Saved ${name}.`, { undo: async () => { await restoreTrash(r.undo); if (n === sel) refreshFiles(); } });
+    if (n === sel) refreshFiles();
+  } catch (e) {
+    const d = e.data || {};
+    if (d.conflict) edBanner(`${esc(e.message)} <button type="button" id="ed-b-reload">Reload from disk</button> <button type="button" id="ed-b-force">Save anyway</button>`, true);
+    else if (d.invalid) { edSetProblem({ line: d.line, error: e.message }); edBanner(`${esc(e.message)} <button type="button" id="ed-b-go">Go to the line</button> <button type="button" id="ed-b-anyway">Save anyway</button>`, true); const g = $("#ed-b-go"); if (g) g.onclick = () => edGoto(d.line); edGoto(d.line); }
+    else edBanner(esc(e.message), true);
+    wireBanner();
+  }
+  $("#ed-save").disabled = false;
+}
+async function edClose() { if (ED.dirty && !await edConfirm("Close without saving what you typed?", "Close")) return; clearInterval(ED.pollT); $("#ed-dlg").close(); }
+edText().addEventListener("input", () => { edGutter(); edDirty(); edUpdateStatus(); edValidateSoon(); });
+edText().addEventListener("scroll", () => { $("#ed-gutter").scrollTop = edText().scrollTop; });
+for (const ev of ["keyup", "click"]) edText().addEventListener(ev, edUpdateStatus);
+edText().addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); edSave(); } });
+$("#ed-save").onclick = () => edSave(); $("#ed-close").onclick = edClose; $("#ed-reload").onclick = () => edReload(true);
+$("#ed-dlg").addEventListener("cancel", e => { if (ED.dirty) { e.preventDefault(); edClose(); } else clearInterval(ED.pollT); });
+
+// History: snapshots of the selected slot (program files, NVRAM and User), taken before every load.
+let histTimer = 0;
+function refreshHistorySoon() { clearTimeout(histTimer); histTimer = setTimeout(refreshHistory, 300); }
+async function refreshHistory() {
+  const n = sel;
+  let list;
+  try { list = await api(`/api/slots/${n}/snapshots`); }
+  catch (e) { if (n === sel) { $("#hist-table tbody").innerHTML = ""; $("#hist-empty").hidden = false; $("#hist-empty").textContent = e.message; } return; }
+  if (n !== sel) return;
+  const tb = $("#hist-table tbody"); tb.innerHTML = "";
+  $("#hist-empty").hidden = list.length > 0; $("#hist-empty").textContent = "No snapshots yet.";
+  for (const i of list) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${esc(new Date(i.time).toLocaleString())}</td><td class="prog mono">${esc(i.program || "(files only)")}</td><td class="muted">${esc(i.reason)}${i.skipped ? ` · ${i.skipped} file${i.skipped === 1 ? "" : "s"} skipped` : ""}</td><td class="num muted">${fmtSize(i.size)}</td><td class="act"></td>`;
+    const act = tr.querySelector(".act");
+    const btn = (label, title, fn) => { const b = document.createElement("button"); b.textContent = label; b.title = title; b.onclick = fn; act.appendChild(b); act.append(" "); };
+    btn("Roll back", "Put the slot's program, NVRAM and User files back as they were then", async () => {
+      if (!confirm(`Roll back slot ${n} to ${new Date(i.time).toLocaleString()}?\n\nThe program, NVRAM and User files are replaced with the snapshot's. The current state is saved as a snapshot first, so you can undo this.`)) return;
+      try { await api(`/api/slots/${n}/snapshots/${i.id}/restore`, { method: "POST" }); } catch (e) { alert(e.message); }
+      refreshSlots(); refreshHistory(); if (n === sel) refreshFiles();
+    });
+    btn("Delete", "Delete this snapshot", async () => {
+      try {
+        const r = await api(`/api/slots/${n}/snapshots/${i.id}`, { method: "DELETE" });
+        if (r.undo) toast(`Deleted the snapshot from ${new Date(i.time).toLocaleString()}.`, { undo: async () => { await restoreTrash(r.undo); refreshHistory(); } });
+      } catch (e) { alert(e.message); }
+      refreshHistory();
+    });
+    tb.appendChild(tr);
+  }
+}
+$("#hist-versions").onclick = () => window.open(`versions.html?slot=${sel}`, "openvp-versions");
+$("#hist-now").onclick = async () => {
+  try { await api(`/api/slots/${sel}/snapshots`, { method: "POST" }); } catch (e) { alert(e.message); }
+  refreshHistory();
+};
 
 // SIMPL+ MakeProgramFilename("\\NVRAM\\x") reads \NVRAM\{Program ID Tag}\x, so point at that folder.
 function renderHint(d) {
@@ -645,8 +1577,1149 @@ drop.ondrop = async e => {
   uploadFiles(out);
 };
 
+
+// ------------------------------------------------------------------ recordings (record and replay as a regression test)
+
+let recSt = null, recList = [], recShownKey = "";
+const recBase = () => `/api/slots/${sel}`;
+const fmtDur = ms => { const s = Math.max(0, ms) / 1000; return s >= 60 ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}` : `${s.toFixed(1)} s`; };
+const fmtAt = ms => { const s = Math.max(0, ms) / 1000, m = Math.floor(s / 60); return `${m}:${(s - m * 60).toFixed(2).padStart(5, "0")}`; };
+const fmtVal = v => typeof v === "boolean" ? (v ? "1" : "0") : typeof v === "string" ? JSON.stringify(v) : v == null ? "–" : String(v);
+const jsonPost = body => ({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body ?? {}) });
+
+try { $("#rec-eisc").checked = localStorage.getItem("openvp.replayEisc") !== "0"; } catch { }
+$("#rec-eisc").onchange = () => { try { localStorage.setItem("openvp.replayEisc", $("#rec-eisc").checked ? "1" : "0"); } catch { } };
+
+async function pollRecording() {
+  const n = sel;
+  let st;
+  try { st = await api(`/api/slots/${n}/recording/status`); } catch { return; }
+  if (n !== sel) return;
+  const prev = recSt; recSt = st;
+  renderRecStatus(st);
+  const was = prev?.mode, rp = st.replay;
+  if ((was === "recording" && st.mode !== "recording") || (st.notice && st.notice !== prev?.notice)) refreshRecordings();
+  if (rp && rp.state !== "running") {
+    const key = `${n}|${rp.recordingId}|${rp.state}|${rp.report?.id ?? ""}`;
+    if (key !== recShownKey) {
+      recShownKey = key;
+      if (rp.state === "done") showReport(rp.report);
+      else $("#rec-result").innerHTML = `<div class="rr fail"><div class="rr-head"><span class="rr-big">${rp.state === "cancelled" ? "CANCELLED" : rp.state === "aborted" ? "STOPPED" : "ERROR"}</span><b>${esc(rp.name)}</b></div><div class="rr-sum">${esc(rp.message || (rp.state === "cancelled" ? "The replay was cancelled, so there is no result." : ""))}</div></div>`;
+      refreshRecordings();
+    }
+  }
+}
+
+function renderRecStatus(st) {
+  const recording = st.mode === "recording", replaying = st.mode === "replaying";
+  const t = $("#rec-toggle");
+  t.classList.toggle("recording", recording);
+  $("#rec-toggle-label").textContent = recording ? "Stop" : "Record";
+  t.querySelector(".rdot").textContent = recording ? "■" : "●";
+  t.disabled = replaying || !openvpAuth.can("Recording");
+  $("#rec-status").textContent = recording
+    ? `${fmtDur(st.recording.elapsedMs)} · ${st.recording.inputs} input${st.recording.inputs === 1 ? "" : "s"} captured · ${st.recording.counts.feedback} feedback${st.recording.limitReached ? " · limit reached" : ""}`
+    : "";
+  const n = $("#rec-notice");
+  n.hidden = !st.notice; n.textContent = st.notice || "";
+  const rp = st.replay, box = $("#rec-replay");
+  box.hidden = !replaying;
+  if (replaying && rp) {
+    $("#rec-replay-text").textContent = `Replaying “${rp.name}”${rp.fast ? " (fast)" : ""} · ${fmtDur(rp.elapsedMs)} of ${rp.totalMs ? fmtDur(rp.totalMs) : "…"}`;
+    $("#rec-fill").style.width = `${Math.round(rp.progress * 100)}%`;
+  }
+  document.querySelectorAll("#rec-table button[data-needs-idle]").forEach(b => b.disabled = st.mode !== "idle");
+  $("#rec-up").disabled = recording;
+}
+
+async function refreshRecordings() {
+  const n = sel;
+  let list;
+  try { list = await api(`/api/slots/${n}/recordings`); }
+  catch (e) { if (n === sel) { $("#rec-table tbody").innerHTML = ""; $("#rec-empty").hidden = false; $("#rec-empty").textContent = e.message; } return; }
+  if (n !== sel) return;
+  recList = list;
+  const tb = $("#rec-table tbody"); tb.innerHTML = "";
+  $("#rec-empty").hidden = list.length > 0; $("#rec-empty").textContent = "No recordings yet. Press Record, use the room, then Stop.";
+  for (const r of list) {
+    const c = r.counts, tr = document.createElement("tr");
+    const last = r.lastPassed == null ? `<span class="muted">not replayed</span>` : `<span class="pill ${r.lastPassed ? "pass" : "fail"}">${r.lastPassed ? "PASS" : "FAIL"}</span> <span class="muted">${esc(new Date(r.lastReplayAt).toLocaleString())}</span>`;
+    tr.innerHTML = `<td class="nm"><b></b><div class="muted mono"></div></td><td>${esc(new Date(r.recordedAt).toLocaleString())}</td><td class="num">${fmtDur(r.durationMs)}</td>
+      <td class="num muted" title="Panel inputs + EISC inputs + forced signals, then feedback changes">${c.inputs + c.eiscInputs + c.forces} / ${c.feedback}</td><td>${last}</td></tr>`;
+    tr.className = "datarow";
+    const tr2 = document.createElement("tr"); tr2.innerHTML = `<td class="act" colspan="5"></td>`;
+    tr.querySelector("b").textContent = r.name;
+    tr.querySelector(".mono").textContent = r.program ? `${r.program}${r.endedBy !== "stopped" ? " · ended: " + r.endedBy : ""}` : "";
+    const act = tr2.querySelector(".act");
+    const btn = (label, title, fn, needsIdle) => { const b = document.createElement("button"); b.textContent = label; b.title = title; b.onclick = fn; if (needsIdle) b.dataset.needsIdle = "1"; act.appendChild(b); act.append(" "); };
+    btn("Replay", "Send the recorded inputs with their original timing and compare the feedback", () => startReplay(r, false), true);
+    btn("Replay fast", "Same, but idle gaps longer than 1 s are shortened to 1 s", () => startReplay(r, true), true);
+    if (r.lastPassed != null) btn("Result", "Show the latest replay result", async () => {
+      try { showReport(await api(`/api/slots/${sel}/recordings/${r.id}/report`)); } catch (e) { alert(e.message); }
+    });
+    btn("Download", "Save the recording as a file, to keep with a project or share", () => { location.href = `/api/slots/${sel}/recordings/${r.id}/download`; });
+    btn("Rename", "Rename this recording", async () => {
+      const name = await askName("Rename recording:", r.name); if (!name || name === r.name) return;
+      try { await api(`/api/slots/${sel}/recordings/${r.id}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) }); } catch (e) { alert(e.message); }
+      refreshRecordings();
+    });
+    btn("Delete", "Delete this recording and its results", async () => {
+      const n = sel;
+      try {
+        const d = await api(`/api/slots/${n}/recordings/${r.id}`, { method: "DELETE" });
+        if (d.undo) toast(`Deleted the recording “${r.name}”.`, { undo: async () => { await restoreTrash(d.undo); if (n === sel) refreshRecordings(); } });
+      } catch (e) { alert(e.message); }
+      refreshRecordings();
+    });
+    tb.appendChild(tr); tb.appendChild(tr2);
+  }
+  if (recSt) renderRecStatus(recSt);
+}
+
+$("#rec-toggle").onclick = async () => {
+  const n = sel;
+  try {
+    if (recSt?.mode === "recording") {
+      const s = boardSlots.find(x => x.number === n);
+      const stamp = new Date(); const p2 = x => String(x).padStart(2, "0");
+      const dflt = `${s?.program || "Recording"} ${stamp.getFullYear()}-${p2(stamp.getMonth() + 1)}-${p2(stamp.getDate())} ${p2(stamp.getHours())}:${p2(stamp.getMinutes())}:${p2(stamp.getSeconds())}`;
+      const name = await askName("Name this recording (Cancel keeps the suggested name):", dflt);
+      await api(`/api/slots/${n}/recording/stop`, jsonPost({ name: name || dflt }));
+    } else {
+      $("#rec-result").innerHTML = ""; recShownKey = "";
+      await api(`/api/slots/${n}/recording/start`, jsonPost());
+    }
+  } catch (e) { alert(e.message); }
+  await pollRecording(); refreshRecordings(); refreshBoard();
+};
+
+async function startReplay(r, fast) {
+  try {
+    await api(`${recBase()}/recordings/${r.id}/replay`, jsonPost({ fast, includeEisc: $("#rec-eisc").checked }));
+    $("#rec-result").innerHTML = ""; recShownKey = "";
+  } catch (e) { alert(e.message); }
+  await pollRecording(); refreshBoard();
+}
+
+$("#rec-cancel").onclick = async () => {
+  try { await api(`${recBase()}/replay/cancel`, jsonPost()); } catch (e) { alert(e.message); }
+  pollRecording();
+};
+
+$("#rec-up").onclick = () => $("#rec-pick").click();
+$("#rec-pick").onchange = async () => {
+  const f = $("#rec-pick").files[0]; $("#rec-pick").value = "";
+  if (!f) return;
+  const fd = new FormData(); fd.append("file", f);
+  try { await api(`${recBase()}/recordings`, { method: "POST", body: fd }); } catch (e) { alert(e.message); }
+  refreshRecordings();
+};
+
+function showReport(rep) {
+  const fails = rep.differences.filter(d => d.severity === "fail"), warns = rep.differences.filter(d => d.severity !== "fail");
+  const c = rep.counts;
+  const row = d => `<tr class="${d.severity}"><td class="k" data-l="Result">${esc(({ final: "final state", input: "not sent", baseline: "start state" })[d.kind] || d.kind)}${d.severity === "warn" ? " (warning)" : ""}</td><td class="k" data-l="Device">${d.ip == null ? "–" : "IP ID " + d.ip.toString(16).toUpperCase().padStart(2, "0")}</td><td class="k mono" data-l="Join">${esc(d.join ?? "–")}</td>
+    <td class="mono" data-l="Expected">${d.kind === "input" || d.kind === "baseline" ? esc(d.message) : esc(fmtVal(d.expected))}</td><td class="mono" data-l="Actual">${d.kind === "input" || d.kind === "baseline" ? "" : esc(fmtVal(d.actual))}</td>
+    <td class="k mono" data-l="Recording time">${d.timeMs != null ? fmtAt(d.timeMs) : d.actualTimeMs != null ? "replay " + fmtAt(d.actualTimeMs) : "–"}</td></tr>`;
+  const table = list => `<table class="diffs"><thead><tr><th>Difference</th><th>Device</th><th>Join</th><th>Expected</th><th>Actual</th><th>Recording time</th></tr></thead><tbody>${list.map(row).join("")}</tbody></table>`;
+  $("#rec-result").innerHTML = `<div class="rr ${rep.passed ? "pass" : "fail"}">
+    <div class="rr-head"><span class="rr-big">${rep.passed ? "PASS" : "FAIL"}</span><b>${esc(rep.recordingName)}</b><span class="muted">${esc(new Date(rep.startedAt).toLocaleString())} · ${rep.fast ? "fast" : "original timing"} · ${fmtDur(rep.replayMs)}</span></div>
+    <div class="rr-sum">${c.matched} of ${c.feedbackExpected} feedback changes matched · ${c.missing} missing · ${c.different} different · ${c.extra} extra · ${c.finalDifferences} final-state differences · sent ${c.inputsSent + c.eiscInputsSent} input${c.inputsSent + c.eiscInputsSent === 1 ? "" : "s"} and ${c.forcesSent} force${c.forcesSent === 1 ? "" : "s"}${c.undelivered ? ` · ${c.undelivered} couldn't be sent` : ""}${rep.program ? ` · program ${esc(rep.program)}` : ""}</div>
+    ${fails.length ? `<div class="scroll-x">${table(fails)}</div>` : ""}
+    ${warns.length ? `<details ${fails.length ? "" : "open"}><summary>${warns.length} warning${warns.length === 1 ? "" : "s"} (don't affect the result)</summary><div class="scroll-x">${table(warns)}</div></details>` : ""}
+    ${rep.notes.length ? `<ul>${rep.notes.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+    ${rep.truncated ? `<div class="muted">More differences than are listed here; the counts above are complete.</div>` : ""}
+  </div>`;
+}
+
+function resetRecordings() { recSt = null; recShownKey = ""; $("#rec-result").innerHTML = ""; $("#rec-notice").hidden = true; $("#rec-replay").hidden = true; refreshRecordings(); pollRecording(); }
+
+// ------------------------------------------------------------------ shared panels
+// A link opens one slot + IP ID for someone else (CH5 project if one is uploaded, else the test panel).
+let sharesData = [], ch5List = [];
+
+function untilText(t) {
+  if (!t) return "never";
+  const s = (new Date(t) - Date.now()) / 1000;
+  if (s <= 0) return "expired";
+  if (s < 3600) return `in ${Math.ceil(s / 60)}m`;
+  if (s < 86400) return `in ${Math.floor(s / 3600)}h ${Math.floor(s % 3600 / 60)}m`;
+  return `in ${Math.floor(s / 86400)}d ${Math.floor(s % 86400 / 3600)}h`;
+}
+
+function ch5For(slot, ipId) { return ch5List.find(c => c.slot === slot && c.ipId.toUpperCase() === String(ipId).toUpperCase()); }
+
+// Where the link should point: the tunnel's public address when Internet access is on; else the address this
+// console was opened with; if that is localhost (useless to anyone else), this computer's LAN addresses.
+async function shareBases() {
+  const out = [];
+  const host = location.hostname;
+  const isLocal = ["localhost", "127.0.0.1", "[::1]", "::1"].includes(host);
+  let scheme = location.protocol, port = location.port ? ":" + location.port : "";
+  try { const i = await api("/api/info"); if (i.https?.listening) { scheme = "https:"; port = i.https.port === 443 ? "" : ":" + i.https.port; } } catch { }
+  try {
+    const t = await api("/api/tunnel");
+    if (t.state === "on" && t.url) out.push({ label: `Internet (${new URL(t.url).host})`, base: t.url, internet: true });
+  } catch { }
+  if (!isLocal) out.push({ label: `This address (${location.hostname}${port})`, base: `${scheme}//${location.hostname}${port}`, lan: true });
+  let net = { lan: [] };
+  try { net = await api("/api/network"); } catch { }
+  for (const a of net.lan) {
+    if (!isLocal && location.hostname === a.address) continue;
+    out.push({ label: `${a.address} (${a.name})`, base: `${scheme}//${a.address}${port}`, lan: true });
+  }
+  if (isLocal) out.push({ label: "localhost (only works on this computer)", base: location.origin, local: true });
+  return out;
+}
+
+async function refreshShares() {
+  // The link list holds the secret tokens, so it is for those who may share; a Viewer doesn't ask for it.
+  if (!openvpAuth.can("Share")) { try { ch5List = await api("/api/panels"); sharesData = []; } catch { return; } renderShares(); renderCh5Rows(); return; }
+  try { [sharesData, ch5List] = await Promise.all([api("/api/shares"), api("/api/panels")]); } catch { return; }
+  renderShares();
+  renderCh5Rows();
+}
+
+function renderShares() {
+  const tb = $("#shares-table tbody");
+  $("#shares-empty").hidden = sharesData.length > 0;
+  $("#shares-table").hidden = !sharesData.length;
+  tb.innerHTML = "";
+  for (const l of sharesData) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="nm" data-l="Link"><b>${esc(l.label || "(no label)")}</b>${l.hasPin ? ' <span class="pill" title="Needs a PIN to open">PIN</span>' : ""}</td>
+      <td class="mono" data-l="Slot · IP ID">${l.slot} · ${esc(l.ipId)}</td>
+      <td data-l="Panel">${l.kind === "ch5" ? "CH5 project" : "Test panel"}</td>
+      <td data-l="Expires" title="${l.expiresAt ? esc(new Date(l.expiresAt).toLocaleString()) : ""}">${untilText(l.expiresAt)}</td>
+      <td data-l="Last used">${l.lastUsed ? ago(l.lastUsed) + " ago" : "never"}</td>
+      <td data-l="Connected now">${l.connected ? `<span class="pill ok">${l.connected} connected</span>` : "no"}</td>
+      <td class="act"><button data-a="copy" title="Copy the link">Copy</button> <button data-a="qr" title="Show the link and its QR code">QR</button> <button data-a="revoke" title="Stop this link working, and disconnect anyone using it">Revoke</button></td>`;
+    tr.querySelector('[data-a="copy"]').onclick = async e => {
+      const b = (await shareBases())[0];
+      await copyText(b.base + l.path, e.target);
+    };
+    tr.querySelector('[data-a="qr"]').onclick = () => showShareResult(l, null);
+    const rv = tr.querySelector('[data-a="revoke"]');
+    rv.onclick = async () => {
+      if (rv.dataset.armed !== "1") {   // two clicks, so a stray one doesn't cut someone off
+        rv.dataset.armed = "1"; rv.textContent = "Really revoke?";
+        setTimeout(() => { if (rv.isConnected) { rv.dataset.armed = ""; rv.textContent = "Revoke"; } }, 4000);
+        return;
+      }
+      try { await api(`/api/shares/${l.id}`, { method: "DELETE" }); } catch (e) { rv.textContent = e.message; return; }
+      toast(`Revoked the link “${l.label || "(no label)"}”.`, { undo: async () => { await api(`/api/shares/${l.id}/undo`, { method: "POST" }); refreshShares(); } });
+      refreshShares();
+    };
+    tb.appendChild(tr);
+  }
+}
+
+async function copyText(text, btn) {
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch { }
+  if (!ok) {   // plain http on a LAN address has no clipboard API; select-and-copy still works
+    const t = document.createElement("textarea");
+    t.value = text; t.style.position = "fixed"; t.style.opacity = "0"; document.body.appendChild(t);
+    t.select(); try { ok = document.execCommand("copy"); } catch { } t.remove();
+  }
+  if (btn) { const old = btn.dataset.t || btn.textContent; btn.dataset.t = old; btn.textContent = ok ? "Copied" : "Copy failed"; setTimeout(() => { btn.textContent = old; }, 1500); }
+  return ok;
+}
+
+// ----- CH5 upload / replace / remove for one IP ID
+const ch5Pick = document.createElement("input");
+ch5Pick.type = "file"; ch5Pick.accept = ".ch5z,.zip"; ch5Pick.hidden = true; document.body.appendChild(ch5Pick);
+let ch5Target = null;
+ch5Pick.onchange = async () => {
+  const f = ch5Pick.files[0], t = ch5Target; ch5Pick.value = "";
+  if (!f || !t) return;
+  const fd = new FormData(); fd.append("file", f);
+  setCh5Msg(t, "Uploading…");
+  try { await api(`/api/slots/${t.slot}/panels/${t.ipId}/ch5`, { method: "POST", body: fd }); setCh5Msg(t, ""); }
+  catch (e) { await refreshShares(); setCh5Msg(t, "Not installed: " + e.message, true); return; }
+  await refreshShares();
+};
+let ch5Msg = null;
+function setCh5Msg(t, text, bad) { ch5Msg = text ? { slot: t.slot, ipId: t.ipId, text, bad } : null; renderCh5Rows(); }
+
+function fillCh5(el, slot, ipId) {
+  const c = ch5For(slot, ipId);
+  el.innerHTML = "";
+  const what = document.createElement("span");
+  what.textContent = c ? `CH5 project: ${c.name || "uploaded"} (${c.files} files, ${bytes(c.bytes)})` : "No CH5 project: shared links open OpenVP's test panel.";
+  const up = document.createElement("button"); up.type = "button"; up.textContent = c ? "Replace .ch5z…" : "Upload .ch5z…";
+  up.title = "Upload a CH5 / HTML5 project (.ch5z). Shared links for this IP ID then open it instead of the test panel.";
+  up.onclick = () => { ch5Target = { slot, ipId }; ch5Pick.click(); };
+  el.append(what, up);
+  if (c) {
+    const rm = document.createElement("button"); rm.type = "button"; rm.textContent = "Remove";
+    rm.onclick = async () => { try { await api(`/api/slots/${slot}/panels/${ipId}/ch5`, { method: "DELETE" }); } catch { } refreshShares(); };
+    el.append(rm);
+  }
+  if (ch5Msg && ch5Msg.slot === slot && ch5Msg.ipId.toUpperCase() === String(ipId).toUpperCase()) {
+    const m = document.createElement("div"); m.textContent = ch5Msg.text; m.style.color = ch5Msg.bad ? "#ff9b9b" : ""; m.style.flexBasis = "100%"; el.append(m);
+  }
+}
+function renderCh5Rows() {
+  if (iptSel) { const d = iptData.find(x => x.ipId === iptSel.ipId); if (d) fillCh5($("#d-ch5"), d.slot, d.ipId); }
+  if ($("#share-dlg").open && shareCtx && !shareCtx.link) fillCh5($("#share-ch5"), shareCtx.slot, shareCtx.ipId);
+}
+
+// ----- the Share dialog
+let shareCtx = null;   // { slot, ipId } while making a link; { link, pin } while showing one
+
+function shareWhat(slot, ipId) {
+  const c = ch5For(slot, ipId);
+  return `Slot ${slot} · IP ID ${ipId}. The link opens ${c ? "the uploaded CH5 project" : "OpenVP's test panel"} for this IP ID and nothing else.`;
+}
+
+function openShare(slot, ipId) {
+  shareCtx = { slot, ipId };
+  const d = $("#share-dlg");
+  $("#share-title").textContent = "Share panel";
+  $("#share-v1").hidden = false; $("#share-v2").hidden = true;
+  $("#share-what").textContent = shareWhat(slot, ipId);
+  $("#share-label").value = ""; $("#share-pin").value = ""; $("#share-exp").value = "1d"; $("#share-err").textContent = "";
+  $("#share-create").disabled = false;
+  fillCh5($("#share-ch5"), slot, ipId);
+  d.returnValue = ""; if (!d.open) d.showModal();
+  $("#share-label").focus();
+  refreshShares();
+}
+
+$("#share-cancel").onclick = () => $("#share-dlg").close("cancel");
+$("#share-pin-gen").onclick = () => { const a = new Uint32Array(1); crypto.getRandomValues(a); $("#share-pin").value = String(a[0] % 1000000).padStart(6, "0"); };
+$("#share-pin").oninput = e => { e.target.value = e.target.value.replace(/\D/g, "").slice(0, 8); };
+$("#share-create").onclick = async () => {
+  const pin = $("#share-pin").value.trim();
+  if (pin && !/^\d{4,8}$/.test(pin)) { $("#share-err").textContent = "The PIN must be 4 to 8 digits, or empty for no PIN."; return; }
+  $("#share-create").disabled = true; $("#share-err").textContent = "";
+  try {
+    const link = await api("/api/shares", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slot: shareCtx.slot, ipId: shareCtx.ipId, label: $("#share-label").value.trim(), pin: pin || null, expires: $("#share-exp").value }) });
+    await showShareResult(link, pin || null);
+    refreshShares();
+  } catch (e) { $("#share-err").textContent = e.message; $("#share-create").disabled = false; }
+};
+
+function renderQr(el, text) {
+  try { const q = qrcode(0, "M"); q.addData(text); q.make(); el.innerHTML = q.createSvgTag({ cellSize: 4, margin: 3, scalable: true }); }
+  catch { el.textContent = "The link is too long for a QR code."; }
+}
+
+async function showShareResult(link, pin) {
+  shareCtx = { link, pin };
+  const d = $("#share-dlg");
+  $("#share-title").textContent = link.label ? `Link: ${link.label}` : "Share link";
+  $("#share-v1").hidden = true; $("#share-v2").hidden = false;
+  $("#share-what2").textContent = `${shareWhat(link.slot, link.ipId)} ${link.expiresAt ? "Expires " + new Date(link.expiresAt).toLocaleString() + "." : "It never expires."} Revoke it any time from Shared panels.`;
+  $("#share-pin-note").textContent = link.hasPin
+    ? (pin ? `PIN: ${pin}. Send it separately from the link. OpenVP doesn't keep it, so write it down now.` : "This link needs a PIN. OpenVP doesn't keep PINs, so for a different PIN make a new link.")
+    : "Anyone with this link can open the panel. There is no PIN.";
+  const bases = await shareBases();
+  const sel = $("#share-addr");
+  sel.innerHTML = "";
+  bases.forEach((b, i) => { const o = document.createElement("option"); o.value = i; o.textContent = b.label; sel.appendChild(o); });
+  $("#share-addr-l").hidden = bases.length < 2;
+  const draw = () => {
+    const b = bases[+sel.value] || bases[0];
+    const url = b.base + link.path;
+    $("#share-url").value = url;
+    renderQr($("#share-qr"), url);
+    const note = $("#share-addr-note");
+    note.hidden = !b.local && !b.lan;
+    note.textContent = b.local ? "This link only works on this computer. Open the console by this computer's network address to get one other people can use."
+      : b.lan ? "This address works for people on the same network. To reach people elsewhere, turn on Internet access at the top of the page." : "";
+  };
+  sel.onchange = draw; draw();
+  $("#share-copied").textContent = "";
+  $("#share-copy").onclick = async () => { await copyText($("#share-url").value, $("#share-copy")); };
+  $("#share-url").onfocus = e => e.target.select();
+  d.returnValue = ""; if (!d.open) d.showModal();
+}
+
+$("#d-share").onclick = () => { if (iptSel) { const d = iptData.find(x => x.ipId === iptSel.ipId); if (d) openShare(d.slot, d.ipId); } };
+refreshShares(); setInterval(() => { if (!document.hidden) refreshShares(); }, 3000);
+
+// ------------------------------------------------------------------ Internet access (tunnel)
+let tunnelSt = null, tunnelBusy = false;
+function renderTunnel() {
+  const t = tunnelSt; if (!t) return;
+  const sw = $("#net-switch"), st = $("#net-state");
+  const on = t.state === "on", wait = t.state === "starting" || t.state === "downloading";
+  sw.setAttribute("aria-checked", on || wait ? "true" : "false");
+  sw.classList.toggle("busy", wait);
+  sw.disabled = !t.available || tunnelBusy;
+  st.className = on ? "on" : wait || t.needsDownload ? "wait" : t.state === "error" ? "err" : "";
+  st.textContent = !t.available ? "unavailable" : t.needsDownload ? "needs cloudflared" : t.state === "downloading" ? "downloading…" : t.state === "starting" ? "starting…" : t.state === "on" ? "on" : t.state === "error" ? "error" : "off";
+  const url = $("#net-url");
+  url.hidden = !on; url.textContent = on ? t.url : "";
+  $("#net-copy").hidden = !on; $("#net-stop").hidden = !(on || wait);
+  $("#net-ask").hidden = !t.needsDownload;
+  const msg = $("#net-msg");
+  const text = t.needsDownload ? `cloudflared isn't installed. OpenVP can download Cloudflare's official build from ${t.downloadUrl ? new URL(t.downloadUrl).host + "/cloudflare/cloudflared" : "github.com/cloudflare/cloudflared"} (over HTTPS, about 40 MB) and keep it in the data folder, under tools. Nothing is downloaded unless you click the button.`
+    : t.state === "error" || !t.available || wait ? (t.message || t.unavailableReason || "") : on ? "Public address: anyone with a shared link can open it from the internet. It can take a few seconds before the address answers." : "";
+  msg.hidden = !text; msg.textContent = text; msg.className = t.state === "error" || !t.available ? "err" : "";
+  if (t.needsDownload) msg.className = "";
+  const log = $("#net-log");
+  log.hidden = !(t.log && t.log.length && (t.state === "error" || on));
+  if (!log.hidden) log.querySelector("pre").textContent = t.log.join("\n");
+}
+async function refreshTunnel() {
+  try { tunnelSt = await api("/api/tunnel"); } catch { return; }
+  renderTunnel();
+}
+async function tunnelCall(path, body) {
+  tunnelBusy = true; renderTunnel();
+  try { tunnelSt = await api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }); }
+  catch (e) { tunnelSt = { ...(tunnelSt || {}), available: true, state: "error", message: e.message }; }
+  tunnelBusy = false; renderTunnel();
+}
+$("#net-switch").onclick = () => {
+  if (!tunnelSt || !tunnelSt.available) return;
+  if (tunnelSt.state === "on" || tunnelSt.state === "starting" || tunnelSt.state === "downloading") tunnelCall("/api/tunnel/stop");
+  else tunnelCall("/api/tunnel/start", { download: false });
+};
+$("#net-stop").onclick = () => tunnelCall("/api/tunnel/stop");
+$("#net-dl").onclick = () => tunnelCall("/api/tunnel/start", { download: true });
+$("#net-dl-no").onclick = () => tunnelCall("/api/tunnel/stop");
+$("#net-copy").onclick = e => { if (tunnelSt && tunnelSt.url) copyText(tunnelSt.url, e.target); };
+refreshTunnel();
+setInterval(() => { if (!document.hidden || (tunnelSt && ["starting", "downloading"].includes(tunnelSt.state))) refreshTunnel(); }, 1500);
+
+// ------------------------------------------------------------------ saved indicator, toasts, undo
+let savedTimer = 0;
+function flashSaved(text = "Saved") {
+  const el = $("#saved"); el.textContent = "✓ " + text; el.classList.add("show");
+  clearTimeout(savedTimer); savedTimer = setTimeout(() => el.classList.remove("show"), 1800);
+}
+window.openvpSaved = () => flashSaved();
+
+// A message at the bottom of the page. opts.undo = async function: shows an Undo button for ~10 s.
+function toast(msg, opts = {}) {
+  const t = document.createElement("div");
+  t.className = "toast" + (opts.error ? " err" : "");
+  t.setAttribute("role", opts.error ? "alert" : "status");
+  const span = document.createElement("span"); span.textContent = msg; t.append(span);
+  let timer = 0;
+  const close = () => { clearTimeout(timer); t.remove(); };
+  if (opts.undo) {
+    const b = document.createElement("button"); b.className = "undo"; b.textContent = "Undo";
+    b.onclick = async () => {
+      b.disabled = true;
+      try { await opts.undo(); close(); toast("Undone.", { ms: 3000 }); }
+      catch (e) { close(); toast("Couldn't undo: " + e.message, { error: true, ms: 8000 }); }
+    };
+    t.append(b);
+  }
+  const x = document.createElement("button"); x.textContent = "✕"; x.title = "Dismiss"; x.setAttribute("aria-label", "Dismiss"); x.onclick = close; t.append(x);
+  $("#toasts").append(t);
+  while ($("#toasts").children.length > 4) $("#toasts").firstChild.remove();
+  timer = setTimeout(close, opts.ms ?? (opts.undo ? 10000 : opts.error ? 8000 : 4000));
+  return t;
+}
+const fail = e => toast(e.message || String(e), { error: true });
+const restoreTrash = id => api(`/api/trash/${id}/restore`, { method: "POST" });
+
+// ------------------------------------------------------------------ slot actions (buttons, keys, palette, strip)
+// If someone else has this slot's debugger open, say so before something that changes the program under them.
+async function warnDebuggers(n, what) {
+  const s = boardSlots.find(x => x.number === n);
+  const others = (s?.presence || []).filter(p => !p.me && p.kind === "debugging");
+  if (!others.length) return true;
+  const d = $("#pres-dlg");
+  $("#pres-title").textContent = `${others.map(p => p.name).join(", ")} ${others.length === 1 ? "is" : "are"} debugging slot ${n}`;
+  $("#pres-text").textContent = `${what} will interrupt ${others.length === 1 ? "them" : "them"} while they work. Go ahead?`;
+  return new Promise(res => { d.onclose = () => res(d.returnValue === "ok"); d.returnValue = ""; $("#pres-ok").onclick = () => d.close("ok"); $("#pres-cancel").onclick = () => d.close("cancel"); d.showModal(); });
+}
+async function slotAction(n, act) {
+  if (["stop", "restart", "unload"].includes(act) && !await warnDebuggers(n, act === "stop" ? "Stopping it" : act === "restart" ? "Restarting it" : "Unloading it")) return;
+  const r = await api(`/api/slots/${n}/${act}`, { method: "POST" });
+  if (act === "unload" && r.undo?.snapshot)
+    toast(`Unloaded slot ${n}.`, { undo: async () => { await api(`/api/slots/${n}/snapshots/${r.undo.snapshot}/restore`, jsonPost({ start: r.undo.start })); refreshAllSoon(n); } });
+  refreshAllSoon(n);
+  return r;
+}
+const runAction = (n, act) => slotAction(n, act).catch(fail);
+function refreshAllSoon(n) { refreshSlots(); refreshBoard(); refreshHistory(); refreshActivitySoon(); if (n === sel) { refreshFiles(); refreshIpTable(); } }
+
+// ------------------------------------------------------------------ bulk selection
+function renderBulk() {
+  const n = bulkSel.size;
+  $("#bulk-bar").classList.toggle("open", n > 0);
+  $("#bulk-count").textContent = n === 1 ? "1 slot selected" : `${n} slots selected`;
+  const all = $("#slots-all"); all.checked = n > 0 && n === boardSlots.length; all.indeterminate = n > 0 && n < boardSlots.length;
+}
+function setBulk(n, on) { if (on) bulkSel.add(n); else bulkSel.delete(n); renderBoard(); renderBulkChecks(); renderBulk(); }
+function renderBulkChecks() { document.querySelectorAll("#slots .bsel[data-n]").forEach(c => c.checked = bulkSel.has(+c.dataset.n)); }
+$("#slots-all").onchange = e => { bulkSel = e.target.checked ? new Set(boardSlots.map(s => s.number)) : new Set(); renderBoard(); renderBulkChecks(); renderBulk(); };
+$("#slots tbody").addEventListener("change", e => { const c = e.target.closest(".bsel"); if (c) setBulk(+c.dataset.n, c.checked); });
+$("#board-tiles").addEventListener("change", e => { const c = e.target.closest(".bsel"); if (c) setBulk(+c.dataset.n, c.checked); });
+$("#bulk-all").onclick = () => { bulkSel = new Set(boardSlots.map(s => s.number)); renderBoard(); renderBulkChecks(); renderBulk(); };
+$("#bulk-clear").onclick = () => { bulkSel = new Set(); renderBoard(); renderBulkChecks(); renderBulk(); };
+document.querySelectorAll("[data-bulk]").forEach(b => b.onclick = () => bulkRun(b.dataset.bulk));
+async function bulkRun(action) {
+  const list = [...bulkSel].sort((a, b) => a - b);
+  if (!list.length) return;
+  if (action !== "start" && !confirm(`${action[0].toUpperCase() + action.slice(1)} slot${list.length === 1 ? "" : "s"} ${list.join(", ")}?` +
+      (action === "unload" ? "\n\nEach slot's program is kept in its History, and you can undo it for a few seconds." : "")))
+    return;
+  let r;
+  try { r = await api("/api/slots/bulk", jsonPost({ slots: list, action })); } catch (e) { return fail(e); }
+  const bad = r.results.filter(x => !x.ok), done = r.results.filter(x => x.ok && !x.skipped);
+  if (bad.length) toast(`${bad.map(x => `slot ${x.slot}: ${x.error}`).join("; ")}`, { error: true });
+  if (done.length) {
+    const undos = r.results.filter(x => x.undo);
+    const verb = { start: "Started", stop: "Stopped", restart: "Restarted", unload: "Unloaded" }[action];
+    toast(`${verb} ${done.length} slot${done.length === 1 ? "" : "s"} (${done.map(x => x.slot).join(", ")}).`, action === "unload" && undos.length ? {
+      undo: async () => { for (const u of undos) await api(`/api/slots/${u.slot}/snapshots/${u.undo.snapshot}/restore`, jsonPost({ start: u.undo.start })); refreshAllSoon(sel); }
+    } : {});
+  }
+  refreshAllSoon(sel);
+}
+
+// ------------------------------------------------------------------ slot settings (saved as you change them)
+const PALETTE = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#a855f7", "#ec4899", "#14b8a6", "#64748b"];
+let settingsFor = 0, pendingSet = null, setTimer = 0;
+function fillSettings(s) {
+  const active = document.activeElement;
+  const typing = settingsFor === s.number && $("#slot-set").contains(active) && active.matches("input[type=text],input[type=number]");
+  settingsFor = s.number;
+  if (!typing) {
+    $("#set-name").value = s.name ?? ""; $("#set-order").value = s.startOrder ?? ""; $("#set-delay").value = s.startDelaySeconds ?? 0;
+    $("#set-max").value = s.crash.maxRestarts; $("#set-win").value = s.crash.windowMinutes; $("#set-stuck").value = s.crash.stuckSeconds;
+  }
+  $("#set-autostart").checked = !!s.autostart;
+  $("#set-crash").value = s.crash.mode; $("#set-fault").checked = !!s.crash.faultOnUnhandled;
+  $("#set-cws").checked = !!s.cwsPublic;
+  $("#set-cws-note").textContent = (s.cws && s.cws.length ? "served at " + s.cws.map(p => "/cws/" + s.number + (p ? "/" + p : "")).join(", ") : "") + (s.cwsPublic ? " - anyone who can reach this console can call it" : "");
+  $("#set-max-l").hidden = $("#set-win-l").hidden = s.crash.mode !== "limited";
+  const box = $("#set-colors");
+  if (box.dataset.cur !== (s.color ?? "") || !box.children.length) {
+    box.dataset.cur = s.color ?? ""; box.innerHTML = "";
+    for (const c of PALETTE) {
+      const b = document.createElement("button"); b.type = "button"; b.style.setProperty("--c", c); b.title = c; b.setAttribute("aria-label", "Colour " + c);
+      b.classList.toggle("on", c === s.color); b.setAttribute("aria-pressed", c === s.color);
+      b.onclick = () => saveSetting({ color: c }, true);
+      box.append(b);
+    }
+    const none = document.createElement("button"); none.type = "button"; none.className = "none"; none.textContent = "none"; none.title = "No colour";
+    none.onclick = () => saveSetting({ color: null }, true); box.append(none);
+  }
+}
+function saveSetting(patch, now) {
+  const n = sel;
+  if (pendingSet && pendingSet.n !== n) flushSettings();
+  pendingSet = { n, body: { ...(pendingSet?.body ?? {}), ...patch, ...(patch.crash ? { crash: { ...(pendingSet?.body?.crash ?? {}), ...patch.crash } } : {}) } };
+  clearTimeout(setTimer);
+  if (now) flushSettings(); else setTimer = setTimeout(flushSettings, 600);
+}
+async function flushSettings() {
+  clearTimeout(setTimer);
+  const p = pendingSet; pendingSet = null; if (!p) return;
+  try { await api(`/api/slots/${p.n}/settings`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(p.body) }); flashSaved(); }
+  catch (e) { fail(e); settingsFor = 0; }
+  refreshSlots(); refreshBoard();
+}
+const numOrNull = v => v === "" ? null : +v;
+$("#set-name").oninput = e => saveSetting({ name: e.target.value.trim() || null });
+$("#set-autostart").onchange = e => saveSetting({ autostart: e.target.checked }, true);
+$("#set-order").oninput = e => saveSetting({ startOrder: numOrNull(e.target.value) });
+$("#set-delay").oninput = e => saveSetting({ startDelaySeconds: +e.target.value || 0 });
+$("#set-crash").onchange = e => saveSetting({ crash: { mode: e.target.value } }, true);
+$("#set-max").oninput = e => saveSetting({ crash: { maxRestarts: +e.target.value } });
+$("#set-win").oninput = e => saveSetting({ crash: { windowMinutes: +e.target.value } });
+$("#set-stuck").oninput = e => saveSetting({ crash: { stuckSeconds: +e.target.value || 0 } });
+$("#set-cws").onchange = e => saveSetting({ cwsPublic: e.target.checked }, true);
+$("#set-fault").onchange = e => saveSetting({ crash: { faultOnUnhandled: e.target.checked } }, true);
+addEventListener("beforeunload", () => { if (pendingSet) flushSettings(); });
+
+// ------------------------------------------------------------------ phone: sticky slot selector, collapsible sections
+$("#strip-slot").onchange = e => select(+e.target.value);
+$("#strip-start").onclick = () => runAction(sel, "start");
+$("#strip-stop").onclick = () => runAction(sel, "stop");
+$("#strip-restart").onclick = () => runAction(sel, "restart");
+function renderStrip() {
+  const s = $("#strip-slot");
+  const html = boardSlots.map(x => `<option value="${x.number}">${x.number}${x.name ? " · " + esc(x.name) : ""} (${x.program || x.state === "Error" ? x.state : "empty"})</option>`).join("");
+  if (s.dataset.html !== html) { s.dataset.html = html; s.innerHTML = html; }
+  if (document.activeElement !== s) s.value = sel;
+}
+{
+  const KEY = "openvp.collapsed";
+  let saved = null; try { saved = JSON.parse(localStorage.getItem(KEY) || "null"); } catch { }
+  const defaults = ["shares-sec", "dbg-sec", "files-sec", "hist-sec", "rec-sec", "console-sec", "log-sec"];
+  const state = saved && typeof saved === "object" ? saved : Object.fromEntries(defaults.map(k => [k, true]));
+  const narrow = () => matchMedia("(max-width: 700px)").matches;
+  for (const sec of document.querySelectorAll("section[id]")) {
+    const h = sec.querySelector(":scope > h2.sec-t, :scope > .sec-head > h2.sec-t");
+    if (!h) continue;
+    h.tabIndex = 0; h.setAttribute("role", "button");
+    const apply = () => { sec.classList.toggle("collapsed", !!state[sec.id]); h.setAttribute("aria-expanded", !state[sec.id]); };
+    const flip = () => { if (!narrow()) return; state[sec.id] = !state[sec.id]; try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { } apply(); };
+    h.addEventListener("click", flip);
+    h.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); flip(); } });
+    apply();
+  }
+}
+
+// ------------------------------------------------------------------ Recent programs
+const recentMenu = $("#recent-menu");
+function closeRecent() { recentMenu.hidden = true; $("#recent-btn").setAttribute("aria-expanded", "false"); }
+async function openRecent() {
+  recentMenu.hidden = false; $("#recent-btn").setAttribute("aria-expanded", "true");
+  recentMenu.innerHTML = `<div class="none">Loading…</div>`;
+  try { renderRecent(await api("/api/recent")); } catch (e) { recentMenu.innerHTML = `<div class="none">${esc(e.message)}</div>`; }
+}
+function renderRecent(list) {
+  recentMenu.innerHTML = "";
+  if (!list.length) { recentMenu.innerHTML = `<div class="none">Nothing yet. The programs you load show up here, to load again in one click.</div>`; return; }
+  for (const r of list) {
+    const b = document.createElement("button"); b.type = "button"; b.setAttribute("role", "menuitem"); b.disabled = !r.available;
+    b.title = r.available ? `Load into slot ${sel}` : r.path ? "The file isn't there any more" : "OpenVP didn't keep a copy of this upload (too big). Choose the file again.";
+    b.innerHTML = `<b></b> <span class="muted"></span><small></small>`;
+    b.querySelector("b").textContent = r.name; b.querySelector("span").textContent = "· " + r.kind;
+    b.querySelector("small").textContent = `${r.path ? r.path : "uploaded copy" + (r.hasCopy ? "" : " (not kept)")} · last in slot ${r.slot} · ${ago(r.time)} ago`;
+    b.onclick = () => { closeRecent(); loadRecent(r); };
+    recentMenu.append(b);
+  }
+}
+async function loadRecent(r) {
+  try { await api(`/api/slots/${sel}/program/recent/${r.id}`, { method: "POST" }); toast(`Loaded ${r.name} into slot ${sel}.`); }
+  catch (e) { fail(e); }
+  refreshAllSoon(sel);
+}
+$("#recent-btn").onclick = e => { e.stopPropagation(); if (recentMenu.hidden) openRecent(); else closeRecent(); };
+document.addEventListener("click", e => { if (!recentMenu.hidden && !e.target.closest(".menu-wrap")) closeRecent(); });
+
+// ------------------------------------------------------------------ drop a program anywhere
+let dragDepth = 0;
+const hasFiles = e => [...(e.dataTransfer?.types ?? [])].includes("Files");
+const overFiles = e => !!e.target.closest?.("#files-drop");
+function showDrop(e) {
+  const ov = $("#drop-ov");
+  if (overFiles(e) || document.querySelector("dialog[open]")) { ov.classList.remove("open"); return; }
+  const s = boardSlots.find(x => x.number === sel);
+  $("#drop-text").innerHTML = `Drop to load into slot ${sel}${s?.name ? " · " + esc(s.name) : ""}<small>.cpz .dll .lpz .smw, with its .sig and sidecar files</small>`;
+  ov.classList.add("open");
+}
+const hideDrop = () => { dragDepth = 0; $("#drop-ov").classList.remove("open"); };
+addEventListener("dragenter", e => { if (hasFiles(e)) { dragDepth++; showDrop(e); } });
+addEventListener("dragover", e => { if (hasFiles(e)) { e.preventDefault(); showDrop(e); } });
+addEventListener("dragleave", e => { if (hasFiles(e)) { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth || e.relatedTarget == null) hideDrop(); } });
+addEventListener("drop", e => {
+  if (!hasFiles(e)) return;
+  hideDrop();
+  if (overFiles(e)) return;                       // the Files list handles its own drops
+  e.preventDefault();
+  if (document.querySelector("dialog[open]")) return;
+  dropLoad(e.dataTransfer.files);
+});
+
+// ------------------------------------------------------------------ keyboard shortcuts and the command palette
+const SHORTCUTS = [
+  ["1 – 9, 0", "Select slot 1 – 9, and 10"], ["S", "Start the selected slot"], ["X", "Stop the selected slot"], ["R", "Restart the selected slot"],
+  ["U", "Unload the selected slot (Undo is offered)"], ["D", "Open the debugger for the selected slot"], ["P", "Open the paths view for the selected slot"],
+  ["M", "Open metrics"], ["N", "Take a snapshot of the selected slot"], ["L", "Go to the log filter"], ["F", "Find a signal in all slots"], ["T", "Change the theme: auto, light, dark"],
+  ["Ctrl K  /  ⌘ K", "Search every action and help topic"], ["Shift click  /  F1", "Open help for a button or control (or hover it and click the ?)"], ["?", "Show this list"], ["Esc", "Close a box or menu"],
+];
+$("#keys-list").innerHTML = SHORTCUTS.map(([k, d]) => `<dt>${k.split("  /  ").map(x => `<kbd>${esc(x)}</kbd>`).join(" or ")}</dt><dd>${esc(d)}</dd>`).join("");
+const keysBack = $("#keys-back");
+const toggleKeys = on => { keysBack.classList.toggle("open", on ?? !keysBack.classList.contains("open")); };
+keysBack.onclick = e => { if (e.target === keysBack) toggleKeys(false); };
+$("#keys-open").onclick = () => toggleKeys(true);
+
+const isTyping = e => !!e.target.closest?.("input,textarea,select,[contenteditable],[contenteditable=true]");
+const openDebugger = n => OpenVPLog.openDebugger(n);
+const openPaths = n => window.open(`paths.html?slot=${n}`, `openvp-paths-${n}`);
+const openMetrics = n => window.open(n ? `metrics.html?slot=${n}` : "metrics.html", "openvp-metrics");
+const cycleTheme = () => { window.openvpTheme?.cycle(); flashSaved(); };
+const snapshotNow = () => { $("#hist-now").click(); toast(`Saving a snapshot of slot ${sel}…`, { ms: 2500 }); };
+
+addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "k") { e.preventDefault(); togglePalette(); return; }
+  if (e.key === "Escape") {
+    if (palBack.classList.contains("open")) { closePalette(); return; }
+    if (keysBack.classList.contains("open")) { toggleKeys(false); return; }
+    if (!recentMenu.hidden) { closeRecent(); return; }
+  }
+  if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented || isTyping(e)) return;
+  if (document.querySelector("dialog[open]") || palBack.classList.contains("open")) return;
+  const k = e.key;
+  if (k === "?") { e.preventDefault(); toggleKeys(); return; }
+  if (keysBack.classList.contains("open")) return;
+  const count = boardSlots.length || 10;
+  if (/^[0-9]$/.test(k)) { const n = k === "0" ? 10 : +k; if (n <= count) { e.preventDefault(); select(n); } return; }
+  const act = { s: "start", x: "stop", r: "restart", u: "unload" }[k.toLowerCase()];
+  if (act) { e.preventDefault(); runAction(sel, act); return; }
+  switch (k.toLowerCase()) {
+    case "d": e.preventDefault(); openDebugger(sel); break;
+    case "p": e.preventDefault(); openPaths(sel); break;
+    case "m": e.preventDefault(); openMetrics(0); break;
+    case "n": e.preventDefault(); snapshotNow(); break;
+    case "l": e.preventDefault(); { const sec = $("#log-sec"); sec.classList.remove("collapsed"); logw.focusFilter(); } break;
+    case "f": e.preventDefault(); sf.focus(); break;
+    case "t": e.preventDefault(); cycleTheme(); break;
+  }
+});
+
+const palBack = $("#pal-back"), palIn = $("#pal-in"), palList = $("#pal-list");
+let palItems = [], palShown = [], palOn = 0, palExtra = { devices: [], recent: [] }, palSig = [], palSigTimer = 0;
+
+function paletteItems() {
+  const items = [];
+  const add = (label, hint, run, extra = "") => items.push({ label, hint, run, key: (label + " " + extra).toLowerCase() });
+  for (const s of boardSlots) {
+    const nm = s.name ? ` · ${s.name}` : "", n = s.number;
+    const desc = `${s.program ? s.program + " " : ""}${s.state}`;
+    add(`Select slot ${n}${nm}`, desc, () => select(n), `${s.roomId ?? ""} ${s.program ?? ""} go to`);
+    add(`Start slot ${n}${nm}`, "", () => runAction(n, "start"), "run");
+    add(`Stop slot ${n}${nm}`, "", () => runAction(n, "stop"), "halt");
+    add(`Restart slot ${n}${nm}`, "", () => runAction(n, "restart"), "reload");
+    add(`Unload slot ${n}${nm}`, "can be undone", () => runAction(n, "unload"), "remove eject");
+    add(`Open debugger for slot ${n}${nm}`, "new window", () => openDebugger(n), "signals trace");
+    add(`Open paths for slot ${n}${nm}`, "new window", () => openPaths(n), "map wiring");
+    add(`Open metrics for slot ${n}${nm}`, "new window", () => openMetrics(n), "cpu memory");
+    add(`Open help for slot ${n}${nm}`, "new window", () => window.open("help.html#console", "openvp-help"), "docs");
+  }
+  for (const d of palExtra.devices) {
+    add(`Open test panel for IP ID ${d.ipId} (slot ${d.slot})`, d.type, () => window.open(`panel.html?ipid=${d.ipId}&slot=${d.slot}`, "_blank"), "browser touch panel");
+    add(`Share panel for IP ID ${d.ipId} (slot ${d.slot})`, "make a link", () => openShare(d.slot, d.ipId), "link qr pin");
+  }
+  add("Open metrics", "new window", () => openMetrics(0), "cpu memory");
+  add("Open alerts", "new window", () => window.open("alerts.html", "openvp-alerts"), "notify email teams slack ntfy threshold report");
+  add("Alerts: add a channel (email, Teams, Slack, ntfy)", "Alerts", () => window.open("alerts.html#channels", "openvp-alerts"), "notification smtp webhook");
+  add("Uptime and offline heat map", "Metrics", () => window.open("metrics.html#uptime", "openvp-metrics"), "availability history panels dropped");
+  add("Metrics history graphs", "Metrics", () => window.open("metrics.html#history", "openvp-metrics"), "cpu memory days week month");
+  add("Health report: view or send", "Alerts", () => window.open("alerts.html#report", "openvp-alerts"), "summary email daily weekly");
+  add(`Open integrations for slot ${sel}`, "new window", () => window.open(`integrations.html?slot=${sel}`, "openvp-integrations"), "mqtt home assistant webhook osc art-net artnet dmx prometheus grafana");
+  add("MQTT: connect a broker", "Integrations", () => window.open(`integrations.html?slot=${sel}#mqtt`, "openvp-integrations"), "mqtt broker home assistant publish");
+  add("Webhooks: send and receive", "Integrations", () => window.open(`integrations.html?slot=${sel}#hooks`, "openvp-integrations"), "webhook http post incoming outgoing");
+  add("Prometheus and Grafana", "Integrations", () => window.open(`integrations.html?slot=${sel}#prom`, "openvp-integrations"), "metrics scrape grafana dashboard");
+  add("Export the whole processor to a file", "Backups", () => window.open("backup.html#export", "openvp-backup"), "backup download save copy migrate");
+  add("Import a processor export", "Backups", () => window.open("backup.html#export", "openvp-backup"), "restore upload move");
+  add("Back up now / daily backups", "Backups", () => window.open("backup.html#backups", "openvp-backup"), "backup restore daily retention");
+  add("Git-backed config", "Backups", () => window.open("backup.html#git", "openvp-backup"), "git commit repository config history");
+  add(`Program versions of slot ${sel}`, "Versions", () => window.open(`versions.html?slot=${sel}`, "openvp-versions"), "history older program load again compare diff");
+  add("Schedules: restart a slot nightly, run a backup", "Schedules", () => window.open("schedules.html", "openvp-schedules"), "cron timer nightly daily weekly");
+  add("New schedule", "Schedules", () => window.open("schedules.html#new", "openvp-schedules"), "cron timer nightly");
+  add("Push a program or export to other OpenVP machines", "Push", () => window.open(`targets.html?slot=${sel}#push`, "openvp-push"), "deploy send other server targets");
+  add("Push targets", "Push", () => window.open("targets.html", "openvp-push"), "other openvp servers");
+  add("Open help", "new window", () => window.open("help.html#console", "openvp-help"), "docs");
+  add("Open the test panel", "new window", () => window.open("panel.html", "_blank"), "browser touch panel");
+  add(`Open the generated panel for slot ${sel}`, "new window", () => window.open(`autopanel.html?slot=${sel}`, "openvp-autopanel"), "auto panel buttons sliders layout kiosk");
+  add("Open the emulator", "new window", () => window.open("emulate.html", "openvp-emulate"), "ch5 vtz c3p project panel without hardware");
+  add("Example programs: load one in a click", "Examples", () => window.open("examples.html", "openvp-examples"), "samples demo learn starter");
+  add("Compatibility: what is supported, and report something", "Compatibility", () => window.open("compat.html", "openvp-compat"), "unsupported report github issue primitives panel");
+  add("Remote EISC links to another OpenVP", "Labs", () => window.open("eisc.html", "openvp-eisc"), "intersystem network machine link");
+  add("Plugins", "Labs", () => window.open("plugins.html", "openvp-plugins"), "extend commands routes");
+  add("Labs: experimental features", "Labs", () => window.open("labs.html", "openvp-labs"), "experiments toggles");
+  add("Open the rack view", "new window", () => window.open("rack.html", "openvp-rack"), "slots panels online offline eisc latency ping");
+  add(`Take a snapshot of slot ${sel}`, "History", snapshotNow, "snapshot now save history");
+  add(recSt?.mode === "recording" ? `Stop recording slot ${sel}` : `Record slot ${sel}`, "Recordings", () => $("#rec-toggle").click(), "record stop macro");
+  add("Turn Internet access " + (tunnelSt && (tunnelSt.state === "on" || tunnelSt.state === "starting") ? "off" : "on"), "tunnel", () => $("#net-switch").click(), "tunnel cloudflare internet toggle");
+  add("Change theme (auto, light, dark)", `now ${window.openvpTheme?.get() ?? "auto"}`, cycleTheme, "toggle dark light mode");
+  for (const t of ["auto", "light", "dark"]) add(`Theme: ${t}`, "", () => { window.openvpTheme?.set(t); flashSaved(); }, "colour mode");
+  add("Load a program into the selected slot…", "choose a file", () => $("#file").click(), "upload open file");
+  add("Show recent programs", "menu", () => { $("#slot-sec").scrollIntoView({ block: "center" }); setTimeout(() => $("#recent-btn").click(), 50); }, "history last");
+  for (const r of palExtra.recent) if (r.available) add(`Load recent: ${r.name} into slot ${sel}`, r.kind, () => loadRecent(r), "recent program");
+  add("Show compatibility report", "Console box", () => $("#compat").click(), "unsupported");
+  add("Select every slot", "bulk", () => $("#bulk-all").click(), "bulk all");
+  add("Clear the slot selection", "bulk", () => $("#bulk-clear").click(), "bulk none");
+  add("Go to the log filter", "L", () => { $("#log-sec").classList.remove("collapsed"); logw.focusFilter(); }, "search");
+  add(`Open the full-page log for slot ${sel}`, "new window", () => $("#log-full").click(), "log errors warnings");
+  add(`Download a support bundle for slot ${sel}`, "zip", () => $("#bundle-open").click(), "support help diagnostics logs");
+  add("Find a signal in all slots", "F", () => sf.focus(), "search name debugger");
+  for (const h of palSig) add(`Signal: ${h.signal}`, `slot ${h.slot} · ${h.program} · opens the debugger`, () => openSignal(h), `${h.signal} ${h.kind} slot ${h.slot} ${h.program} find`);
+  add("Show keyboard shortcuts", "?", () => toggleKeys(true), "help keys");
+  add("Show the welcome screen", "", () => $("#welcome-link").click(), "intro");
+  add("Try the demo", "samples in slots 1 and 2", tryDemo, "sample example getting started demo eisc");
+  add("Templates: download a starter project", "SIMPL# and CH5", openTemplates, "template starter download csproj ch5 ch5z new project");
+  add("Download the SIMPL# Pro starter project", ".zip", () => { location.href = "/api/templates/simpl-sharp"; setTimeout(refreshActivity, 800); }, "template csproj controlsystem build");
+  add("Download the CH5 panel starter", ".ch5z", () => { location.href = "/api/templates/ch5-panel"; setTimeout(refreshActivity, 800); }, "template html panel upload");
+  add("Show activity: who did what", "Activity", () => { const sec = $("#act-sec"); sec.classList.remove("collapsed"); sec.scrollIntoView({ block: "start" }); refreshActivity(); }, "log audit history feed events");
+  for (const t of helpTopics || [])
+    items.push({ label: "Help: " + t.label, hint: t.where, help: true, run: () => openHelp(t.anchor), key: ("help " + t.label + " " + t.where + " " + t.text).toLowerCase().replace(/\s+/g, " ") });
+  return items;
+}
+
+// Every word typed must match as a subsequence; matches at the start of a word and runs of letters score higher.
+function fuzzy(q, text) {
+  let total = 0;
+  for (const w of q.split(/\s+/).filter(Boolean)) {
+    let ti = 0, score = 0, run = 0;
+    for (const ch of w) {
+      const at = text.indexOf(ch, ti);
+      if (at < 0) return -1;
+      run = at === ti && ti > 0 ? run + 1 : 0;
+      score += 1 + run * 2 + (at === 0 || /[\s·(]/.test(text[at - 1]) ? 4 : 0) - Math.min(at - ti, 6) * 0.2;
+      ti = at + 1;
+    }
+    const whole = text.indexOf(w); if (whole >= 0) score += 6 + (whole === 0 ? 4 : 0);
+    total += score;
+  }
+  return total;
+}
+
+function renderPalette() {
+  const q = palIn.value.trim().toLowerCase();
+  const words = q.split(/\s+/).filter(Boolean);
+  // Help topics match whole words anywhere in their text (title matches rank higher); actions match fuzzily.
+  const scored = palItems.map((it, i) => {
+    if (!it.help) return { it, i, s: q ? fuzzy(q, it.key) : 0 };
+    if (q.length < 2 || !words.every(w => it.key.includes(w))) return { it, i, s: -1 };
+    const title = it.label.toLowerCase();
+    return { it, i, s: 2 + words.reduce((a, w) => a + (title.includes(w) ? 6 : 0), 0) };
+  }).filter(x => x.s >= 0);
+  if (q) scored.sort((a, b) => b.s - a.s || a.i - b.i);
+  palShown = scored.slice(0, 60).map(x => x.it);
+  palOn = Math.min(palOn, Math.max(0, palShown.length - 1));
+  palList.innerHTML = "";
+  palShown.forEach((it, i) => {
+    const li = document.createElement("li"); li.setAttribute("role", "option"); li.id = "pal-opt-" + i;
+    li.setAttribute("aria-selected", i === palOn); li.className = i === palOn ? "on" : "";
+    li.innerHTML = `<span></span><span class="h"></span>`; li.firstChild.textContent = it.label; li.lastChild.textContent = it.hint || "";
+    li.onmousemove = () => { if (palOn !== i) { palOn = i; markPalette(); } };
+    li.onclick = () => runPalette(i);
+    palList.append(li);
+  });
+  if (!palShown.length) palList.innerHTML = `<li style="color:var(--muted)">Nothing matches.</li>`;
+  palIn.setAttribute("aria-activedescendant", palShown.length ? "pal-opt-" + palOn : "");
+}
+function markPalette() {
+  [...palList.children].forEach((li, i) => { li.classList.toggle("on", i === palOn); li.setAttribute("aria-selected", i === palOn); });
+  palList.children[palOn]?.scrollIntoView({ block: "nearest" });
+  palIn.setAttribute("aria-activedescendant", "pal-opt-" + palOn);
+}
+async function openPalette() {
+  toggleKeys(false);
+  palSig = []; palItems = paletteItems(); palIn.value = ""; palOn = 0; renderPalette();
+  palBack.classList.add("open"); palIn.focus();
+  // Things that need a request: every IP ID and the recent programs. They appear in the list a moment later.
+  try {
+    const [devices, recent] = await Promise.all([api("/api/devices").catch(() => []), api("/api/recent").catch(() => [])]);
+    palExtra = { devices, recent };
+    if (palBack.classList.contains("open")) { palItems = paletteItems(); renderPalette(); }
+  } catch { }
+  if (!helpTopics) loadHelpTopics().then(() => { if (palBack.classList.contains("open")) { palItems = paletteItems(); renderPalette(); } });
+}
+function closePalette() { palBack.classList.remove("open"); palIn.blur(); }
+const togglePalette = () => palBack.classList.contains("open") ? closePalette() : openPalette();
+function runPalette(i) { const it = palShown[i]; if (!it) return; closePalette(); try { const r = it.run(); if (r?.catch) r.catch(fail); } catch (e) { fail(e); } }
+palIn.oninput = () => {
+  palOn = 0; renderPalette();
+  // Signal names across all slots: asked for a moment after typing stops, and added to the list.
+  clearTimeout(palSigTimer);
+  const q = palIn.value.trim();
+  if (q.length < 2) { if (palSig.length) { palSig = []; palItems = paletteItems(); renderPalette(); } return; }
+  palSigTimer = setTimeout(async () => {
+    const hits = await findSignals(q);
+    if (palIn.value.trim() !== q || !palBack.classList.contains("open")) return;
+    palSig = hits; palItems = paletteItems(); renderPalette();
+  }, 250);
+};
+palIn.onkeydown = e => {
+  if (e.key === "ArrowDown") { e.preventDefault(); palOn = Math.min(palShown.length - 1, palOn + 1); markPalette(); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); palOn = Math.max(0, palOn - 1); markPalette(); }
+  else if (e.key === "Enter") { e.preventDefault(); runPalette(palOn); }
+  else if (e.key === "Home") { e.preventDefault(); palOn = 0; markPalette(); }
+  else if (e.key === "End") { e.preventDefault(); palOn = Math.max(0, palShown.length - 1); markPalette(); }
+};
+palBack.onclick = e => { if (e.target === palBack) closePalette(); };
+$("#pal-open").onclick = openPalette;
+
+// ------------------------------------------------------------------ find a signal in any slot
+// The box in the header and the command palette both ask /api/search/signals; picking a result opens that slot's debugger on it.
+let sigFindTimer = 0, sigFindSeq = 0;
+async function findSignals(q) {
+  if (q.trim().length < 2) return [];
+  try { return await api(`/api/search/signals?q=${encodeURIComponent(q.trim())}&max=40`); } catch { return []; }
+}
+const openSignal = h => OpenVPLog.openDebugger(h.slot, h.signal);
+const sf = $("#sigfind"), sfRes = $("#sigfind-res");
+let sfHits = [], sfOn = -1;
+function paintSigFind() {
+  sfRes.replaceChildren(...sfHits.map((h, i) => {
+    const d = document.createElement("div"); d.className = i === sfOn ? "on" : "";
+    const b = document.createElement("b"); b.className = "mono"; b.textContent = h.signal;
+    const sm = document.createElement("small"); sm.textContent = `slot ${h.slot} · ${h.program} · ${h.kind} = ${h.value === "" ? "(empty)" : h.value}`;
+    d.append(b, sm); d.onmousedown = e => { e.preventDefault(); sfRes.hidden = true; openSignal(h); };
+    return d;
+  }));
+  if (!sfHits.length && sf.value.trim().length >= 2) { const d = document.createElement("div"); d.style.color = "var(--muted)"; d.textContent = "No loaded slot has a signal like that."; sfRes.replaceChildren(d); }
+  sfRes.hidden = !sfRes.childNodes.length;
+}
+sf.oninput = () => {
+  clearTimeout(sigFindTimer); const my = ++sigFindSeq;
+  sigFindTimer = setTimeout(async () => { const h = await findSignals(sf.value); if (my !== sigFindSeq) return; sfHits = h; sfOn = -1; paintSigFind(); }, 200);
+  if (sf.value.trim().length < 2) { sfHits = []; sfRes.hidden = true; }
+};
+sf.onkeydown = e => {
+  if (e.key === "ArrowDown") { e.preventDefault(); sfOn = Math.min(sfHits.length - 1, sfOn + 1); paintSigFind(); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); sfOn = Math.max(0, sfOn - 1); paintSigFind(); }
+  else if (e.key === "Enter") { e.preventDefault(); const h = sfHits[Math.max(0, sfOn)]; if (h) { sfRes.hidden = true; openSignal(h); } }
+  else if (e.key === "Escape") { sfRes.hidden = true; sf.blur(); }
+};
+sf.onblur = () => setTimeout(() => { sfRes.hidden = true; }, 150);
+sf.onfocus = () => { if (sfHits.length) sfRes.hidden = false; };
+
+
+// ------------------------------------------------------------------ will it run? (the readiness check)
+// When a file is chosen or dropped, OpenVP reads it without loading it and says whether it will run. It is advice only:
+// Load & start always works.
+const MAIN_RE = /\.(lpz|cpz|dll|zip|smw)$/i;
+const pickMain = files => files.find(f => MAIN_RE.test(f.name)) || null;
+const CHECK_LIMIT = 200 * 1048576;
+
+async function checkProgram(files) {
+  const main = pickMain(files) || (files.length === 1 ? files[0] : null);
+  if (!main) return null;
+  const others = files.filter(f => f !== main);
+  const mainPath = desktop?.pathForFile(main);
+  if (mainPath) return api("/api/check/path", jsonPost({ path: mainPath, files: others.map(f => desktop.pathForFile(f)).filter(Boolean) }));
+  if (main.size > CHECK_LIMIT) return { file: main.name, verdict: "skipped", headline: "Not checked", reason: "The file is too big to check before loading. It will still load.", problems: [], summary: null };
+  const fd = new FormData();
+  fd.append("file", main);
+  for (const f of others) fd.append("extra", f);
+  return api("/api/check", { method: "POST", body: fd });
+}
+
+function renderReady(el, rep, note) {
+  el.innerHTML = "";
+  if (!rep) { el.hidden = true; return; }
+  el.hidden = false;
+  const icon = { "will-run": "✓ ", partly: "! ", "wont-run": "✕ " }[rep.verdict] || "";
+  const box = document.createElement("div");
+  box.className = "rd rd-" + rep.verdict;
+  box.innerHTML = `<div class="rd-head"><span class="rd-badge"></span><b class="rd-file"></b></div>`;
+  box.querySelector(".rd-badge").textContent = icon + rep.headline;
+  box.querySelector(".rd-file").textContent = rep.file || "";
+  const add = (cls, text) => { const d = document.createElement("div"); d.className = cls; d.textContent = text; box.append(d); };
+  if (rep.reason) add("rd-why", rep.reason);
+  if (rep.summary?.text) add("rd-sum", rep.summary.text);
+  if (rep.problems?.length) {
+    const det = document.createElement("details");
+    det.open = rep.problems.length <= 5;
+    det.innerHTML = `<summary>What isn't supported yet (${rep.problems.length})</summary><ul></ul>`;
+    const ul = det.querySelector("ul");
+    for (const p of rep.problems) { const li = document.createElement("li"); li.textContent = `${p.kind}: ${p.name}`; if (p.detail) { const sm = document.createElement("small"); sm.textContent = " · " + p.detail; li.append(sm); } ul.append(li); }
+    box.append(det);
+  }
+  add("rd-note", note ?? "This is advice only: you can still load it.");
+  el.append(box);
+}
+
+let readyToken = 0;
+async function runReady() {
+  const files = [...$("#file").files], el = $("#ready"), tok = ++readyToken;
+  if (!files.length) { renderReady(el, null); return; }
+  el.hidden = false; el.innerHTML = `<div class="rd"><div class="rd-head"><span class="rd-badge">Checking…</span><b></b></div></div>`;
+  el.querySelector("b").textContent = (pickMain(files) || files[0]).name;
+  let rep = null;
+  try { rep = await checkProgram(files); } catch (e) { if (tok === readyToken) { el.innerHTML = ""; el.hidden = true; } return; }
+  if (tok === readyToken) renderReady(el, rep);
+}
+$("#file").addEventListener("change", runReady);
+
+// ------------------------------------------------------------------ try the demo
+async function tryDemo() {
+  let info;
+  try { info = await api("/api/demo"); } catch (e) { return fail(e); }
+  if (!info.available) return toast("The demo programs aren't installed with this copy of OpenVP.", { error: true });
+  const d = $("#demo-dlg");
+  $("#demo-v1").hidden = false; $("#demo-v2").hidden = true; $("#demo-err").hidden = true;
+  const warn = $("#demo-warn");
+  warn.hidden = !info.occupied.length;
+  warn.textContent = info.occupied.length
+    ? `This replaces ${info.occupied.map(o => `${o.program} in slot ${o.slot}`).join(" and ")}. A snapshot is saved first, so you can roll back from History.`
+    : "";
+  $("#demo-go").disabled = false;
+  if (!d.open) d.showModal();
+  $("#demo-go").focus();
+  $("#demo-go").onclick = async () => {
+    $("#demo-go").disabled = true; $("#demo-err").hidden = true;
+    try { await api("/api/demo", jsonPost({ replace: true })); }
+    catch (e) { $("#demo-err").hidden = false; $("#demo-err").textContent = e.message; $("#demo-go").disabled = false; return; }
+    select(1); refreshAllSoon(1);
+    window.open("panel.html?ipid=03&slot=1", "openvp-demo-panel-1");
+    $("#demo-v1").hidden = true; $("#demo-v2").hidden = false;
+  };
+}
+$("#demo-cancel").onclick = () => $("#demo-dlg").close();
+$("#demo-done").onclick = () => $("#demo-dlg").close();
+$("#demo-p1").onclick = () => window.open("panel.html?ipid=03&slot=1", "openvp-demo-panel-1");
+$("#demo-p2").onclick = () => window.open("panel.html?ipid=03&slot=2", "openvp-demo-panel-2");
+$("#demo-btn").onclick = tryDemo;
+
+// ------------------------------------------------------------------ templates
+async function openTemplates() {
+  const d = $("#tpl-dlg"), list = $("#tpl-list");
+  list.innerHTML = `<p class="muted">Loading…</p>`;
+  if (!d.open) d.showModal();
+  let items;
+  try { items = await api("/api/templates"); } catch (e) { list.innerHTML = ""; const p = document.createElement("p"); p.textContent = e.message; list.append(p); return; }
+  const how = {
+    "simpl-sharp": "Unzip it, run dotnet build in the StarterProgram folder (needs the .NET 8 SDK), then load bin/Debug/net8.0/StarterProgram.dll into a slot. It builds against OpenVP's own copy of the SIMPL# Pro API, in lib/.",
+    "ch5-panel": "In the IP table, click an IP ID and choose Upload .ch5z…, then Share… to get a link that opens it. Or unzip it and open index.html?host=localhost:8080&ipid=03&slot=1 as a plain page."
+  };
+  list.innerHTML = "";
+  for (const t of items) {
+    const box = document.createElement("div"); box.className = "tpl";
+    box.innerHTML = `<b></b><span></span><small></small>`;
+    box.querySelector("b").textContent = t.name; box.querySelector("span").textContent = t.description; box.querySelector("small").textContent = how[t.id] || "";
+    if (t.available) {
+      const a = document.createElement("a"); a.className = "dl"; a.href = t.url; a.setAttribute("download", t.file); a.textContent = "Download " + t.file; a.title = "Download " + t.name;
+      a.onclick = () => setTimeout(refreshActivity, 800);
+      box.append(a);
+    } else { const m = document.createElement("small"); m.textContent = "Not installed with this copy of OpenVP."; box.append(m); }
+    list.append(box);
+  }
+}
+$("#tpl-open").onclick = openTemplates;
+
+// ------------------------------------------------------------------ activity feed
+let actTimer = 0, actHtml = "";
+function actWhen(t) {
+  const d = new Date(t), now = new Date(), hm = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return d.toDateString() === now.toDateString() ? hm : `${d.toLocaleDateString([], { month: "short", day: "numeric" })} ${hm}`;
+}
+function refreshActivitySoon() { clearTimeout(actTimer); actTimer = setTimeout(refreshActivity, 400); }
+async function refreshActivity() {
+  const f = $("#act-filter").value;
+  const slot = f === "sel" ? sel : f === "all" ? "" : f;
+  let list;
+  try { list = await api(`/api/activity?limit=100${slot ? "&slot=" + slot : ""}`); } catch { return; }
+  const html = list.map(e => `<tr title="${esc(new Date(e.time).toLocaleString())}"><td class="when" data-who="${esc((e.user ? e.user + " · " : "") + e.who + (e.slot ? " · slot " + e.slot : ""))}">${esc(actWhen(e.time))}</td><td class="who">${esc(e.user ? e.user + " · " + e.who : e.who)}</td><td class="num">${e.slot ?? ""}</td><td class="what">${esc(e.text)}</td></tr>`).join("");
+  $("#act-empty").hidden = list.length > 0;
+  if (html !== actHtml) { actHtml = html; $("#act-table tbody").innerHTML = html; }
+}
+function fillActivityFilter() {
+  const f = $("#act-filter"), cur = f.value;
+  const html = `<option value="all">all slots</option><option value="sel">the selected slot</option>` + boardSlots.map(s => `<option value="${s.number}">slot ${s.number}${s.name ? " · " + esc(s.name) : ""}</option>`).join("");
+  if (f.dataset.html !== html) { f.dataset.html = html; f.innerHTML = html; f.value = [...f.options].some(o => o.value === cur) ? cur : "all"; }
+}
+$("#act-filter").onchange = refreshActivity;
+
+// ------------------------------------------------------------------ help on hover
+// Controls are tied to a section of help.html by data-help="anchor" (the nearest ancestor with one wins). Hover a control
+// and click the small ?, hold Shift and click it, press F1 on it, or long-press it on a touch screen.
+const CONTROL = "button, input, select, textarea, a[href], summary, label, [role=button], [role=switch], .btile";
+const openHelp = a => { window.open("help.html#" + encodeURIComponent(a), "openvp-help"); };
+const helpFor = el => el?.closest?.("[data-help]")?.dataset.help || null;
+{
+  const q = document.createElement("button");
+  q.id = "help-q"; q.type = "button"; q.hidden = true; q.textContent = "?"; q.setAttribute("aria-label", "Help for this control"); q.title = "Open help for this control";
+  document.body.append(q);
+  let target = null, showTimer = 0, hideTimer = 0, anchor = null;
+  const hide = () => { clearTimeout(showTimer); q.hidden = true; target = null; };
+  const place = el => {
+    const r = el.getBoundingClientRect();
+    q.style.left = Math.min(innerWidth - 24, Math.max(2, r.right - 10)) + "px";
+    q.style.top = Math.max(2, r.top - 9) + "px";
+  };
+  document.addEventListener("pointerover", e => {
+    if (e.pointerType === "touch" || !matchMedia("(hover: hover)").matches) return;
+    if (e.target === q) { clearTimeout(hideTimer); return; }
+    const el = e.target.closest?.(CONTROL);
+    if (!el || el.closest("dialog, #pal-back, #keys-back, #toasts") || el.id === "help-q") return;
+    const a = helpFor(el);
+    if (!a) return;
+    clearTimeout(hideTimer); clearTimeout(showTimer);
+    if (el === target) return;
+    showTimer = setTimeout(() => { target = el; anchor = a; place(el); q.hidden = false; }, 450);
+  });
+  document.addEventListener("pointerout", e => {
+    if (e.target === q || e.target.closest?.(CONTROL)) { clearTimeout(showTimer); hideTimer = setTimeout(hide, 250); }
+  });
+  q.addEventListener("pointerover", () => clearTimeout(hideTimer));
+  q.addEventListener("pointerout", () => { hideTimer = setTimeout(hide, 250); });
+  q.onclick = e => { e.stopPropagation(); if (anchor) openHelp(anchor); hide(); };
+  addEventListener("scroll", hide, true);
+  // Shift + click opens help instead of acting.
+  document.addEventListener("click", e => {
+    if (!e.shiftKey || e.ctrlKey || e.metaKey) return;
+    const el = e.target.closest?.(CONTROL), a = helpFor(el || e.target);
+    if (!a || e.target.closest("dialog, #pal-back")) return;
+    e.preventDefault(); e.stopPropagation(); openHelp(a);
+  }, true);
+  addEventListener("keydown", e => { if (e.shiftKey) document.body.classList.add("help-shift"); if (e.key === "F1") { const a = helpFor(document.activeElement); if (a) { e.preventDefault(); openHelp(a); } } });
+  addEventListener("keyup", e => { if (!e.shiftKey) document.body.classList.remove("help-shift"); });
+  addEventListener("blur", () => document.body.classList.remove("help-shift"));
+  // Long-press on touch.
+  let press = 0, pressed = false;
+  document.addEventListener("pointerdown", e => {
+    if (e.pointerType === "mouse") return;
+    const el = e.target.closest?.(CONTROL), a = helpFor(el);
+    if (!el || !a || el.closest("dialog, #pal-back")) return;
+    pressed = false; clearTimeout(press);
+    press = setTimeout(() => { pressed = true; openHelp(a); }, 650);
+  }, true);
+  const cancelPress = () => clearTimeout(press);
+  document.addEventListener("pointerup", cancelPress, true); document.addEventListener("pointercancel", cancelPress, true); document.addEventListener("pointermove", e => { if (Math.abs(e.movementX) + Math.abs(e.movementY) > 6) cancelPress(); }, true);
+  document.addEventListener("click", e => { if (pressed) { pressed = false; e.preventDefault(); e.stopPropagation(); } }, true);
+  document.addEventListener("contextmenu", e => { if (pressed || press) { const el = e.target.closest?.(CONTROL); if (el && helpFor(el)) e.preventDefault(); } });
+}
+
+// Help topics for the command palette: read from help.html the first time the palette opens.
+let helpTopics = null;
+async function loadHelpTopics() {
+  if (helpTopics) return helpTopics;
+  helpTopics = [];
+  try {
+    const html = await (await fetch("help.html")).text();
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    for (const sec of doc.querySelectorAll("main > section")) {
+      const secTitle = sec.querySelector("h2")?.textContent.trim() || sec.id;
+      let h3 = null;
+      for (const el of sec.children) {
+        if (el.tagName === "H3") { h3 = el; if (el.id) helpTopics.push({ label: el.textContent.trim(), where: secTitle, anchor: el.id, text: el.textContent }); }
+        else if (el.tagName === "DL") {
+          for (const dt of el.querySelectorAll(":scope > dt")) {
+            const dd = dt.nextElementSibling;
+            const anchor = dt.id || h3?.id || sec.id;
+            helpTopics.push({ label: dt.textContent.replace(/\s+/g, " ").trim(), where: [secTitle, h3?.textContent.trim()].filter(Boolean).join(" › "), anchor, text: dt.textContent + " " + (dd?.textContent || "") });
+          }
+        }
+      }
+    }
+  } catch { }
+  return helpTopics;
+}
+
 select(1);
+applyHash();
+
+// ------------------------------------------------------------------ welcome screen
+// Shown until someone finishes or skips it; that choice is kept on the server. Escape only closes it for now.
+{
+  const d = $("#welcome");
+  const dismiss = () => fetch("/api/welcome/dismiss", { method: "POST" }).catch(() => {});
+  function showWelcome() {
+    if (d.open) return;
+    d.returnValue = "";
+    d.onclose = () => { if (d.returnValue === "ok" || d.returnValue === "skip") dismiss(); };
+    d.showModal();
+    $("#welcome-go").focus();
+  }
+  $("#welcome-skip").onclick = () => d.close("skip");
+  $("#welcome-demo").onclick = () => { d.close("ok"); tryDemo(); };
+  $("#welcome-link").onclick = e => { e.preventDefault(); showWelcome(); };
+  const fromHash = () => { if (location.hash !== "#welcome") return false; history.replaceState(null, "", location.pathname + location.search); showWelcome(); return true; };
+  addEventListener("hashchange", fromHash);
+  (async () => {
+    try {
+      if (fromHash()) return;
+      const r = await fetch("/api/welcome");   // 401 before login: say nothing, the login box handles it
+      if (r.ok && (await r.json()).show) showWelcome();
+    } catch { }
+  })();
+}
+refreshHistory();
+setInterval(() => { if (!document.hidden) pollRecording(); }, 700);
 setInterval(refreshSlots, 3000);
+refreshBoard(); setInterval(refreshBoard, 2000);
+openvpAlerts.badge($("#alerts-badge"));
+refreshActivity(); setInterval(() => { if (!document.hidden) refreshActivity(); }, 3000);
 setInterval(() => { if (!document.hidden) refreshIpTable(); }, 2000);
 </script>
 </body>

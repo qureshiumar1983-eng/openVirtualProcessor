@@ -98,11 +98,20 @@ public static class CompatScanner
             var type = shim.GetType(owner);
             if (type == null) continue;
             var member = md.GetString(mr.Name);
-            const BindingFlags all = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.FlattenHierarchy;
-            var found = member == ".ctor"
-                ? type.GetConstructors(all).Length > 0
-                : HasMember(type, member, all);
-            if (!found) missingMembers.Add($"{owner}.{member}");
+            int? args = null; // how many arguments the program passes: a method with that name but another count is a missing overload
+            try
+            {
+                var sig = md.GetBlobReader(mr.Signature);
+                var header = sig.ReadSignatureHeader();
+                if (header.Kind == SignatureKind.Method)
+                {
+                    if (header.IsGeneric) sig.ReadCompressedInteger();
+                    args = sig.ReadCompressedInteger();
+                }
+            }
+            catch (BadImageFormatException) { }
+            if (!IsMemberSupported(type, member, args))
+                missingMembers.Add(args is { } n && HasMember(type, member, All) ? $"{owner}.{member}({n} argument{(n == 1 ? "" : "s")})" : $"{owner}.{member}");
         }
 
         string? entry = null;
@@ -118,6 +127,27 @@ public static class CompatScanner
         }
 
         return new CompatReport(assemblyPath, entry, crestronNames.ToList(), used.ToList(), missingTypes.ToList(), missingMembers.ToList());
+    }
+
+    private const BindingFlags All = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.FlattenHierarchy;
+
+    /// <summary>True if <paramref name="type"/> (or a base type) has a member of that name; for a method or constructor, one taking <paramref name="args"/> arguments when that is known.</summary>
+    public static bool IsMemberSupported(Type type, string member, int? args)
+    {
+        if (member == ".ctor")
+            return args == null ? type.GetConstructors(All).Length > 0 : type.GetConstructors(All).Any(c => c.GetParameters().Length == args);
+        if (args == null) return HasMember(type, member, All);
+        var named = false;
+        for (var t = type; t != null; t = t.BaseType)
+            foreach (var m in t.GetMember(member, All))
+            {
+                named = true;
+                if (m is MethodBase mb && mb.GetParameters().Length == args) return true;
+            }
+        if (!named) // an interface's methods aren't on its base types
+            foreach (var i in type.GetInterfaces())
+                if (i.GetMember(member, All).OfType<MethodBase>().Any(mb => mb.GetParameters().Length == args)) return true;
+        return false;
     }
 
     private static bool HasMember(Type type, string name, BindingFlags flags)

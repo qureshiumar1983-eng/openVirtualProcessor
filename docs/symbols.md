@@ -8,7 +8,7 @@ Every symbol has one implementation, used both for `.smw` source and compiled `.
 - **documented**: written from the SIMPL Windows symbol descriptions. It runs from `.smw` (matched by name). Pin order and parameter units are best guesses, and the compiled type is unknown until a real program shows it. To run one in a compiled program, name its type in `primitives.json`.
 - **inferred**: the compiled type and pins were seen in real programs (a private test set, not in this repo), but the behavior is inferred from how those programs wire and name the pins, usually because the symbol sits inside a macro whose source isn't available. Each one's code comment (`src/OpenVP.Lpz/Primitives4.cs`) says what the inference rests on.
 
-86 symbols: 67 compiled, 9 inferred, 10 documented.
+110 symbols: 67 compiled, 9 inferred, 34 documented.
 
 ## Digital
 
@@ -35,6 +35,8 @@ Every symbol has one implementation, used both for `.smw` source and compiled `.
 | Button Presser | compiled | 99 | 138 | in: i · out: o1..oN follow the input |
 | Logic Wave Pulse | compiled | 409, 1309 | 204 | in: i1..iN · out: one-wave pulse |
 | Logic Wave Delay | compiled | 408 | 203 | in: i1..iN · out: o1..oN · params: waves |
+| Digital Multiplexer (also: Digital Mux) | documented | ? | ? | in: select (analog), i1..iN · out: i(select), low if none |
+| Digital Demultiplexer (also: Digital Demux) | documented | ? | ? | in: select (analog), i · out: o1..oN, only o(select) follows |
 
 ## Timers
 
@@ -82,6 +84,18 @@ Every symbol has one implementation, used both for `.smw` source and compiled `.
 | Analog 2's Offset Converter | documented | ? | ? | in: a1..aN · out: a1..aN with bit 15 flipped |
 | Analog Negation | documented | ? | ? | in: a1..aN · out: -a1..-aN (two's complement) |
 | Analog Debounce | documented | ? | ? | in: a · out: a once stable · params: time |
+| Analog Subtract (also: Analog Subtractor, Analog Difference) | documented | ? | ? | in: a1..aN · out: a1 - a2 - ... (wraps at 16 bits) |
+| Analog Multiplier (also: Analog Multiply) | documented | ? | ? | in: a1..aN · out: product (low 16 bits) |
+| Analog Divider (also: Analog Divide) | documented | ? | ? | in: a1..aN · out: a1 / a2 / ... (integer; divide by 0 gives 0) |
+| Analog Minimum (also: Analog Min) | documented | ? | ? | in: a1..aN · out: smallest wired input |
+| Analog Maximum (also: Analog Max) | documented | ? | ? | in: a1..aN · out: largest wired input |
+| Analog Average | documented | ? | ? | in: a1..aN · out: mean of the wired inputs, rounded down |
+| Analog Delay | documented | ? | ? | in: a · out: a, every change P1 later · params: time |
+| Up/Down Counter (also: Analog Counter, Counter) | documented | ? | ? | in: up, down, reset · out: count (stops at the limits) · params: min, max, initial |
+| Hex to Analog | documented | ? | ? | in: hex text · out: a (0 if not hex) |
+| Analog Multiplexer (also: Analog Mux) | documented | ? | ? | in: select, a1..aN · out: a(select), 0 if none |
+| Analog Demultiplexer (also: Analog Demux) | documented | ? | ? | in: select, a · out: o1..oN, only o(select) follows |
+| Time Split (also: Time to Analog) | documented | ? | ? | in: time of day text · out: hour, minute, second |
 
 ## Serial
 
@@ -107,6 +121,16 @@ Every symbol has one implementation, used both for `.smw` source and compiled `.
 | String Length | compiled | 2506 | 254 | in: s · out: a |
 | Make String Permanent | compiled | 858 | 205 | in: s1..sN (kept across restarts) |
 | Intersystem Communications | compiled | 327 | 85 | in: xsig, joins · out: xsig, joins · params: offset |
+| Serial Delay | documented | ? | ? | in: s · out: s, every change P1 later · params: time |
+| Serial to Hex | documented | ? | ? | in: s · out: two hex digits per character |
+| Hex to Serial | documented | ? | ? | in: hex text · out: the characters |
+| Analog to Hex | documented | ? | ? | in: a · out: upper-case hex text · params: digits (1-4, default 4) |
+| Serial Equate | documented | ? | ? | in: s, enable · out: o1..oN, high while s = string parameter k |
+| Serial Compare | documented | ? | ? | in: s1, s2 · out: same, different |
+| Serial RAM | documented | ? | ? | in: s1..sN, store, recall, bank selects · out: s1..sN |
+| Serial Multiplexer (also: Serial Mux) | documented | ? | ? | in: select (analog), s1..sN · out: s(select), empty if none |
+| Serial Demultiplexer (also: Serial Demux) | documented | ? | ? | in: select (analog), s · out: o1..oN, only o(select) follows |
+| Time Join (also: Analog to Time) | documented | ? | ? | in: hour, minute, second · out: HH:MM:SS |
 
 ## System
 

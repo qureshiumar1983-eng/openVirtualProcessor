@@ -153,7 +153,7 @@ namespace Crestron.SimplSharpPro.CrestronThread
                 using var tracked = slot?.Metrics.TrackThread("CrestronThread");
                 try { _callback(_obj); }
                 catch (System.Threading.ThreadInterruptedException) { }
-                catch (Exception e) { slot?.Log("Error", "Exception in user thread " + Name + ": " + e); }
+                catch (Exception e) { if (slot != null) slot.ReportException("CrestronThread " + (Name ?? "(unnamed)"), e); }
                 finally { ThreadState = eThreadStates.ThreadFinished; }
             }) { IsBackground = true };
             ThreadState = eThreadStates.ThreadCreated;
@@ -166,7 +166,7 @@ namespace Crestron.SimplSharpPro.CrestronThread
 
         public void Start()
         {
-            if (_thread.ThreadState == System.Threading.ThreadState.Unstarted) _thread.Start();
+            if ((_thread.ThreadState & System.Threading.ThreadState.Unstarted) != 0) _thread.Start(); // a background thread reports Unstarted | Background, so test the flag
         }
 
         public bool Join() { _thread.Join(); return true; }

@@ -1,0 +1,77 @@
+# Builds the .deb and .rpm of the OpenVP server (see build.sh, which sets the variables below).
+# nfpm: https://nfpm.goreleaser.com (MIT).
+name: openvp
+arch: ${ARCH}            # amd64 or arm64
+platform: linux
+version: ${VERSION}      # for example 0.2.0, or 0.1.0-dev.12 (a pre-release, which sorts before 0.1.0)
+version_schema: semver
+section: misc
+priority: optional
+maintainer: OpenVP contributors <noreply@users.noreply.github.com>
+description: |
+  OpenVP, an open-source virtual control processor.
+  Runs SIMPL Windows (.lpz) and SIMPL# programs from a web console, with a debugger, panels and a REST API.
+  Self-contained: the .NET runtime is included.
+vendor: OpenVP
+homepage: https://github.com/qureshiumar1983-eng/openVirtualProcessor
+license: MIT
+
+contents:
+  # The self-contained publish output of src/OpenVP.Server (file modes are kept, so the openvp program stays executable).
+  - src: ${PUBLISH_DIR}/
+    dst: /usr/lib/openvp
+    type: tree
+  - src: /usr/lib/openvp/openvp
+    dst: /usr/bin/openvp
+    type: symlink
+    file_info:
+      mode: 0777
+  - src: packaging/linux/openvp.service
+    dst: /usr/lib/systemd/system/openvp.service
+    file_info:
+      mode: 0644
+  - src: packaging/linux/openvp.env
+    dst: /etc/openvp/openvp.env
+    type: config|noreplace
+    file_info:
+      mode: 0644
+  - src: LICENSE
+    dst: /usr/share/doc/openvp/copyright
+    file_info:
+      mode: 0644
+
+scripts:
+  preinstall: packaging/linux/preinstall.sh
+  postinstall: packaging/linux/postinstall.sh
+  preremove: packaging/linux/preremove.sh
+  postremove: packaging/linux/postremove.sh
+
+# What a self-contained .NET 8 app needs from the system (the same list Microsoft's own packages use).
+overrides:
+  deb:
+    depends:
+      - libc6
+      - libgcc-s1
+      - libstdc++6
+      - zlib1g
+      - ca-certificates
+      - libssl3 | libssl3t64 | libssl1.1
+      - libicu76 | libicu74 | libicu72 | libicu70 | libicu67 | libicu66 | libicu63
+    recommends:
+      - git
+  rpm:
+    depends:
+      - glibc
+      - libgcc
+      - libstdc++
+      - zlib
+      - ca-certificates
+      - openssl-libs
+      - libicu
+    recommends:
+      - git
+
+deb:
+  compression: xz
+rpm:
+  compression: xz

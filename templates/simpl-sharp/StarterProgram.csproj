@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A starter SIMPL# Pro program for OpenVP.
+
+    Build:   dotnet build
+    Run:     in the OpenVP console, load  bin/Debug/net8.0/StarterProgram.dll  into a slot (Load & start).
+
+    It builds against lib/SimplSharpPro.dll, OpenVP's own copy of the SIMPL# Pro API under Crestron's assembly name, so the
+    program's compiled .dll refers to "SimplSharpPro" exactly as a program built with Crestron's SDK does. OpenVP runs it
+    through its facade assemblies; nothing in lib/ is Crestron code. To build for a real processor, replace the two
+    Reference entries with the SDK's SimplSharpPro.dll and the other Crestron assemblies you use, and keep ControlSystem.cs.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>StarterProgram</AssemblyName>
+    <RootNamespace>StarterProgram</RootNamespace>
+    <NoWarn>$(NoWarn);CS0618</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Private=false: the compiled program must not carry its own copy; OpenVP provides it when the program loads. -->
+    <Reference Include="SimplSharpPro">
+      <HintPath>lib/SimplSharpPro.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="OpenVP.Core">
+      <HintPath>lib/OpenVP.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

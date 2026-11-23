@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<link rel="stylesheet" href="openvp-ops.css">
+<script src="openvp-theme.js"></script>
+<title>OpenVP remote EISC</title>
+<style>
+  .led { width:10px; height:10px; border-radius:50%; display:inline-block; background:var(--dim); vertical-align:middle; }
+  .led.connected { background:var(--ok); box-shadow:0 0 6px var(--ok); } .led.reconnecting, .led.connecting { background:#d69e2e; } .led.error { background:var(--err); } .led.waiting { background:var(--info-fg); }
+  td.wrap { overflow-wrap:anywhere; }
+  .lat { font:11px ui-monospace, Menlo, Consolas, monospace; padding:0 6px; border-radius:9px; border:1px solid var(--line); white-space:nowrap; }
+  .steps { margin:4px 0 4px 1.2em; padding:0; } .steps li { margin:2px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Remote EISC</h1>
+  <span id="saved" role="status" aria-live="polite"></span>
+  <span class="sp"></span>
+  <span id="who-chip"></span>
+  <button class="theme-btn" data-theme-toggle></button>
+  <a href="rack.html">Rack</a>
+  <a href="labs.html">Labs</a>
+  <a href="/">Console</a>
+  <a href="help.html#remote-eisc" target="openvp-help">Help</a>
+</header>
+<main>
+  <div id="fail" class="note" role="alert" hidden></div>
+  <div id="off" class="note" hidden><b>Remote EISC is switched off in Labs</b>, so no link connects and this machine refuses incoming links. An Admin can switch it on in <a href="labs.html">Labs</a>. Your links below are kept.</div>
+  <div class="card">
+    <h2>Links <span class="sp" style="flex:1"></span><button class="primary small" id="add" data-perm="Admin">Add link…</button></h2>
+    <p class="muted">Joins flow both ways between an EISC on this OpenVP and an EISC on another one. This machine opens the connection; the other machine only needs an <b>API token with scope eisc-link</b> (Security, API tokens). It reconnects by itself and sends every join again after a reconnect. Only one side needs a link: the other side's connection shows under <b>Incoming</b>.</p>
+    <div class="scroll-x"><table id="tbl" class="cards"><thead><tr><th>Link</th><th>This machine</th><th>Other machine</th><th>State</th><th>Joins in/out</th><th></th></tr></thead><tbody></tbody></table></div>
+    <div id="empty" class="muted" hidden>No links yet. Click <b>Add link…</b>.</div>
+  </div>
+  <div class="card" id="inc-card" hidden>
+    <h2>Incoming</h2>
+    <p class="muted">Other OpenVPs that opened a link to an EISC here.</p>
+    <div class="scroll-x"><table class="cards" id="inc"><thead><tr><th>EISC here</th><th>From</th><th>Since</th><th>Latency</th><th>Joins in/out</th></tr></thead><tbody></tbody></table></div>
+  </div>
+  <div class="card">
+    <h2>How to set one up</h2>
+    <ol class="steps">
+      <li>On the <b>other</b> OpenVP: switch on <i>Remote EISC</i> in Labs, load a program with an EISC, and make an API token with scope <b>eisc-link</b> (Security, API tokens). Optionally limit it to that EISC's slot.</li>
+      <li>Here: switch on <i>Remote EISC</i> in Labs, and add the other machine under <a href="targets.html">Push targets</a> with that token as its key. For https with a self-signed certificate, pin its fingerprint there.</li>
+      <li>Add a link below: this machine's slot and EISC IP ID, the other machine, and its slot and EISC IP ID.</li>
+    </ol>
+    <p class="muted">A link joins two EISCs, one on each machine, and what one program sets on its EISC shows up on the other. Two programs that set each other's joins in a loop are slowed down: a serial that just arrived isn't sent straight back, and a join that changes more than 200 times a second is paused for a few seconds.</p>
+  </div>
+</main>
+<dialog id="ln-dlg" aria-labelledby="ln-title"><form method="dialog" id="ln-form" onsubmit="return false" class="stack" autocomplete="off">
+  <h2 id="ln-title">Add link</h2>
+  <label>Name<input id="ln-name" maxlength="60" placeholder="Rack 1 to Boardroom"></label>
+  <label>The other OpenVP (a push target)<select id="ln-target"></select></label>
+  <div id="ln-notarget" class="note" hidden>There are no push targets yet. <a href="targets.html">Add the other machine first</a>, with an eisc-link token as its key.</div>
+  <div class="form">
+    <label>This machine: slot<select id="ln-lslot"></select></label>
+    <label>This machine: EISC IP ID (hex)<input id="ln-lip" class="mono" maxlength="2" placeholder="10" list="ln-ips"></label>
+    <label>Other machine: slot<input id="ln-rslot" type="number" min="1" max="99" value="1"></label>
+    <label>Other machine: EISC IP ID (hex)<input id="ln-rip" class="mono" maxlength="2" placeholder="10"></label>
+  </div>
+  <datalist id="ln-ips"></datalist>
+  <label class="inline"><input type="checkbox" id="ln-en" checked> Connect now</label>
+  <div class="err" id="ln-err" role="alert"></div>
+  <div class="row"><button type="button" data-close>Cancel</button><button type="button" class="primary" id="ln-save">Save</button></div>
+</form></dialog>
+<dialog id="cf-dlg" aria-labelledby="cf-title"><form method="dialog" id="cf-form">
+  <h2 id="cf-title"></h2><div id="cf-text" style="white-space:pre-wrap"></div>
+  <div class="row"><button type="button" data-close>Cancel</button><button value="ok" id="cf-ok" class="primary">OK</button></div>
+</form></dialog>
+<script src="openvp-auth.js"></script>
+<script src="openvp-ops.js"></script>
+<script>
+"use strict";
+openvpAuth.init();
+let data = null, slots = [], editing = null;
+const STATE = { connected: ["ok", "connected"], connecting: ["info", "connecting"], reconnecting: ["warn", "reconnecting"], waiting: ["info", "waiting for the EISC"], error: ["err", "problem"], off: ["", "off"] };
+const latCls = ms => ms == null ? "" : ms < 50 ? "good" : ms < 200 ? "mid" : "bad";
+const lat = ms => ms == null ? "" : `<span class="lat">${ms < 10 ? ms.toFixed(1) : Math.round(ms)} ms</span>`;
+
+function draw() {
+  $("#off").hidden = data.labsOn;
+  $("#empty").hidden = data.links.length > 0; $("#tbl").hidden = data.links.length === 0;
+  const tb = $("#tbl tbody"); tb.innerHTML = "";
+  for (const l of data.links) {
+    const st = l.status || { state: "off", message: "" }, [cls, label] = STATE[st.state] || ["", st.state];
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="wrap" data-l="Link"><b>${esc(l.name)}</b></td>
+      <td data-l="This machine">Slot ${l.localSlot} · EISC ${esc(l.localIpId)}</td>
+      <td class="wrap" data-l="Other machine">${esc(l.targetName || "(deleted target)")} · slot ${l.remoteSlot} · EISC ${esc(l.remoteIpId)}<br><span class="muted mono">${esc(l.targetUrl || "")}</span>${l.hasKey ? "" : `<br><span class="pill warn">no token on the target</span>`}</td>
+      <td class="wrap" data-l="State"><span class="led ${esc(st.state)}"></span> ${pill(cls, label)} ${lat(st.latencyMs)}<br><span class="muted">${esc(st.message || "")}${st.state === "connected" && st.connectedSince ? ` Since ${esc(when(st.connectedSince))}.` : ""}${st.reconnects ? ` ${st.reconnects} reconnect${st.reconnects === 1 ? "" : "s"}.` : ""}${st.peerVersion ? ` Other OpenVP ${esc(st.peerVersion)}.` : ""}</span></td>
+      <td class="num" data-l="Joins in / out">${num(st.joinsIn || 0)} / ${num(st.joinsOut || 0)}</td><td class="act"></td>`;
+    const act = tr.querySelector(".act");
+    const btn = (label, title, fn, cls = "") => { const b = document.createElement("button"); b.textContent = label; b.title = title; b.className = "small " + cls; b.setAttribute("data-perm", "Admin"); b.onclick = fn; act.appendChild(b); act.append(" "); };
+    btn(l.enabled ? "Switch off" : "Switch on", "Connect or disconnect this link", async () => { try { await api("/api/eisc-links/" + l.id, "PUT", { ...l, enabled: !l.enabled }); } catch (e) { fail(e.message); } load(); });
+    btn("Edit…", "Change this link", () => openLink(l));
+    btn("Delete", "Remove this link", async () => { if (!await confirmBox("Remove this link?", `“${l.name}” is disconnected and removed.`, "Remove", true)) return; try { await api("/api/eisc-links/" + l.id, "DELETE"); } catch (e) { fail(e.message); } load(); }, "danger");
+    tb.appendChild(tr);
+  }
+  $("#inc-card").hidden = data.inbound.length === 0;
+  const ib = $("#inc tbody"); ib.innerHTML = "";
+  for (const i of data.inbound) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td data-l="EISC here">Slot ${i.slot} · EISC ${esc(i.ipId)}</td><td class="mono wrap" data-l="From">${esc(i.remote)}${i.peerVersion ? ` · OpenVP ${esc(i.peerVersion)}` : ""}</td><td data-l="Since">${esc(when(i.since))}</td><td data-l="Latency">${lat(i.latencyMs) || "—"}</td><td class="num" data-l="Joins in / out">${num(i.joinsIn)} / ${num(i.joinsOut)}</td>`;
+    ib.appendChild(tr);
+  }
+  openvpAuth.apply();
+}
+
+async function openLink(l) {
+  editing = l?.id || null; $("#ln-title").textContent = l ? "Edit link" : "Add link"; $("#ln-err").textContent = "";
+  $("#ln-name").value = l?.name || ""; $("#ln-rslot").value = l?.remoteSlot || 1; $("#ln-rip").value = l?.remoteIpId || ""; $("#ln-lip").value = l?.localIpId || ""; $("#ln-en").checked = l ? l.enabled : true;
+  $("#ln-target").innerHTML = data.targets.map(t => `<option value="${esc(t.id)}">${esc(t.name)} (${esc(t.url)})${t.hasKey ? "" : " — no token"}</option>`).join(""); if (l) $("#ln-target").value = l.targetId;
+  $("#ln-notarget").hidden = data.targets.length > 0;
+  $("#ln-lslot").innerHTML = slots.map(s => `<option value="${s.number}">${esc(slotLabel(s))}</option>`).join(""); if (l) $("#ln-lslot").value = l.localSlot;
+  await fillIps(); $("#ln-dlg").showModal(); $("#ln-name").focus();
+}
+async function fillIps() {
+  const n = $("#ln-lslot").value; $("#ln-ips").innerHTML = "";
+  try { const t = await api(`/api/slots/${n}/iptable`); $("#ln-ips").innerHTML = t.filter(d => /eisc|intersystem/i.test(d.type)).map(d => `<option value="${esc(d.ipId)}">${esc(d.type)}</option>`).join(""); } catch {}
+}
+$("#ln-lslot").onchange = fillIps;
+$("#add").onclick = () => openLink(null);
+$("#ln-save").onclick = async () => {
+  $("#ln-err").textContent = "";
+  const body = { name: $("#ln-name").value, targetId: $("#ln-target").value, localSlot: +$("#ln-lslot").value, localIpId: $("#ln-lip").value.trim(), remoteSlot: +$("#ln-rslot").value, remoteIpId: $("#ln-rip").value.trim(), enabled: $("#ln-en").checked };
+  try { await api(editing ? "/api/eisc-links/" + editing : "/api/eisc-links", editing ? "PUT" : "POST", body); $("#ln-dlg").close(); flash("Saved"); load(); } catch (e) { $("#ln-err").textContent = e.message; }
+};
+async function load() { try { data = await api("/api/eisc-links"); draw(); } catch (e) { fail(e.message); } }
+(async () => { try { slots = await api("/api/slots"); } catch {} await load(); setInterval(() => { if (!$("#ln-dlg").open && !$("#cf-dlg").open) load(); }, 2000); })();
+document.addEventListener("openvp-me", () => openvpAuth.apply());
+</script>
+</body>
+</html>

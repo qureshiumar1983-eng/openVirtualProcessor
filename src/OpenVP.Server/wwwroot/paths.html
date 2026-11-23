@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<script src="openvp-theme.js"></script>
 <title>OpenVP Paths</title>
 <style>
   /* Same palette as debugger.html. */
@@ -14,9 +16,9 @@
   body { margin:0; font:13px/1.35 system-ui, sans-serif; background:var(--bg); color:var(--text);
          display:flex; flex-direction:column; overflow:hidden; }
   .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size:12px; }
-  button, input, select { font:inherit; color:var(--text); background:#111519; border:1px solid var(--line); border-radius:4px; padding:3px 8px; }
+  button, input, select { font:inherit; color:var(--text); background:var(--input); border:1px solid var(--line); border-radius:4px; padding:3px 8px; }
   button { cursor:pointer; } button:hover { border-color:var(--accent); }
-  button.on { background:#0f3340; border-color:var(--neon); color:#b9f6ff; }
+  button.on { background:var(--active); border-color:var(--neon); color:var(--text); }
   button:disabled { opacity:.45; cursor:default; }
   label { display:inline-flex; align-items:center; gap:4px; color:var(--muted); }
   a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
@@ -28,12 +30,12 @@
   .group { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
   .sep { width:1px; height:20px; background:var(--line); }
   .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--lo); margin-right:5px; vertical-align:middle; }
-  .dot.ok { background:#2f9e6e; } .dot.bad { background:var(--err); }
+  .dot.ok { background:var(--ok); } .dot.bad { background:var(--err); }
 
   /* start-signal picker with autocomplete */
   .pick { position:relative; }
   .pick input { width:230px; }
-  #sugg { position:absolute; left:0; top:100%; z-index:20; min-width:100%; max-height:280px; overflow:auto; background:#1b2129;
+  #sugg { position:absolute; left:0; top:100%; z-index:20; min-width:100%; max-height:280px; overflow:auto; background:var(--head);
           border:1px solid var(--line); border-radius:4px; margin-top:2px; display:none; }
   #sugg div { padding:3px 8px; cursor:pointer; white-space:nowrap; font-size:12px; }
   #sugg div:hover, #sugg div.act { background:var(--sel); }
@@ -41,6 +43,7 @@
   #depth { width:110px; padding:0; accent-color:var(--neon); }
 
   .main { flex:1; min-height:0; display:grid; grid-template-columns: 1fr 300px; }
+  :root[data-theme="light"] .stage { --text:#e6e9ee; --muted:#8b95a3; --ana:#f2cf7a; --err:#e05252; --neon:#19e6ff; --loop:#ff3dcb; --line:#29303a; --hi:#7fe0b1; --lo:#6b7480; --ser:#9ecbff; --head:#1b2129; --pane:#151a20; }
   .stage { position:relative; min-height:0; min-width:0; overflow:hidden; background:radial-gradient(ellipse at center, #121820 0%, #0b0e12 100%); }
   canvas { position:absolute; inset:0; width:100%; height:100%; touch-action:none; cursor:grab; display:block; }
   canvas.drag { cursor:grabbing; } canvas.hand { cursor:pointer; }
@@ -69,12 +72,12 @@
              background:var(--head); border-bottom:1px solid var(--line); position:sticky; top:0; display:flex; gap:8px; align-items:center; }
   .side h2 .grow { flex:1; }
   .list { font-size:12px; }
-  .list .row { display:grid; grid-template-columns: 28px 1fr auto; gap:6px; padding:3px 8px; border-bottom:1px solid #1d232b; cursor:pointer; align-items:baseline; }
+  .list .row { display:grid; grid-template-columns: 28px 1fr auto; gap:6px; padding:3px 8px; border-bottom:1px solid var(--line); cursor:pointer; align-items:baseline; }
   .list .row:hover { background:var(--sel); }
   .list .row .d { color:var(--muted); text-align:right; }
   .list .row .s { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .list .row .s small { color:var(--muted); display:block; font-size:10.5px; overflow:hidden; text-overflow:ellipsis; }
-  .list .row.osc { background:#2a1517; } .list .row.osc .v { color:#ff7878; }
+  .list .row.osc { background:var(--err-bg); } .list .row.osc .v { color:var(--err-fg); }
   .v.hi { color:var(--neon); }
   .none { padding:10px 8px; color:var(--muted); font-size:12px; }
   #loops { max-height:34%; overflow:auto; flex:none; } #burst { flex:1; min-height:120px; overflow:auto; }
@@ -96,6 +99,7 @@
   <span id="prog" class="muted mono"></span>
   <span style="flex:1"></span>
   <span id="conn" class="muted"><i class="dot"></i>…</span>
+  <button class="theme-btn" data-theme-toggle></button>
   <a id="dbglink" href="debugger.html" title="Open the debugger for this slot">&larr; Debugger</a>
   <a href="/" title="Back to the main page">Console</a>
   <a href="help.html#paths" target="openvp-help" title="What every button on this page does">Help</a>
@@ -1506,12 +1510,13 @@ async function loadSlots() {
   const sel = $("#slot");
   sel.replaceChildren(...slots.map(s => {
     const o = document.createElement("option"); o.value = s.number;
-    o.textContent = `Slot ${pad(s.number)}${s.program ? " · " + s.program : ""}`; return o;
+    o.textContent = `Slot ${pad(s.number)}${s.name ? " " + s.name : ""}${s.program ? " · " + s.program : ""}`; return o;
   }));
   sel.value = slot;
   const s = slots.find(x => x.number === slot);
-  $("#prog").textContent = s?.file ? `${s.file} · ${s.kind}` : "no program";
-  document.title = `Paths · slot ${slot}`;
+  $("#prog").textContent = (s?.name ? s.name + " · " : "") + (s?.file ? `${s.file} · ${s.kind}` : "no program");
+  $("#prog").style.cssText = s?.color ? `border-left:4px solid ${s.color};padding-left:6px` : "";
+  document.title = `Paths · slot ${slot}${s?.name ? " " + s.name : ""}`;
   $("#dbglink").href = `debugger.html?slot=${slot}`;
 }
 function switchSlot(n) {

@@ -38,6 +38,9 @@ public sealed class Processor : IDisposable
     public IReadOnlyList<ProgramSlot> Slots { get; }
     public IntersystemBus Bus { get; }
 
+    /// <summary>Console commands added by plugins. They work in every slot's console and in the telnet/SSH console, and run on the plugin's own thread.</summary>
+    public ConcurrentDictionary<string, ConsoleCommand> ExtraConsoleCommands { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Symbols, types and APIs programs used that OpenVP doesn't support yet, kept across runs
     /// (see <see cref="UnsupportedLog"/>). In memory only until someone calls <see cref="UnsupportedLog.UseFile"/>.</summary>
     public UnsupportedLog Unsupported { get; } = new();
@@ -72,6 +75,17 @@ public sealed class Processor : IDisposable
         }
     }
 
+    /// <summary>Load the slot's program again from the file it was loaded from, and start it. Throws if the slot has none.</summary>
+    public void Restart(int slotNumber)
+    {
+        var slot = Slot(slotNumber);
+        lock (slot.Lifecycle)
+        {
+            var path = slot.ProgramPath ?? throw new InvalidOperationException($"Slot {slotNumber} has no program to restart.");
+            LoadProgram(slotNumber, path, true);
+        }
+    }
+
     /// <summary>
     /// Run <paramref name="action"/> while holding the slot's lifecycle lock, so nothing else can load,
     /// start, stop or unload that slot meanwhile (for example, replacing its program files).
@@ -90,6 +104,17 @@ public sealed class Processor : IDisposable
         if (slot is int s) return Slot(s).FindDevice(ipId);
         return Slots.Select(x => x.FindDevice(ipId)).FirstOrDefault(d => d != null);
     }
+
+    /// <summary>The device a panel reaches by connecting to <paramref name="publicId"/> (after each slot's IP ID remap).
+    /// Searches one slot, or all slots if slot is null. Programs and recordings use <see cref="FindDevice"/> and their own IDs.</summary>
+    public JoinDevice? FindPanelDevice(uint publicId, int? slot = null)
+    {
+        if (slot is int s) return Slot(s).FindPanelDevice(publicId);
+        return Slots.Select(x => x.FindPanelDevice(publicId)).FirstOrDefault(d => d != null);
+    }
+
+    /// <summary>The slot that has a remap sending <paramref name="publicId"/> to one of its program IP IDs, or null.</summary>
+    public ProgramSlot? SlotRemapping(uint publicId) => Slots.FirstOrDefault(s => s.Io.Remap.Maps(publicId));
 
     internal readonly object RoomIdGate = new();
 

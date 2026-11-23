@@ -1,0 +1,22 @@
+{
+  "name": "companion-module-openvp",
+  "version": "0.1.0",
+  "main": "main.js",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "format": "prettier -w ."
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qureshiumar1983-eng/openVirtualProcessor.git"
+  },
+  "engines": {
+    "node": "^22.14"
+  },
+  "dependencies": {
+    "@companion-module/base": "~1.14.1",
+    "ws": "^8.18.0"
+  }
+}

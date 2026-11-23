@@ -1,0 +1,13 @@
+apiVersion: v2
+name: openvp
+description: OpenVP, an open-source virtual control processor (web console, REST API and CIP) with its data on a persistent volume.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/qureshiumar1983-eng/openVirtualProcessor
+sources:
+  - https://github.com/qureshiumar1983-eng/openVirtualProcessor
+keywords:
+  - crestron
+  - control-processor
+  - simpl

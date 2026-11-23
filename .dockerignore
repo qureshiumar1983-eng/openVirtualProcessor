@@ -3,3 +3,4 @@
 artifacts
 data
 .git
+**/node_modules

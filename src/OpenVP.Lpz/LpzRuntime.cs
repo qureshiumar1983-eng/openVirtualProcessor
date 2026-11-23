@@ -41,7 +41,7 @@ public sealed class LpzLoader : IProgramLoader
 /// changes, every node reading it runs, and its outputs drive further signals until the logic settles.
 /// Everything happens on the slot thread, one change at a time.
 /// </summary>
-public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
+public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource, IProgramAnalysis
 {
     private const int MaxStepsPerSolve = 500_000;
 
@@ -577,12 +577,49 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
         var total = _pkg.Logic.Symbols.Count;
         _slot.Log("Notice", $"Compiled program: {_nodes.Count - _devices.Count - _modules.Count} logic symbols, {_modules.Count} SIMPL+ modules and {_devices.Count} devices running" +
                              (_pkg.Signals == null ? " (no .sig: signals shown by number)" : ""));
-        foreach (var t in Unsupported.Keys.Where(t => t != -48))
-            _slot.ReportUnsupported("Compiled primitive", $"type {t}",
-                PrimitiveCatalog.Known.TryGetValue(t, out var info) ? $"{info.Name} {info.Notes}".Trim() : "unidentified", ProgramName);
+        foreach (var p in PrimitiveProblems())
+            _slot.ReportUnsupported(p.Kind, p.Name, p.Detail, ProgramName);
         if (Unsupported.Count > 0)
             _slot.Log("Warning", $"Not supported yet: " + string.Join(", ",
                 Unsupported.OrderByDescending(p => p.Value).Select(p => $"type {p.Key}{(p.Key == -48 ? " (SIMPL+)" : "")} ×{p.Value}")));
+    }
+
+    /// <summary>Compiled record types in the program that OpenVP can't run yet, as the unsupported list names them.</summary>
+    private IEnumerable<ReadinessProblem> PrimitiveProblems() =>
+        Unsupported.Keys.Where(t => t != -48).Select(t => new ReadinessProblem("Compiled primitive", $"type {t}",
+            PrimitiveCatalog.Known.TryGetValue(t, out var info) ? $"{info.Name} {info.Notes}".Trim() : "unidentified"));
+
+    string? IProgramAnalysis.Blocker => null;
+    IReadOnlyList<ReadinessProblem> IProgramAnalysis.Problems() => PrimitiveProblems().ToList();
+
+    /// <summary>The user macros in a compiled program: each distinct "path:" a record sits under (macro contents are flattened into the logic).</summary>
+    public static int CountMacros(BinProgram logic) =>
+        logic.Symbols.Where(s => !s.IsDevice && s.Type != -48 && s.Path.Contains(':')).Select(s => s.Path[..s.Path.LastIndexOf(':')]).Distinct(StringComparer.Ordinal).Count();
+
+    public ProgramSummary Summarize()
+    {
+        var panels = new List<string>();
+        var eiscs = new List<string>();
+        var other = 0;
+        foreach (var d in _devices)
+        {
+            var id = $"{d.IpId:X2}";
+            var model = _pkg.DeviceModels.GetValueOrDefault((int)d.IpId);
+            var address = _pkg.IpTable.FirstOrDefault(e => e.IpId == d.IpId)?.Address;
+            switch (DeviceKinds.Classify(model, address))
+            {
+                case DeviceClass.Panel: panels.Add(id); break;
+                case DeviceClass.Eisc: eiscs.Add(id); break;
+                default: other++; break;
+            }
+        }
+        // Every signal any record reads or drives (0 and 1 are the constants), including those of records OpenVP can't run yet.
+        var signals = _pkg.Logic.Symbols.SelectMany(r => r.Inputs.Concat(r.Outputs)).Where(x => x > 1).Distinct().Count();
+        return new ProgramSummary("SIMPL Windows",
+            panels.Distinct().OrderBy(x => x, StringComparer.Ordinal).ToList(), eiscs.Distinct().OrderBy(x => x, StringComparer.Ordinal).ToList(), other,
+            _ports.Where(p => p.Kind == PortKind.Com).Select(p => p.Path).Distinct().Count(),
+            _ports.Where(p => p.Kind == PortKind.Ir).Select(p => p.Path).Distinct().Count(),
+            _modules.Count + Unsupported.GetValueOrDefault(-48), CountMacros(_pkg.Logic), signals);
     }
 
     public void Stop()
@@ -782,6 +819,7 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource
     private sealed class DeviceNode : Node
     {
         private readonly uint _ipId;
+        public uint IpId => _ipId;
         private readonly int _inDigital, _inAnalogEnd, _outDigital, _outAnalogEnd;
         private JoinDevice? _device;
         private bool _eisc;

@@ -1,0 +1,10 @@
+{
+  "name": "hello",
+  "version": "1.0.0",
+  "author": "OpenVP contributors",
+  "description": "An example plugin: a console command, two REST routes, a count of the signal changes in slot 1, and a small page. It also has a command that fails on purpose, to show that a crashing plugin is switched off without taking OpenVP down.",
+  "permissions": ["signals.read", "console", "routes", "ui"],
+  "assembly": "Hello.dll",
+  "entry": "HelloPlugin.HelloPlugin",
+  "ui": { "page": "index.html", "menu": "Hello plugin" }
+}

@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en" data-openvp-page>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<link rel="stylesheet" href="openvp-ops.css">
+<script src="openvp-theme.js"></script>
+<title>OpenVP emulator</title>
+<style>
+  main { max-width:1400px; }
+  .pick { display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:8px 12px; align-items:end; }
+  .pick label { display:flex; flex-direction:column; gap:3px; font-size:12px; color:var(--muted); min-width:0; }
+  .pick select, .pick input { width:100%; }
+  .stage { display:flex; justify-content:center; background:var(--well); border:1px solid var(--line); border-radius:10px; padding:12px; overflow:auto; min-height:300px; }
+  .frame { background:#000; border:1px solid var(--dim); border-radius:12px; padding:0; overflow:hidden; max-width:100%; flex:none; }
+  .frame iframe { display:block; border:0; background:var(--bg); width:100%; height:100%; }
+  .st { display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; }
+  .led { width:10px; height:10px; border-radius:50%; display:inline-block; background:var(--err); } .led.on { background:var(--ok); }
+  .rep ul { margin:4px 0 0 18px; padding:0; }
+  @media (max-width:700px) { header { padding:10px 16px; } main { padding:10px 16px 24px; } .stage { padding:6px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Emulator</h1>
+  <span id="saved" role="status" aria-live="polite"></span>
+  <span class="sp"></span>
+  <span id="who-chip"></span>
+  <button class="theme-btn" data-theme-toggle></button>
+  <a href="autopanel.html">Generated panel</a>
+  <a href="rack.html">Rack</a>
+  <a href="/">Console</a>
+  <a href="help.html#emulate" target="openvp-help">Help</a>
+</header>
+<main>
+  <div id="fail" class="note" role="alert" hidden></div>
+  <div class="card">
+    <p class="muted" style="margin:0 0 8px">Run an uploaded CH5 project (<code>.ch5z</code>) or a smart-graphics project (<code>.vtz</code>, <code>.c3p</code>, XML or JSON) in your browser as if it were a touch panel at the IP ID you choose, and click through it against the running program. No real panel needed.</p>
+    <div class="pick">
+      <label>Project<select id="src"></select></label>
+      <label>Run against slot<select id="slot"></select></label>
+      <label>As IP ID (hex)<input id="ip" size="3" maxlength="2" list="ips" placeholder="03" autocomplete="off"><datalist id="ips"></datalist></label>
+      <label>Screen<select id="size">
+        <option value="fit">Fit this window</option><option value="390x844">Phone 390 × 844</option><option value="768x1024">Tablet 768 × 1024</option>
+        <option value="1024x600">1024 × 600 (TSW-770 size)</option><option value="1280x800" selected>1280 × 800 (TSW-1070 size)</option><option value="1920x1080">1920 × 1080</option></select></label>
+    </div>
+    <div class="bar" style="margin-top:10px">
+      <button class="primary" id="go">Open</button>
+      <button id="reload">Reload</button>
+      <button id="kiosk" title="Open the emulated panel on its own, full screen, with no menus">Kiosk</button>
+      <button id="newtab">Open in a new tab</button>
+      <span class="sp"></span>
+      <button id="upload" data-perm="LoadProgram" data-perm-why="Uploading a project needs the Programmer role" title="Upload a .ch5z, .vtz, .c3p, .xml or .json project and keep it for this slot and IP ID">Upload project…</button>
+      <button id="remove" class="danger" data-perm="LoadProgram" data-perm-why="Removing a project needs the Programmer role">Remove</button>
+      <input type="file" id="file" accept=".ch5z,.zip,.vtz,.c3p,.xml,.json" hidden>
+    </div>
+  </div>
+  <div class="card st" id="status" aria-live="polite"></div>
+  <div class="card rep" id="report" hidden></div>
+  <div class="stage" id="stage"><div class="muted" id="hint" style="align-self:center">Pick a project and press Open. Upload one first if the list is empty.</div></div>
+</main>
+<dialog id="cf-dlg"><form method="dialog" id="cf-form"><h2 id="cf-title"></h2><p id="cf-text"></p><div class="row"><button type="button" data-close>Cancel</button><button class="primary" value="ok" id="cf-ok">OK</button></div></form></dialog>
+<script src="openvp-auth.js"></script>
+<script src="openvp-ops.js"></script>
+<script>
+"use strict";
+const qs = new URLSearchParams(location.search);
+let projects = [], slots = [];
+const hex = s => String(s || "").trim().toUpperCase().padStart(2, "0");
+
+async function loadProjects(keep) {
+  const [ch5, sg] = await Promise.all([api("/api/panels").catch(() => []), api("/api/panels/sg").catch(() => [])]);
+  projects = [
+    ...ch5.map(p => ({ kind: "ch5", slot: p.slot, ipId: p.ipId, name: p.name, key: `ch5:${p.slot}:${p.ipId}`, label: `CH5 · slot ${p.slot} IP ID ${p.ipId}${p.name ? " · " + p.name : ""}` })),
+    ...sg.map(p => ({ kind: "sg", slot: p.slot, ipId: p.ipId, name: p.name, key: `sg:${p.slot}:${p.ipId}`, label: `Smart graphics · slot ${p.slot} IP ID ${p.ipId}${p.name ? " · " + p.name : ""} (${p.pages} page${p.pages === 1 ? "" : "s"}, ${p.objects} objects)` }))
+  ];
+  const sel = $("#src"); sel.innerHTML = "";
+  if (!projects.length) sel.add(new Option("(none uploaded yet)", ""));
+  for (const p of projects) sel.add(new Option(p.label, p.key));
+  if (keep && projects.some(p => p.key === keep)) sel.value = keep;
+}
+
+async function loadSlots() {
+  slots = await api("/api/slots");
+  const sel = $("#slot"); sel.innerHTML = "";
+  for (const s of slots) sel.add(new Option(slotLabel(s), s.number));
+}
+
+function fillIps() {
+  const s = slots.find(x => x.number === +$("#slot").value);
+  const dl = $("#ips"); dl.innerHTML = "";
+  for (const d of s?.devices || []) { const o = document.createElement("option"); o.value = d.publicIpId; o.label = d.publicIpId + " · " + d.type; dl.appendChild(o); }
+}
+
+function cur() {
+  const p = projects.find(x => x.key === $("#src").value);
+  return { p, slot: +$("#slot").value, ip: hex($("#ip").value) };
+}
+
+function frameUrl({ p, slot, ip }, extra = "") {
+  if (!p) return "";
+  const u = p.kind === "ch5" ? `/emulate/${p.slot}/${p.ipId}/as/${slot}/${ip}/` : `sgpanel.html?src=${p.slot}:${p.ipId}&slot=${slot}&ipid=${ip}`;
+  return u + (extra ? (u.includes("?") ? "&" : "?") + extra : "");
+}
+
+function open_() {
+  const c = cur();
+  if (!c.p) return fail("Choose a project first, or upload one.");
+  if (!/^[0-9A-F]{2}$/.test(c.ip) || c.ip === "00" || c.ip === "FF") return fail("IP ID must be two hex digits, 01 to FE.");
+  history.replaceState(null, "", `?src=${encodeURIComponent(c.p.key)}&slot=${c.slot}&ip=${c.ip}&size=${$("#size").value}`);
+  const stage = $("#stage"); stage.innerHTML = "";
+  const [w, h] = $("#size").value === "fit" ? [0, 0] : $("#size").value.split("x").map(Number);
+  const f = document.createElement("div"); f.className = "frame";
+  const ifr = document.createElement("iframe"); ifr.title = "Emulated panel"; ifr.src = frameUrl(c, "latency=1");
+  ifr.setAttribute("allow", "fullscreen");
+  if (w) { f.style.width = w + "px"; f.style.height = h + "px"; } else { f.style.width = "100%"; f.style.height = "max(480px, 70dvh)"; }
+  f.appendChild(ifr); stage.appendChild(f);
+  showReport(c);
+  poll();
+}
+
+async function showReport(c) {
+  const box = $("#report"); box.hidden = true;
+  if (c.p.kind !== "sg") return;
+  try {
+    const m = await api(`/api/slots/${c.p.slot}/panels/${c.p.ipId}/sg`);
+    const rep = m.report || {}, lines = [...(rep.unsupported || []), ...(rep.notes || [])];
+    const sup = Object.entries(rep.supported || {}).map(([k, v]) => `${v} ${k}`).join(", ");
+    box.innerHTML = `<b>${esc(m.format)}</b>${sup ? ` · drawn: ${esc(sup)}` : ""}${lines.length ? `<ul>${lines.map(l => `<li>${esc(l)}</li>`).join("")}</ul>` : ""}`;
+    box.hidden = false;
+  } catch { }
+}
+
+async function poll() {
+  const c = cur();
+  if (!c.p) { $("#status").innerHTML = `<span class="muted">No project selected.</span>`; return; }
+  try {
+    const dev = await api(`/api/slots/${c.slot}/iptable`);
+    const d = dev.find(x => x.publicIpId.toUpperCase() === c.ip);
+    const web = d?.clients?.filter(x => x.transport === "Web panel") || [];
+    $("#status").innerHTML = !d
+      ? `<span class="led"></span> Slot ${c.slot} has no panel at IP ID ${esc(c.ip)}. ${dev.length ? "Its panels: " + dev.map(x => esc(x.publicIpId)).join(", ") + "." : "Load a program first."}`
+      : `<span class="led ${d.online ? "on" : ""}"></span> Slot ${c.slot}, IP ID ${esc(c.ip)} (${esc(d.type)}): ${d.online ? `${d.clients.length} client${d.clients.length === 1 ? "" : "s"} connected` : "nobody connected yet"}` +
+        web.map(w => ` <span class="pill">${esc(w.address)} ${w.latencyMs != null ? Math.round(w.latencyMs) + " ms" : ""}</span>`).join("");
+  } catch (e) { $("#status").textContent = e.message; }
+}
+
+$("#go").onclick = open_;
+$("#reload").onclick = () => { const f = $("#stage iframe"); if (f) f.src = f.src; else open_(); };
+$("#newtab").onclick = () => { const c = cur(); if (c.p) window.open(frameUrl(c), "_blank"); else fail("Choose a project first."); };
+$("#kiosk").onclick = () => { const c = cur(); if (c.p) location.href = frameUrl(c, "kiosk=1"); else fail("Choose a project first."); };
+$("#slot").onchange = () => { fillIps(); poll(); };
+$("#ip").oninput = poll; $("#src").onchange = poll;
+$("#upload").onclick = () => $("#file").click();
+$("#file").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  const slot = +$("#slot").value, ip = hex($("#ip").value);
+  if (!/^[0-9A-F]{2}$/.test(ip) || ip === "00" || ip === "FF") return fail("Type the IP ID to keep this project under (two hex digits) first.");
+  const ch5 = /\.(ch5z|zip)$/i.test(f.name);
+  if (!(await confirmBox("Upload project", `Keep “${f.name}” for slot ${slot}, IP ID ${ip}? An existing ${ch5 ? "CH5" : "smart-graphics"} project there is replaced.`, "Upload"))) return;
+  const fd = new FormData(); fd.append("file", f);
+  try {
+    await api(`/api/slots/${slot}/panels/${ip}/${ch5 ? "ch5" : "sg"}`, "POST", fd);
+    flash("Uploaded");
+    await loadProjects(`${ch5 ? "ch5" : "sg"}:${slot}:${ip}`); open_();
+  } catch (err) { fail(err.message); }
+};
+$("#remove").onclick = async () => {
+  const c = cur();
+  if (!c.p) return;
+  if (!(await confirmBox("Remove project", `Remove the stored project for slot ${c.p.slot}, IP ID ${c.p.ipId}?`, "Remove", true))) return;
+  try { await api(`/api/slots/${c.p.slot}/panels/${c.p.ipId}/${c.p.kind}`, "DELETE"); await loadProjects(); $("#stage").innerHTML = `<div class="muted" style="align-self:center">Removed.</div>`; $("#report").hidden = true; poll(); }
+  catch (e) { fail(e.message); }
+};
+
+(async () => {
+  await openvpAuth.init();
+  await Promise.all([loadProjects(qs.get("src")), loadSlots()]);
+  if (qs.get("slot")) $("#slot").value = qs.get("slot");
+  fillIps();
+  const first = qs.get("ip") || (slots.find(s => s.number === +$("#slot").value)?.devices?.[0]?.publicIpId) || "03";
+  $("#ip").value = first;
+  if (qs.get("size")) $("#size").value = qs.get("size");
+  poll(); setInterval(poll, 3000);
+  if (qs.get("src") && projects.some(p => p.key === qs.get("src"))) open_();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<script src="openvp-theme.js"></script>
+<title>OpenVP log</title>
+<style>
+  :root { --bg:#0f1216; --card:#181d23; --line:#29303a; --text:#e6e9ee; --muted:#8b95a3; --ok:#2f9e6e; --warn:#d69e2e; --err:#e05252; --accent:#4c8dff; }
+  * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
+  html, body { height:100%; }
+  body { margin:0; font:14px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--text); display:flex; flex-direction:column; min-height:100dvh; }
+  header { padding:10px 16px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:6px 12px; flex-wrap:wrap; background:var(--card); }
+  header h1 { margin:0; font-size:17px; }
+  header .sp { flex:1; }
+  a { color:var(--accent); }
+  .muted { color:var(--muted); }
+  .mono { font-family:ui-monospace, Menlo, Consolas, monospace; font-size:12px; }
+  button, input, select { font:inherit; color:var(--text); background:var(--input); border:1px solid var(--line); border-radius:6px; padding:5px 9px; }
+  button { cursor:pointer; } button:hover { border-color:var(--accent); }
+  main { flex:1; min-height:0; display:flex; flex-direction:column; padding:12px 16px 16px; gap:8px; }
+  .tabs { display:flex; gap:0; }
+  .tabs button { border-radius:0; } .tabs button:first-child { border-radius:6px 0 0 6px; } .tabs button:last-child { border-radius:0 6px 6px 0; margin-left:-1px; }
+  .tabs button.active { background:var(--active); border-color:var(--accent); }
+  .tabs .badge { margin-left:4px; font-size:11px; padding:0 6px; border-radius:20px; background:var(--err-bg); color:var(--err-fg); }
+  #pane-log { flex:1; min-height:0; display:flex; flex-direction:column; }
+  #pane-log .ovl { flex:1; }
+  #pane-exc { flex:1; min-height:0; overflow:auto; }
+  dialog { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:16px; width:min(440px, calc(100vw - 24px)); }
+  dialog::backdrop { background:var(--overlay); }
+  dialog form { display:flex; flex-direction:column; gap:10px; margin:0; }
+  dialog .row { display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+  @media (max-width: 600px) { header, main { padding-left:12px; padding-right:12px; } header select { max-width:100%; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Log</h1>
+  <select id="slot" aria-label="Program slot"></select>
+  <span id="prog" class="muted mono" style="overflow-wrap:anywhere"></span>
+  <span class="sp"></span>
+  <button id="bundle" title="Download a zip with this slot's log, recent trace, compatibility report and settings, to send when asking for help">Support bundle…</button>
+  <button class="theme-btn" data-theme-toggle></button>
+  <a id="splusl" href="splus.html" target="_blank" rel="noopener" title="The SIMPL+ source of this slot's program">SIMPL+ source</a>
+  <a id="dbg" href="debugger.html" target="_blank" rel="noopener">Debugger</a>
+  <a href="/">Console</a>
+  <a href="help.html#log" target="openvp-help">Help</a>
+</header>
+<main>
+  <div class="tabs" role="tablist">
+    <button id="t-log" class="active" role="tab">Log</button><button id="t-exc" role="tab" title="Exceptions a SIMPL# program threw, with their stack traces">Exceptions <span id="exc-n" class="badge" hidden></span></button>
+  </div>
+  <div id="pane-log"><div id="logw"></div></div>
+  <div id="pane-exc" hidden></div>
+</main>
+<dialog id="bundle-dlg"><form method="dialog">
+  <b>Support bundle for slot <span id="b-slot"></span></b>
+  <p class="muted" style="margin:0">A zip with the slot's log, its recent trace (if a debugger was open), compatibility report, program summary, metrics, settings, activity and the OpenVP version and OS. It never contains the access key, and leaves out the program, its NVRAM and User files unless you tick the box.</p>
+  <label><input type="checkbox" id="b-prog"> Include the program files, NVRAM and User files</label>
+  <div class="row"><button value="cancel">Cancel</button><button id="b-go" value="ok" style="border-color:var(--accent)">Download</button></div>
+</form></dialog>
+<script src="openvp-auth.js"></script>
+<script src="openvp-log.js"></script>
+<script>
+openvpAuth.init();
+const $ = s => document.querySelector(s);
+const q = new URLSearchParams(location.search);
+let slot = Number(q.get("slot")) || 1, ws = null, slots = [];
+
+async function api(path) {
+  const r = await fetch(path);
+  if (openvpAuth.check(r)) throw new Error("Log in with the access key first.");
+  const ct = r.headers.get("content-type") || "";
+  const body = ct.includes("json") ? await r.json() : await r.text();
+  if (!r.ok) throw new Error(body.error || body || r.statusText);
+  return body;
+}
+
+// Links in a log line: IP IDs and slots go to the console, processor file paths open its Files list.
+const log = OpenVPLog.create($("#logw"), {
+  slot, listId: "log", filterId: "log-filter",
+  onLink(kind, value, s) {
+    if (kind === "slot") window.open(`/#slot:${value}`, "openvp-console");
+    else if (kind === "ipid") window.open(`/#ipid:${s}:${value}`, "openvp-console");
+    else if (kind === "path") window.open(`/#files:${s}:${value}`, "openvp-console");
+  }
+});
+
+async function loadLog() {
+  const my = slot;
+  log.setSlot(slot);
+  let entries = [];
+  try { entries = await api(`/api/log?slot=${slot}&max=2000`); } catch { }
+  if (my !== slot) return;
+  log.setEntries(entries);
+  log.refreshSignals(true);
+  loadExceptions();
+}
+
+function connect() {
+  ws?.close();
+  const sock = ws = new WebSocket(`${location.protocol === "https:" ? "wss://" : "ws://"}${location.host}/ws/trace?slot=${slot}&trace=0`);
+  sock.onmessage = ev => {
+    const data = JSON.parse(ev.data);
+    for (const m of Array.isArray(data) ? data : [data]) {
+      if (m.t !== "log") continue;
+      log.add({ time: m.time, level: m.level, message: m.message, detail: m.detail });
+      if (/^\s*Loaded .* program/.test(m.message)) { log.refreshSignals(true); loadSlots(); }
+      if (m.level === "Error" && m.detail) loadExceptions();
+    }
+  };
+  sock.onclose = () => { if (sock === ws) setTimeout(() => { if (sock === ws) connect(); }, 2000); };
+}
+
+async function loadSlots() {
+  slots = await api("/api/slots").catch(() => []);
+  const sel = $("#slot");
+  sel.replaceChildren(...slots.map(s => {
+    const o = document.createElement("option"); o.value = s.number;
+    o.textContent = `Slot ${String(s.number).padStart(2, "0")}${s.name ? " " + s.name : ""}${s.program ? " · " + s.program : ""}`;
+    return o;
+  }));
+  sel.value = slot;
+  const s = slots.find(x => x.number === slot);
+  $("#prog").textContent = s?.file ? `${s.file} · ${s.kind} · ${s.state}` : "no program";
+  document.title = `Log · slot ${slot}${s?.name ? " " + s.name : ""}`;
+  $("#splusl").href = `splus.html?slot=${slot}`;
+  $("#dbg").href = `debugger.html?slot=${slot}`;
+  $("#dbg").onclick = e => { e.preventDefault(); OpenVPLog.openDebugger(slot); };
+}
+
+async function loadExceptions() {
+  let list = [];
+  try { list = await api(`/api/slots/${slot}/exceptions`); } catch { }
+  OpenVPLog.renderExceptions($("#pane-exc"), list, undefined, { slot });
+  $("#exc-n").hidden = !list.length; $("#exc-n").textContent = list.length;
+}
+
+function tab(name) {
+  $("#pane-log").hidden = name !== "log"; $("#pane-exc").hidden = name !== "exc";
+  $("#t-log").classList.toggle("active", name === "log"); $("#t-exc").classList.toggle("active", name === "exc");
+  if (name === "exc") loadExceptions();
+}
+$("#t-log").onclick = () => tab("log"); $("#t-exc").onclick = () => tab("exc");
+
+function switchSlot(n) {
+  slot = n; history.replaceState(null, "", `?slot=${n}`);
+  log.clear(); loadSlots(); loadLog(); connect();
+}
+$("#slot").onchange = e => switchSlot(Number(e.target.value));
+
+$("#bundle").onclick = () => { $("#b-slot").textContent = slot; $("#bundle-dlg").showModal(); };
+$("#b-go").onclick = () => {
+  const a = document.createElement("a");
+  a.href = `/api/slots/${slot}/support-bundle` + ($("#b-prog").checked ? "?includeProgram=true" : "");
+  document.body.appendChild(a); a.click(); a.remove();
+};
+addEventListener("keydown", e => {
+  if (e.target.closest?.("input,textarea,select")) return;
+  if (e.key === "l" || e.key === "L") { e.preventDefault(); tab("log"); log.focusFilter(); }
+});
+
+if (q.get("tab") === "exceptions") tab("exc");
+loadSlots(); loadLog(); connect();
+setInterval(loadSlots, 5000);
+setInterval(() => { if (!$("#pane-exc").hidden) loadExceptions(); }, 5000);
+</script>
+</body>
+</html>

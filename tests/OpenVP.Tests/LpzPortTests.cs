@@ -25,7 +25,7 @@ public static class LpzPortTests
 
     // Record index = position in the file: 0 header, 1-2 processor slots, 3 IP-ID-11, 4 its card slot 8, 5 COM-01,
     // 6 IP-ID-31, 7 its IR card slot, 8 Port-01, 9 processor Slot-06, 10-11 Port-01 / Port-02 under it, 12 panel.
-    private static string Build()
+    internal static string Build()
     {
         var bin = new List<byte>();
         bin.AddRange(Record(31, "LeadingREM", [], [], Int(15, 1), Str(3, "Program File: ports.smw")));

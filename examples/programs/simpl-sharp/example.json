@@ -1,0 +1,11 @@
+{
+  "id": "simpl-sharp",
+  "name": "SIMPL# sample",
+  "kind": "SIMPL#",
+  "description": "A small SIMPL# Pro program written the way the program template is: an XPanel at IP ID 03 and an EISC at IP ID 10. It toggles a light, echoes a slider as text, upper-cases text, runs a one-second heartbeat timer, adds a console command (sample) and passes a button to the EISC. It is built with OpenVP, from samples/SampleProgram.",
+  "files": ["SampleProgram.dll"],
+  "baseDir": "samples/simpl-sharp",
+  "panel": "XPanel at IP ID 03; EISC at IP ID 10",
+  "tryIt": "On the test panel press digital 1 (the light toggles), move analog 1 (it comes back and shows as text on serial 1), type text on serial 1 (upper case comes back on serial 2) and watch analog 10 count. In the console type: sample.",
+  "tags": ["simpl#", "eisc", "timer", "console"]
+}

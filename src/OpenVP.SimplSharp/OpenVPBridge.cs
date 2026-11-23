@@ -50,6 +50,23 @@ namespace OpenVP.SimplSharp
 
         internal static void Log(string level, string message) => Slot?.Log(level, message);
 
+        /// <summary>Where a connection to host:port should really go: the slot's network redirects (a program connecting to a
+        /// device's address can be sent to a simulator) are applied here. Unchanged when there is none.</summary>
+        internal static RedirectResult Redirect(string host, int port, string protocol = "tcp")
+        {
+            var io = Slot?.Io;
+            if (io == null || string.IsNullOrEmpty(host)) return new RedirectResult(host, port, null);
+            var r = io.Redirects.Resolve(host, port, protocol);
+            if (r.Redirected) Log("Info", $"Network redirect: {host}:{port} goes to {r.Host}:{r.Port}" + (string.IsNullOrWhiteSpace(r.Entry?.Note) ? "" : $" ({r.Entry!.Note})"));
+            return r;
+        }
+
+        /// <summary>List a socket the program opened, for the socket sniffer (null outside a slot).</summary>
+        internal static SocketRecord Sock(string kind, string role, string protocol, string local, string remote) =>
+            Slot?.Io.Sockets.Open(kind, role, protocol, local, remote);
+
+        internal static string Ep(System.Net.EndPoint ep) => ep is System.Net.IPEndPoint i ? $"{(i.Address.IsIPv4MappedToIPv6 ? i.Address.MapToIPv4() : i.Address)}:{i.Port}" : ep?.ToString() ?? "";
+
         internal static void Track(IDisposable resource)
         {
             lock (Gate) Resources.Add(resource);

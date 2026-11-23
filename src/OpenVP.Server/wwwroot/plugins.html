@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<link rel="stylesheet" href="openvp-ops.css">
+<script src="openvp-theme.js"></script>
+<title>OpenVP plugins</title>
+<style>
+  .pl { display:flex; flex-direction:column; gap:6px; }
+  .pl h2 .v { font-weight:400; color:var(--muted); font-size:13px; }
+  .perms { display:flex; flex-direction:column; gap:3px; margin:4px 0; }
+  .perms div { display:flex; gap:8px; align-items:baseline; overflow-wrap:anywhere; }
+  .perms code { flex:none; }
+  .kv { display:grid; grid-template-columns:max-content 1fr; gap:2px 12px; font-size:13px; }
+  .kv dt { color:var(--muted); } .kv dd { margin:0; overflow-wrap:anywhere; }
+  .logtail { max-height:7.5em; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; background:var(--well); border:1px solid var(--line); border-radius:6px; padding:4px 8px; font-size:12px; }
+  @media (max-width:600px) { .kv { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Plugins</h1>
+  <span id="saved" role="status" aria-live="polite"></span>
+  <span class="sp"></span>
+  <span id="who-chip"></span>
+  <button class="theme-btn" data-theme-toggle></button>
+  <a href="labs.html">Labs</a>
+  <a href="/">Console</a>
+  <a href="help.html#plugins" target="openvp-help">Help</a>
+</header>
+<main>
+  <div id="fail" class="note" role="alert" hidden></div>
+  <div id="off" class="note" hidden><b>Plugins is switched off in Labs</b>, so nothing is loaded. An Admin can switch it on in <a href="labs.html">Labs</a>.</div>
+  <div class="card">
+    <p>A plugin is a folder in <code id="folder">data/plugins</code> with a <code>plugin.json</code>, and either a .NET assembly or a small page (or both). Plugins are <b>off until an Admin enables each one here</b>. Look at what a plugin asks for before you enable it.</p>
+    <p class="note"><b>A plugin is not sandboxed.</b> Its code runs inside OpenVP with all of OpenVP's rights; the permissions below describe what OpenVP's plugin API lets it do, not what the code could do. A plugin that crashes, or doesn't answer in 10 seconds, is unloaded and disabled and OpenVP carries on. Only enable plugins whose source you trust. Plugin pages run inside the console with your permissions.</p>
+  </div>
+  <div id="list" class="stack"></div>
+  <div id="empty" class="card muted" hidden>No plugins found. Build the example with <code>dotnet build examples/plugins/hello -c Release -o data/plugins/hello</code> and reload this page.</div>
+</main>
+<dialog id="en-dlg" aria-labelledby="en-title"><form method="dialog" id="en-form" onsubmit="return false" class="stack">
+  <h2 id="en-title">Enable plugin</h2>
+  <div id="en-body" class="stack"></div>
+  <div class="err" id="en-err" role="alert"></div>
+  <div class="row"><button type="button" data-close>Cancel</button><button type="button" class="primary" id="en-ok">Enable</button></div>
+</form></dialog>
+<dialog id="cf-dlg" aria-labelledby="cf-title"><form method="dialog" id="cf-form">
+  <h2 id="cf-title"></h2><div id="cf-text" style="white-space:pre-wrap"></div>
+  <div class="row"><button type="button" data-close>Cancel</button><button value="ok" id="cf-ok" class="primary">OK</button></div>
+</form></dialog>
+<script src="openvp-auth.js"></script>
+<script src="openvp-ops.js"></script>
+<script>
+"use strict";
+openvpAuth.init();
+let data = null, enabling = null;
+const STATUS = { running: ["ok", "running"], off: ["", "off"], faulted: ["err", "failed and was disabled"], "needs-approval": ["warn", "permissions changed: enable again"], invalid: ["err", "invalid"], blocked: ["warn", "off in Labs"] };
+const permText = n => (data.permissions.find(p => p.name === n) || {}).description || n;
+
+function draw() {
+  $("#off").hidden = data.active; $("#folder").textContent = data.folder;
+  $("#empty").hidden = data.plugins.length > 0;
+  const list = $("#list"); list.innerHTML = "";
+  for (const p of data.plugins) {
+    const [cls, label] = STATUS[p.status] || ["", p.status];
+    const c = document.createElement("div"); c.className = "card pl";
+    c.innerHTML = `<h2>${esc(p.name)} <span class="v">${esc(p.version)}${p.author ? " · " + esc(p.author) : ""}</span> ${pill(cls, label)} ${p.kind ? pill("info", p.kind) : ""}</h2>
+      ${p.description ? `<p>${esc(p.description)}</p>` : ""}
+      ${p.permissions.length ? `<div class="perms" aria-label="Permissions this plugin asks for">${p.permissions.map(x => `<div><code>${esc(x)}</code><span class="muted">${esc(permText(x))}</span></div>`).join("")}</div>` : `<p class="muted">Asks for no permissions.</p>`}
+      ${p.newPermissions.length ? `<div class="note">This version asks for permissions you haven't approved: ${p.newPermissions.map(esc).join(", ")}.</div>` : ""}
+      ${p.error ? `<div class="err">${p.status === "invalid" ? "" : "Last problem: "}${esc(p.error)}</div>` : ""}
+      ${p.enabled ? `<dl class="kv">${p.commands.length ? `<dt>Console commands</dt><dd>${p.commands.map(x => `<code>${esc(x)}</code>`).join(" ")}</dd>` : ""}${p.routes.length ? `<dt>Routes</dt><dd>${p.routes.map(x => `<code>${esc(x.split(" ")[0] + " /api/plugins/" + p.name + "/" + x.split(" ").slice(1).join(" "))}</code>`).join(" ")}</dd>` : ""}${p.slots.length ? `<dt>Watching slots</dt><dd>${p.slots.join(", ")}</dd>` : ""}</dl>` : ""}
+      ${p.log.length ? `<div class="logtail mono" aria-label="Recent plugin log">${esc(p.log.join("\n"))}</div>` : ""}
+      <div class="bar"></div>`;
+    const bar = c.querySelector(".bar");
+    if (p.status !== "invalid") {
+      const b = document.createElement("button");
+      b.className = p.enabled ? "" : "primary"; b.textContent = p.enabled ? "Disable" : (p.status === "faulted" ? "Enable again…" : "Enable…"); b.setAttribute("data-perm", "Admin");
+      b.disabled = !data.active && !p.enabled;
+      b.onclick = () => p.enabled ? disable(p) : openEnable(p);
+      bar.appendChild(b);
+    }
+    if (p.enabled && p.hasUi) { const a = document.createElement("a"); a.href = `/api/plugins/${encodeURIComponent(p.name)}/ui/${encodeURI(p.uiPage || "")}`; a.target = "_blank"; a.textContent = "Open " + (p.menu || p.name); bar.appendChild(a); }
+    list.appendChild(c);
+  }
+  openvpAuth.apply();
+}
+function openEnable(p) {
+  enabling = p; $("#en-title").textContent = `Enable ${p.name} ${p.version}?`; $("#en-err").textContent = "";
+  $("#en-body").innerHTML = `<p>${esc(p.description)}</p><p><b>This plugin asks to:</b></p><div class="perms">${p.permissions.map(x => `<div><code>${esc(x)}</code><span>${esc(permText(x))}</span></div>`).join("") || "<span class='muted'>do nothing special</span>"}</div>
+    <div class="note">Plugin code is not sandboxed: it runs inside OpenVP with all of OpenVP's rights. Enable it only if you trust where it came from. ${p.permissions.includes("ui") ? "Its page runs in the console with your permissions." : ""}</div>`;
+  $("#en-dlg").showModal();
+}
+$("#en-ok").onclick = async () => {
+  const p = enabling; $("#en-ok").disabled = true;
+  try { await api(`/api/plugin-admin/${encodeURIComponent(p.name)}/enable`, "POST", { permissions: p.permissions }); $("#en-dlg").close(); flash("Enabled"); await load(); }
+  catch (e) { $("#en-err").textContent = e.message; await load(); }
+  $("#en-ok").disabled = false;
+};
+async function disable(p) {
+  if (!await confirmBox(`Disable ${p.name}?`, "The plugin is stopped and unloaded. Its console commands and routes go away until you enable it again.", "Disable", true)) return;
+  try { await api(`/api/plugin-admin/${encodeURIComponent(p.name)}/disable`, "POST", {}); flash("Disabled"); } catch (e) { fail(e.message); }
+  load();
+}
+async function load() { try { data = await api("/api/plugins"); draw(); } catch (e) { fail(e.message); } }
+load(); setInterval(() => { if (!$("#en-dlg").open && !$("#cf-dlg").open) load(); }, 4000);
+document.addEventListener("openvp-me", () => openvpAuth.apply());
+</script>
+</body>
+</html>

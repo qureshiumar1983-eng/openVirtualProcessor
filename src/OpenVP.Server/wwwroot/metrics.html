@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<script src="openvp-theme.js"></script>
 <title>OpenVP metrics</title>
 <style>
   :root { --bg:#0f1216; --card:#181d23; --line:#29303a; --text:#e6e9ee; --muted:#8b95a3; --ok:#2f9e6e; --warn:#d69e2e; --err:#e05252; --accent:#4c8dff; }
@@ -15,11 +17,11 @@
   main { padding:16px; display:grid; gap:16px; }
   section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; min-width:0; }
   h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 10px; display:flex; gap:10px; align-items:center; }
-  button { font:inherit; color:var(--text); background:#111519; border:1px solid var(--line); border-radius:6px; padding:4px 10px; cursor:pointer; }
+  button { font:inherit; color:var(--text); background:var(--input); border:1px solid var(--line); border-radius:6px; padding:4px 10px; cursor:pointer; }
   button:hover { border-color:var(--accent); }
   .live { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); }
   .dot { width:8px; height:8px; border-radius:50%; background:var(--muted); }
-  .live.on .dot { background:var(--ok); box-shadow:0 0 0 3px #2f9e6e33; }
+  .live.on .dot { background:var(--ok); box-shadow:0 0 0 3px var(--ok-glow); }
   .live.off .dot { background:var(--err); }
   .tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:12px; }
   .tile { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; min-width:0; }
@@ -29,8 +31,8 @@
   .tile .sub { font-size:12px; color:var(--muted); }
   .tile svg { display:block; width:100%; height:36px; margin-top:6px; }
   .alerts { border-radius:10px; padding:10px 14px; border:1px solid; }
-  .alerts.ok { background:#13261e; border-color:#1f4a37; color:#7fe0b1; }
-  .alerts.bad { background:#2a1515; border-color:#5a2525; color:#ffb4b4; }
+  .alerts.ok { background:var(--ok-bg); border-color:var(--ok); color:var(--ok-fg); }
+  .alerts.bad { background:var(--err-bg); border-color:var(--err); color:var(--err-fg); }
   .alerts ul { margin:6px 0 0; padding-left:20px; }
   .scroll { overflow-x:auto; }
   table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
@@ -38,18 +40,84 @@
   th { color:var(--muted); font-weight:500; font-size:12px; }
   td.num, th.num { text-align:right; }
   .mono { font-family:ui-monospace, Menlo, monospace; font-size:12px; }
-  .pill { font-size:12px; padding:2px 8px; border-radius:20px; background:#252c36; }
-  .s-OK { background:#173a2c; color:#7fe0b1; }
-  .s-Busy, .s-Warning { background:#3a321a; color:#f2cf7a; }
-  .s-Stuck, .s-Error { background:#3d1b1b; color:#ff9b9b; }
-  .s-Paused { background:#1d2a44; color:#9ecbff; }
-  .bar { display:inline-block; width:70px; height:6px; background:#252c36; border-radius:3px; vertical-align:middle; margin-left:6px; overflow:hidden; }
+  .pill { font-size:12px; padding:2px 8px; border-radius:20px; background:var(--chip); }
+  .s-OK { background:var(--ok-bg); color:var(--ok-fg); }
+  .s-Busy, .s-Warning { background:var(--warn-bg); color:var(--warn-fg); }
+  .s-Stuck, .s-Error { background:var(--err-bg); color:var(--err-fg); }
+  .s-Paused { background:var(--info-bg); color:var(--info-fg); }
+  .bar { display:inline-block; width:70px; height:6px; background:var(--chip); border-radius:3px; vertical-align:middle; margin-left:6px; overflow:hidden; }
   .bar i { display:block; height:100%; background:var(--accent); }
   .bar i.hot { background:var(--warn); }
   .flag { color:var(--err); font-weight:600; }
+  .cdot { display:inline-block; width:10px; height:10px; border-radius:50%; border:1px solid var(--line); margin-right:5px; }
+  tr.hl td { background:var(--active); }
   .empty { color:var(--muted); padding:8px 0; }
+  #act td.what { white-space:normal; min-width:200px; } #act td.when, #act td.who { color:var(--muted); }
+  @media (max-width: 600px) {
+    #act thead { display:none; }
+    #act, #act tbody, #act tr, #act td { display:block; }
+    #act tr { border-bottom:1px solid var(--line); padding:6px 0; }
+    #act td { border:none; padding:2px 6px; white-space:normal; }
+    #act td.num { display:none; }
+    #act td.who { display:inline; } #act td.when { display:inline; }
+  }
   .ellip { max-width:280px; overflow:hidden; text-overflow:ellipsis; }
   label.chk { font-size:12px; color:var(--muted); display:inline-flex; gap:4px; align-items:center; text-transform:none; letter-spacing:0; }
+
+  .abadge { display:inline-block; min-width:1.6em; text-align:center; font-size:11px; padding:0 6px; border-radius:20px; background:var(--warn-bg); color:var(--warn-fg); }
+  .abadge[data-color="red"] { background:var(--err-bg); color:var(--err-fg); }
+  .tabs { display:flex; flex-wrap:wrap; padding:10px 16px 0; }
+  .tabs button { border-radius:0; margin-left:-1px; } .tabs button:first-child { border-radius:6px 0 0 6px; margin-left:0; } .tabs button:last-child { border-radius:0 6px 6px 0; }
+  .tabs button.active { background:var(--active); border-color:var(--accent); position:relative; }
+  [hidden] { display:none !important; }
+  .range { display:flex; flex-wrap:wrap; gap:6px 8px; align-items:center; }
+  .range .seg { display:flex; }
+  .range .seg button { border-radius:0; margin-left:-1px; } .range .seg button:first-child { border-radius:6px 0 0 6px; margin-left:0; } .range .seg button:last-child { border-radius:0 6px 6px 0; }
+  .range .seg button.active { background:var(--active); border-color:var(--accent); position:relative; }
+  select, input[type=checkbox] { font:inherit; color:var(--text); background:var(--input); border:1px solid var(--line); border-radius:6px; padding:3px 8px; }
+  input[type=checkbox] { padding:0; }
+  .charts { display:grid; grid-template-columns:repeat(auto-fit, minmax(420px, 1fr)); gap:16px; }
+  .chart { position:relative; min-width:0; }
+  .chart h3 { margin:0 0 4px; font-size:13px; display:flex; flex-wrap:wrap; gap:4px 10px; align-items:baseline; }
+  .chart h3 small { font-weight:400; color:var(--muted); }
+  .chart .plot { position:relative; }
+  .chart svg { display:block; width:100%; overflow:visible; }
+  .chart .ax { font-size:10px; fill:var(--muted); }
+  .chart .grid { stroke:var(--line); stroke-width:1; }
+  .chart .tip { position:absolute; z-index:3; pointer-events:none; background:var(--menu); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:5px 8px; font-size:12px; white-space:nowrap; box-shadow:0 4px 14px #0006; }
+  .chart .tip b { font-weight:600; } .chart .tip .sw { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:5px; }
+  .legend { display:flex; flex-wrap:wrap; gap:2px 12px; font-size:12px; color:var(--text2); margin-top:4px; }
+  .legend .sw { display:inline-block; width:12px; height:3px; border-radius:2px; margin-right:5px; vertical-align:middle; }
+  .legend .th { display:inline-block; width:14px; border-top:2px dashed; margin-right:5px; vertical-align:middle; }
+  .big { font-size:22px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .avail-ok { color:var(--ok-fg); } .avail-warn { color:var(--warn-fg); } .avail-bad { color:var(--err-fg); }
+  .tl { display:block; width:100%; height:18px; border-radius:3px; background:var(--well); min-width:160px; }
+  .tl rect.up { fill:var(--ok); } .tl rect.part { fill:var(--warn); } .tl rect.down { fill:var(--err); } .tl rect.none { fill:var(--dim); opacity:.45; }
+  .tl-axis { display:flex; justify-content:space-between; font-size:10px; color:var(--muted); margin-top:1px; }
+  td.tlc { min-width:220px; width:40%; white-space:normal; }
+  .hm-wrap { overflow-x:auto; padding-bottom:6px; }
+  .hm { display:grid; gap:2px; align-items:center; min-width:max-content; }
+  .hm .rl { font-size:12px; padding-right:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px; }
+  .hm .cl { font-size:10px; color:var(--muted); text-align:center; }
+  .hm .rt { font-size:11px; color:var(--muted); padding-left:8px; white-space:nowrap; text-align:right; }
+  .hm .c { height:20px; min-width:12px; border-radius:3px; background:var(--well); border:1px solid var(--line); cursor:default; }
+  .hm .c[data-v] { background:color-mix(in srgb, var(--err) calc(var(--v) * 100%), var(--well)); border-color:transparent; }
+  .hm .c:hover, .hm .c:focus { outline:2px solid var(--accent); outline-offset:0; }
+  #hm-tip { position:fixed; z-index:20; pointer-events:none; background:var(--menu); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 9px; font-size:12px; max-width:min(320px, 90vw); box-shadow:0 4px 14px #0006; }
+  .hm-scale { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); margin-top:6px; }
+  .hm-scale i { display:inline-block; width:90px; height:10px; border-radius:3px; background:linear-gradient(to right, var(--well), var(--err)); border:1px solid var(--line); }
+  @media (max-width: 600px) {
+    .charts { grid-template-columns:1fr; }
+    .tabs { padding:10px 16px 0; }
+    table.cards thead { display:none; }
+    table.cards, table.cards tbody, table.cards tr, table.cards td { display:block; }
+    table.cards tr { border:1px solid var(--line); border-radius:8px; margin:0 0 8px; padding:6px 8px; }
+    table.cards td { border:none; padding:2px 0; white-space:normal; }
+    table.cards td.num { text-align:left; }
+    table.cards td[data-l]::before { content:attr(data-l) " "; color:var(--muted); font-size:11px; }
+    td.tlc { min-width:0; width:auto; }
+    .tl { min-width:0; }
+  }
 </style>
 </head>
 <body>
@@ -57,11 +125,16 @@
   <h1>OpenVP metrics</h1>
   <span id="live" class="live"><span class="dot"></span><span id="live-text">connecting…</span></span>
   <span style="flex:1"></span>
+  <button class="theme-btn" data-theme-toggle></button>
   <button id="pause" title="Freeze the numbers on screen so you can read them. The programs keep running.">Pause</button>
+  <a href="alerts.html" target="openvp-alerts" title="Alerts, channels, rules, thresholds and reports">Alerts <span class="abadge" id="alert-badge" hidden></span></a>
   <a href="/" title="Back to the main page">Console</a>
   <a href="help.html#metrics" target="openvp-help" title="What every button on this page does">Help</a>
 </header>
-<main>
+<div class="tabs" role="tablist">
+  <button id="tab-b-live" class="active" role="tab" title="Right now, refreshed every second">Live</button><button id="tab-b-history" role="tab" title="Graphs for the last 5 minutes up to 90 days, with your threshold lines">History</button><button id="tab-b-uptime" role="tab" title="Availability of each slot and panel, and when panels drop">Uptime</button>
+</div>
+<main id="tab-live">
   <div id="alerts" class="alerts ok">Waiting for the first sample…</div>
 
   <div class="tiles">
@@ -95,8 +168,62 @@
       <tbody></tbody>
     </table></div>
   </section>
+
+  <section id="activity">
+    <h2>Recent activity <span style="flex:1"></span><a href="/" title="The full list is in the Activity section of the console" style="text-transform:none;letter-spacing:0">all of it in the console ↗</a></h2>
+    <div class="scroll"><table id="act">
+      <thead><tr><th>When</th><th>Who</th><th>Slot</th><th>What</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <div class="empty" id="act-empty" hidden>Nothing yet.</div>
+  </section>
 </main>
+
+<main id="tab-history" hidden>
+  <section>
+    <h2>Graphs <span style="flex:1"></span><span id="h-note" class="muted" style="text-transform:none;letter-spacing:0"></span></h2>
+    <div class="range">
+      <div class="seg" id="h-range" role="group" aria-label="How far back"></div>
+      <label class="chk" title="Show the lines for one slot, or all of them"><select id="h-slot" aria-label="Slot for the per-slot graphs"><option value="0">All slots</option></select></label>
+      <span class="muted" id="h-step" style="font-size:12px"></span>
+    </div>
+    <div class="muted" style="font-size:12px;margin-top:6px">Each point is an average over its time step; the faint line is the highest value in it, so a short spike isn't averaged away. Dashed lines are your <a href="alerts.html#thresholds" target="openvp-alerts">thresholds</a>. Point at a graph to read the values.</div>
+  </section>
+  <div class="charts" id="charts"></div>
+  <div class="empty" id="h-empty" hidden>No history yet. OpenVP records once a second; the first points appear after a minute.</div>
+</main>
+
+<main id="tab-uptime" hidden>
+  <section>
+    <h2>Availability <span style="flex:1"></span><span id="u-since" class="muted" style="text-transform:none;letter-spacing:0"></span></h2>
+    <div class="range"><div class="seg" id="u-range" role="group" aria-label="How far back"></div></div>
+    <div class="muted" style="font-size:12px;margin-top:6px">A slot is <b>up</b> while its program runs and <b>down</b> while it has a program that isn't running (stopped, faulted, or OpenVP itself not running). Empty slots aren't counted. A panel is <b>up</b> while connected and <b>down</b> while it isn't, when its slot is running. Green is up, red is down, grey is no data.</div>
+  </section>
+  <section>
+    <h2>Slots</h2>
+    <div class="scroll"><table id="u-slots" class="cards"><thead><tr><th>Slot</th><th>Program</th><th class="num">Available</th><th>Timeline</th><th class="num">Down for</th><th class="num">Drops</th></tr></thead><tbody></tbody></table></div>
+    <div class="empty" id="u-slots-empty" hidden>Nothing recorded for this period yet.</div>
+  </section>
+  <section>
+    <h2>Panels and devices</h2>
+    <div class="scroll"><table id="u-devs" class="cards"><thead><tr><th>Slot</th><th>IP ID</th><th>Now</th><th class="num">Available</th><th>Timeline</th><th class="num">Offline for</th><th class="num">Drops</th></tr></thead><tbody></tbody></table></div>
+    <div class="empty" id="u-devs-empty" hidden>No panel or device has been registered in this period.</div>
+  </section>
+  <section>
+    <h2>Offline heat map <span style="flex:1"></span></h2>
+    <div class="range">
+      <div class="seg" id="hm-mode" role="group" aria-label="Rows of the heat map"><button data-m="hour" class="active" title="Which hours of the day panels tend to drop, all days added up">By hour of the day</button><button data-m="day" title="Which days panels dropped">By day</button></div>
+      <div class="seg" id="hm-range" role="group" aria-label="How far back"></div>
+    </div>
+    <div class="muted" style="font-size:12px;margin:6px 0">Each row is a panel or device, each cell the minutes it was offline in that hour of the day (or that day), in your time zone. Darker is more. Point at a cell for the details.</div>
+    <div class="hm-wrap"><div class="hm" id="hm"></div></div>
+    <div class="hm-scale" id="hm-scale" hidden>0 <i></i> <span id="hm-max"></span></div>
+    <div class="empty" id="hm-empty" hidden>No panel was offline in this period.</div>
+  </section>
+</main>
+<div id="hm-tip" hidden></div>
 <script src="openvp-auth.js"></script>
+<script src="openvp-alerts.js"></script>
 <script>
 openvpAuth.init();
 const $ = s => document.querySelector(s);
@@ -121,6 +248,27 @@ function spark(id, values, max) {
   const pts = values.map((v, i) => `${(x0 + i * step).toFixed(1)},${(34 - v / top * 32).toFixed(1)}`).join(" ");
   el.innerHTML = `<polygon points="${x0},36 ${pts} 300,36" fill="#4c8dff22"/><polyline points="${pts}" fill="none" stroke="#4c8dff" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`;
 }
+
+// Slot names and colours (set in the console) and ?slot=N to highlight one slot.
+const focusSlot = +new URLSearchParams(location.search).get("slot") || 0;
+let slotMeta = {};
+async function loadSlotMeta() {
+  try { const r = await fetch("/api/slots"); if (r.ok) { slotMeta = Object.fromEntries((await r.json()).map(x => [x.number, x])); document.title = focusSlot && slotMeta[focusSlot] ? `OpenVP metrics · slot ${focusSlot}${slotMeta[focusSlot].name ? " " + slotMeta[focusSlot].name : ""}` : "OpenVP metrics"; } } catch { }
+}
+loadSlotMeta(); setInterval(loadSlotMeta, 5000);
+
+// The latest activity (who did what), for this slot if ?slot=N is given.
+async function loadActivity() {
+  try {
+    const r = await fetch(`/api/activity?limit=12${focusSlot ? "&slot=" + focusSlot : ""}`);
+    if (!r.ok) return;
+    const list = await r.json();
+    $("#act-empty").hidden = list.length > 0;
+    $("#act tbody").innerHTML = list.map(e => `<tr title="${esc(new Date(e.time).toLocaleString())}"><td class="when">${esc(new Date(e.time).toLocaleTimeString())}</td><td class="who">${esc(e.user ? e.user + " · " + e.who : e.who)}${e.slot ? " · slot " + e.slot : ""}</td><td class="num">${e.slot ?? ""}</td><td class="what">${esc(e.text)}</td></tr>`).join("");
+  } catch { }
+}
+loadActivity(); setInterval(() => { if (!document.hidden) loadActivity(); }, 5000);
+const slotLabel = n => { const m = slotMeta[n]; return `${m?.color ? `<i class="cdot" style="background:${esc(m.color)}"></i>` : ""}${n}${m?.name ? ` <span class="muted">${esc(m.name)}</span>` : ""}`; };
 
 function render(m) {
   // Alerts
@@ -153,15 +301,15 @@ function render(m) {
 
   // Slots
   const showEmpty = $("#show-empty").checked;
-  const rows = m.slots.filter(s => showEmpty || s.state !== "Empty");
+  const rows = m.slots.filter(s => showEmpty || s.state !== "Empty" || s.number === focusSlot);
   $("#slots tbody").innerHTML = rows.length ? rows.map(s => {
     const running = s.currentHandler
       ? `<span class="${s.status === "Stuck" ? "flag" : ""}">${esc(s.currentHandler)} · ${dur(s.currentHandlerSeconds)}</span>`
       : `<span class="muted">idle</span>`;
     const longest = s.longestHandler ? `${esc(s.longestHandler)} · ${dur(s.longestHandlerSeconds)}` : `<span class="muted">–</span>`;
     const orphans = s.threads.filter(t => t.orphaned).length;
-    return `<tr>
-      <td>${s.number}</td>
+    return `<tr${s.number === focusSlot ? ' class="hl"' : ""}>
+      <td>${slotLabel(s.number)}</td>
       <td class="ellip" title="${esc(s.program)}">${esc(s.program ?? "")}${s.program ? "" : '<span class="muted">empty</span>'}</td>
       <td><span class="pill s-${esc(s.status)}">${esc(s.status)}</span></td>
       <td class="num">${s.eventsPerSecond.toFixed(1)}</td>
@@ -179,10 +327,10 @@ function render(m) {
   const items = [];
   for (const s of m.slots) {
     for (const t of s.threads)
-      items.push(`<tr><td>${s.number}</td><td class="mono">${esc(t.name)}</td><td>${esc(t.kind)}</td><td>${esc(t.state)}</td>
+      items.push(`<tr><td>${slotLabel(s.number)}</td><td class="mono">${esc(t.name)}</td><td>${esc(t.kind)}</td><td>${esc(t.state)}</td>
         <td class="num">${dur(t.ageSeconds)}</td><td>${t.orphaned ? '<span class="flag">orphaned: its program was unloaded</span>' : ""}</td></tr>`);
     for (const w of s.runningWork)
-      items.push(`<tr><td>${s.number}</td><td class="mono">${esc(w.label)}</td><td>${esc(w.kind)}</td><td>Running</td>
+      items.push(`<tr><td>${slotLabel(s.number)}</td><td class="mono">${esc(w.label)}</td><td>${esc(w.kind)}</td><td>Running</td>
         <td class="num">${dur(w.runningSeconds)}</td><td>${w.runningSeconds >= 30 ? '<span class="flag">long-running</span>' : ""}</td></tr>`);
   }
   $("#threads tbody").innerHTML = items.length ? items.join("")
@@ -222,6 +370,246 @@ $("#pause").onclick = () => {
 };
 $("#show-empty").onchange = () => last && render(last);
 connect();
+
+// ====================================================================== tabs
+const TABS = ["live", "history", "uptime"];
+let tab = "live";
+function showTab(t) {
+  if (!TABS.includes(t)) t = "live";
+  tab = t;
+  try { history.replaceState(null, "", "#" + t); } catch { }
+  for (const x of TABS) { $("#tab-b-" + x).classList.toggle("active", x === t); $("#tab-" + x).hidden = x !== t; }
+  if (t === "history") loadHistory();
+  if (t === "uptime") { loadUptime(); loadHeat(); }
+}
+for (const t of TABS) $("#tab-b-" + t).onclick = () => showTab(t);
+const store = {
+  get(k, d) { try { return localStorage.getItem("openvp.metrics." + k) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("openvp.metrics." + k, v); } catch { } }
+};
+openvpAlerts.badge($("#alert-badge"));
+
+function segButtons(el, list, current, onPick) {
+  el.innerHTML = list.map(([v, t]) => `<button data-v="${v}" class="${v === current ? "active" : ""}">${t}</button>`).join("");
+  el.onclick = e => {
+    const b = e.target.closest("button"); if (!b) return;
+    el.querySelectorAll("button").forEach(x => x.classList.toggle("active", x === b));
+    onPick(b.dataset.v);
+  };
+}
+const pad2 = n => String(n).padStart(2, "0");
+const fmtTime = (d, span) => span <= 86400 * 1000 * 1.2 ? `${pad2(d.getHours())}:${pad2(d.getMinutes())}` : `${d.toLocaleString([], { month: "short" })} ${d.getDate()}`;
+const fmtFull = d => d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+function num(v, unit) {
+  const a = Math.abs(v);
+  const s = a >= 1000 ? Math.round(v).toLocaleString() : a >= 100 ? v.toFixed(0) : a >= 10 ? v.toFixed(1) : v.toFixed(2).replace(/\.?0+$/, "") || "0";
+  return unit ? `${s} ${unit}` : s;
+}
+
+// ====================================================================== history graphs
+const RANGES = [["5m", "5 min"], ["1h", "1 hour"], ["24h", "24 hours"], ["7d", "7 days"], ["30d", "30 days"], ["90d", "90 days"]];
+const PALETTE = ["#4c8dff", "#2f9e6e", "#d69e2e", "#e05252", "#a06cd5", "#18a0b5", "#e07b39", "#8bc34a", "#d86bb0", "#9aa5b1"];
+let hRange = store.get("range", "1h"), hSlot = +store.get("slot", "0") || 0, hData = null, thresholds = [], hTimer = 0;
+const slotColor = n => slotMeta[n]?.color || PALETTE[(n - 1) % PALETTE.length];
+const CHARTS = [
+  { id: "cpu", title: "CPU of OpenVP", unit: "%", metric: "cpu", max: 100, process: true, avg: p => p.cpu, peak: p => p.cpuMax },
+  { id: "mem", title: "Memory in use", unit: "MB", metric: "memory", process: true, avg: p => p.mem, peak: p => p.memMax },
+  { id: "busy", title: "Slot thread busy", unit: "%", metric: "slotBusy", max: 100, avg: s => s.busy, peak: s => s.busyMax },
+  { id: "queue", title: "Events waiting for the slot", unit: "", metric: "queue", avg: s => s.queue, peak: s => s.queueMax },
+  { id: "eps", title: "Events per second", unit: "/s", metric: "eventsPerSecond", avg: s => s.eps, peak: s => s.epsMax },
+  { id: "ev", title: "Longest event (the slowest one in each period)", unit: "ms", metric: "longestEvent", avg: s => s.eventMs, peak: s => s.eventMs },
+  { id: "off", title: "Devices offline", unit: "", metric: "devicesOffline", process: true, avg: p => p.offline, peak: p => p.offlineMax },
+];
+
+function drawChart(c, box) {
+  const d = hData;
+  const W = Math.max(240, box.clientWidth || 400), H = 170, L = 44, R = 8, T = 8, B = 20, plotW = W - L - R, plotH = H - T - B;
+  const t0 = new Date(d.from).getTime(), t1 = new Date(d.to).getTime(), span = Math.max(1, t1 - t0);
+  // series
+  let series = [];
+  if (c.process) series = [{ name: c.title, color: "var(--accent)", pts: d.points.map(p => ({ t: new Date(p.t).getTime(), v: c.avg(p), pk: c.peak(p) })) }];
+  else {
+    const slots = [...new Set(d.points.flatMap(p => p.slots.map(s => s.slot)))].sort((a, b) => a - b).filter(n => !hSlot || n === hSlot);
+    series = slots.map(n => ({ name: `Slot ${n}${slotMeta[n]?.name ? " " + slotMeta[n].name : ""}`, color: slotColor(n), pts: d.points.filter(p => p.slots.some(s => s.slot === n)).map(p => { const s = p.slots.find(x => x.slot === n); return { t: new Date(p.t).getTime(), v: c.avg(s), pk: c.peak(s) }; }) }));
+  }
+  // thresholds that apply
+  const lines = [];
+  for (const th of thresholds) {
+    if (th.metric !== c.metric) continue;
+    if (!c.process && hSlot && th.slot && th.slot !== hSlot) continue;
+    if (c.metric === "devicesOffline" && th.slot) continue;
+    const who = th.slot ? ` (slot ${th.slot})` : "";
+    if (th.warn != null) lines.push({ v: th.warn, color: "var(--warn)", label: `warning ${num(th.warn, c.unit)}${who}` });
+    if (th.crit != null) lines.push({ v: th.crit, color: "var(--err)", label: `critical ${num(th.crit, c.unit)}${who}` });
+  }
+  const dataMax = Math.max(0, ...series.flatMap(s => s.pts.map(p => Math.max(p.v, p.pk))));
+  let top = Math.max(c.max ?? 0, dataMax, ...lines.map(l => l.v) , 1e-9);
+  if (!c.max || dataMax > c.max) top *= 1.08;
+  const nice = (() => { const e = Math.pow(10, Math.floor(Math.log10(top))), f = top / e; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * e; })();
+  top = c.max && dataMax <= c.max ? c.max : nice;
+  const x = t => L + (t - t0) / span * plotW, y = v => T + plotH - Math.min(v, top) / top * plotH;
+  const gap = Math.max(d.stepSeconds * 1000 * 3, 5000);
+  const path = (pts, key) => { let s = "", prev = null; for (const p of pts) { s += (prev === null || p.t - prev > gap ? "M" : "L") + x(p.t).toFixed(1) + "," + y(p[key]).toFixed(1); prev = p.t; } return s; };
+  let svg = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(c.title)}">`;
+  for (let i = 0; i <= 4; i++) { const v = top * i / 4, yy = y(v); svg += `<line class="grid" x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}"/><text class="ax" x="${L - 5}" y="${yy + 3}" text-anchor="end">${esc(num(v))}</text>`; }
+  for (let i = 0; i <= 4; i++) { const t = t0 + span * i / 4, xx = x(t); svg += `<text class="ax" x="${Math.min(W - R - 14, Math.max(L, xx))}" y="${H - 5}" text-anchor="${i === 0 ? "start" : i === 4 ? "end" : "middle"}">${esc(fmtTime(new Date(t), span))}</text>`; }
+  for (const s of series) {
+    if (s.pts.length === 1) svg += `<circle cx="${x(s.pts[0].t)}" cy="${y(s.pts[0].v)}" r="2.5" fill="${s.color}"/>`;
+    if (s.pts.some(p => p.pk > p.v + 1e-6)) svg += `<path d="${path(s.pts, "pk")}" fill="none" stroke="${s.color}" stroke-opacity=".35" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
+    svg += `<path d="${path(s.pts, "v")}" fill="none" stroke="${s.color}" stroke-width="1.6" stroke-linejoin="round"/>`;
+  }
+  for (const l of lines) if (l.v <= top * 1.001) svg += `<line x1="${L}" x2="${W - R}" y1="${y(l.v)}" y2="${y(l.v)}" stroke="${l.color}" stroke-width="1.3" stroke-dasharray="5 4"/>`;
+  svg += `<line class="cross" x1="0" x2="0" y1="${T}" y2="${T + plotH}" stroke="var(--muted)" stroke-width="1" visibility="hidden"/></svg>`;
+  box.querySelector(".plot").innerHTML = svg + `<div class="tip" hidden></div>`;
+  box.querySelector(".legend").innerHTML = series.map(s => `<span><i class="sw" style="background:${s.color}"></i>${esc(s.name)}</span>`).join("")
+    + lines.map(l => `<span><i class="th" style="border-color:${l.color}"></i>${esc(l.label)}</span>`).join("");
+  box.querySelector("h3 small").textContent = series.length && series.some(s => s.pts.length) ? `highest ${num(dataMax, c.unit)}` : "";
+
+  // hover
+  const plot = box.querySelector(".plot"), tip = plot.querySelector(".tip"), cross = plot.querySelector(".cross");
+  const move = ev => {
+    const r = plot.getBoundingClientRect(), px = (ev.clientX ?? ev.touches?.[0]?.clientX) - r.left;
+    const t = t0 + (px - L) / plotW * span;
+    if (px < L || px > W - R || !series.some(s => s.pts.length)) { tip.hidden = true; cross.setAttribute("visibility", "hidden"); return; }
+    let nearest = null;
+    const rows = series.map(s => { let best = null; for (const p of s.pts) if (!best || Math.abs(p.t - t) < Math.abs(best.t - t)) best = p; if (best && (!nearest || Math.abs(best.t - t) < Math.abs(nearest - t))) nearest = best.t; return { s, p: best }; });
+    if (nearest == null) return;
+    cross.setAttribute("x1", x(nearest)); cross.setAttribute("x2", x(nearest)); cross.setAttribute("visibility", "visible");
+    tip.innerHTML = `<b>${esc(fmtFull(new Date(nearest)))}</b>` + rows.filter(r => r.p && Math.abs(r.p.t - nearest) <= gap).map(r => `<div><i class="sw" style="background:${r.s.color}"></i>${esc(r.s.name)}: ${esc(num(r.p.v, c.unit))}${r.p.pk > r.p.v + 1e-6 ? ` <span class="muted">(highest ${esc(num(r.p.pk, c.unit))})</span>` : ""}</div>`).join("");
+    tip.hidden = false;
+    const tw = tip.offsetWidth; let left = x(nearest) + 12; if (left + tw > W) left = x(nearest) - tw - 12;
+    tip.style.left = Math.max(0, left) + "px"; tip.style.top = "4px";
+  };
+  plot.onpointermove = move; plot.onpointerdown = move;
+  plot.onpointerleave = () => { tip.hidden = true; cross.setAttribute("visibility", "hidden"); };
+}
+
+function drawCharts() {
+  if (!hData) return;
+  const host = $("#charts");
+  if (!host.children.length || host.dataset.built !== "1") {
+    host.innerHTML = CHARTS.map(c => `<section class="chart" data-c="${c.id}"><h3>${esc(c.title)} <small></small></h3><div class="plot"></div><div class="legend"></div></section>`).join("");
+    host.dataset.built = "1";
+  }
+  const have = hData.points.length > 0;
+  $("#h-empty").hidden = have; host.hidden = !have;
+  $("#h-step").textContent = have ? `one point every ${hData.stepSeconds >= 120 ? Math.round(hData.stepSeconds / 60) + " min" : hData.stepSeconds + " s"}` : "";
+  // slot picker follows the slots seen
+  const seen = [...new Set(hData.points.flatMap(p => p.slots.map(s => s.slot)))].sort((a, b) => a - b);
+  const sel = $("#h-slot"), want = ["0", ...seen.map(String)].join(",");
+  if (sel.dataset.have !== want) {
+    sel.innerHTML = `<option value="0">All slots</option>` + seen.map(n => `<option value="${n}">Slot ${n}${slotMeta[n]?.name ? " · " + esc(slotMeta[n].name) : ""}</option>`).join("");
+    sel.dataset.have = want;
+  }
+  sel.value = String(seen.includes(hSlot) ? hSlot : 0);
+  if (have) for (const c of CHARTS) drawChart(c, host.querySelector(`[data-c="${c.id}"]`));
+}
+
+async function loadHistory() {
+  clearTimeout(hTimer);
+  try {
+    const [r, t] = await Promise.all([fetch(`/api/metrics/history?range=${hRange}`), fetch("/api/alerts/thresholds")]);
+    if (openvpAuth.check(r)) return;
+    if (r.ok) hData = await r.json();
+    if (t.ok) thresholds = (await t.json()).thresholds;
+    $("#h-note").textContent = "";
+    drawCharts();
+  } catch (e) { $("#h-note").textContent = "Couldn't load the history."; }
+  if (tab === "history") hTimer = setTimeout(loadHistory, hRange === "5m" || hRange === "1h" ? 5000 : 30000);
+}
+segButtons($("#h-range"), RANGES, hRange, v => { hRange = v; store.set("range", v); loadHistory(); });
+$("#h-slot").onchange = e => { hSlot = +e.target.value; store.set("slot", hSlot); drawCharts(); };
+let rsT = 0; addEventListener("resize", () => { clearTimeout(rsT); rsT = setTimeout(() => { if (tab === "history") drawCharts(); }, 150); });
+
+// ====================================================================== uptime
+const URANGES = [["24h", "24 hours"], ["7d", "7 days"], ["30d", "30 days"], ["90d", "90 days"]];
+let uRange = store.get("urange", "24h"), uTimer = 0;
+const availClass = a => a == null ? "" : a >= 99.9 ? "avail-ok" : a >= 95 ? "avail-warn" : "avail-bad";
+const pctText = a => a == null ? "–" : (a >= 99.995 ? "100" : a.toFixed(a >= 99 ? 2 : 1)) + "%";
+function timeline(e, from, to) {
+  const n = e.buckets.length, span = new Date(to) - new Date(from);
+  const rects = e.buckets.map((v, i) => {
+    const a = new Date(new Date(from).getTime() + span * i / n), b = new Date(new Date(from).getTime() + span * (i + 1) / n);
+    const cls = v < 0 ? "none" : v >= 0.999 ? "up" : v >= 0.5 ? "part" : "down";
+    const tip = `${fmtFull(a)} to ${fmtFull(b)}: ${v < 0 ? "no data" : (v * 100).toFixed(v >= 0.99 ? 1 : 0) + "% up"}`;
+    return `<rect class="${cls}" x="${i}" y="0" width="${i < n - 1 ? 1.02 : 1}" height="1"><title>${esc(tip)}</title></rect>`;
+  }).join("");
+  const span2 = new Date(to) - new Date(from);
+  return `<svg class="tl" viewBox="0 0 ${n} 1" preserveAspectRatio="none" role="img" aria-label="Timeline">${rects}</svg><div class="tl-axis"><span>${esc(fmtTime(new Date(from), span2))}</span><span>${esc(fmtTime(new Date(to), span2))}</span></div>`;
+}
+async function loadUptime() {
+  clearTimeout(uTimer);
+  try {
+    const r = await fetch(`/api/uptime?range=${uRange}&buckets=${innerWidth < 600 ? 48 : 96}`);
+    if (openvpAuth.check(r)) return;
+    if (!r.ok) throw new Error();
+    const u = await r.json();
+    $("#u-since").textContent = u.first ? `recording since ${new Date(u.first).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}` : "";
+    $("#u-slots-empty").hidden = u.slots.length > 0; $("#u-devs-empty").hidden = u.devices.length > 0;
+    $("#u-slots tbody").innerHTML = u.slots.map(s => `<tr>
+      <td data-l="Slot">${slotLabel(s.slot)}</td><td class="ellip" data-l="Program" title="${esc(s.label ?? "")}">${esc(s.label ?? "")}${s.label ? "" : '<span class="muted">empty now</span>'}</td>
+      <td class="num big ${availClass(s.availability)}" data-l="Available">${pctText(s.availability)}</td>
+      <td class="tlc">${timeline(s, u.from, u.to)}</td>
+      <td class="num" data-l="Down for">${s.downSeconds >= 1 ? dur(s.downSeconds) : "–"}</td><td class="num" data-l="Drops">${s.drops}</td></tr>`).join("");
+    $("#u-devs tbody").innerHTML = u.devices.map(s => `<tr>
+      <td data-l="Slot">${slotLabel(s.slot)}</td><td class="mono" data-l="IP ID" title="${esc(s.label ?? "")}">${esc(s.ipId)}${s.label ? ` <span class="muted">${esc(s.label)}</span>` : ""}</td>
+      <td data-l="Now"><span class="pill ${s.state === "online" ? "s-OK" : s.state === "offline" ? "s-Error" : ""}">${esc(s.state ?? "")}</span></td>
+      <td class="num big ${availClass(s.availability)}" data-l="Available">${pctText(s.availability)}</td>
+      <td class="tlc">${timeline(s, u.from, u.to)}</td>
+      <td class="num" data-l="Offline for">${s.downSeconds >= 1 ? dur(s.downSeconds) : "–"}</td><td class="num" data-l="Drops">${s.drops}</td></tr>`).join("");
+  } catch { $("#u-since").textContent = "Couldn't load the uptime."; }
+  if (tab === "uptime") uTimer = setTimeout(() => { loadUptime(); }, 30000);
+}
+segButtons($("#u-range"), URANGES, uRange, v => { uRange = v; store.set("urange", v); loadUptime(); });
+
+// ---- offline heat map
+let hmMode = store.get("hmmode", "hour"), hmRange = store.get("hmrange", "7d");
+$("#hm-mode").querySelectorAll("button").forEach(b => b.classList.toggle("active", b.dataset.m === hmMode));
+$("#hm-mode").onclick = e => { const b = e.target.closest("button"); if (!b) return; hmMode = b.dataset.m; store.set("hmmode", hmMode); $("#hm-mode").querySelectorAll("button").forEach(x => x.classList.toggle("active", x === b)); loadHeat(); };
+segButtons($("#hm-range"), [["7d", "7 days"], ["30d", "30 days"], ["90d", "90 days"]], hmRange, v => { hmRange = v; store.set("hmrange", v); loadHeat(); });
+const hmTip = $("#hm-tip");
+document.addEventListener("pointerover", e => {
+  const c = e.target.closest?.(".hm .c"); if (!c || !c.dataset.tip) return;
+  hmTip.textContent = c.dataset.tip; hmTip.hidden = false;
+  const r = c.getBoundingClientRect(), w = hmTip.offsetWidth;
+  hmTip.style.left = Math.max(4, Math.min(innerWidth - w - 4, r.left + r.width / 2 - w / 2)) + "px";
+  hmTip.style.top = (r.bottom + 6 + hmTip.offsetHeight > innerHeight ? r.top - hmTip.offsetHeight - 6 : r.bottom + 6) + "px";
+});
+document.addEventListener("pointerout", e => { if (e.target.closest?.(".hm .c")) hmTip.hidden = true; });
+document.addEventListener("focusin", e => { if (e.target.matches?.(".hm .c")) e.target.dispatchEvent(new PointerEvent("pointerover", { bubbles: true })); });
+async function loadHeat() {
+  try {
+    const r = await fetch(`/api/uptime/heatmap?range=${hmRange}&mode=${hmMode}&offset=${-new Date().getTimezoneOffset()}`);
+    if (openvpAuth.check(r)) return;
+    if (!r.ok) throw new Error();
+    const h = await r.json();
+    const rows = h.rows.filter(x => x.total > 0 || x.drops.some(d => d > 0)).sort((a, b) => b.total - a.total);
+    $("#hm-empty").hidden = rows.length > 0; $("#hm-scale").hidden = rows.length === 0;
+    const n = h.columns.length, el = $("#hm");
+    if (!rows.length) { el.innerHTML = ""; return; }
+    const max = Math.max(1, ...rows.flatMap(x => x.minutes));
+    $("#hm-max").textContent = `${num(max)} min`;
+    const days = { "7d": 7, "30d": 30, "90d": 90 }[hmRange];
+    el.style.gridTemplateColumns = `minmax(120px, max-content) repeat(${n}, minmax(12px, 1fr)) max-content`;
+    let html = `<div></div>` + h.columns.map((c, i) => `<div class="cl">${h.mode === "hour" ? (innerWidth < 600 && i % 3 ? "" : c) : (i % Math.ceil(n / 12) ? "" : c.replace(/^(\w+) /, "$1 "))}</div>`).join("") + `<div class="cl"></div>`;
+    for (const row of rows) {
+      const name = `Slot ${row.slot} · ${row.ipId}`;
+      html += `<div class="rl" title="${esc(name + (row.label ? " " + row.label : ""))}">${esc(name)}${row.label ? ` <span class="muted">${esc(row.label)}</span>` : ""}</div>`;
+      row.minutes.forEach((m, i) => {
+        const col = h.columns[i], drops = row.drops[i];
+        const where = h.mode === "hour" ? `${col}:00 to ${pad2((+col + 1) % 24)}:00, over ${days} days` : col;
+        const tip = m > 0 || drops ? `Slot ${row.slot} IP ID ${row.ipId}${row.label ? " (" + row.label + ")" : ""}\n${where}\n${num(m)} min offline${drops ? `, dropped ${drops} time${drops > 1 ? "s" : ""}` : ""}` : `Slot ${row.slot} IP ID ${row.ipId}\n${where}\nnot offline`;
+        html += m > 0 || drops ? `<div class="c" tabindex="0" data-v="${(0.12 + 0.88 * Math.min(1, m / max)).toFixed(3)}" style="--v:${(0.12 + 0.88 * Math.min(1, m / max)).toFixed(3)}" data-tip="${esc(tip)}" aria-label="${esc(tip.replace(/\n/g, ", "))}"></div>` : `<div class="c" data-tip="${esc(tip)}"></div>`;
+      });
+      html += `<div class="rt">${num(row.total)} min</div>`;
+    }
+    el.innerHTML = html;
+    el.querySelectorAll(".c").forEach(c => c.style.whiteSpace = "pre-line");
+  } catch { $("#hm-empty").hidden = false; $("#hm-empty").textContent = "Couldn't load the heat map."; }
+}
+hmTip.style.whiteSpace = "pre-line";
+
+showTab((location.hash || "").slice(1));
 </script>
 </body>
 </html>

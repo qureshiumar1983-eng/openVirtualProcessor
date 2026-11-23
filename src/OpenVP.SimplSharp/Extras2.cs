@@ -401,6 +401,7 @@ namespace Crestron.SimplSharp.CrestronSockets
         private TcpClient _tcp;
         private SslStream _ssl;
         private System.Security.Cryptography.X509Certificates.X509Certificate2 _clientCert;
+        private OpenVP.Core.SocketRecord _rec;
 
         public SecureTCPClient() : this("", 443, 4096) { }
         public SecureTCPClient(string address, int port, int bufferSize)
@@ -410,82 +411,123 @@ namespace Crestron.SimplSharp.CrestronSockets
             IncomingDataBuffer = new byte[Math.Max(1, bufferSize)];
             OpenVPBridge.Track(this);
         }
+        public SecureTCPClient(string address, int port, int bufferSize, EthernetAdapterType adapter) : this(address, port, bufferSize) { }
+        public SecureTCPClient(Crestron.SimplSharp.IPAddress address, int port, int bufferSize) : this(address?.ToString(), port, bufferSize) { }
+        public SecureTCPClient(Crestron.SimplSharp.IPAddress address, int port, int bufferSize, EthernetAdapterType adapter) : this(address?.ToString(), port, bufferSize) { }
 
         public string AddressClientConnectedTo { get; set; }
         public int PortNumber { get; set; }
         public byte[] IncomingDataBuffer { get; private set; }
         public SocketStatus ClientStatus { get; private set; } = SocketStatus.SOCKET_STATUS_NO_CONNECT;
         public bool IsConnected => ClientStatus == SocketStatus.SOCKET_STATUS_CONNECTED;
+        public bool DataAvailable => _tcp?.Available > 0;
+        public int SocketSendOrReceiveTimeOutInMs { get; set; }
+        public int LocalPortNumberOfClient => (_tcp?.Client?.LocalEndPoint as System.Net.IPEndPoint)?.Port ?? 0;
+        /// <summary>The server's certificate may be self-signed or for another name: a device on a control network usually is. Nothing is verified.</summary>
         public event SecureTCPClientSocketStatusChangeEventHandler SocketStatusChange;
 
         public void SetClientCertificate(Cryptography.X509Certificates.X509Certificate cert) => _clientCert = cert?.Inner;
         public void SetClientPrivateKey(byte[] key) { }
 
-        private void Status(SocketStatus s) { ClientStatus = s; OpenVPBridge.Post(() => SocketStatusChange?.Invoke(this, s)); }
+        private void Status(SocketStatus s)
+        {
+            if (ClientStatus == s) return;
+            ClientStatus = s;
+            OpenVPBridge.Post(() => SocketStatusChange?.Invoke(this, s));
+        }
 
         public SocketErrorCodes ConnectToServer()
         {
+            if (ClientStatus == SocketStatus.SOCKET_STATUS_CONNECTED) return SocketErrorCodes.SOCKET_INVALID_STATE;
+            if (string.IsNullOrWhiteSpace(AddressClientConnectedTo)) return SocketErrorCodes.SOCKET_NO_HOSTNAME_RESOLVE;
+            if (PortNumber < 1 || PortNumber > 65535) return SocketErrorCodes.SOCKET_INVALID_PORT_NUMBER;
             try
             {
+                _rec?.Close("closed");
+                _rec = OpenVPBridge.Sock("SecureTCPClient", "client", "tcp", "", $"{AddressClientConnectedTo}:{PortNumber}");
                 _tcp = new TcpClient();
-                _tcp.Connect(AddressClientConnectedTo, PortNumber);
+                var connect = _tcp.ConnectAsync(AddressClientConnectedTo, PortNumber);
+                if (SocketSendOrReceiveTimeOutInMs > 0 && !connect.Wait(SocketSendOrReceiveTimeOutInMs)) throw new TimeoutException();
+                connect.GetAwaiter().GetResult();
                 _ssl = new SslStream(_tcp.GetStream(), false, (_, _, _, _) => true);
                 var certs = _clientCert != null ? new System.Security.Cryptography.X509Certificates.X509CertificateCollection { _clientCert } : null;
                 _ssl.AuthenticateAsClient(AddressClientConnectedTo, certs, System.Security.Authentication.SslProtocols.None, false);
+                _rec?.Connected(OpenVPBridge.Ep(_tcp.Client.LocalEndPoint));
                 Status(SocketStatus.SOCKET_STATUS_CONNECTED);
                 return SocketErrorCodes.SOCKET_OK;
             }
             catch (Exception e)
             {
+                try { _ssl?.Dispose(); _tcp?.Dispose(); } catch { }
+                _ssl = null; _tcp = null;
+                _rec?.Close("connect failed");
                 OpenVPBridge.Log("Warning", $"SecureTCPClient {AddressClientConnectedTo}:{PortNumber}: {e.Message}");
-                Status(SocketStatus.SOCKET_STATUS_CONNECT_FAILED);
-                return SocketErrorCodes.SOCKET_CONNECTION_IN_PROGRESS;
+                var inner = e is AggregateException { InnerException: { } ie } ? ie : e;
+                var dns = inner is System.Net.Sockets.SocketException { SocketErrorCode: System.Net.Sockets.SocketError.HostNotFound or System.Net.Sockets.SocketError.NoData or System.Net.Sockets.SocketError.TryAgain };
+                Status(dns ? SocketStatus.SOCKET_STATUS_DNS_FAILED : SocketStatus.SOCKET_STATUS_CONNECT_FAILED);
+                return dns ? SocketErrorCodes.SOCKET_NO_HOSTNAME_RESOLVE : SocketErrorCodes.SOCKET_CONNECT_FAILED;
             }
         }
 
         public SocketErrorCodes ConnectToServerAsync(SecureTCPClientConnectCallback callback)
         {
-            Task.Run(() => { ConnectToServer(); callback?.Invoke(this); });
+            if (ClientStatus == SocketStatus.SOCKET_STATUS_CONNECTED) return SocketErrorCodes.SOCKET_INVALID_STATE;
+            Task.Run(() => { ConnectToServer(); OpenVPBridge.Post(() => callback?.Invoke(this)); });
             return SocketErrorCodes.SOCKET_OPERATION_PENDING;
         }
 
         public SocketErrorCodes DisconnectFromServer()
         {
+            var was = _tcp != null;
             try { _ssl?.Dispose(); _tcp?.Dispose(); } catch { }
             _ssl = null; _tcp = null;
-            Status(SocketStatus.SOCKET_STATUS_NO_CONNECT);
+            _rec?.Close("closed");
+            if (was) Status(SocketStatus.SOCKET_STATUS_BROKEN_LOCALLY);
             return SocketErrorCodes.SOCKET_OK;
+        }
+
+        private void Broken()
+        {
+            try { _ssl?.Dispose(); _tcp?.Dispose(); } catch { }
+            _ssl = null; _tcp = null;
+            _rec?.Close("closed by remote");
+            Status(SocketStatus.SOCKET_STATUS_BROKEN_REMOTELY);
         }
 
         public int SendData(byte[] data, int length)
         {
-            if (_ssl == null) return -1;
-            _ssl.Write(data, 0, length);
-            return length;
+            var ssl = _ssl;
+            if (ssl == null) return -1;
+            try { ssl.Write(data, 0, length); _rec?.Sent(data, 0, length); return length; }
+            catch (Exception) { Broken(); return -1; }
         }
 
         public SocketErrorCodes SendDataAsync(byte[] data, int length, SecureTCPClientSendCallback callback)
         {
             if (_ssl == null) return SocketErrorCodes.SOCKET_NOT_CONNECTED;
-            Task.Run(() => { try { _ssl.Write(data, 0, length); callback?.Invoke(this, length); } catch { callback?.Invoke(this, -1); } });
+            Task.Run(() => { var n = SendData(data, length); OpenVPBridge.Post(() => callback?.Invoke(this, n)); });
             return SocketErrorCodes.SOCKET_OPERATION_PENDING;
         }
 
+        /// <summary>Blocking read; 0 means the connection closed (the status event follows).</summary>
         public int ReceiveData()
         {
-            if (_ssl == null) return 0;
-            try { return _ssl.Read(IncomingDataBuffer, 0, IncomingDataBuffer.Length); } catch { return 0; }
+            var ssl = _ssl;
+            if (ssl == null) return 0;
+            try
+            {
+                var n = ssl.Read(IncomingDataBuffer, 0, IncomingDataBuffer.Length);
+                if (n <= 0) { Broken(); return 0; }
+                _rec?.Received(IncomingDataBuffer, 0, n);
+                return n;
+            }
+            catch (Exception) { if (_ssl != null) Broken(); return 0; }
         }
 
         public SocketErrorCodes ReceiveDataAsync(SecureTCPClientReceiveCallback callback)
         {
             if (_ssl == null) return SocketErrorCodes.SOCKET_NOT_CONNECTED;
-            Task.Run(() =>
-            {
-                var n = ReceiveData();
-                if (n <= 0) Status(SocketStatus.SOCKET_STATUS_BROKEN_REMOTELY);
-                OpenVPBridge.Post(() => callback?.Invoke(this, n));
-            });
+            Task.Run(() => { var n = ReceiveData(); OpenVPBridge.Post(() => callback?.Invoke(this, n)); });
             return SocketErrorCodes.SOCKET_OPERATION_PENDING;
         }
 

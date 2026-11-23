@@ -1,0 +1,135 @@
+# Default values for the OpenVP chart. Install with:
+#   helm install openvp ./deploy/helm/openvp --set image.repository=registry.example.com/openvp --set apiKey=$(openssl rand -base64 24)
+# Build and push the image first (the Dockerfile is at the top of the repository):
+#   docker build -t registry.example.com/openvp:0.1.0 . && docker push registry.example.com/openvp:0.1.0
+
+# OpenVP keeps its state (programs, NVRAM and User files, settings, backups) on one volume, so there is one replica and the
+# Deployment replaces its pod rather than running two at once. Do not raise replicaCount.
+replicaCount: 1
+
+image:
+  # There is no public image yet: build one from the Dockerfile and set the repository here.
+  repository: openvp
+  tag: ""            # defaults to the chart's appVersion
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# The access key for the web console and API (OpenVP:ApiKey).
+#   apiKey:         the chart stores it in a Secret. Empty and no existingSecret: the chart makes a random one the first time and keeps it on upgrades.
+#   existingSecret: the name of a Secret you made, with the key in "api-key" (or the key named in existingSecretKey). Wins over apiKey.
+apiKey: ""
+existingSecret: ""
+existingSecretKey: api-key
+
+# OpenVP settings (see the Configuration table in the README). Each becomes an OpenVP__<Name> environment variable.
+openvp:
+  slots: 10
+  # Ask for the key even from localhost. On, kubectl port-forward (which reaches the pod from its own loopback) needs the key too.
+  localRequiresKey: true
+  # Let Prometheus read /metrics without the key. It is still never served on the internet tunnel.
+  metricsPublic: false
+  # mDNS (openvp.local) can't reach your LAN from a pod network. Leave it off.
+  mdns: false
+  # The CIP listener for real touch panels and XPanels (experimental). Needs the devices service below to be reachable.
+  cipEnabled: true
+  # Time zone for schedules, daily backups and reports: a tz database name such as Europe/Berlin.
+  timeZone: UTC
+
+# The text consoles. Both are off by default; when on they listen on every interface and log in with the access key.
+console:
+  telnet:
+    enabled: false
+    port: 41795
+  ssh:
+    enabled: false
+    port: 22         # below 1024: the container runs as root so this works; use 2222 if you set a non-root securityContext
+
+# Anything else as environment variables, for example:
+#   extraEnv:
+#     - name: OpenVP__Autoload__slot1
+#       value: /app/data/uploads/slot01/Room.lpz
+extraEnv: []
+
+# The data volume, mounted at /app/data.
+persistence:
+  enabled: true
+  existingClaim: ""
+  storageClass: ""       # "" uses the cluster default, "-" uses none
+  accessModes: [ReadWriteOnce]
+  size: 5Gi
+  # helm uninstall leaves the volume (and your programs) behind. Set false to delete it with the release.
+  keepOnUninstall: true
+  annotations: {}
+# Without persistence the data is an emptyDir and is lost when the pod restarts.
+
+# The web console and REST API (port 8080, inside the cluster).
+service:
+  type: ClusterIP
+  port: 8080
+  annotations: {}
+
+# CIP (TCP 41794) and, if enabled above, the telnet and SSH consoles. Touch panels and XPanels speak CIP straight to a TCP port, so
+# this is a separate Service, a LoadBalancer by default. Panels connect to its address.
+devices:
+  enabled: false
+  type: LoadBalancer     # or NodePort
+  loadBalancerIP: ""
+  loadBalancerSourceRanges: []
+  externalTrafficPolicy: ""   # Local keeps the panel's own address, which the IP table shows
+  annotations: {}
+  cipPort: 41794
+  nodePort: null         # when type is NodePort: the CIP node port
+
+# The web console behind an ingress controller. It carries WebSockets (the debugger, panels), so keep long timeouts.
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    # nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # nginx.ingress.kubernetes.io/proxy-body-size: "512m"   # program and export uploads (OpenVP allows up to 512 MB)
+  hosts:
+    - host: openvp.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: openvp-tls
+  #    hosts:
+  #      - openvp.example.com
+
+# Checked against /api/info, which answers without the access key. Startup gets a longer allowance because restoring slots happens
+# in the background, after the console is up.
+probes:
+  liveness:
+    initialDelaySeconds: 10
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 4
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  startup:
+    periodSeconds: 5
+    failureThreshold: 30
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
+
+podAnnotations: {}
+podLabels: {}
+podSecurityContext: {}     # for example { fsGroup: 1000 } when the volume must be writable by a non-root user
+securityContext: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+terminationGracePeriodSeconds: 30

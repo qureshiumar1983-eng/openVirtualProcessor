@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>Enter PIN</title>
+<script>(function(){var K="openvp.theme",m=matchMedia("(prefers-color-scheme: light)");function g(){try{var v=localStorage.getItem(K);return v==="light"||v==="dark"?v:"auto"}catch(e){return"auto"}}function a(){var p=g();document.documentElement.dataset.theme=p==="auto"?(m.matches?"light":"dark"):p;var b=document.getElementById("theme");if(b){b.textContent={auto:"\u25d0 Auto",light:"\u2600 Light",dark:"\u263e Dark"}[p];b.title="Theme: "+p+". Click to change."}}window.__theme={cycle:function(){var o=["auto","light","dark"];try{localStorage.setItem(K,o[(o.indexOf(g())+1)%3])}catch(e){}a()},apply:a};a();document.addEventListener("DOMContentLoaded",a);if(m.addEventListener)m.addEventListener("change",a)})()</script>
+<style>
+  :root[data-theme="light"] { color-scheme:light; --bg:#f3f5f8; --card:#ffffff; --line:#d2d9e2; --text:#1b2330; --muted:#586374; --err:#a31d1d; --accent:#1d5fd6; }
+  :root[data-theme="light"] input { background:#fff; }
+  :root { --bg:#0f1216; --card:#181d23; --line:#29303a; --text:#e6e9ee; --muted:#8b95a3; --err:#ff9b9b; --accent:#4c8dff; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100dvh; display:grid; place-items:center; padding:16px; font:16px/1.5 system-ui, sans-serif; background:var(--bg); color:var(--text); }
+  main { width:100%; max-width:420px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:28px 22px; text-align:center; }
+  h1 { font-size:20px; margin:0 0 6px; overflow-wrap:anywhere; }
+  p { margin:0 0 16px; color:var(--muted); }
+  input { width:100%; font:inherit; font-size:28px; letter-spacing:.35em; text-align:center; color:var(--text); background:var(--input,#111519); border:1px solid var(--line); border-radius:10px; padding:12px 8px; }
+  input:focus { outline:2px solid var(--accent); outline-offset:1px; }
+  button { margin-top:14px; width:100%; font:inherit; font-size:17px; font-weight:600; color:#fff; background:var(--accent); border:0; border-radius:10px; padding:13px; cursor:pointer; }
+  button:disabled { opacity:.5; }
+  #msg { min-height:24px; margin-top:12px; color:var(--err); overflow-wrap:anywhere; }
+</style>
+</head>
+<body>
+<main>
+  <h1>{{label}}</h1>
+  <p>Enter the PIN you were given to open this panel.</p>
+  <form id="f" autocomplete="off">
+    <input id="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="one-time-code" aria-label="PIN" autofocus>
+    <button id="go" type="submit">Open panel</button>
+  </form>
+  <div id="msg" role="alert">{{note}}</div>
+</main>
+<script>
+  const f = document.getElementById("f"), pin = document.getElementById("pin"), msg = document.getElementById("msg"), go = document.getElementById("go");
+  f.onsubmit = async e => {
+    e.preventDefault();
+    if (!/^[0-9]{4,8}$/.test(pin.value)) { msg.textContent = "The PIN is 4 to 8 digits."; return; }
+    go.disabled = true; msg.textContent = "";
+    try {
+      const r = await fetch("/s/{{token}}/pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin: pin.value }) });
+      if (r.ok) { location.reload(); return; }
+      if (r.status === 410) { location.reload(); return; }
+      const b = await r.json().catch(() => ({}));
+      msg.textContent = b.error || "That didn't work.";
+      pin.value = ""; pin.focus();
+    } catch { msg.textContent = "Couldn't reach the server. Try again."; }
+    go.disabled = false;
+  };
+</script>
+</body>
+</html>

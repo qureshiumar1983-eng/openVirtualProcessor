@@ -1,0 +1,18 @@
+{
+  "name": "Source select",
+  "kind": "SIMPL Windows",
+  "description": "A room with four sources on an interlock (pressing one releases the others), a power toggle, a volume slider that echoes back, and the four source names sent to the panel as text when the program starts.",
+  "panel": "XPanel at IP ID 03",
+  "tryIt": "Open the test panel on IP ID 03, press digital 1 to 4 and watch only one stay lit, press digital 5 to toggle power, move analog 1 and see it come back, and read serial 1 to 4.",
+  "tags": [
+    "interlock",
+    "toggle",
+    "analog",
+    "serial"
+  ],
+  "id": "source-select",
+  "files": [
+    "SourceSelect.smw",
+    "SourceSelect.openvp.json"
+  ]
+}

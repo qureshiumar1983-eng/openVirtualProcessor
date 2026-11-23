@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<link rel="stylesheet" href="openvp-ops.css">
+<script src="openvp-theme.js"></script>
+<title>OpenVP compatibility</title>
+<style>
+  main { max-width:1200px; }
+  .tiles { display:flex; flex-wrap:wrap; gap:8px; }
+  .tile { background:var(--tile); border:1px solid var(--line); border-radius:8px; padding:6px 12px; min-width:8.5em; }
+  .tile b { display:block; font-size:20px; line-height:1.2; } .tile span { color:var(--muted); font-size:12px; }
+  .bars { display:flex; height:10px; border-radius:5px; overflow:hidden; background:var(--chip); margin:6px 0 2px; }
+  .bars i { display:block; height:100%; } .bars .s { background:var(--ok); } .bars .p { background:var(--warn); } .bars .u { background:var(--err); }
+  .legend { font-size:12px; color:var(--muted); display:flex; flex-wrap:wrap; gap:2px 12px; }
+  .legend b { color:var(--text); }
+  .cprog h2 .sub { font-weight:400; color:var(--muted); font-size:13px; }
+  .probs { margin:6px 0 0; padding:0; list-style:none; border:1px solid var(--line); border-radius:6px; background:var(--well); }
+  .probs li { padding:3px 8px; border-bottom:1px solid var(--line); overflow-wrap:anywhere; display:flex; gap:8px; align-items:baseline; }
+  .probs li:last-child { border:0; } .probs .d { color:var(--muted); }
+  td.chk { width:2em; }
+  td .d { color:var(--muted); }
+  .cat h3 { margin:14px 0 4px; font-size:14px; }
+  #rp-body { min-height:16em; }
+  .warns { margin:0; padding-left:1.2em; }
+  .meta { display:flex; flex-wrap:wrap; gap:4px 16px; font-size:12px; color:var(--muted); }
+  @media (max-width:700px) { td.chk { width:auto; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Compatibility</h1>
+  <span id="saved" role="status" aria-live="polite"></span>
+  <span class="sp"></span>
+  <span id="who-chip"></span>
+  <button class="theme-btn" data-theme-toggle></button>
+  <a href="examples.html">Examples</a>
+  <a href="/">Console</a>
+  <a href="help.html#compat" target="openvp-help">Help</a>
+</header>
+<main>
+  <div id="fail" class="note" role="alert" hidden></div>
+  <div class="card">
+    <div class="tiles" id="tiles" aria-live="polite"></div>
+    <p class="muted" style="margin-bottom:0">What OpenVP can run, from the programs loaded now and from everything it has ever noted as unsupported. <b>Supported</b>: it runs. <b>Partial</b>: some of it runs (a SIMPL# type with a missing member, a CH5 component with basic behaviour). <b>Unsupported</b>: it does nothing yet. Reporting is optional and always goes through a preview you can edit.</p>
+  </div>
+  <div class="tabs" role="tablist" id="tabs"><button class="active" data-t="programs">Loaded programs</button><button data-t="logged">Ever logged</button><button data-t="panels">Panel features</button></div>
+  <div class="pane on" id="pane-programs"><div id="programs" class="stack"></div></div>
+  <div class="pane" id="pane-logged">
+    <div class="card">
+      <div class="bar"><span id="lg-sum" class="muted"></span><span class="sp"></span><button class="primary small" id="lg-report" disabled>Report selected…</button><a href="/api/unsupported" download="unsupported.md" class="small">Download unsupported.md</a></div>
+      <div id="logged"></div>
+    </div>
+  </div>
+  <div class="pane" id="pane-panels"><div class="card"><div class="scroll-x"><table class="cards" id="ptbl"><thead><tr><th>Area</th><th>Feature</th><th>Status</th><th>Notes</th></tr></thead><tbody></tbody></table></div></div></div>
+</main>
+
+<dialog id="rp-dlg" class="wide" aria-labelledby="rp-title"><form method="dialog" id="rp-form" onsubmit="return false" class="stack">
+  <h2 id="rp-title">Report to the OpenVP project</h2>
+  <div class="note"><b>Nothing is sent from here.</b> The button below opens <code id="rp-repo"></code> in your browser with this text filled in. You read it there and press Submit yourself, with your own GitHub account. This list names symbols and APIs only: no program contents, file paths beyond file names, IP addresses, keys, user names or e-mail addresses.</div>
+  <label>Title<input id="rp-t" maxlength="120"></label>
+  <label>Text (edit it if you like; this is exactly what is sent to the new-issue page)<textarea id="rp-body" rows="14" spellcheck="true"></textarea></label>
+  <div class="meta" id="rp-meta"></div>
+  <ul class="warns" id="rp-warn" role="alert"></ul>
+  <div class="err" id="rp-err" role="alert"></div>
+  <div class="row"><button type="button" data-close>Cancel</button><button type="button" id="rp-copy">Copy text</button><button type="button" class="primary" id="rp-go">Open on GitHub…</button></div>
+</form></dialog>
+<script src="openvp-auth.js"></script>
+<script src="openvp-ops.js"></script>
+<script>
+"use strict";
+openvpAuth.init();
+let data = null, picked = new Set();
+const ST = { supported: ["ok", "supported"], partial: ["warn", "partial"], unsupported: ["err", "unsupported"] };
+const V = { "will-run": ["ok", "Will run"], partly: ["warn", "Partly runs"], "wont-run": ["err", "Won't run"] };
+const keyOf = (k, n) => k + "\u0001" + n;
+
+function draw() {
+  const c = data.counts, lg = data.logged;
+  $("#tiles").innerHTML = [
+    [c.programs.total, "programs loaded"], [c.programs.willRun, "will run"], [c.programs.partly, "partly run"], [c.programs.wontRun, "won't run"],
+    [lg.total, "things ever logged"], [c.panel.supported + "/" + c.panel.partial + "/" + c.panel.unsupported, "panel features: supported / partial / unsupported"]
+  ].map(([n, l]) => `<div class="tile"><b>${esc(n)}</b><span>${esc(l)}</span></div>`).join("");
+
+  // Programs
+  const P = $("#programs"); P.innerHTML = "";
+  if (!data.programs.length) P.innerHTML = `<div class="card muted">No program is loaded. Load one in the console, or try an <a href="examples.html">example</a>.</div>`;
+  for (const p of data.programs) {
+    const [vc, vl] = V[p.verdict.code] || ["", p.verdict.headline], t = p.totals, tot = Math.max(1, t.supported + t.partial + t.unsupported);
+    const el = document.createElement("div"); el.className = "card cprog";
+    el.innerHTML = `<h2>Slot ${p.slot}${p.name ? " · " + esc(p.name) : ""} <span class="sub">${esc(p.program || "")} · ${esc(p.kind || "")}</span> ${pill(vc, vl)}</h2>
+      <div class="muted">${esc(p.verdict.reason || p.verdict.headline)}${p.summary ? "<br>" + esc(p.summary) : ""}</div>
+      <div class="bars" role="img" aria-label="${t.supported} supported, ${t.partial} partial, ${t.unsupported} unsupported ${esc(t.unit)}"><i class="s" style="width:${100 * t.supported / tot}%"></i><i class="p" style="width:${100 * t.partial / tot}%"></i><i class="u" style="width:${100 * t.unsupported / tot}%"></i></div>
+      <div class="legend"><span><b>${num(t.supported)}</b> supported</span><span><b>${num(t.partial)}</b> partial</span><span><b>${num(t.unsupported)}</b> unsupported</span><span>(${esc(t.unit)})</span>
+        ${p.categories.map(x => `<span>${esc(x.category)}: <b>${x.count}</b> ${esc(x.status)}</span>`).join("")}</div>
+      ${p.problems.length ? `<ul class="probs">${p.problems.map(x => `<li>${pill(ST[x.status][0], ST[x.status][1])}<span><b>${esc(x.kind)}</b> ${esc(x.name)}${x.detail ? ` <span class="d">${esc(x.detail)}</span>` : ""}</span></li>`).join("")}</ul>` : ""}
+      <div class="bar" style="margin-top:8px">${p.problems.length ? `<button class="small primary" data-slot="${p.slot}">Report this program's problems…</button>` : ""}</div>`;
+    P.appendChild(el);
+  }
+  for (const b of P.querySelectorAll("button[data-slot]")) b.onclick = () => openReport({ slot: +b.dataset.slot });
+
+  // Ever logged
+  $("#lg-sum").textContent = `${lg.total} item${lg.total === 1 ? "" : "s"}${lg.file ? " in " + lg.file : ""}, ${num(lg.seen)} program load${lg.seen === 1 ? "" : "s"} in all`;
+  const L = $("#logged"); L.innerHTML = lg.total ? "" : `<p class="muted">Nothing unsupported has been logged yet.</p>`;
+  for (const cat of lg.categories) {
+    const d = document.createElement("div"); d.className = "cat";
+    d.innerHTML = `<h3>${esc(cat.category)} <span class="muted">· ${cat.items.length}</span></h3><div class="scroll-x"><table class="cards"><thead><tr><th></th><th>Kind</th><th>Name</th><th>Details</th><th class="num">Seen</th><th>Status</th></tr></thead><tbody></tbody></table></div>`;
+    const tb = d.querySelector("tbody");
+    for (const i of cat.items) {
+      const k = keyOf(i.kind, i.name), tr = document.createElement("tr");
+      tr.innerHTML = `<td class="chk"><input type="checkbox" aria-label="Select ${esc(i.name)}" ${picked.has(k) ? "checked" : ""}></td><td data-l="Kind">${esc(i.kind)}</td><td class="wrap" data-l="Name"><b>${esc(i.name)}</b></td><td class="wrap d" data-l="Details">${esc(i.detail)}</td><td class="num" data-l="Seen">${i.seen}</td><td data-l="Status">${pill(ST[i.status][0], ST[i.status][1])}</td>`;
+      tr.querySelector("input").onchange = e => { e.target.checked ? picked.add(k) : picked.delete(k); $("#lg-report").disabled = picked.size === 0; $("#lg-report").textContent = picked.size ? `Report ${picked.size} selected…` : "Report selected…"; };
+      tb.appendChild(tr);
+    }
+    L.appendChild(d);
+  }
+
+  // Panel features
+  const T = $("#ptbl tbody"); T.innerHTML = "";
+  for (const f of data.panelFeatures) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td data-l="Area">${esc(f.area)}</td><td class="wrap" data-l="Feature">${esc(f.feature)}</td><td data-l="Status">${pill(ST[f.status][0], ST[f.status][1])}</td><td class="wrap muted" data-l="Notes">${esc(f.note)}</td>`;
+    T.appendChild(tr);
+  }
+}
+$("#lg-report").onclick = () => openReport({ items: [...picked].map(k => { const [kind, name] = k.split("\u0001"); return { kind, name }; }) });
+
+$("#tabs").onclick = e => { const b = e.target.closest("button[data-t]"); if (!b) return; for (const x of $$("#tabs button")) x.classList.toggle("active", x === b); for (const p of $$(".pane")) p.classList.toggle("on", p.id === "pane-" + b.dataset.t); };
+
+// ---- the report: preview, edit, then open the link in the person's own browser. Nothing is sent by OpenVP.
+let lastUrl = "", timer = 0;
+async function openReport(req) {
+  $("#rp-err").textContent = ""; $("#rp-warn").innerHTML = ""; $("#rp-repo").textContent = "github.com/" + data.repo + "/issues/new";
+  try {
+    const d = await api("/api/report/draft", "POST", req);
+    $("#rp-t").value = d.title; $("#rp-body").value = d.body; lastUrl = d.url;
+    meta(d.url.length, d.truncated ? `Only ${d.included} of ${d.itemCount} items fit in the link.` : "");
+    $("#rp-dlg").showModal(); $("#rp-body").focus();
+  } catch (e) { fail(e.message); }
+}
+function meta(len, extra) { $("#rp-meta").innerHTML = `<span>OpenVP ${esc(data.version)}</span><span>${esc(data.os)}</span><span>link length ${len} of about 7,000 characters</span>${extra ? `<span><b>${esc(extra)}</b></span>` : ""}`; }
+async function refit() {
+  try {
+    const r = await api("/api/report/url", "POST", { title: $("#rp-t").value, body: $("#rp-body").value });
+    lastUrl = r.url;
+    meta(r.urlLength, r.truncated ? "The text is longer than a GitHub link allows; it will be cut where marked." : "");
+    $("#rp-warn").innerHTML = r.warnings.map(w => `<li>This text seems to contain ${esc(w)}. Take it out unless you want to share it.</li>`).join("");
+    $("#rp-err").textContent = "";
+    return r;
+  } catch (e) { $("#rp-err").textContent = e.message; return null; }
+}
+for (const id of ["#rp-t", "#rp-body"]) $(id).oninput = () => { clearTimeout(timer); timer = setTimeout(refit, 300); };
+$("#rp-copy").onclick = async () => { try { await navigator.clipboard.writeText($("#rp-t").value + "\n\n" + $("#rp-body").value); flash("Copied"); } catch { $("#rp-body").select(); } };
+$("#rp-go").onclick = async () => {
+  const r = await refit(); if (!r) return;
+  if (r.truncated) $("#rp-body").value = r.body;
+  window.open(r.url, "_blank", "noopener,noreferrer");   // the person's browser opens GitHub; OpenVP sends nothing
+  $("#rp-dlg").close(); flash("Opened GitHub in your browser");
+};
+
+async function load() { try { data = await api("/api/compat"); draw(); } catch (e) { fail(e.message); } }
+load(); setInterval(() => { if (!$("#rp-dlg").open) load(); }, 10000);
+</script>
+</body>
+</html>

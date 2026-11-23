@@ -308,10 +308,17 @@ namespace Crestron.Logos.SplusLibrary
             try
             {
                 OpenVP.Splus.UdpPorts.Leave(socket);
-                socket.Remote = new System.Net.IPEndPoint(System.Net.IPAddress.TryParse(address, out var ip) ? ip : System.Net.Dns.GetHostAddresses(address)[0], port);
+                socket.Rec?.Close("closed");
+                var go = socket.Owner?.Slot?.Io.Redirects.Resolve(address, port, "udp");
+                var toHost = go is { Redirected: true } ? go.Host : address;
+                var toPort = go is { Redirected: true } ? go.Port : port;
+                if (go is { Redirected: true }) socket.Owner?.Slot?.Log("Info", $"Network redirect: {address}:{port} goes to {toHost}:{toPort}");
+                socket.Remote = new System.Net.IPEndPoint(System.Net.IPAddress.TryParse(toHost, out var ip) ? ip : System.Net.Dns.GetHostAddresses(toHost)[0], toPort);
                 OpenVP.Splus.UdpPorts.Join(socket, port);
                 socket.PortNumber = port;
                 socket.SocketStatus = 2;
+                socket.Rec = socket.Owner?.Slot?.Io.Sockets.Open("SIMPL+ UDP socket", "server", "udp", $"0.0.0.0:{port}", $"{address}:{port}");
+                if (socket.Rec != null) { if (go is { Redirected: true }) socket.Rec.RedirectedTo = $"{toHost}:{toPort}"; socket.Rec.Connected(); }
                 return 0;
             }
             catch (Exception e) { socket.Owner?.Log("Warning", $"SIMPL+ UDP enable {address}:{port}: {e.Message}"); return -1; }
@@ -319,7 +326,7 @@ namespace Crestron.Logos.SplusLibrary
 
         public static short SocketUDP_Disable(SplusUdpSocket socket)
         {
-            OpenVP.Splus.UdpPorts.Leave(socket); socket.SocketStatus = 0; return 0;
+            OpenVP.Splus.UdpPorts.Leave(socket); socket.SocketStatus = 0; socket.Rec?.Close("closed"); return 0;
         }
 
         /// <summary>A datagram for this socket (from <see cref="OpenVP.Splus.UdpPorts"/>).</summary>
@@ -327,6 +334,7 @@ namespace Crestron.Logos.SplusLibrary
         {
             if (socket.Owner?.Stopped == true) return;
             socket.LastSender = sender;
+            socket.Rec?.Received(data, 0, data.Length);
             socket.SocketRxBuf.UpdateValue(S(socket.SocketRxBuf) + Encoding.Latin1.GetString(data));
             socket.Raise(socket.OnSocketReceive);
         }
@@ -338,9 +346,9 @@ namespace Crestron.Logos.SplusLibrary
             {
                 switch (socket)
                 {
-                    case SplusUdpSocket u when u.Udp != null && u.Remote != null: u.Udp.Send(bytes, bytes.Length, u.Remote); return (short)bytes.Length;
-                    case SplusTcpClient c when c.Client?.Connected == true: c.Client.GetStream().Write(bytes); return (short)bytes.Length;
-                    case SplusTcpServer s when s.Client?.Connected == true: s.Client.GetStream().Write(bytes); return (short)bytes.Length;
+                    case SplusUdpSocket u when u.Udp != null && u.Remote != null: u.Udp.Send(bytes, bytes.Length, u.Remote); socket.Rec?.Sent(bytes, 0, bytes.Length); return (short)bytes.Length;
+                    case SplusTcpClient c when c.Client?.Connected == true: c.Client.GetStream().Write(bytes); socket.Rec?.Sent(bytes, 0, bytes.Length); return (short)bytes.Length;
+                    case SplusTcpServer s when s.Client?.Connected == true: s.Client.GetStream().Write(bytes); (s.ClientRec ?? socket.Rec)?.Sent(bytes, 0, bytes.Length); return (short)bytes.Length;
                 }
             }
             catch (Exception e) { socket.Owner?.Log("Warning", $"SIMPL+ SocketSend: {e.Message}"); }
@@ -352,11 +360,19 @@ namespace Crestron.Logos.SplusLibrary
             try
             {
                 socket.Client?.Dispose();
+                socket.Rec?.Close("closed");
                 socket.Client = new System.Net.Sockets.TcpClient();
                 var c = socket.Client;
-                c.ConnectAsync(address, port).ContinueWith(t =>
+                var go = socket.Owner?.Slot?.Io.Redirects.Resolve(address, port, "tcp");
+                var toHost = go is { Redirected: true } ? go.Host : address;
+                var toPort = go is { Redirected: true } ? go.Port : port;
+                if (go is { Redirected: true }) socket.Owner?.Slot?.Log("Info", $"Network redirect: {address}:{port} goes to {toHost}:{toPort}");
+                var rec = socket.Rec = socket.Owner?.Slot?.Io.Sockets.Open("SIMPL+ TCP client", "client", "tcp", "", $"{address}:{port}");
+                if (rec != null && go is { Redirected: true }) rec.RedirectedTo = $"{toHost}:{toPort}";
+                c.ConnectAsync(toHost, toPort).ContinueWith(t =>
                 {
-                    if (t.IsFaulted) { socket.SocketStatus = 4; socket.Raise(socket.OnSocketStatus); return; }
+                    if (t.IsFaulted) { rec?.Close("connect failed"); socket.SocketStatus = 4; socket.Raise(socket.OnSocketStatus); return; }
+                    rec?.Connected(c.Client.LocalEndPoint?.ToString());
                     socket.SocketStatus = 2;
                     socket.Raise(socket.OnSocketConnect);
                     socket.Raise(socket.OnSocketStatus);
@@ -370,6 +386,7 @@ namespace Crestron.Logos.SplusLibrary
         public static short SocketDisconnectClient(SplusTcpClient socket)
         {
             socket.Client?.Dispose(); socket.Client = null;
+            socket.Rec?.Close("closed");
             socket.SocketStatus = 0;
             socket.Raise(socket.OnSocketDisconnect);
             return 0;
@@ -385,11 +402,13 @@ namespace Crestron.Logos.SplusLibrary
                 {
                     var n = await stream.ReadAsync(buf, 0, buf.Length);
                     if (n == 0) break;
+                    socket.Rec?.Received(buf, 0, n);
                     socket.SocketRxBuf.UpdateValue(S(socket.SocketRxBuf) + Encoding.Latin1.GetString(buf, 0, n));
                     socket.Raise(socket.OnSocketReceive);
                 }
             }
             catch { }
+            socket.Rec?.Close("closed by remote");
             socket.SocketStatus = 0;
             socket.Raise(socket.OnSocketDisconnect);
             socket.Raise(socket.OnSocketStatus);

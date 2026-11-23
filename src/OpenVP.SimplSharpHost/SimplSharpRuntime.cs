@@ -30,7 +30,9 @@ public sealed class SimplSharpLoader : IProgramLoader
         if (Path.GetExtension(path).Equals(".dll", StringComparison.OrdinalIgnoreCase))
         {
             // Copy the dll and anything next to it (its own dependencies).
-            foreach (var f in Directory.GetFiles(Path.GetDirectoryName(Path.GetFullPath(path))!, "*.dll"))
+            // Along with each .dll, its .pdb: it is what lets an exception name the file and line.
+            var from = Path.GetDirectoryName(Path.GetFullPath(path))!;
+            foreach (var f in Directory.GetFiles(from, "*.dll").Concat(Directory.GetFiles(from, "*.pdb")))
                 File.Copy(f, Path.Combine(appDir, Path.GetFileName(f)), overwrite: true);
             programDll = Path.Combine(appDir, Path.GetFileName(path));
         }
@@ -40,6 +42,10 @@ public sealed class SimplSharpLoader : IProgramLoader
             programDll = Directory.GetFiles(appDir, "*.dll", SearchOption.AllDirectories)
                 .FirstOrDefault(CompatScanner.DefinesControlSystem)
                 ?? throw new InvalidDataException("No class deriving from CrestronControlSystem was found in the archive.");
+            // A .pdb that came beside the .cpz (not inside it) goes next to the program .dll.
+            var beside = Path.ChangeExtension(Path.GetFullPath(path), ".pdb");
+            var want = Path.ChangeExtension(programDll, ".pdb");
+            if (File.Exists(beside) && !File.Exists(want)) File.Copy(beside, want);
         }
 
         return new SimplSharpRuntime(slot, programDll, _shimDir);
@@ -47,7 +53,7 @@ public sealed class SimplSharpLoader : IProgramLoader
 }
 
 /// <summary>A SIMPL# Pro program running in one slot.</summary>
-public sealed class SimplSharpRuntime : IProgramRuntime
+public sealed class SimplSharpRuntime : IProgramRuntime, IProgramAnalysis
 {
     private readonly ProgramSlot _slot;
     private readonly string _programDll;
@@ -66,6 +72,7 @@ public sealed class SimplSharpRuntime : IProgramRuntime
         // Check compatibility up front against a reference copy of the shim.
         var shim = Assembly.LoadFrom(Path.Combine(shimDir, "OpenVP.SimplSharp.dll"));
         Compat = CompatScanner.Scan(programDll, shim);
+        _deviceTypes = Compat.UsedTypes.Where(n => shim.GetType(n) is { IsAbstract: false } t && IsDeviceType(t)).Select(n => n[(n.LastIndexOf('.') + 1)..]).Distinct().ToList();
         foreach (var t in Compat.MissingTypes)
         {
             slot.Log("Warning", $"Not implemented in OpenVP yet: type {t}");
@@ -82,6 +89,43 @@ public sealed class SimplSharpRuntime : IProgramRuntime
     public string ProgramName { get; }
     public CompatReport Compat { get; }
 
+    private readonly List<string> _deviceTypes;
+
+    private static bool IsDeviceType(Type? t)
+    {
+        for (; t != null; t = t.BaseType) if (t.Name == "BasicTriList") return true;
+        return false;
+    }
+
+    string? IProgramAnalysis.Blocker => Compat.ControlSystemType == null
+        ? "No class deriving from CrestronControlSystem was found, so there is nothing to start. Is this the program's own .dll?" : null;
+
+    IReadOnlyList<ReadinessProblem> IProgramAnalysis.Problems() =>
+        Compat.MissingTypes.Select(t => new ReadinessProblem("SIMPL# type", t))
+            .Concat(Compat.MissingMembers.Select(m => new ReadinessProblem("SIMPL# member", m))).ToList();
+
+    /// <summary>A SIMPL# program makes its devices when it starts, so before then only the device types it refers to are known.
+    /// Once it runs (and has registered devices), the summary is of what it registered.</summary>
+    public ProgramSummary Summarize()
+    {
+        var devices = _slot.Devices.ToList();
+        if (devices.Count == 0)
+            return new ProgramSummary(Kind, Array.Empty<string>(), Array.Empty<string>(), 0, 0, 0, 0, 0, 0, DevicesKnown: false, Uses: _deviceTypes);
+        var panels = new List<string>();
+        var eiscs = new List<string>();
+        var other = 0;
+        foreach (var d in devices.OrderBy(d => d.IpId))
+        {
+            switch (DeviceKinds.Classify(d.Type))
+            {
+                case DeviceClass.Panel: panels.Add($"{d.IpId:X2}"); break;
+                case DeviceClass.Eisc: eiscs.Add($"{d.IpId:X2}"); break;
+                default: other++; break;
+            }
+        }
+        return new ProgramSummary(Kind, panels, eiscs, other, 0, 0, 0, 0, 0);
+    }
+
     public void Start()
     {
         if (Compat.ControlSystemType == null)
@@ -92,7 +136,8 @@ public sealed class SimplSharpRuntime : IProgramRuntime
         _bridge = shim.GetType("OpenVP.SimplSharp.OpenVPBridge", throwOnError: true)!;
         _bridge.GetProperty("Slot")!.SetValue(null, _slot);
 
-        var program = _alc.LoadFromStream(new MemoryStream(File.ReadAllBytes(_programDll))); // unlocked, so a reload can replace it
+        var program = _alc.LoadWithSymbols(_programDll); // from memory (unlocked, so a reload can replace it), with its .pdb so stack traces have file and line
+        NoteSymbols();
         var csType = program.GetType(Compat.ControlSystemType, throwOnError: true)!;
 
         _slot.Dispatcher.Invoke(() =>
@@ -111,6 +156,14 @@ public sealed class SimplSharpRuntime : IProgramRuntime
                 throw Explain(e);
             }
         });
+    }
+
+    /// <summary>A .pdb that is there but can't be read says so in the log, once. (A missing .pdb is not worth a line: the Exceptions list explains it when it matters.)</summary>
+    private void NoteSymbols()
+    {
+        var pdb = ProgramSymbols.Find(_programDll);
+        if (pdb != null && !ProgramSymbols.IsPortable(File.ReadAllBytes(pdb)))
+            _slot.Log("Info", $"{Path.GetFileName(pdb)} is a Windows (full) PDB, which OpenVP can't read. Build with <DebugType>portable</DebugType> to get file and line numbers in exceptions.");
     }
 
     private Exception Explain(Exception e)

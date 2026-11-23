@@ -295,6 +295,7 @@ namespace Crestron.Logos.SplusObjects
         public void SocketConnect() { SocketStatus = 2; Raise(OnSocketConnect); Raise(OnSocketStatus); }
         public void SocketDisconnect() { SocketStatus = 0; Raise(OnSocketDisconnect); Raise(OnSocketStatus); }
         public bool IsHostname(string address) => !System.Net.IPAddress.TryParse(address ?? "", out _);
+        internal OpenVP.Core.SocketRecord? Rec;
         internal string RequestedAddress = "";
         internal int PortNumber;
         internal System.Net.IPEndPoint RemoteEndPoint;
@@ -311,6 +312,7 @@ namespace Crestron.Logos.SplusObjects
 
     public partial class SplusTcpServer
     {
+        internal OpenVP.Core.SocketRecord? ClientRec;
         public short StartListening(CrestronString address, int port) => Crestron.Logos.SplusLibrary.Functions.SocketServerStartListen(this, address, (ushort)port);
         public short StopListening() => Crestron.Logos.SplusLibrary.Functions.SocketServerStopListen(this);
         public short Send(CrestronString data) => Crestron.Logos.SplusLibrary.Functions.SocketSend(this, data);

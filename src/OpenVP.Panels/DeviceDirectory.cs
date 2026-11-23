@@ -24,8 +24,17 @@ public static class DeviceDirectory
                 throw new ArgumentException($"Room ID '{roomId}' belongs to slot {bySlot.Number}, not slot {slot}.");
             slot = bySlot.Number;
         }
-        var existing = processor.FindDevice(ipId, slot);
+        // ipId is the number the panel connects to. A slot's IP ID remap may send it to another of the program's IDs.
+        var existing = processor.FindPanelDevice(ipId, slot);
         if (existing != null) return existing;
-        return processor.Slot(slot ?? 1).RegisterDevice(ipId, "Panel (waiting for program)", "Connected before registration");
+        var target = slot is int s ? processor.Slot(s) : processor.SlotRemapping(ipId) ?? processor.Slots.FirstOrDefault(x => x.Io.Remap.IsRemapped(ipId)) ?? processor.Slot(1);
+        if (target.Io.Remap.ToProgram(ipId) is not { } programId)
+        {
+            // The program's device with this number was remapped to another number, so nothing answers here any more.
+            // The panel gets a device that belongs to no slot, so it can connect but drives nothing.
+            var moved = target.Io.Remap.PublicOf(ipId);
+            return new JoinDevice(target.Number, ipId, "Panel (IP ID remapped)", $"IP ID {ipId:X2} was remapped; this program answers at {moved:X2}");
+        }
+        return target.RegisterDevice(programId, "Panel (waiting for program)", "Connected before registration");
     }
 }

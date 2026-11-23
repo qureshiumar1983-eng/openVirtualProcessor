@@ -41,6 +41,14 @@ namespace Crestron.SimplSharp
         public IPAddress(byte[] address) { Inner = new System.Net.IPAddress(address); }
         public IPAddress(long address) { Inner = new System.Net.IPAddress(address); }
         public static IPAddress Parse(string s) => new IPAddress(System.Net.IPAddress.Parse(s));
+        public static bool TryParse(string s, out IPAddress address)
+        {
+            if (System.Net.IPAddress.TryParse(s, out var a)) { address = new IPAddress(a); return true; }
+            address = null; return false;
+        }
+        public static bool IsLoopback(IPAddress address) => address != null && System.Net.IPAddress.IsLoopback(address.Inner);
+        public override bool Equals(object obj) => obj is IPAddress o && Inner.Equals(o.Inner);
+        public override int GetHashCode() => Inner.GetHashCode();
         public static IPAddress Any => new IPAddress(System.Net.IPAddress.Any);
         public static IPAddress Loopback => new IPAddress(System.Net.IPAddress.Loopback);
         public static IPAddress None => new IPAddress(System.Net.IPAddress.None);
@@ -60,6 +68,7 @@ namespace Crestron.SimplSharp
     public class IPHostEntry
     {
         public IPAddress[] AddressList { get; set; } = Array.Empty<IPAddress>();
+        public string[] Aliases { get; set; } = Array.Empty<string>();
         public string HostName { get; set; } = string.Empty;
     }
 
@@ -68,8 +77,11 @@ namespace Crestron.SimplSharp
         public static IPHostEntry GetHostEntry(string host)
         {
             var e = System.Net.Dns.GetHostEntry(host);
-            return new IPHostEntry { HostName = e.HostName, AddressList = e.AddressList.Select(a => new IPAddress(a)).ToArray() };
+            return new IPHostEntry { HostName = e.HostName, Aliases = e.Aliases, AddressList = e.AddressList.Select(a => new IPAddress(a)).ToArray() };
         }
+        public static IPHostEntry GetHostEntry(IPAddress address) => GetHostEntry(address.ToString());
+        public static IPAddress[] GetHostAddresses(string host) => System.Net.Dns.GetHostAddresses(host).Select(a => new IPAddress(a)).ToArray();
+        public static string GetHostName() => System.Net.Dns.GetHostName();
     }
 
     public enum eEthernetAdapterParameter { }
@@ -240,6 +252,7 @@ namespace Crestron.SimplSharp.CrestronSockets
     {
         private UdpClient _udp;
         private System.Net.IPEndPoint _remote;
+        private OpenVP.Core.SocketRecord _rec;
 
         public UDPServer() : this("0.0.0.0", 0, 1024) { }
         public UDPServer(string address, int port, int bufferSize) : this(address, port, bufferSize, port) { }
@@ -268,9 +281,13 @@ namespace Crestron.SimplSharp.CrestronSockets
             try
             {
                 _udp?.Dispose();
+                _rec?.Close("closed");
                 _udp = new UdpClient(LocalPort) { EnableBroadcast = true };
-                _remote = AddressToAcceptConnectionFrom is null or "0.0.0.0" ? null
-                    : new System.Net.IPEndPoint(System.Net.Dns.GetHostAddresses(AddressToAcceptConnectionFrom).First(), PortNumber);
+                var to = AddressToAcceptConnectionFrom is null or "0.0.0.0" ? null : OpenVPBridge.Redirect(AddressToAcceptConnectionFrom, PortNumber, "udp");
+                _remote = to == null ? null : new System.Net.IPEndPoint(System.Net.Dns.GetHostAddresses(to.Host).First(), to.Port);
+                _rec = OpenVPBridge.Sock("UDPServer", "server", "udp", OpenVPBridge.Ep(_udp.Client.LocalEndPoint), to == null ? "" : $"{AddressToAcceptConnectionFrom}:{PortNumber}");
+                if (to is { Redirected: true } && _rec != null) _rec.RedirectedTo = $"{to.Host}:{to.Port}";
+                _rec?.Connected();
                 return SocketErrorCodes.SOCKET_OK;
             }
             catch { return SocketErrorCodes.SOCKET_INVALID_PORT_NUMBER; }
@@ -278,35 +295,65 @@ namespace Crestron.SimplSharp.CrestronSockets
 
         public SocketErrorCodes EnableUDPServer(string address, int port) { AddressToAcceptConnectionFrom = address; PortNumber = port; LocalPort = port; return EnableUDPServer(); }
         public SocketErrorCodes EnableUDPServer(Crestron.SimplSharp.IPAddress address, int port) => EnableUDPServer(address.ToString(), port);
-        public SocketErrorCodes EnableUDPServer(Crestron.SimplSharp.IPAddress address, int port, int localPort) { LocalPort = localPort; AddressToAcceptConnectionFrom = address.ToString(); PortNumber = port; return EnableUDPServer(); }
+        /// <summary>Listen on <paramref name="localPort"/>; send to <paramref name="address"/>:<paramref name="remotePort"/>.</summary>
+        public SocketErrorCodes EnableUDPServer(string address, int localPort, int remotePort) { LocalPort = localPort; AddressToAcceptConnectionFrom = address; PortNumber = remotePort; return EnableUDPServer(); }
+        public SocketErrorCodes EnableUDPServer(Crestron.SimplSharp.IPAddress address, int localPort, int remotePort) => EnableUDPServer(address.ToString(), localPort, remotePort);
+        public SocketStatus ServerStatus => _udp == null ? SocketStatus.SOCKET_STATUS_NO_CONNECT : SocketStatus.SOCKET_STATUS_CONNECTED;
+        public bool DataAvailable => _udp?.Available > 0;
+        public int LocalPortNumber => (_udp?.Client.LocalEndPoint as System.Net.IPEndPoint)?.Port ?? 0;
 
-        public SocketErrorCodes DisableUDPServer() { _udp?.Dispose(); _udp = null; return SocketErrorCodes.SOCKET_OK; }
+        /// <summary>Blocks until a datagram arrives; returns its length (0 when the server is disabled).</summary>
+        public int ReceiveData()
+        {
+            if (_udp == null) return 0;
+            try
+            {
+                System.Net.IPEndPoint from = null;
+                var bytes = _udp.Receive(ref from);
+                IncomingDataBuffer = bytes;
+                IPAddressLastMessageReceivedFrom = from.Address.ToString();
+                IPPortLastMessageReceivedFrom = from.Port;
+                _rec?.Received(bytes, 0, bytes.Length);
+                return bytes.Length;
+            }
+            catch (Exception) { return 0; }
+        }
+
+        public SocketErrorCodes DisableUDPServer() { _udp?.Dispose(); _udp = null; _rec?.Close("closed"); return SocketErrorCodes.SOCKET_OK; }
 
         public SocketErrorCodes SendData(byte[] data, int length)
         {
             if (_udp == null || _remote == null) return SocketErrorCodes.SOCKET_NOT_CONNECTED;
             _udp.Send(data, length, _remote);
+            _rec?.Sent(data, 0, length);
             return SocketErrorCodes.SOCKET_OK;
         }
 
         public SocketErrorCodes SendData(byte[] data, int length, Crestron.SimplSharp.IPEndPoint to)
         {
             if (_udp == null) return SocketErrorCodes.SOCKET_NOT_CONNECTED;
-            _udp.Send(data, length, new System.Net.IPEndPoint(to.Address.Inner, to.Port));
+            var go = OpenVPBridge.Redirect(to.Address.ToString(), to.Port, "udp");
+            if (go.Redirected) _udp.Send(data, length, go.Host, go.Port);
+            else _udp.Send(data, length, new System.Net.IPEndPoint(to.Address.Inner, to.Port));
+            _rec?.Sent(data, 0, length);
             return SocketErrorCodes.SOCKET_OK;
         }
 
         public SocketErrorCodes SendData(byte[] data, int length, string address, int port)
         {
             if (_udp == null) return SocketErrorCodes.SOCKET_NOT_CONNECTED;
-            _udp.Send(data, length, address, port);
+            var go = OpenVPBridge.Redirect(address, port, "udp");
+            _udp.Send(data, length, go.Host, go.Port);
+            _rec?.Sent(data, 0, length);
             return SocketErrorCodes.SOCKET_OK;
         }
 
         public SocketErrorCodes SendDataAsync(byte[] data, int length, string address, int port, UDPServerSendCallbackEx callback, object userObject)
         {
             if (_udp == null) return SocketErrorCodes.SOCKET_NOT_CONNECTED;
-            _udp.SendAsync(data, length, address, port).ContinueWith(t => OpenVPBridge.Post(() => callback?.Invoke(this, t.IsFaulted ? -1 : t.Result, userObject)));
+            var go = OpenVPBridge.Redirect(address, port, "udp");
+            _rec?.Sent(data, 0, length);
+            _udp.SendAsync(data, length, go.Host, go.Port).ContinueWith(t => OpenVPBridge.Post(() => callback?.Invoke(this, t.IsFaulted ? -1 : t.Result, userObject)));
             return SocketErrorCodes.SOCKET_OPERATION_PENDING;
         }
 
@@ -323,6 +370,7 @@ namespace Crestron.SimplSharp.CrestronSockets
                     n = r.Buffer.Length;
                     IPAddressLastMessageReceivedFrom = r.RemoteEndPoint.Address.ToString();
                     IPPortLastMessageReceivedFrom = r.RemoteEndPoint.Port;
+                    _rec?.Received(r.Buffer, 0, n);
                 }
                 OpenVPBridge.Post(() => callback?.Invoke(this, n));
             });
@@ -332,6 +380,7 @@ namespace Crestron.SimplSharp.CrestronSockets
         public void Dispose()
         {
             _udp?.Dispose();
+            _rec?.Close("closed");
             OpenVPBridge.Untrack(this);
         }
     }
