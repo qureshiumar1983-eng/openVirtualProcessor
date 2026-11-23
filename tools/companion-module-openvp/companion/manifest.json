@@ -1,0 +1,26 @@
+{
+	"$schema": "../node_modules/@companion-module/base/assets/manifest.schema.json",
+	"id": "openvp",
+	"name": "openvp",
+	"shortname": "openvp",
+	"description": "Control and monitor programs running on an OpenVP virtual control processor",
+	"version": "0.1.0",
+	"license": "MIT",
+	"repository": "git+https://github.com/openvp/openvp.git",
+	"bugs": "https://github.com/openvp/openvp/issues",
+	"maintainers": [
+		{
+			"name": "OpenVP contributors"
+		}
+	],
+	"legacyIds": [],
+	"runtime": {
+		"type": "node22",
+		"api": "nodejs-ipc",
+		"apiVersion": "0.0.0",
+		"entrypoint": "../main.js"
+	},
+	"manufacturer": "OpenVP",
+	"products": ["Virtual Control Processor"],
+	"keywords": ["Control System", "Automation", "Virtual Processor"]
+}
