@@ -50,6 +50,7 @@ public static class OpenVpServer
             Console.WriteLine($"Unsupported symbols are listed in {unsupportedPath}");
         }
         processor.LogWritten += e => Console.WriteLine($"{e.Time:HH:mm:ss} [slot {e.Slot:00}] {e.Level,-7} {e.Message}");
+        foreach (var slot in processor.Slots) slot.Io.Start(); // simulators that were left on
         builder.Services.AddSingleton(processor);
         builder.Services.AddResponseCompression(o =>
         {
@@ -189,6 +190,8 @@ public static class OpenVpServer
         object DeviceDto(JoinDevice d) => new
         {
             ipId = $"{d.IpId:X2}",
+            publicIpId = $"{processor.Slot(d.Slot).PublicIpId(d.IpId):X2}", // what panels connect to (differs from ipId when the IP ID is remapped)
+            remapped = processor.Slot(d.Slot).Io.Remap.IsRemapped(d.IpId),
             slot = d.Slot,
             type = d.Type,
             description = d.Description,
@@ -294,6 +297,7 @@ public static class OpenVpServer
         });
 
         slotApi.MapGet("", (int n) => SlotDto(processor.Slot(n)));
+        DeviceEndpoints.MapSlot(slotApi, processor, (c, a, t, sl) => Note(c, a, t, sl));
 
         // One upload per slot at a time; a second one waits instead of racing on the same folder.
         var uploadLocks = processor.Slots.Select(_ => new SemaphoreSlim(1, 1)).ToArray();
@@ -543,6 +547,7 @@ public static class OpenVpServer
                         return Results.Json(new { error = $"Couldn't restore the snapshot: {e.Message}", slot = SlotDto(slot) }, statusCode: 500);
                     }
                     if (info == null) return Results.NotFound(new { error = "There's no such snapshot." });
+                    slot.Io.Reload(); // simulators, redirects and the IP ID remap come back with the snapshot
                     slot.Log("Notice", $"Rolled back to the snapshot of {info.Program ?? "the slot"} from {info.Time.ToLocalTime():yyyy-MM-dd HH:mm:ss} ({info.Reason}).");
                     Note(ctx, "rollback", $"Rolled slot {n} back to the snapshot of {info.Program ?? "the slot"} from {info.Time.ToLocalTime():yyyy-MM-dd HH:mm:ss} ({info.Reason})", n);
                     if (snapshots.RestoredProgramPath(n, info) is { } path && File.Exists(path))
@@ -1429,7 +1434,69 @@ public static class OpenVpServer
             });
         }
 
-        app.Lifetime.ApplicationStopping.Register(() => { for (var i = 1; i <= watches.Length; i++) StopWatching(i); tunnel?.Dispose(); cip?.Dispose(); crash.Dispose(); trashTimer.Dispose(); recordings.Dispose(); processor.Dispose(); });
+        // ------------------------------------------------------------------ processor-style console (telnet / SSH), off by default
+
+        // Both listeners are off unless enabled. When on they listen on every interface; a login needs the access key as the password.
+        var consoleShell = new ConsoleShell(processor);
+        var consoleGate = new ConsoleGate { MaxTotal = Math.Clamp(cfg.GetValue("ConsoleMaxConnections", 5), 1, 50), MaxPerAddress = 3 };
+        var consoleAuth = new AccessKeyAuth(() => auth.Enabled ? auth.Key : null);
+        TelnetServer? telnet = null;
+        SshConsoleServer? ssh = null;
+        string? telnetMessage = null, sshMessage = null;
+        var telnetOn = cfg.GetValue("TelnetEnabled", false);
+        var sshOn = cfg.GetValue("SshEnabled", false);
+        var telnetPort = cfg.GetValue("TelnetPort", 41795);
+        var sshPort = cfg.GetValue("SshPort", 22);
+        if ((telnetOn || sshOn) && !auth.Enabled)
+        {
+            telnetMessage = sshMessage = "Not started: the console needs the access key, and it is switched off (OpenVP:ApiKey=off).";
+            Console.WriteLine("Telnet/SSH console not started: " + telnetMessage);
+            telnetOn = sshOn = false;
+        }
+        if (telnetOn)
+        {
+            try { telnet = new TelnetServer(consoleShell, consoleAuth, consoleGate, Console.WriteLine); telnet.Start(System.Net.IPAddress.Any, telnetPort); }
+            catch (Exception e) { telnet = null; telnetMessage = $"Couldn't listen on port {telnetPort}: {e.Message}"; Console.WriteLine("Telnet console not started: " + telnetMessage); }
+        }
+        if (sshOn)
+        {
+            try { ssh = new SshConsoleServer(consoleShell, consoleAuth, consoleGate, Path.Combine(processor.DataDirectory, "ssh_host_key.pem"), Console.WriteLine); ssh.Start(System.Net.IPAddress.Any, sshPort); }
+            catch (Exception e) { ssh = null; sshMessage = $"Couldn't listen on port {sshPort}: {e.Message}"; Console.WriteLine("SSH console not started: " + sshMessage); }
+        }
+        // ------------------------------------------------------------------ openvp.local (mDNS)
+
+        var inContainer = Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true" || File.Exists("/.dockerenv");
+        var hostNetworking = inContainer && System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces().Any(n => n.Name == "docker0");
+        var mdnsOn = cfg.GetValue<bool?>("Mdns") ?? (!inContainer || hostNetworking);
+        MdnsResponder? mdns = null;
+        app.Lifetime.ApplicationStarted.Register(() =>
+        {
+            if (!mdnsOn)
+            {
+                if (inContainer && cfg.GetValue<bool?>("Mdns") == null) Console.WriteLine("mDNS (openvp.local) is off inside a container. Run with host networking and set OpenVP__Mdns=true to turn it on.");
+                return;
+            }
+            try
+            {
+                var port = app.Urls.Select(u => Uri.TryCreate(u.Replace("://*", "://localhost").Replace("://+", "://localhost").Replace("://[::]", "://localhost").Replace("://0.0.0.0", "://localhost"), UriKind.Absolute, out var uri) ? uri.Port : 0)
+                    .FirstOrDefault(p => p > 0 && p != gate.Port) is var pp && pp > 0 ? pp : 8080;
+                mdns = new MdnsResponder(port, cfg["MdnsName"] ?? "openvp", log: Console.WriteLine);
+                mdns.Start();
+            }
+            catch (Exception e) { Console.WriteLine($"mDNS is off: {e.Message}"); }
+        });
+
+        var discovery = new NetworkDiscovery();
+        DeviceEndpoints.MapGlobal(app, discovery, () => new
+        {
+            maxConnections = consoleGate.MaxTotal,
+            open = consoleGate.Open,
+            telnet = new { enabled = telnetOn, listening = telnet != null, port = telnetPort, message = telnetMessage },
+            ssh = new { enabled = sshOn, listening = ssh != null, port = sshPort, message = sshMessage },
+            mdns = new { enabled = mdnsOn, running = mdns?.Running ?? false, names = mdns?.HostNames, service = mdns?.InstanceName },
+        }, (c, a, t, sl) => Note(c, a, t, sl));
+
+        app.Lifetime.ApplicationStopping.Register(() => { telnet?.Dispose(); ssh?.Dispose(); mdns?.Dispose(); for (var i = 1; i <= watches.Length; i++) StopWatching(i); tunnel?.Dispose(); cip?.Dispose(); crash.Dispose(); trashTimer.Dispose(); recordings.Dispose(); processor.Dispose(); });
         // If the process ends some other way (not a clean stop), still take cloudflared down with it.
         AppDomain.CurrentDomain.ProcessExit += (_, _) => tunnel?.Stop();
         return app;

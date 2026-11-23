@@ -206,7 +206,7 @@ public sealed partial class SimplRuntime
     // ------------------------------------------------------------------ COM and IR ports
 
     private IPortBridge? _portBridge;
-    private IPortBridge PortBridge => _portBridge ??= LpzRuntime.PortBridgeFactory?.Invoke(_slot) ?? NullPortBridge.Instance;
+    private IPortBridge PortBridge => _portBridge ??= new SlotPortBridge(_slot, LpzRuntime.PortBridgeFactory?.Invoke(_slot));
     private readonly List<PortInfo> _ports = new();
 
     /// <summary>The COM and IR ports the program uses, for the console.</summary>

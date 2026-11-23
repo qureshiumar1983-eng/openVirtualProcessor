@@ -95,7 +95,7 @@ A compiled program references Crestron's assembly names. Each slot gets its own 
 
 Before running, OpenVP reads the program's metadata and lists every Crestron type and member it uses that isn't implemented yet. Click **Compatibility** in the console, or check the log.
 
-Implemented so far: `CrestronControlSystem`, `InitializeSystem`, program status events, `CrestronConsole` (print, console commands), `ErrorLog`, `CTimer`, `CrestronInvoke`, `CrestronThread.Thread`, `CCriticalSection`/`CMutex`/`CEvent`, `InitialParametersClass`, `TCPClient`, `BasicTriList` with all six sig collections and `SigChange`, touch panel and XPanel classes, and local EISC (`ThreeSeriesTcpIpEthernetIntersystemCommunications`).
+Implemented so far: `CrestronControlSystem`, `InitializeSystem`, program status events, `CrestronConsole` (print, console commands), `ErrorLog`, `CTimer`, `CrestronInvoke`, `CrestronThread.Thread`, `CCriticalSection`/`CMutex`/`CEvent`, `InitialParametersClass`, `TCPClient`, `ComPort` (`ControlSystem.ComPorts[1..8]`, virtual: see [COM terminal](#com-terminal)), `BasicTriList` with all six sig collections and `SigChange`, touch panel and XPanel classes, and local EISC (`ThreeSeriesTcpIpEthernetIntersystemCommunications`).
 
 ### SIMPL Windows programs
 
@@ -118,9 +118,34 @@ It lists every symbol the programs use and whether OpenVP runs it. For each comp
 
 ### IR and COM ports
 
-A virtual processor has no IR emitters or serial ports, so compiled programs' IR ports and COM ports (including those of DM-NVX encoders and decoders) don't talk to hardware. They still run honestly: every IR command (a rising trigger on an IR driver symbol) and every COM transmission is written once to the slot log, e.g. `IR IPID 31 port 1: DRV.CBL.1.KEYPAD.1 (cmd 0)` or `COM IPID 11 port 1 TX (7): "PWR ON\x0D"`, and the signals involved show in the debugger trace. To feed a program a COM reply, force the port's receive signal in the debugger; it is logged as `RX`. IR ports on the control processor itself read `IR processor slot 6 port 1`. Programs loaded from `.smw` source behave the same; their ports are named after the parent symbol and port number (`CP4 COM/COM-01`), and an IR command is identified by its position in the driver and its name (`IR processor port 2: MUTE (cmd 1)`). `comports.json` applies to compiled programs only.
+A virtual processor has no IR emitters or serial ports, so compiled programs' IR ports and COM ports (including those of DM-NVX encoders and decoders) don't talk to hardware. They still run honestly: every IR command (a rising trigger on an IR driver symbol) and every COM transmission is written once to the slot log, e.g. `IR IPID 31 port 1: DRV.CBL.1.KEYPAD.1 (cmd 0)` or `COM IPID 11 port 1 TX (7): "PWR ON\x0D"`, and the signals involved show in the debugger trace. To feed a program a COM reply, use the [COM terminal](#com-terminal) (or force the port's receive signal in the debugger); it is logged as `RX`. IR ports on the control processor itself read `IR processor slot 6 port 1`. Programs loaded from `.smw` source behave the same; their ports are named after the parent symbol and port number (`CP4 COM/COM-01`), and an IR command is identified by its position in the driver and its name (`IR processor port 2: MUTE (cmd 1)`). `comports.json` applies to compiled programs only.
 
 To reach a real serial device through a serial device server, add `comports.json` to the program folder (or `data/`) mapping a port to `host:port`, e.g. `{ "IP-ID-11/Slot-08/COM-01": "192.168.1.50:4999" }`. Code that can reach real ports (say, NVX endpoints) can implement `IPortBridge` and set `LpzRuntime.PortBridgeFactory`; nothing ships that speaks to NVX hardware yet.
+
+### Device simulators
+
+A **simulator** is a fake device that answers a program's COM port or TCP/UDP connection with canned replies, so you can test a program with no hardware. Open **Devices ↗** in the console's top bar (or `/devices.html?slot=N`); the **Simulators** tab lists them for the selected slot.
+
+- **Generic profiles.** **New simulator…** starts from one of four profiles: a *generic projector* (power on/off/query, input select, lamp hours: `PWR ON\r`, `PWR?\r`, `INPUT HDMI1\r`, `LAMP?\r`), a *generic display* (power, input, volume, mute), a *generic DSP* (volume and mute on the named levels `Program`, `Mic1`, `Mic2` and `Aux`: `SET Mic1 VOL 70\r`, `GET Aux MUTE\r`) and a *generic video switcher* (4x4: `ROUTE 2 3\r`, `ROUTE? 3\r`, `STATUS\r`). They are made-up, plain-text protocols of the command-space-value-carriage-return kind that small AV devices commonly use. **They are not any manufacturer's protocol**; copy one and edit its rules to match your device's documentation.
+- **Attaching.** A simulator attaches to a **COM port** of the program (the same names as `comports.json`: `IP-ID-11/Slot-08/COM-01`, or just `COM-01` for a SIMPL# program's processor port; the box offers the ports the running program has opened), or it **listens on a local TCP or UDP port** (127.0.0.1 only; 0 picks a free one) that the program connects to. To make a program that connects to a real device's address (say `192.168.1.50:23`) talk to a simulator without changing the program, add a [network redirect](#network-redirects).
+- **State, live.** A simulator keeps its state (power, input, level, ...) and the **Simulators** tab shows it, updating as the program talks to it. Click a value to change it; **Reset state** puts the starting values back. State is kept while OpenVP runs and the starting values are saved with the simulator.
+- **Rules.** **Edit rules…** is a rule editor: *when received* matches `PWR ON\r` (literal, or a regular expression, optionally ignoring case), *reply* `PWR=1\r` *after* 50 ms, and *set state* `power=1`. Matching is against what has arrived so far, so a command split across packets or two commands in one packet both work; the matched text is used up. Of several rules matching, the one whose match starts first wins, then the first in the list. Escapes in rules and replies are `\r \n \t \0 \\` and `\xNN`. In a reply, **`{1}`** is a regular expression capture group, **`{name}`** is a state value (and `{vol:D3}` formats a number: `D3` zero-pads, `X2` is hex); in a *set state* value, `{vol}+5` is worked out (`+`, `-`, `*` on whole numbers), and names can use captures too (`{1}.vol` sets `Mic1.vol` when group 1 is `Mic1`). **Try** on a simulator sends a message to a copy of it with its current state and shows what would be sent and after how long, without touching the real state or the program.
+- **On its own.** A simulator can send **timed messages** (every N ms while it runs, to everyone connected) and **connect messages** (when a TCP/UDP client talks to it for the first time, or when the program opens the COM port).
+- **Saved per slot.** Simulators, network redirects and the [IP ID remap](#ip-id-remap) are saved in the slot's folder (`data/program01/devices/`: `simulators.json`, `redirects.json`, `ipremap.json`) and included in the slot's snapshots, so rolling back restores them with the program. They are kept when a program is unloaded. At most 20 simulators per slot. The engine is `SimEngine` in `OpenVP.Core`, with unit tests.
+
+### COM terminal
+
+The **COM terminal** tab shows, for any COM port the program has opened in the selected slot, what the **program sent (TX)** and what it **received (RX)**, live, with a timestamp and where RX came from (a simulator, this terminal, or a serial device server). Switch between **ASCII** (control characters as `\x0D`-style escapes, `\r`, `\n`) and **hex**; **Follow** keeps the newest line in view; **Clear** empties it; **Save session…** writes what is shown to a text file. Under it, type text and **Send as RX**: the program receives it on that port as if the device had sent it (escapes `\r \n \x0D` work, and the `+ \r` and `+ \n` boxes add a terminator). That replaces forcing the receive signal by hand in the debugger. It lists every COM port the program uses once it runs (compiled `.lpz`, `.smw` and SIMPL# `ComPort`); the last 2,000 lines of each port are kept in memory. IR ports aren't listed (they carry commands, not text and are in the slot log).
+
+A SIMPL# program gets virtual COM ports `ControlSystem.ComPorts[1]`…`[8]` (`NumberOfComPorts` is 8): `Register()`, `SetComPortSpec(...)` (accepted and ignored), `Send(string)` and the `SerialDataReceived` event, which delivers text on the slot's thread.
+
+### Sockets
+
+The **Sockets** tab lists every socket the selected slot's program opens, client and server: SIMPL# `TCPClient`, `TCPServer` (the listener and each connection), `UDPServer`, `SecureTCPClient`, `SecureTCPServer`, and SIMPL+ TCP client, TCP server and UDP sockets. For each: kind, local and remote endpoint (and where a redirect sent it), state (connected, listening, closed, closed by remote, connect failed), bytes in and out, and when it was opened and closed. The last 200 closed sockets are kept. Click a row to see its traffic like the COM terminal (ASCII or hex, timestamps, save). It costs next to nothing when nobody looks: bytes are always counted, but the text is kept in full only while a Sockets view has polled in the last 30 seconds; otherwise only the last 30 short pieces are held per socket.
+
+### Network redirects
+
+A **redirect** says: when the program connects to *this address*, connect to *that one* instead. Add one in the **Redirects** tab: *Program connects to* is `host:port` (or just `host` for any port; `*` matches any host), *Send it to* is a simulator (`sim:ID`, whose local port is looked up when the program connects) or another `host:port`, and it can be limited to TCP or UDP and switched off without deleting it. The most specific entry wins (a port beats any port, a named host beats `*`). The redirect is applied where the program's socket is opened, in the SIMPL# `TCPClient` (and `UDPServer` sends) and SIMPL+ TCP client and UDP sockets, so it works for any program with no change; the log says `Network redirect: 192.168.1.50:23 goes to 127.0.0.1:44765`, and the Sockets tab shows both addresses. `SecureTCPClient` isn't redirected (a simulator doesn't speak TLS). The map is per slot, in `redirects.json`.
 
 ### Panels
 
@@ -202,7 +227,7 @@ The row of tiles at the top of the console shows every slot at a glance: program
 
 ### IP table
 
-The **IP table** on the console's main page shows the selected slot's IP IDs, one row for each connected client. Each row starts with who the client is, then its address, IP ID, type, status, how long it has been connected, and how many joins went each way. An IP ID with nobody connected shows when it was last seen. Click a row to see everything known about that client and IP ID. The table refreshes every 2 seconds. The `ipt` console command prints the same list.
+The **IP table** on the console's main page shows the selected slot's IP IDs, one row for each connected client. Each row starts with who the client is, then its address, IP ID, type, status, how long it has been connected, and how many joins went each way. An IP ID with nobody connected shows when it was last seen. Click a row to see everything known about that client and IP ID. The table refreshes every 2 seconds. The `ipt` console command prints the same list. **Remap IP ID…** in the detail changes the number panels use, see [IP ID remap](#ip-id-remap).
 
 How OpenVP works out who a client is:
 
@@ -212,6 +237,15 @@ How OpenVP works out who a client is:
 - **Log in & read…** (optional): type the device's SSH username and password. OpenVP runs only read-only console commands (`hostname`, `ver`, `uptime`, `ipconfig`, `ipt`, `time`), shows what they return, and fills in hostname, model, firmware and MAC from them. The credentials are used for that one login and are never stored or logged.
 
 Metrics for each client: connected since, last message, messages and bytes in and out, joins in and out, heartbeats (and the interval between them for CIP), round-trip time (browser panels), packets waiting to be sent (CIP) and errors. For each IP ID: registered, last online and offline, connections since registered, inputs received and feedback sent.
+
+### IP ID remap
+
+**Remap IP ID…** in the IP table's detail makes panels reach a program's IP ID at a different number, without recompiling: "the program's IP ID 03 should answer at 0A". Panels (browser, CH5, shared links, CIP touch panels and XPanels) connect to the **public** ID, `0A`, and drive the program's own `03`; the program still sees `03` and registers it as usual. The IP table shows `03` with `at 0A` under it, the detail says which number panels use, and the `ipt` console command prints `IPID 03 (at 0A)`. The test panel, **Share…** links and CH5 uploads use the number panels connect to (the public one).
+
+- Once an ID is remapped, panels connecting to its old number reach nothing (they get a placeholder device that drives no program) until the remap is undone. Two IDs can swap (03 to 0A and 0A to 03).
+- A public ID can't be one the program registers itself and hasn't remapped, can't be used twice in a slot, and goes from 01 to FE.
+- It is applied where a panel finds its device (`DeviceDirectory`, the one place the WebSocket panels, share links and CIP all use), so it works for SIMPL# programs, `.lpz` and `.smw` alike. A panel that connects before the program registers waits under the program's own ID, as always. Recordings, the debugger and EISC links use the program's own IDs. A share link made before a remap keeps its old number: make a new one.
+- Saved per slot in `devices/ipremap.json`, and in snapshots.
 
 ### Program files: NVRAM and User
 
@@ -329,6 +363,35 @@ Click **Metrics ↗** in the console header (or go to `/metrics.html`) for a liv
 
 The same numbers are available from the slot console: `cpuload`, `ramfree`, `taskstat` (threads and what the slot thread is doing) and `metrics` (all of it). From scripts, use `GET /api/metrics` or the `/ws/metrics` WebSocket.
 
+### Telnet and SSH console
+
+A text console that behaves like a processor's, reachable over **telnet (port 41795)** and **SSH (port 22)**. Both are **off by default**. Turn them on with `OpenVP:TelnetEnabled=true` and `OpenVP:SshEnabled=true` (ports `OpenVP:TelnetPort`, default 41795, and `OpenVP:SshPort`, default 22; on Linux and macOS a port below 1024 needs privileges, so the log says so if it can't listen). **When enabled a listener binds to all interfaces and the log says so** (`Telnet console listening on all interfaces, port 41795`).
+
+```
+telnet host 41795        # Password: the OpenVP access key
+ssh admin@host           # any user name; the password is the access key
+ssh admin@host ver       # one command, no shell
+```
+
+- **Login.** The password is the OpenVP [access key](#security); the user name is ignored for now. The authenticator is a small interface (`IConsoleAuth`), so a user from a later accounts feature can be checked the same way, with a user name prompt. With the key switched off (`OpenVP:ApiKey=off`) the console doesn't start at all: it won't be open to anyone. SSH takes password logins only (no keys, no port forwarding, no subsystems).
+- **Commands.** `help`, `ver`, `info`, `hostname`, `uptime`, `time`, `slots`, `ipt [-p:N]`, `progreset -p:N` (load the slot's program again and start it), `progload -p:N [-f:file]` (the slot's remembered program, or a file in its upload folder), `stopprog -p:N`, `startprog -p:N`, `cpuload`, `ramfree`, `taskstat` (`-p:N` for a slot), `progcomments -p:N`, `signals -p:N`, `use N`, `prog N command` and `exit`. Anything else is tried as a console command the program registered (`CrestronConsole.AddNewConsoleCommand`, `RunConsoleCommand`, as in the web console), in the slot named with `-p:N`, the one chosen with `use N`, or the first slot that has a command of that name. `help` lists the program's own commands too.
+- **Limits.** At most 5 sessions at a time (`OpenVP:ConsoleMaxConnections`) and 3 from one address; idle sessions close after 15 minutes. **Wrong passwords are limited**: each wrong one waits 1.5 s, 3 wrong end the session, 5 wrong from one address in 5 minutes lock that address out for 5 minutes (even for the right password), and 30 from all addresses together lock everyone out for 5 minutes.
+- **SSH library.** [FxSsh](https://github.com/Aimeast/FxSsh) (MIT, no dependencies) from NuGet. Its host key is made on first start and kept in `data/ssh_host_key.pem` (owner-only on Linux and macOS); keep the file so clients don't see host key warnings. Telnet is plain text and so are the passwords typed into it: use it on a trusted network, or use SSH.
+
+### Discovery
+
+**Discover** (Devices ↗, **Discover** tab; `POST /api/discovery`) scans the computer's own subnets for devices, **only when you click it**, gently: at most 48 connections at a time, half a second each, 30 seconds overall, and a /24 at most. It uses:
+
+- **Crestron autodiscovery**: the UDP 41794 broadcast the IP table already uses (`ClientIdentifier`), which gives hostname, model, firmware and MAC from Crestron hardware.
+- **mDNS / Bonjour**: a browse for common AV and network services (`_http._tcp`, `_airplay._tcp`, `_googlecast._tcp`, `_raop._tcp`, `_pjlink._tcp`, `_ndi._tcp`, Dante `_netaudio-*`, `_ssh._tcp`, ...), which gives names and services.
+- **Ping and the ARP table**, then a quick **TCP connect** to the control ports 23, 80, 443, 41794, 41795, 1515 and 4352 (PJLink) on the hosts that answered.
+
+Each result shows address, name, model and firmware (from Crestron replies), MAC (when known), open ports and how it was found. **Add as simulator target** makes a [network redirect](#network-redirects) from the device's address to a simulator (an existing one, or a new TCP simulator from a profile); **Use in network redirect** opens the redirect box with the address filled in. This computer is left out. A scan on a network with nothing to find ends in a few seconds. Where ping isn't allowed or multicast is blocked, the scan says so and uses what it can.
+
+### openvp.local (mDNS)
+
+OpenVP advertises itself over mDNS so phones and PCs on the LAN can find it: `http://openvp.local:8080` and `http://<hostname>.local:8080` resolve to this computer, and a service browser lists **"OpenVP on <hostname>"** as an `_http._tcp` service on the console's port. It is a small responder written for this one job (no extra package; the ready-made mDNS libraries on NuGet are old and pull in several dependencies). `OpenVP:Mdns` turns it on or off: the default is **on** when running from source or in the desktop app and **off inside a container** unless the container uses host networking (set `OpenVP__Mdns=true` with `--network host`; on a bridge network multicast doesn't reach the LAN). `OpenVP:MdnsName` changes `openvp` to another name. If multicast isn't available (no network, a sandbox, blocked by the firewall) it logs `mDNS is off: ...` and carries on; OpenVP is still reachable by IP address. It doesn't check whether another machine already uses the name `openvp.local`; use the host name if two OpenVP computers share a network. Windows may need the firewall to allow UDP 5353 the first time.
+
 ## Compatibility
 
 Every time a program loads, anything in it OpenVP doesn't support yet goes into **[`docs/unsupported.md`](docs/unsupported.md)**: SIMPL symbols, sub-devices and hardware, compiled primitive types, SIMPL+ modules that can't run, and SIMPL# types, members and assemblies. Each row counts how many programs needed it, so the top of each kind is what to build next. Only symbol names are written, never program names.
@@ -350,6 +413,7 @@ A SIMPL# program is .NET code that runs inside the OpenVP process, so anyone who
 - Requests from a web page on another site are refused (403) even when the browser has the cookie, and even from localhost. So a malicious page open in your browser can't upload a program.
 - Panels (`/ws/panel` and CIP on 41794) don't need the key, because they can only press joins, like panels on a real processor. Set `OpenVP:PanelsRequireKey=true` to protect `/ws/panel` too. CIP has no way to send a key, so keep port 41794 on a trusted network.
 - **Shared panel links** (`/s/{token}`) don't need the key either: the secret token in the link is the credential. A link is for one slot and IP ID and can only press joins there. Treat it like a password: anyone who has it (and the PIN, if there is one) can use that panel until it expires or you revoke it. Links, their tokens and hashed PINs are stored in `data/shares.json`, owner-only on Linux and macOS. Pages under `/s/` are sent with `Referrer-Policy: no-referrer` so the link doesn't leak to other sites. A CH5 project you upload is your own code running in the link holder's browser, on the same address as the console, so only upload projects you trust.
+- **Everything new is behind the key**: simulators, the COM terminal, sockets, redirects, the IP ID remap and discovery are all under `/api`. Simulators listen on 127.0.0.1 only. The telnet and SSH consoles are **off by default**; when enabled they listen on all interfaces, need the key as the password, cap sessions and limit wrong passwords (see [Telnet and SSH console](#telnet-and-ssh-console)), and don't start if the key is off. Discovery sends packets to your network only when someone clicks Discover. mDNS announces the computer's name and the console port on the LAN, nothing else.
 - `OpenVP:ApiKey=off` turns the key off. Only do that on a network you trust completely.
 
 - **Internet access (tunnel)** exposes only shared panels, through a separate listener that serves nothing but `/s/{token}…`; see [Internet access (tunnel)](#internet-access-tunnel). The console, API and debugger are never reachable through it.
@@ -374,6 +438,11 @@ Traffic is plain HTTP. To use OpenVP across an untrusted network, put it behind 
 | `OpenVP:TunnelPort` | `8085` | Port of the second listener (on 127.0.0.1 only) that the internet tunnel points at. `0` switches Internet access off. Must differ from the console's port |
 | `OpenVP:CloudflaredPath` | | Path to `cloudflared`. If empty, OpenVP looks on the PATH, then in `data/tools` |
 | `OpenVP:TunnelAutoStart` | `false` | Start the tunnel when OpenVP starts (only if `cloudflared` is already installed; it never downloads by itself) |
+| `OpenVP:TelnetEnabled` / `TelnetPort` | `false` / `41795` | Telnet console (see [Telnet and SSH console](#telnet-and-ssh-console)). Off by default; when on it listens on all interfaces and logins need the access key |
+| `OpenVP:SshEnabled` / `SshPort` | `false` / `22` | SSH console. Off by default; same rules. Host key in `data/ssh_host_key.pem` |
+| `OpenVP:ConsoleMaxConnections` | `5` | Telnet and SSH sessions open at once (3 per address) |
+| `OpenVP:Mdns` | on, except in a container | Advertise `openvp.local` and an `_http._tcp` service over mDNS (see [openvp.local](#openvplocal-mdns)). In Docker it is off unless you set it (use host networking) |
+| `OpenVP:MdnsName` | `openvp` | The extra host name to answer for (`<name>.local`) |
 | `OpenVP:Autoload:slot1` | | Program file to load into slot 1 at startup. Wins over the slot's remembered program (see [Autostart](#autostart-and-crash-policy)) |
 | `Urls` | `http://0.0.0.0:8080` | Web console address |
 
@@ -416,7 +485,19 @@ Every endpoint except `/api/info` and `/api/login` needs the access key (see [Se
 | GET | `/api/slots/{n}/support-bundle?includeProgram=true` | A zip for support: log, recent trace, compatibility report, summary, metrics, settings, activity, exceptions, watches, version and OS. No access key; no program, NVRAM or User files unless `includeProgram=true` |
 | GET | `/api/search/signals?q=vol&max=50` | Signals whose name contains every word of `q`, across all loaded slots: `slot`, `program`, `signal`, `kind`, `value` |
 | POST | `/api/slots/{n}/console` | `{"command":"ipt"}` |
-| GET | `/api/slots/{n}/iptable` | IP IDs with each connected client: address, hostname, model, firmware, counters, details |
+| GET · POST | `/api/slots/{n}/simulators` | The generic `profiles`, the slot's `simulators` (state, rules, status, recent activity) and the COM `ports` the program has opened · add one: `{"profile":"projector","name":"Lobby","kind":"com","com":"COM-01"}` (or `"kind":"tcp"`/`"udp"` with `"port"`), or a full definition with `rules`, `unsolicited`, `onConnect`, `initialState` (400 with the reason if a pattern doesn't compile) |
+| PUT · DELETE | `/api/slots/{n}/simulators/{id}` | Change a simulator (any of the fields; `"resetState":true`) · remove it |
+| POST | `/api/slots/{n}/simulators/{id}/state` · `try` | `{"key":"power","value":"1"}` or `{"reset":true}` · `{"text":"PWR?\\r"}` runs a message on a copy and returns the `replies` with their `delayMs` |
+| GET | `/api/slots/{n}/ports` · `ports/traffic?key=COM-01&after=SEQ` | The COM ports the program opened (`open`, bytes, the attached `simulator`) · their traffic: `entries` of `seq`, `time`, `dir` (`tx` is from the program, `rx` to it), `text` (Latin-1) and `origin` |
+| POST | `/api/slots/{n}/ports/send` · `ports/clear` | `{"key":"COM-01","text":"PWR=1\\r"}` gives the program RX (escapes decoded, `"raw":true` to skip that; 409 if the program isn't running) · empty a port's view |
+| GET | `/api/slots/{n}/sockets` · `sockets/{id}/traffic?after=SEQ` | Every socket the program opened (kind, role, local, remote, `redirectedTo`, state, bytes, opened, closed); calling either marks sockets as watched for 30 s · one socket's traffic |
+| GET · POST | `/api/slots/{n}/redirects` | The slot's network redirects (and the simulators they can point at) · add `{"from":"192.168.1.50:23","to":"sim:ID","proto":"any","note":""}` |
+| PUT · DELETE | `/api/slots/{n}/redirects/{id}` | Change (including `"enabled":false`) · remove |
+| GET · PUT | `/api/slots/{n}/ipremap` | The remap and the registered IP IDs with their public IDs · `{"program":"03","public":"0A"}` |
+| DELETE | `/api/slots/{n}/ipremap/{ipid}` | Panels connect to the program's own number again |
+| GET · POST · DELETE | `/api/discovery` | The last scan (`running`, `stage`, `subnets`, `devices`, `notes`) · start a scan (409 if one is running) · stop it |
+| GET | `/api/consoles` | Telnet, SSH and mDNS: enabled, listening, port, sessions open |
+| GET | `/api/slots/{n}/iptable` | IP IDs with each connected client: address, hostname, model, firmware, counters, details; `publicIpId` and `remapped` when the IP ID is [remapped](#ip-id-remap) |
 | POST | `/api/slots/{n}/iptable/{ipid}/identify` | Run reverse DNS and Crestron autodiscovery again |
 | POST | `/api/slots/{n}/iptable/{ipid}/clients/{id}/login` | `{"username":"...","password":"...","port":22}`; SSH in and run read-only commands (credentials not stored) |
 | GET | `/api/slots/{n}/compat` | Compatibility report |

@@ -396,6 +396,7 @@ namespace Crestron.Logos.SplusObjects
         }
 
         internal bool Stopped => _stopped;
+        internal OpenVP.Core.ProgramSlot? Slot => _host?.Slot;
 
         // ------------------------------------------------------------------ ISplusModule (host side)
 

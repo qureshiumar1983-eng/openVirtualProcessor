@@ -349,7 +349,7 @@
 <body>
 <header>
   <h1>OpenVP</h1><small>open-source virtual control processor</small>
-  <span style="flex:1"></span><span id="saved" role="status" aria-live="polite"></span><span id="sigfind-wrap"><input id="sigfind" type="search" placeholder="Find a signal in all slots" aria-label="Find a signal by name in every loaded slot" autocomplete="off" title="Finds signals by name across all loaded slots and opens that slot's debugger on the one you pick (press F)" data-help="signal-search"><div id="sigfind-res" hidden></div></span><button class="hbtn" id="pal-open" title="Search every action and every help topic (Ctrl+K or Cmd+K)" data-help="palette">Search ⌘K</button><button class="hbtn" id="keys-open" title="Keyboard shortcuts (?)" data-help="palette">?</button><button class="hbtn" id="tpl-open" title="Starter projects to download: a SIMPL# Pro program and a CH5 panel" data-help="templates">Templates</button><button class="theme-btn" data-theme-toggle data-help="top-bar"></button><a href="metrics.html" target="openvp-metrics" data-help="metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="panel.html" target="_blank" data-help="panel" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a><a href="#welcome" id="welcome-link" title="Show the welcome screen again">Welcome</a>
+  <span style="flex:1"></span><span id="saved" role="status" aria-live="polite"></span><span id="sigfind-wrap"><input id="sigfind" type="search" placeholder="Find a signal in all slots" aria-label="Find a signal by name in every loaded slot" autocomplete="off" title="Finds signals by name across all loaded slots and opens that slot's debugger on the one you pick (press F)" data-help="signal-search"><div id="sigfind-res" hidden></div></span><button class="hbtn" id="pal-open" title="Search every action and every help topic (Ctrl+K or Cmd+K)" data-help="palette">Search ⌘K</button><button class="hbtn" id="keys-open" title="Keyboard shortcuts (?)" data-help="palette">?</button><button class="hbtn" id="tpl-open" title="Starter projects to download: a SIMPL# Pro program and a CH5 panel" data-help="templates">Templates</button><button class="theme-btn" data-theme-toggle data-help="top-bar"></button><a href="devices.html" id="devices-link" target="openvp-devices" data-help="devices" title="Device simulators, COM terminal, socket sniffer, network redirects and discovery for the selected slot">Devices ↗</a><a href="metrics.html" target="openvp-metrics" data-help="metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="panel.html" target="_blank" data-help="panel" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a><a href="#welcome" id="welcome-link" title="Show the welcome screen again">Welcome</a>
 </header>
 <div id="slot-strip" aria-label="Selected slot"><select id="strip-slot" aria-label="Slot"></select><button id="strip-start" title="Start">▶</button><button id="strip-stop" title="Stop">■</button><button id="strip-restart" title="Restart">↻</button></div>
 <div id="net-bar" data-help="internet">
@@ -443,6 +443,8 @@
           <b id="d-title"></b><span style="flex:1"></span>
           <button id="d-identify" title="Run reverse DNS and Crestron autodiscovery again">Re-identify</button>
           <button id="d-login-toggle" title="Log in over SSH and read hostname, firmware, uptime, network and IP table (read-only commands)">Log in &amp; read…</button>
+          <button id="d-remap" data-help="ip-remap" title="Make panels reach this program IP ID at a different number, without recompiling">Remap IP ID…</button>
+          <button id="d-remap-reset" data-help="ip-remap" title="Panels connect to the program's own IP ID again" style="display:none">Undo remap</button>
           <button id="d-share" data-help="sharing" title="Make a link that opens this panel for someone else">Share…</button>
           <a id="d-panel" target="_blank" title="Open a browser touch panel connected to this IP ID">open test panel</a>
           <button id="d-close" title="Close">✕</button>
@@ -771,6 +773,9 @@ function ago(t) {
 function bytes(n) { return n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`; }
 function when(t) { return t ? `${new Date(t).toLocaleString()} (${ago(t)} ago)` : "—"; }
 
+// The number panels connect to: the program's own IP ID, unless it was remapped (then publicIpId differs).
+const pubId = d => d.publicIpId || d.ipId;
+const ipIdCell = d => d.remapped ? `<b>${d.ipId}</b><br><small class="muted" title="Panels connect to ${pubId(d)}; the program still sees ${d.ipId}">at ${pubId(d)}</small>` : `<b>${d.ipId}</b>`;
 function shareCell(d) { return `<td class="act"><button class="share-btn" title="Make a link that opens this panel for someone else, with an optional PIN and expiry">Share…</button></td>`; }
 
 function whoCell(c) {
@@ -797,16 +802,16 @@ async function refreshIpTable() {
       if (c) {
         tr.className = "client" + (iptSel && iptSel.ipId === d.ipId && iptSel.clientId === c.id ? " sel" : "");
         tr.innerHTML = `<td>${whoCell(c)}</td><td class="mono" data-l="Address">${esc(c.endpoint || "—")}<br><small class="muted">${esc(c.transport)}</small></td>
-          <td class="mono" data-l="IP ID"><b>${d.ipId}</b></td><td data-l="Type">${esc(d.type)}</td><td data-l="Status">${status}</td>
+          <td class="mono" data-l="IP ID">${ipIdCell(d)}</td><td data-l="Type">${esc(d.type)}</td><td data-l="Status">${status}</td>
           <td class="num" data-l="Connected">${ago(c.connectedAt)}</td><td class="num" data-l="Joins in / out">${c.joinsIn} / ${c.joinsOut}</td>${shareCell(d)}`;
         tr.onclick = () => showDetail(d.ipId, c.id);
       } else {
         tr.className = "client nobody" + (iptSel && iptSel.ipId === d.ipId && !iptSel.clientId ? " sel" : "");
         tr.innerHTML = `<td><i>Nobody connected</i>${d.lastOffline ? `<br><small>last seen ${ago(d.lastOffline)} ago</small>` : ""}</td><td></td>
-          <td class="mono" data-l="IP ID"><b>${d.ipId}</b></td><td data-l="Type">${esc(d.type)}</td><td data-l="Status">${status}</td><td class="num"></td><td class="num"></td>${shareCell(d)}`;
+          <td class="mono" data-l="IP ID">${ipIdCell(d)}</td><td data-l="Type">${esc(d.type)}</td><td data-l="Status">${status}</td><td class="num"></td><td class="num"></td>${shareCell(d)}`;
         tr.onclick = () => showDetail(d.ipId, null);
       }
-      tr.querySelector(".share-btn")?.addEventListener("click", e => { e.stopPropagation(); openShare(d.slot, d.ipId); });
+      tr.querySelector(".share-btn")?.addEventListener("click", e => { e.stopPropagation(); openShare(d.slot, pubId(d)); });
       tb.appendChild(tr);
     }
   }
@@ -834,8 +839,10 @@ function renderDetail() {
   if (iptSel.clientId && !c) { $("#d-status").textContent = "That client disconnected."; iptSel.clientId = null; }
   box.style.display = "block";
   $("#d-title").textContent = c ? `${(c.transport === "EISC" ? c.peer : null) || c.hostname || c.model || c.peer || c.endpoint || "Client"} → IP ID ${d.ipId}` : `IP ID ${d.ipId}`;
-  $("#d-panel").href = `panel.html?ipid=${d.ipId}&slot=${d.slot}`;
-  fillCh5($("#d-ch5"), d.slot, d.ipId);
+  $("#d-panel").href = `panel.html?ipid=${pubId(d)}&slot=${d.slot}`;
+  fillCh5($("#d-ch5"), d.slot, pubId(d));
+  $("#d-remap-reset").style.display = d.remapped ? "" : "none";
+  $("#d-remap").textContent = d.remapped ? "Change remap…" : "Remap IP ID…";
   $("#d-login-toggle").style.display = c && c.transport !== "EISC" && c.address ? "" : "none";
   $("#d-identify").style.display = d.clients.some(x => x.transport !== "EISC") ? "" : "none";
 
@@ -863,6 +870,7 @@ function renderDetail() {
     }
   }
   h += `<h3>IP ID ${d.ipId}</h3>`;
+  h += d.remapped ? kv("Answers at (panels connect to)", `${pubId(d)} — the program still sees ${d.ipId}`) : "";
   h += kv("Type", d.type) + kv("Description", d.description) + kv("Status", d.online ? `online · ${d.connections} connection${d.connections === 1 ? "" : "s"}` : "offline")
      + kv("Registered", when(d.registeredAt)) + kv("Last came online", d.lastOnline ? when(d.lastOnline) : "never")
      + kv("Last went offline", d.lastOffline ? when(d.lastOffline) : null) + kv("Connections since registered", d.totalConnects)
@@ -872,6 +880,24 @@ function renderDetail() {
 }
 
 $("#d-close").onclick = () => { iptSel = null; renderDetail(); refreshIpTable(); };
+// Remap: panels use another number to reach this program IP ID. Stored per slot, applied to browser panels, CIP and share links.
+$("#d-remap").onclick = async () => {
+  const d = iptSel && iptData.find(x => x.ipId === iptSel.ipId); if (!d) return;
+  const v = await askName(`The program's IP ID ${d.ipId} should answer at (two hex digits, 01 to FE). Panels connect to that number; the program still sees ${d.ipId}.`, pubId(d));
+  if (v === null) return;
+  if (!/^[0-9A-Fa-f]{1,2}$/.test(v)) return toast("An IP ID is one or two hex digits, like 0A.");
+  try {
+    await api(`/api/slots/${sel}/ipremap`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ program: d.ipId, public: v.toUpperCase().padStart(2, "0") }) });
+    toast(`IP ID ${d.ipId} now answers at ${v.toUpperCase().padStart(2, "0")}. Existing share links use the old number: make new ones.`);
+  } catch (e) { toast(e.message); }
+  refreshSlots(); refreshIpTable();
+};
+$("#d-remap-reset").onclick = async () => {
+  const d = iptSel && iptData.find(x => x.ipId === iptSel.ipId); if (!d) return;
+  try { await api(`/api/slots/${sel}/ipremap/${d.ipId}`, { method: "DELETE" }); toast(`IP ID ${d.ipId} answers at its own number again.`); } catch (e) { toast(e.message); }
+  refreshSlots(); refreshIpTable();
+};
+$("#devices-link").onclick = e => { e.preventDefault(); window.open(`devices.html?slot=${sel}`, "openvp-devices"); };
 $("#d-identify").onclick = async () => {
   if (!iptSel) return;
   $("#d-status").textContent = "Identifying… (reverse DNS and Crestron autodiscovery, a few seconds)";

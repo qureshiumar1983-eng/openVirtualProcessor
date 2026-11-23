@@ -9,7 +9,7 @@ public sealed record SnapshotInfo(
 
 /// <summary>
 /// Snapshots of a slot, kept under <c>data/snapshots/slotNN/&lt;id&gt;/</c>: <c>program/</c> (the slot's uploaded files),
-/// <c>nvram/</c>, <c>user/</c> and a small <c>snapshot.json</c>. The slot's <c>slot.json</c> (Room ID) is never copied or
+/// <c>nvram/</c>, <c>user/</c>, <c>devices/</c> (simulators, redirects, IP ID remap) and a small <c>snapshot.json</c>. The slot's <c>slot.json</c> (Room ID) is never copied or
 /// restored. Callers serialize access per slot (the server holds the slot's upload lock).
 /// </summary>
 public sealed class SlotSnapshots
@@ -48,6 +48,7 @@ public sealed class SlotSnapshots
             ("program", UploadsDir(slot)),
             ("nvram", Path.Combine(SlotDir(slot), "nvram")),
             ("user", Path.Combine(SlotDir(slot), "user")),
+            ("devices", Path.Combine(SlotDir(slot), "devices")), // simulators, network redirects, IP ID remap
         };
         var any = sources.Any(s => Directory.Exists(s.Path) && Directory.EnumerateFileSystemEntries(s.Path).Any());
         if (programName == null && !any) return null;
@@ -106,9 +107,11 @@ public sealed class SlotSnapshots
             ("program", UploadsDir(slot)),
             ("nvram", Path.Combine(SlotDir(slot), "nvram")),
             ("user", Path.Combine(SlotDir(slot), "user")),
+            ("devices", Path.Combine(SlotDir(slot), "devices")),
         };
         foreach (var (name, target) in targets)
         {
+            if (name == "devices" && !Directory.Exists(Path.Combine(dir, name))) continue; // an older snapshot has none: keep what the slot has
             if (Directory.Exists(target)) Directory.Delete(target, true);
             Directory.CreateDirectory(target);
             Copy(Path.Combine(dir, name), target, name, new List<string>());

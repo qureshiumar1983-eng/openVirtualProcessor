@@ -121,7 +121,7 @@ public static class TunnelSecurityTests
         var app = OpenVpServer.Create(new[]
         {
             $"--urls=http://127.0.0.1:{main}", $"--OpenVP:TunnelPort={tun}", $"--OpenVP:DataDirectory={dir}",
-            "--OpenVP:CipEnabled=false", "--OpenVP:UnsupportedLog=off", $"--webroot={www}", "--OpenVP:Slots=2",
+            "--OpenVP:CipEnabled=false", "--OpenVP:UnsupportedLog=off", $"--webroot={www}", "--OpenVP:Slots=2", "--OpenVP:Mdns=false",
         });
         app.StartAsync().GetAwaiter().GetResult();
         try

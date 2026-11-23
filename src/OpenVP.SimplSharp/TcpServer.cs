@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
+using OpenVP.Core;
 using OpenVP.SimplSharp;
 
 namespace Crestron.SimplSharp.CrestronSockets
@@ -36,9 +37,11 @@ namespace Crestron.SimplSharp.CrestronSockets
             public byte[] Buffer;
             public int Received;
             public SocketStatus Status = SocketStatus.SOCKET_STATUS_CONNECTED;
+            public SocketRecord Rec;
         }
 
         private TcpListener _listener;
+        private SocketRecord _listenRec;
         internal readonly ConcurrentDictionary<uint, Conn> Clients = new ConcurrentDictionary<uint, Conn>();
         private readonly int _bufferSize;
         private Action<uint> _alwaysCallback;
@@ -93,6 +96,8 @@ namespace Crestron.SimplSharp.CrestronSockets
                 var ip = AddressToAcceptConnectionFrom is null or "" or "0.0.0.0" ? System.Net.IPAddress.Any : System.Net.IPAddress.Parse(AddressToAcceptConnectionFrom);
                 _listener = new TcpListener(System.Net.IPAddress.Any, PortNumber);
                 _listener.Start();
+                _listenRec = OpenVPBridge.Sock(this is SecureTCPServer ? "SecureTCPServer" : "TCPServer", "server", "tcp", $"0.0.0.0:{PortNumber}", "");
+                _listenRec?.Connected();
                 return true;
             }
             catch (Exception e)
@@ -119,7 +124,9 @@ namespace Crestron.SimplSharp.CrestronSockets
                 catch (Exception e) { OpenVPBridge.Log("Warning", "TLS handshake failed: " + e.Message); tcp.Dispose(); continue; }
                 uint index = 1;
                 while (Clients.ContainsKey(index)) index++;
-                Clients[index] = new Conn { Tcp = tcp, Stream = stream, Buffer = new byte[_bufferSize] };
+                var rec = OpenVPBridge.Sock(this is SecureTCPServer ? "SecureTCPServer connection" : "TCPServer connection", "server", "tcp", OpenVPBridge.Ep(tcp.Client.LocalEndPoint), OpenVPBridge.Ep(tcp.Client.RemoteEndPoint));
+                rec?.Connected();
+                Clients[index] = new Conn { Tcp = tcp, Stream = stream, Buffer = new byte[_bufferSize], Rec = rec };
                 RaiseStatus(index, SocketStatus.SOCKET_STATUS_CONNECTED);
                 return index;
             }
@@ -169,6 +176,7 @@ namespace Crestron.SimplSharp.CrestronSockets
                 var n = c.Stream.Read(c.Buffer, 0, c.Buffer.Length);
                 if (n <= 0) { Drop(i, SocketStatus.SOCKET_STATUS_BROKEN_REMOTELY); return 0; }
                 c.Received = n;
+                c.Rec?.Received(c.Buffer, 0, n);
                 return n;
             }
             catch { Drop(i, SocketStatus.SOCKET_STATUS_BROKEN_REMOTELY); return 0; }
@@ -185,7 +193,7 @@ namespace Crestron.SimplSharp.CrestronSockets
         {
             var c = Get(i);
             if (c == null) return SocketErrorCodes.SOCKET_NOT_CONNECTED;
-            try { c.Stream.Write(data, offset, count); return SocketErrorCodes.SOCKET_OK; }
+            try { c.Stream.Write(data, offset, count); c.Rec?.Sent(data, offset, count); return SocketErrorCodes.SOCKET_OK; }
             catch { Drop(i, SocketStatus.SOCKET_STATUS_BROKEN_REMOTELY); return SocketErrorCodes.SOCKET_NOT_CONNECTED; }
         }
 
@@ -199,6 +207,7 @@ namespace Crestron.SimplSharp.CrestronSockets
         internal void Drop(uint i, SocketStatus status)
         {
             if (!Clients.TryRemove(i, out var c)) return;
+            c.Rec?.Close(status == SocketStatus.SOCKET_STATUS_BROKEN_REMOTELY ? "closed by remote" : "closed");
             try { c.Stream.Dispose(); c.Tcp.Dispose(); } catch { }
             RaiseStatus(i, status);
         }
@@ -208,7 +217,7 @@ namespace Crestron.SimplSharp.CrestronSockets
         public SocketErrorCodes Disconnect() => Disconnect(FirstIndex);
         public SocketErrorCodes Disconnect(uint i) { Drop(i, SocketStatus.SOCKET_STATUS_NO_CONNECT); return SocketErrorCodes.SOCKET_OK; }
         public void DisconnectAll() { foreach (var k in Clients.Keys.ToList()) Disconnect(k); }
-        public void Stop() { DisconnectAll(); try { _listener?.Stop(); } catch { } _listener = null; _alwaysCallback = null; }
+        public void Stop() { DisconnectAll(); try { _listener?.Stop(); } catch { } _listener = null; _alwaysCallback = null; _listenRec?.Close("stopped"); _listenRec = null; }
         public void HandleLinkLoss() { }
         public void HandleLinkUp() { }
         public void Dispose() { Stop(); OpenVPBridge.Untrack(this); }

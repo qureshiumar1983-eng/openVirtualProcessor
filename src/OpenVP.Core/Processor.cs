@@ -102,6 +102,17 @@ public sealed class Processor : IDisposable
         return Slots.Select(x => x.FindDevice(ipId)).FirstOrDefault(d => d != null);
     }
 
+    /// <summary>The device a panel reaches by connecting to <paramref name="publicId"/> (after each slot's IP ID remap).
+    /// Searches one slot, or all slots if slot is null. Programs and recordings use <see cref="FindDevice"/> and their own IDs.</summary>
+    public JoinDevice? FindPanelDevice(uint publicId, int? slot = null)
+    {
+        if (slot is int s) return Slot(s).FindPanelDevice(publicId);
+        return Slots.Select(x => x.FindPanelDevice(publicId)).FirstOrDefault(d => d != null);
+    }
+
+    /// <summary>The slot that has a remap sending <paramref name="publicId"/> to one of its program IP IDs, or null.</summary>
+    public ProgramSlot? SlotRemapping(uint publicId) => Slots.FirstOrDefault(s => s.Io.Remap.Maps(publicId));
+
     internal readonly object RoomIdGate = new();
 
     /// <summary>The slot with this Room ID (case-insensitive), or null.</summary>

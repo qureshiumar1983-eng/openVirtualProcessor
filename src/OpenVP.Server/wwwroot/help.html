@@ -58,6 +58,7 @@
     <a href="#start">Getting started</a>
     <a href="/#welcome" title="Open the first-run welcome screen again">Welcome</a>
     <a href="#console">Console</a>
+    <a href="#devices">Devices</a>
     <a href="#debugger">Debugger</a>
     <a href="#paths">Paths</a>
     <a href="#metrics">Metrics</a>
@@ -87,6 +88,7 @@
 
   <h3 id="top-bar">Top bar</h3>
   <dl>
+    <dt id="top-devices"><span class="b">Devices ↗</span></dt><dd>Opens the <a href="#devices">Devices</a> page for the selected slot: simulators, COM terminal, sockets, redirects and discovery.</dd>
     <dt id="top-templates"><span class="b">Templates</span></dt><dd>Starter projects to download, see <a href="#templates">Templates</a>.</dd>
     <dt><span class="b">Metrics ↗</span></dt><dd>Opens the <a href="#metrics">Metrics</a> page: CPU, memory and how busy each slot is.</dd>
     <dt><span class="b">Test panel ↗</span></dt><dd>Opens a blank <a href="#panel">test panel</a>. Type the IP ID you want and click Connect.</dd>
@@ -212,7 +214,8 @@
     <dt><span class="b">Re-identify</span></dt><dd>Tries again to work out what the connected device is (its hostname and model), using reverse DNS and Crestron autodiscovery. Takes a few seconds.</dd>
     <dt><span class="b">Log in &amp; read…</span></dt><dd>Shows a small login form. Enter the device's SSH username and password, then click <span class="b">Log in &amp; read</span>: OpenVP logs in to the device and reads its hostname, firmware, uptime, network settings and IP table. It only reads; it changes nothing on the device. The password is used once and never saved.</dd>
     <dt><b>open test panel</b></dt><dd>Opens a browser <a href="#panel">test panel</a> already connected to this IP ID and slot.</dd>
-    <dt><span class="b">Share…</span></dt><dd>On every row of the table and in the details. Opens the Share panel box, see <a href="#sharing">Share a panel</a> below.</dd>
+    <dt id="ip-remap"><span class="b">Remap IP ID…</span> · <span class="b">Undo remap</span></dt><dd>In the details. Makes panels reach this program IP ID at a different number without recompiling: type the number it should answer at (two hex digits, like <code>0A</code>). Panels, shared links and CIP touch panels then connect to <code>0A</code> and drive the program's own <code>03</code>; the program still sees <code>03</code>. The table shows <code>03</code> with <code>at 0A</code> under it. While an ID is remapped, panels connecting to its old number reach nothing. A link shared before the remap keeps its old number, so make a new one. <b>Undo remap</b> puts the original number back. The README has the details (IP ID remap).</dd>
+    <dt><span class="b">Share…</span></dt><dd>On every row of the table and in the details. Opens the Share panel box, see <a href="#sharing">Share a panel</a> below. The link uses the number panels connect to.</dd>
     <dt><span class="b">Upload .ch5z…</span> · <span class="b">Replace .ch5z…</span> · <span class="b">Remove</span></dt><dd>In the details. Puts an HTML5 (CH5) project on this IP ID, so shared links open it instead of the test panel. Remove goes back to the test panel. See <a href="#sharing">Share a panel</a>.</dd>
     <dt><span class="b">✕</span></dt><dd>Closes the details.</dd>
   </dl>
@@ -303,6 +306,60 @@
   <dl>
     <dt>Box in the top bar <kbd>F</kbd></dt><dd>Type part of a signal name (at least two letters; several words must all appear, <code>*</code> matches anything). It lists matches from every loaded slot with their value; pick one to open that slot's debugger on the signal. The command palette (<kbd>Ctrl</kbd> <kbd>K</kbd>) lists the same matches as <b>Signal: name</b>.</dd>
   </dl>
+</section>
+
+<section id="devices">
+  <h2>Devices</h2>
+  <p class="muted">Open it with <b>Devices ↗</b> in the console's top bar. Everything on it is for the slot chosen at the top. It helps you test a program without its real devices: fake devices that answer, a window on the COM ports, a list of the program's sockets, and a way to point a device's address at a fake one.</p>
+
+  <h3 id="simulators">Simulators</h3>
+  <p class="muted">Fake devices that answer a COM port or a TCP/UDP connection with canned replies. The profiles are generic, made-up protocols, not any maker's; edit the rules to match your device.</p>
+  <dl>
+    <dt><span class="b">New simulator…</span></dt><dd>Pick a profile (generic projector, display, DSP or video switcher), a name, and what it attaches to: a <b>COM port</b> of the program (choose one the running program has opened, or type its name like <code>COM-01</code> or <code>IP-ID-11/Slot-08/COM-01</code>), or a <b>local TCP or UDP port</b> on 127.0.0.1 that the program connects to (0 picks a free port).</dd>
+    <dt>The status</dt><dd><b>port open, answering</b>: the program has the COM port open. <b>waiting for the program to open the port</b>: load and start the program. <b>listening on 127.0.0.1:N</b>: a TCP or UDP simulator is ready. An error (such as the port being in use) is shown in red.</dd>
+    <dt>The state boxes</dt><dd>The device's state (power, input, level...), live. Click a value to change it.</dd>
+    <dt><span class="b">Try</span></dt><dd>Type a message (escapes <code>\r \n \xNN</code> work) and see what a copy of the simulator would reply and after how long. The real state and the program are not touched.</dd>
+    <dt><span class="b">Edit rules…</span></dt><dd>The rule editor. Each rule: <b>When received</b> (text, or a regular expression, optionally ignoring case), <b>Reply</b> and <b>After (ms)</b>, and <b>Set state</b> (<code>power=1</code>, one per line). In a reply <code>{1}</code> is a regex group and <code>{name}</code> a state value (<code>{vol:D3}</code> pads to 3 digits); a value like <code>{vol}+5</code> is worked out. <b>Timed messages</b> are sent on their own every N ms. <b>Connect messages</b> go out when a client connects or the program opens the port. <b>Starting state</b> lists the state's first values.</dd>
+    <dt><span class="b">Turn off</span> · <span class="b">Reset state</span> · <span class="b">Remove</span></dt><dd>Off keeps the simulator but stops it answering. Reset puts the starting state back. Remove deletes it.</dd>
+    <dt>Saved</dt><dd>Simulators, redirects and the IP ID remap are saved with the slot (and in its snapshots).</dd>
+  </dl>
+
+  <h3 id="com-terminal">COM terminal</h3>
+  <p class="muted">What the program sends (TX, blue) and receives (RX, green) on each COM port, with times. It replaces forcing the receive signal by hand.</p>
+  <dl>
+    <dt>The port box</dt><dd>Every COM port the running program has opened. The label next to it shows whether it is open and the bytes so far, and a note says if a simulator is attached.</dd>
+    <dt><span class="b">ASCII</span> · <span class="b">Hex</span></dt><dd>ASCII shows control characters as <code>\r</code>, <code>\n</code> and <code>\x0D</code>; hex shows each byte.</dd>
+    <dt><span class="b">Follow</span> · <span class="b">Clear</span> · <span class="b">Save session…</span></dt><dd>Follow keeps the newest line in view (scrolling up turns it off). Clear empties the view. Save writes what is shown to a text file.</dd>
+    <dt>The text box and <span class="b">Send as RX</span></dt><dd>Type what the device would send (<code>PWR=1\r</code>). The program receives it on that port. <b>+ \r</b> and <b>+ \n</b> add a carriage return or line feed.</dd>
+  </dl>
+
+  <h3 id="sockets">Sockets</h3>
+  <p class="muted">Every TCP and UDP socket the program opens: SIMPL# TCPClient, TCPServer, UDPServer and SecureTCPClient, and SIMPL+ sockets.</p>
+  <dl>
+    <dt>A row</dt><dd>Kind, local and remote address (and where a redirect sent it), state, bytes in and out, and when it opened and closed. Click a row to see its traffic below, in ASCII or hex. <b>Show closed</b> hides the closed ones. The text of the traffic is kept in full only while this tab is open (bytes are always counted).</dd>
+  </dl>
+
+  <h3 id="redirects">Redirects</h3>
+  <p class="muted">Send the program's connections to a device's address somewhere else, usually to a simulator, without changing the program.</p>
+  <dl>
+    <dt><span class="b">New redirect…</span></dt><dd><b>Program connects to</b>: <code>192.168.1.50:23</code> (or just a host for any port, or <code>*</code> for any host). <b>Send it to</b>: one of this slot's TCP/UDP simulators, or another <code>host:port</code>. You can limit it to TCP or UDP. The most specific entry wins. The On box switches one off without deleting it.</dd>
+    <dt>Where it applies</dt><dd>When the program opens a SIMPL# <code>TCPClient</code> or sends from a <code>UDPServer</code>, or uses a SIMPL+ TCP client or UDP socket. The log says when a redirect was used. <code>SecureTCPClient</code> is not redirected.</dd>
+  </dl>
+
+  <h3 id="discover">Discover</h3>
+  <p class="muted">Looks for devices on this computer's own subnets, only when you click.</p>
+  <dl>
+    <dt><span class="b">Discover</span> · <span class="b">Stop</span></dt><dd>Starts a scan (Crestron autodiscovery broadcast, an mDNS browse, a ping sweep and the ARP table, then a quick check of ports 23, 80, 443, 41794, 41795, 1515 and 4352). It is gentle and always ends within 30 seconds. Notes under the button say what wasn't available (for example ping blocked).</dd>
+    <dt>The results</dt><dd>Address, name, model and firmware (from Crestron replies), MAC when known, open ports and how it was found.</dd>
+    <dt><span class="b">Add as simulator target</span></dt><dd>Makes a redirect from the device's address and a port to a simulator, which can be a new TCP simulator from a profile.</dd>
+    <dt><span class="b">Use in network redirect</span></dt><dd>Opens the redirect box with the device's address filled in.</dd>
+  </dl>
+
+  <h3 id="console-access">Telnet and SSH console</h3>
+  <p class="muted">Not a page: a text console like a processor's, over telnet (port 41795) and SSH (port 22). Off by default; turn it on with <code>OpenVP:TelnetEnabled</code> and <code>OpenVP:SshEnabled</code>. When on it listens on all interfaces. The password is the access key. See the README for the commands (<code>ver</code>, <code>ipt</code>, <code>progreset -p:N</code>, <code>stopprog</code>, <code>info</code>, ... and the program's own commands) and the limits on sessions and wrong passwords.</p>
+
+  <h3 id="mdns">openvp.local</h3>
+  <p class="muted">OpenVP announces itself on the network as <code>openvp.local</code> and <code>&lt;hostname&gt;.local</code>, and as the service "OpenVP on &lt;hostname&gt;", so phones and PCs can find it. Set <code>OpenVP:Mdns</code> to turn it on or off (on by default, off inside a container).</p>
 </section>
 
 <section id="debugger">

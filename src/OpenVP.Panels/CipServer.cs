@@ -399,7 +399,7 @@ internal sealed class CipSession
         if (Cip.DecodeConnectIpId(type, payload) is uint ipId)
         {
             Detach();
-            var known = _processor.FindDevice(ipId) != null;
+            var known = _processor.FindPanelDevice(ipId) != null;
             _device = DeviceDirectory.Resolve(_processor, ipId, null)!;
             var who = _conn.Hostname ?? _conn.Model;
             _server.Event(_device.Slot, $"panel registered as IP ID {ipId:X2}" + (who != null ? $" from {who}" : "") + (known ? $" (slot {_device.Slot}, {_device.Type})" : " — no loaded program has this IP ID; check the panel's IP ID"));

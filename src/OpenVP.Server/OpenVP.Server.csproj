@@ -24,6 +24,10 @@
     </ItemGroup>
   </Target>
   <ItemGroup>
+    <!-- SSH server for the processor-style console (MIT, no dependencies). Off unless OpenVP:SshEnabled=true. -->
+    <PackageReference Include="FxSsh" Version="1.4.0" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../OpenVP.Core/OpenVP.Core.csproj" />
     <ProjectReference Include="../OpenVP.SimplSharpHost/OpenVP.SimplSharpHost.csproj" />
     <ProjectReference Include="../OpenVP.Simpl/OpenVP.Simpl.csproj" />

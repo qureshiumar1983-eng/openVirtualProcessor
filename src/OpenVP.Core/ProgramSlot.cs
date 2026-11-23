@@ -33,7 +33,33 @@ public sealed class ProgramSlot : IDisposable
         MissingFiles = new MissingFileLog(() => Directory, Log);
         _dispatcher = NewDispatcher();
         LoadSettings();
+        Io = new SlotIo(this);
     }
+
+    /// <summary>The slot's COM ports and sockets, device simulators, network redirects and IP ID remap (see <see cref="SlotIo"/>).</summary>
+    public SlotIo Io { get; }
+
+    /// <summary>The ID a panel uses to reach a program IP ID (the same ID unless it was remapped).</summary>
+    public uint PublicIpId(uint programId) => Io.Remap.PublicOf(programId);
+
+    /// <summary>Remap a program IP ID so panels reach it at <paramref name="publicId"/>. Throws ArgumentException if that clashes.</summary>
+    public void SetIpRemap(uint programId, uint publicId)
+    {
+        Io.Remap.Set(programId, publicId, id => _ipTable.ContainsKey(id) && !Io.Remap.IsRemapped(id));
+        Log("Notice", programId == publicId ? $"IP ID {programId:X2} answers at its own number again" : $"IP ID {programId:X2} now answers at {publicId:X2} (panels connect to {publicId:X2}; the program still sees {programId:X2})");
+        StateChanged?.Invoke(this);
+    }
+
+    public void ClearIpRemap(uint programId)
+    {
+        if (!Io.Remap.Remove(programId)) return;
+        Log("Notice", $"IP ID {programId:X2} answers at its own number again");
+        StateChanged?.Invoke(this);
+    }
+
+    /// <summary>The device a panel reaches by connecting to <paramref name="publicId"/>: the remap is applied first.</summary>
+    public JoinDevice? FindPanelDevice(uint publicId) =>
+        Io.Remap.ToProgram(publicId) is { } id ? FindDevice(id) : null;
 
     /// <summary>The Room ID a slot has until someone sets one: <c>SLOT01</c>, <c>SLOT02</c>, ...</summary>
     public string DefaultRoomId => $"SLOT{Number:00}";
@@ -311,7 +337,7 @@ public sealed class ProgramSlot : IDisposable
         sb.Append($"Slot {Number}  Room ID {RoomId}\n");
         foreach (var d in _ipTable.Values.OrderBy(d => d.IpId))
         {
-            sb.Append($"IPID {d.IpId:X2}  {d.Type,-28} {(d.Online ? "ONLINE" : "OFFLINE")}  {d.Description}\n");
+            sb.Append($"IPID {d.IpId:X2}{(Io.Remap.IsRemapped(d.IpId) ? $" (at {Io.Remap.PublicOf(d.IpId):X2})" : "")}  {d.Type,-28} {(d.Online ? "ONLINE" : "OFFLINE")}  {d.Description}\n");
             foreach (var c in d.Connections)
                 sb.Append($"         {c.Transport,-9} {c.Endpoint,-22} {c.Hostname ?? c.Peer ?? "-",-24} {c.ClientKind ?? ""}\n");
         }
@@ -457,6 +483,7 @@ public sealed class ProgramSlot : IDisposable
             Interlocked.Increment(ref _generation);
             Metrics.ResetTimers();
             foreach (var id in _ipTable.Keys.ToList()) UnregisterDevice(id);
+            Io.ProgramUnloaded();
             _dispatcher.Dispose();
             _dispatcher = NewDispatcher();
             SetState(SlotState.Empty);
@@ -507,5 +534,5 @@ public sealed class ProgramSlot : IDisposable
             if (_settings.Crash.FaultOnUnhandled) Fault($"unhandled {e.GetType().Name}: {e.Message}");
         }, () => Stepper.IsPaused, Processor.SlotSpinMicroseconds);
 
-    public void Dispose() { Unload(); Monitor.Dispose(); }
+    public void Dispose() { Unload(); Monitor.Dispose(); Io.Dispose(); }
 }

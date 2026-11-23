@@ -778,7 +778,7 @@ public static class DebuggerTests
         var app = OpenVpServer.Create(new[]
         {
             $"--urls=http://127.0.0.1:{port}", "--OpenVP:TunnelPort=0", $"--OpenVP:DataDirectory={dir}", "--OpenVP:CipEnabled=false",
-            "--OpenVP:UnsupportedLog=off", $"--webroot={www}", "--OpenVP:Slots=3"
+            "--OpenVP:UnsupportedLog=off", $"--webroot={www}", "--OpenVP:Slots=3", "--OpenVP:Mdns=false"
         });
         app.StartAsync().GetAwaiter().GetResult();
         try

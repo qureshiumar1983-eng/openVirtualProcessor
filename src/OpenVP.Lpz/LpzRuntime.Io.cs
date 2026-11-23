@@ -440,7 +440,7 @@ public sealed partial class LpzRuntime
     /// <summary>What carries this program's IR and COM ports. Replace it before <see cref="Start"/>.</summary>
     public IPortBridge PortBridge
     {
-        get => _portBridge ??= PortBridgeFactory?.Invoke(_slot) ?? NullPortBridge.Instance;
+        get => _portBridge ??= new SlotPortBridge(_slot, PortBridgeFactory?.Invoke(_slot));
         set => _portBridge = value;
     }
 
@@ -574,6 +574,7 @@ public sealed partial class LpzRuntime
                         var n = await _stream.ReadAsync(buf, ct);
                         if (n == 0) break;
                         var text = Latin1(buf, n);
+                        Runtime._slot.Io.Ports.Find(_port.Path)?.RecordRx(text, "serial device server");
                         Post(() => Runtime.DriveOut(this, 1, text));
                     }
                 }

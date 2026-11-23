@@ -401,6 +401,7 @@ namespace Crestron.SimplSharp.CrestronSockets
         private TcpClient _tcp;
         private SslStream _ssl;
         private System.Security.Cryptography.X509Certificates.X509Certificate2 _clientCert;
+        private OpenVP.Core.SocketRecord _rec;
 
         public SecureTCPClient() : this("", 443, 4096) { }
         public SecureTCPClient(string address, int port, int bufferSize)
@@ -427,16 +428,20 @@ namespace Crestron.SimplSharp.CrestronSockets
         {
             try
             {
+                _rec?.Close("closed");
+                _rec = OpenVPBridge.Sock("SecureTCPClient", "client", "tcp", "", $"{AddressClientConnectedTo}:{PortNumber}");
                 _tcp = new TcpClient();
                 _tcp.Connect(AddressClientConnectedTo, PortNumber);
                 _ssl = new SslStream(_tcp.GetStream(), false, (_, _, _, _) => true);
                 var certs = _clientCert != null ? new System.Security.Cryptography.X509Certificates.X509CertificateCollection { _clientCert } : null;
                 _ssl.AuthenticateAsClient(AddressClientConnectedTo, certs, System.Security.Authentication.SslProtocols.None, false);
+                _rec?.Connected(OpenVPBridge.Ep(_tcp.Client.LocalEndPoint));
                 Status(SocketStatus.SOCKET_STATUS_CONNECTED);
                 return SocketErrorCodes.SOCKET_OK;
             }
             catch (Exception e)
             {
+                _rec?.Close("connect failed");
                 OpenVPBridge.Log("Warning", $"SecureTCPClient {AddressClientConnectedTo}:{PortNumber}: {e.Message}");
                 Status(SocketStatus.SOCKET_STATUS_CONNECT_FAILED);
                 return SocketErrorCodes.SOCKET_CONNECTION_IN_PROGRESS;
@@ -453,6 +458,7 @@ namespace Crestron.SimplSharp.CrestronSockets
         {
             try { _ssl?.Dispose(); _tcp?.Dispose(); } catch { }
             _ssl = null; _tcp = null;
+            _rec?.Close("closed");
             Status(SocketStatus.SOCKET_STATUS_NO_CONNECT);
             return SocketErrorCodes.SOCKET_OK;
         }
@@ -461,20 +467,21 @@ namespace Crestron.SimplSharp.CrestronSockets
         {
             if (_ssl == null) return -1;
             _ssl.Write(data, 0, length);
+            _rec?.Sent(data, 0, length);
             return length;
         }
 
         public SocketErrorCodes SendDataAsync(byte[] data, int length, SecureTCPClientSendCallback callback)
         {
             if (_ssl == null) return SocketErrorCodes.SOCKET_NOT_CONNECTED;
-            Task.Run(() => { try { _ssl.Write(data, 0, length); callback?.Invoke(this, length); } catch { callback?.Invoke(this, -1); } });
+            Task.Run(() => { try { _ssl.Write(data, 0, length); _rec?.Sent(data, 0, length); callback?.Invoke(this, length); } catch { callback?.Invoke(this, -1); } });
             return SocketErrorCodes.SOCKET_OPERATION_PENDING;
         }
 
         public int ReceiveData()
         {
             if (_ssl == null) return 0;
-            try { return _ssl.Read(IncomingDataBuffer, 0, IncomingDataBuffer.Length); } catch { return 0; }
+            try { var n = _ssl.Read(IncomingDataBuffer, 0, IncomingDataBuffer.Length); _rec?.Received(IncomingDataBuffer, 0, n); return n; } catch { return 0; }
         }
 
         public SocketErrorCodes ReceiveDataAsync(SecureTCPClientReceiveCallback callback)
