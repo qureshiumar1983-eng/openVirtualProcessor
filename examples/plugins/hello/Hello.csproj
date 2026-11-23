@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The example plugin. Build it into a plugin folder in one step:
+      dotnet build examples/plugins/hello -c Release -o data/plugins/hello
+    The folder then holds Hello.dll, plugin.json and ui/, which is all OpenVP needs. Enable it on the Plugins page (Labs: Plugins must be on).
+  -->
+  <PropertyGroup>
+    <AssemblyName>Hello</AssemblyName>
+    <RootNamespace>HelloPlugin</RootNamespace>
+    <OutputType>Library</OutputType>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- OpenVP.Core is the host's own copy at run time (Private=false keeps it out of the plugin folder). -->
+    <ProjectReference Include="../../../src/OpenVP.Core/OpenVP.Core.csproj" Private="false" ExcludeAssets="runtime" />
+    <None Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="ui/**" CopyToOutputDirectory="PreserveNewest" LinkBase="ui" />
+  </ItemGroup>
+</Project>

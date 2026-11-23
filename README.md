@@ -668,6 +668,53 @@ Every time a program loads, anything in it OpenVP doesn't support yet goes into 
 
 The per-slot view is still there: the log lists what each program is missing, and **Compatibility** in the console (`GET /api/slots/{n}/compat`) shows it for the loaded program.
 
+### Compatibility dashboard and the one-click report
+
+**Compatibility ↗** (`/compat.html`, `GET /api/compat`, View) shows what OpenVP can run, in three tabs:
+
+- **Loaded programs**: one card per slot with its verdict (*will run*, *partly runs*, *won't run*), how many of its primitive types, Crestron types or symbols are supported, partial or unsupported, the count per category, and each problem found.
+- **Ever logged**: everything in `unsupported.md`, grouped as primitives, SIMPL# APIs, SIMPL+ modules and panel features, with how many program loads hit it. A SIMPL# member missing from a type OpenVP otherwise has counts as *partial*; everything else the log holds is *unsupported*.
+- **Panel features**: the panel part of [`docs/unsupported.md`](docs/unsupported.md) as a table of supported, partial and unsupported (CrComLib, CH5 components, smart graphics, emulate, kiosk, latency).
+
+**Report…** (from a program card or from the ticked rows) builds a prefilled GitHub new-issue address for `github.com/qureshiumar1983-eng/openVirtualProcessor/issues/new`. **Nothing is sent by OpenVP.** It shows the exact title and text in a box you can edit, flags anything you type that looks private, and **Open on GitHub…** opens the address in *your* browser; you read it there and press Submit yourself. The text holds the OpenVP version, the operating system family and architecture, the program type, and the names of the unsupported symbols, types and APIs. It never holds program contents or program names, folders (only file names stay), IP or MAC addresses, e-mail addresses, web addresses, keys, tokens, passwords, or the user or computer name; anything in the list that looks like one is replaced before you see it. A long list is cut to keep the address under about 7,000 characters, with a line saying how many were left out. `POST /api/report/draft` (items are looked up on the server by kind and name, so a client can't make it say something else) and `POST /api/report/url` (fits your edited text) only compose text and need View.
+
+### Examples
+
+**Examples ↗** (`/examples.html`, `GET /api/examples`) lists the small original programs shipped in `examples/programs/` (and the SIMPL# sample built with the server): a source select with interlock, power toggle and volume, logic gates, an EISC pair (A and B) and the SIMPL# sample. Pick a slot and **Load into slot N** (`POST /api/examples/{id}/load` with `{"slot":N,"replace":false}`, Programmer). A slot that already has a program answers 409 until you confirm the replace, and a [locked](#slot-lock-and-presence) slot answers 423. To add one, drop a folder in `examples/programs/<id>/` with the program files and an `example.json` (`id` equal to the folder name, `name`, `description`, `kind`, `files`, optional `panel` and `tryIt`). `OpenVP:ExamplesDirectory` points at another folder.
+
+## Labs
+
+**Labs ↗** (`/labs.html`) lists experimental features with a switch each, stored in `data/labs.json`. Everyone can read the page (`GET /api/labs`, View); only an Admin can switch a feature (`PUT /api/labs/{id}` with `{"enabled":true}`). All are **off by default**, each says what it does and carries a "may change" warning, and none changes anything while it is off. With no users configured, this computer is the Admin, so the desktop app works as before.
+
+| Feature | id | What it does |
+|---|---|---|
+| Remote EISC | `remote-eisc` | [Link an EISC to an EISC on another OpenVP](#remote-eisc) |
+| Plugins | `plugins` | [Load plugins](#plugins) from `data/plugins/` |
+| CIP heartbeat probe | `cip-heartbeat-probe` | Live CIP round-trip measurement (same as the older `OpenVP:CipHeartbeatProbe=true`, which still works) |
+
+A deployment can fix a switch in the configuration instead: `OpenVP:Labs:<id>=true` (or `false`) overrides the file and locks the switch on the page, and `OpenVP:CipHeartbeatProbe=true` keeps switching the probe on, so existing setups behave exactly as before.
+
+### Remote EISC
+
+Joins flow both ways between an EISC on this OpenVP and an EISC on another OpenVP machine. (EISCs in two slots of one OpenVP already link by themselves on `127.0.0.2`.) Details and a worked example are in [docs/remote-eisc.md](docs/remote-eisc.md).
+
+- On the **other** machine: switch on Remote EISC in Labs, load a program with an EISC, and make an [API token](#api-tokens) with the scope **`eisc-link`**. That scope can open the link WebSocket (`/ws/eisc`, permission `Eisc`) and nothing else: it can't read or set any other signal, list slots or call any other endpoint. It can be limited to a slot like any token. An Admin token or the access key works too.
+- On **this** machine: switch on Remote EISC, add the other machine under [Push targets](#push-to-other-machines) with that token as its key (https certificate pinning works the same), then **Remote EISC** (`/eisc.html`): name, this machine's slot and EISC IP ID, the target, and its slot and EISC IP ID. This machine opens the WebSocket; the other side needs no link of its own and shows the connection under **Incoming**.
+- **State** is shown on the page, in the [rack view](#panels) (state and latency per link) and in the IP table (a *Remote EISC* client with latency and join counts). A link is *connected*, *reconnecting* (wait 1 s, doubling to 30 s, with jitter), *waiting for the EISC* (no EISC with that IP ID in the slot yet, for example the program isn't loaded), *off*, or a *problem* with the reason (refused token, wrong IP ID, a link to itself).
+- **Resync**: every connection starts with a full copy of each side's joins both ways, so a reconnect brings both programs up to date. A reloaded program is followed: the link ends and reconnects to the new EISC.
+- **Loops**: a value that arrives is only ever applied as an input, never sent back by the link. A serial that equals the one that just arrived is not returned for 150 ms, and a join that changes more than 200 times a second in either direction is paused for 3 seconds with a warning in the slot log, so two programs that feed each other can't flood the network.
+- Each end identifies itself with an instance id (`data/instance-id.txt`), so linking an OpenVP to itself is refused.
+- `GET/POST /api/eisc-links`, `PUT/DELETE /api/eisc-links/{id}` are Admin. Deleting a push target removes its links. Plain `http` carries the token and every join unencrypted; use https across networks you don't trust.
+
+### Plugins
+
+Drop a folder in `data/plugins/<name>/` with a `plugin.json` and either a .NET assembly implementing `IOpenVpPlugin` (from `OpenVP.Core`), a JavaScript page in `ui/`, or both. The **Plugins** page (`/plugins.html`) lists each plugin's name, version, author and the permissions it asks for. **A plugin is off until an Admin enables it there** (`POST /api/plugin-admin/{name}/enable` with the approved permissions, Admin), and only while Plugins is on in Labs. A plugin whose update asks for more permissions stays off until it is enabled again.
+
+- **Hooks** (all run on the plugin's own thread, one at a time, never on a slot or request thread): `Initialize`, `OnStarted`, `OnStopped`, `OnSignalChanged` for the slots it subscribed to. A plugin can add **console commands** (web console and telnet/SSH) and **REST routes** under `/api/plugins/<name>/` (GET needs View, other methods Operate), and a JavaScript plugin's page is served at `/api/plugins/<name>/ui/` and adds a link to the console's top bar.
+- **Isolation**: a plugin that throws, uses a permission it didn't declare, or doesn't answer in 10 seconds is unloaded and disabled with the reason on the page and in the activity feed; the processor keeps running and the plugin stays off after a restart.
+- **This is not a sandbox.** Plugin code runs inside OpenVP with all of its rights; the permissions (`signals.read`, `signals.write`, `console`, `routes`, `ui`) describe what OpenVP's plugin API gives it. Only enable plugins you trust. Plugin pages run in the console with your permissions.
+- An example is in [`examples/plugins/hello`](examples/plugins/hello): `dotnet build examples/plugins/hello -c Release -o data/plugins/hello`. See [docs/plugins.md](docs/plugins.md).
+
 ## Security
 
 A SIMPL# program is .NET code that runs inside the OpenVP process, so anyone who can upload a program can run code on the machine. The web console, the REST API, the debugger streams and the telnet/SSH console are protected, and **the server checks every request itself**: the buttons a page dims are a convenience, never the protection. How you sign in, in the order you will probably use them:
@@ -719,6 +766,7 @@ Make one on the Security page (Admins). Choose a **scope**, optionally the slots
 | `operator` | Read, start/stop/restart, set and pulse signals. |
 | `programmer` | Operator plus load programs, the debugger, files, recordings, snapshots, simulators, integrations, schedules. |
 | `admin` | Everything, like the access key. |
+| `eisc-link` | Only opens the [remote EISC](#remote-eisc) link WebSocket (`/ws/eisc`), for the other end of a link. Nothing else. |
 
 The token (`ovp_…`) is shown once; OpenVP keeps a SHA-256 hash. Send it as `Authorization: Bearer ovp_…` or `X-OpenVP-Key: ovp_…`. The list shows each token's last use, address and status; **Revoke** stops it at once. [Push targets](#push-to-other-machines) accept a token in place of the access key: a `programmer` token is enough to push a program, a whole export needs `admin`.
 
@@ -814,7 +862,9 @@ kubectl port-forward svc/openvp-openvp 8080:8080     # then open http://localhos
 | `OpenVP:SlotSpinMicroseconds` | `0` | After a slot's queue runs dry, its thread keeps polling for this many µs (max 10,000) before it sleeps, which skips the ~60 µs wake-up for the next event. Costs CPU while idle (see `docs/performance-plan.md`); leave at 0 unless a device streams tight request/response traffic |
 | `OpenVP:CipEnabled` / `CipPort` | `true` / `41794` | CIP listener |
 | `OpenVP:CipLogPackets` | `false` (code default); `true` in the shipped `appsettings.json` | Hex-log CIP traffic. The shipped file turns it on while CIP is being validated against real panels; set it to `false` to stop |
-| `OpenVP:CipHeartbeatProbe` | `false` | Also send a CIP heartbeat request to each connected panel every 10 s and time the answer, for a live round trip in the rack view. Untested against real panels |
+| `OpenVP:CipHeartbeatProbe` | `false` | Also send a CIP heartbeat request to each connected panel every 10 s and time the answer, for a live round trip in the rack view. Untested against real panels. Also a [Labs](#labs) switch; this key keeps working and switches it on |
+| `OpenVP:Labs:<id>` | | `true` or `false` fixes a [Labs](#labs) feature on or off (`remote-eisc`, `plugins`, `cip-heartbeat-probe`) and locks its switch. Without it the switch on the Labs page decides (all off) |
+| `OpenVP:ExamplesDirectory` | `examples` next to the server | Where the [example programs](#examples) are read from |
 | `OpenVP:ApiKey` | (generated) | Access key for the console and API; `off` disables it. See [Security](#security) |
 | `OpenVP:LocalRequiresKey` | `false` | Require the key (or a login) from localhost too, even before any user exists. With users, the exemption is also a setting on the Security page (on by default; see [Security](#requests-from-this-computer-localhost)) |
 | `OpenVP:PanelsRequireKey` | `false` | Require a login or the key for browser panels (`/ws/panel`); they then need the Signal permission |
@@ -982,7 +1032,17 @@ Every endpoint needs a credential except the [public ones](#public-endpoints) (s
 | GET | `/api/slots/{n}/autopanel` | The generated panel: groups of controls (`id`, `label`, `kind`, `driveName`, `feedbackName`, `value`), `controlCount`, `truncated` |
 | GET | `/api/slots/{n}/layouts` · `/layouts/{name}` | Saved panel layouts of the slot (name, program, saved time, control count) · one layout as JSON |
 | PUT · DELETE | `/api/slots/{n}/layouts/{name}` | Save a layout (`controls` keyed by control id with `x`, `y`, `w`, `h`, `label`, `hidden`; `groups`; `extras`; checked and clamped; Programmer) · delete it |
-| GET | `/api/rack` | The rack view's data: slots, their devices with clients (transport, address, latency, history), EISC links, CIP status |
+| GET | `/api/rack` | The rack view's data: slots, their devices with clients (transport, address, latency, history), EISC links, remote EISC links (`remoteEisc`: state and latency, no addresses), CIP status |
+| GET · PUT | `/api/labs` · `/api/labs/{id}` | The [Labs](#labs) features with `enabled`, `warning`, `forcedBy` · Admin: `{"enabled":true}` |
+| GET · POST | `/api/eisc-links` | Admin. [Remote EISC](#remote-eisc) links with their live `status`, incoming links and push targets · add `{"name","targetId","localSlot","localIpId","remoteSlot","remoteIpId","enabled"}` |
+| PUT · DELETE | `/api/eisc-links/{id}` | Admin. Change · remove a link |
+| WS | `/ws/eisc?slot=N&ipid=XX` | The link socket the other OpenVP connects to. Needs scope `eisc-link` (or Admin); 404 while Remote EISC is off in Labs; 403 outside the token's slots; 409 if the IP ID isn't an EISC |
+| GET | `/api/plugins` | [Plugins](#plugins) found, with permissions asked, status, commands, routes, recent log |
+| POST | `/api/plugin-admin/{name}/enable` · `disable` | Admin. `{"permissions":[...]}` must list every permission the plugin asks for |
+| ANY | `/api/plugins/{name}/{path}` · `/api/plugins/{name}/ui/{file}` | A running plugin's own routes (GET: View, others: Operate) and its page |
+| GET | `/api/compat` | The [compatibility dashboard](#compatibility-dashboard-and-the-one-click-report): programs, everything logged by category, panel features, counts |
+| POST | `/api/report/draft` · `/api/report/url` | Compose the issue text from `{"slot":N}` or `{"items":[{"kind","name"}]}` · fit edited `{"title","body"}` into a GitHub address and flag private-looking text. Nothing is sent |
+| GET · POST | `/api/examples` · `/api/examples/{id}/load` | The [examples](#examples) · Programmer: `{"slot":N,"replace":false}` |
 | POST / DELETE | `/api/slots/{n}/panels/{ipid}/ch5` | Upload a `.ch5z` as multipart `file` (replaces any project there; 400 with the reason if it is refused) · remove the project |
 | GET | `/api/network` | This computer's LAN addresses, for building a link someone else can reach |
 | GET | `/api/tunnel` | Internet access: `state` (`off`, `downloading`, `starting`, `on`, `error`), `url`, `message`, `needsDownload`, `available`, recent `cloudflared` output |
@@ -1022,7 +1082,7 @@ If a program fails with "needs Crestron assemblies OpenVP has no facade for: X",
 - More SIMPL# API: `TCPServer`, SSH transport (API is in place, connect not yet), smart objects, HTTP(S) client, CWS server
 - The rest of the SIMPL logic library, and confirming the *documented* symbols' pins and codes with the symbol survey (see [docs/symbols.md](docs/symbols.md))
 - Confirm IP ID storage from real `.smw` files
-- Validate CIP against real touch panels; remote EISC between processors
+- Validate CIP against real touch panels; remote EISC has only been tested between two OpenVP servers (Labs), not against a real processor or a real EISC
 - **Run compiled SIMPL Windows programs (`.lpz`) directly** so every program works, with or without its source. Progress:
   - [x] Read the package, IP table, compiled logic (`.bin`) and signal names (`.sig`). Checked against 101 real programs; see [docs/lpz-format.md](docs/lpz-format.md)
   - [x] **Inspect .lpz** in the web console: what's in a program and how much of it OpenVP can run

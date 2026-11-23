@@ -25,7 +25,7 @@ public static class PanelSupportNotes
         - Emulate runs a stored CH5 project (`.ch5z`) or smart-graphics project in the browser as any slot and IP ID. It is a browser, not a Crestron panel: no native-app calls, no panel hardware, no CIP.
         - Generated panels draw one control per program signal (digital buttons, analog sliders, serial text). A SIMPL# program doesn't list its joins, so only joins it has touched appear; add the rest with **+ join**. They drive signals the way the debugger does (by name), not as a panel on an IP ID.
         - Kiosk mode is a page option (`kiosk=1`) with the Wake Lock API where the browser has it and a fullscreen request on the first tap. The exit PIN (`kioskpin=`) is in the address and stops accidents, not people. The Electron `--kiosk` option has not been run on a real display.
-        - Latency: browser panels are measured by the server (a ping every 5 s). CIP panels get the round trip of the connect handshake; a live heartbeat measurement exists (`OpenVP:CipHeartbeatProbe=true`) but is off by default and untested against real panels.
+        - Latency: browser panels are measured by the server (a ping every 5 s). CIP panels get the round trip of the connect handshake; a live heartbeat measurement exists (the CIP heartbeat probe switch on the Labs page, or `OpenVP:CipHeartbeatProbe=true`) but is off by default and untested against real panels.
 
         **Smart graphics (VT Pro-e `.vtz`, Crestron Core 3 UI `.c3p`, XML, JSON)**
 
