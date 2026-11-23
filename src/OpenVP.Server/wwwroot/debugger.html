@@ -285,6 +285,7 @@
   <button id="alertchip" class="alertchip" hidden title="A signal in this program is racing or oscillating. Click for the list."></button>
   <button class="theme-btn" data-theme-toggle></button>
   <button id="keys-open" title="Keyboard shortcuts (?)" style="padding:1px 8px">?</button>
+  <a id="splusl" href="splus.html" target="_blank" rel="noopener" title="Show the SIMPL+ source of this slot's program">SIMPL+ source</a>
   <a id="loglink" href="log.html" target="_blank" rel="noopener" title="Open this slot's log on its own page">Log</a>
   <a id="pathslink" href="paths.html" target="_blank" rel="noopener" title="Open the signal paths view (follows the selected signal)">Paths</a>
   <a href="/" title="Back to the main page">Console</a>
@@ -1902,6 +1903,7 @@ function switchSlot(n) {
   collapsedMap = store.get(collapsedKey(), {}) || {};
   starred = new Set(); notes = new Map(); watchState = { watches: [], hits: [] }; monState = null; deadState = null; tsel.clear();
   $("#loglink").href = `log.html?slot=${n}`;
+  $("#splusl").href = `splus.html?slot=${n}`;
   loadGroups();
   clearTrace(); applyFilter(); loadSlots(); loadSignals(true); connect();
   pollDebug(); if (dock.open) refreshDock();

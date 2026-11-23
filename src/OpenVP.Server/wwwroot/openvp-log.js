@@ -6,7 +6,7 @@
 //   const log = OpenVPLog.create(rootElement, { slot: 1, listId: "log", filterId: "log-filter", onLink(kind, value, slot) {...} });
 //   log.setSlot(2); log.setEntries([{ time, level, message, detail }]); log.add(entry); log.setSignals(["Room_On", ...]);
 //   OpenVPLog.openDebugger(slot, signalName)     // used by the links; also useful on its own
-//   OpenVPLog.renderExceptions(container, list)  // the "Exceptions" list of a SIMPL# slot
+//   OpenVPLog.renderExceptions(container, list, emptyText, {slot})  // the "Exceptions" list of a SIMPL# slot
 (() => {
   "use strict";
   const LEVELS = ["Error", "Warning", "Notice", "Info", "Console"];
@@ -239,7 +239,16 @@
   }
 
   // ---------------------------------------------------------------- exceptions
-  function renderExceptions(box, items, emptyText) {
+  // A frame in a SIMPL+ source file links to that line in the source view (splus.html).
+  function isSplusFile(name) { return /\.(usp|usl|inc|h)$/i.test(name || ""); }
+  function splusLink(slot, f, cls) {
+    const a = document.createElement("a"); a.className = cls; a.target = "_blank"; a.rel = "noopener";
+    a.href = `splus.html?slot=${encodeURIComponent(slot)}&file=${encodeURIComponent(f.shortFile)}&line=${f.line}`;
+    a.textContent = `${f.shortFile}:${f.line}`; a.title = "Show this line in the SIMPL+ source";
+    return a;
+  }
+  function renderExceptions(box, items, emptyText, opts) {
+    const slot = opts && opts.slot;
     box.replaceChildren();
     if (!items.length) { const d = document.createElement("div"); d.className = "ovl-empty"; d.textContent = emptyText || "No exceptions. When a SIMPL# program throws one that nothing catches, it is listed here with its stack trace."; box.appendChild(d); return; }
     for (const x of items) {
@@ -251,13 +260,19 @@
       const top = x.frames.find(f => f.file);
       sum.append(t, " ", ty, ": ", document.createTextNode(x.message), " ");
       const src = document.createElement("span"); src.className = "ovl-src"; src.textContent = `in ${x.source}` + (top ? ` · ${top.shortFile}:${top.line}` : ""); sum.appendChild(src);
+      const topSp = slot && x.frames.find(f => isSplusFile(f.shortFile));
+      if (topSp) { sum.append(" "); sum.appendChild(splusLink(slot, topSp, "ovl-file")); }
       det.appendChild(sum);
       const body = document.createElement("div"); body.className = "ovl-frames";
       for (const f of x.frames) {
         const r = document.createElement("div"); r.className = "ovl-frame mono";
         const m = document.createElement("span"); m.textContent = f.method;
         r.appendChild(m);
-        if (f.file) { const fl = document.createElement("span"); fl.className = "ovl-file"; fl.textContent = `${f.shortFile}:${f.line}`; fl.title = f.file; r.append(" ", fl); }
+        if (f.file) {
+          const fl = slot && isSplusFile(f.shortFile) ? splusLink(slot, f, "ovl-file") : document.createElement("span");
+          if (fl.tagName !== "A") { fl.className = "ovl-file"; fl.textContent = `${f.shortFile}:${f.line}`; }
+          fl.title = f.file; r.append(" ", fl);
+        }
         body.appendChild(r);
       }
       if (!x.hasSymbols) {

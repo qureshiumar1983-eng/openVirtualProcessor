@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="openvp-theme.css">
+<script src="openvp-theme.js"></script>
+<title>OpenVP SIMPL+ source</title>
+<style>
+  :root { --bg:#0f1216; --card:#181d23; --line:#29303a; --text:#e6e9ee; --muted:#8b95a3; --ok:#2f9e6e; --warn:#d69e2e; --err:#e05252; --accent:#4c8dff;
+    --c-kw:#c792ea; --c-ty:#4ec9b0; --c-dir:#e5a85a; --c-ev:#82aaff; --c-fn:#7fbfff; --c-num:#f78c6c; --c-str:#a5d68a; --c-com:#6c7a89; --hit:#4c8dff33; }
+  :root[data-theme="light"] { --c-kw:#7a2fb5; --c-ty:#0b6e5e; --c-dir:#8a5200; --c-ev:#1d4ed8; --c-fn:#0b5cad; --c-num:#b3470f; --c-str:#2d6a1a; --c-com:#5b6675; --hit:#1d5fd633; }
+  * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
+  body { margin:0; font:14px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--text); display:flex; flex-direction:column; min-height:100dvh; }
+  header { padding:10px 16px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:6px 12px; flex-wrap:wrap; background:var(--card); }
+  header h1 { margin:0; font-size:17px; }
+  header .sp { flex:1; }
+  a { color:var(--accent); }
+  .muted { color:var(--muted); }
+  .mono { font-family:ui-monospace, Menlo, Consolas, monospace; font-size:12px; }
+  button, select { font:inherit; color:var(--text); background:var(--input); border:1px solid var(--line); border-radius:6px; padding:5px 9px; }
+  button { cursor:pointer; } button:hover { border-color:var(--accent); }
+  .layout { flex:1; min-height:0; display:grid; grid-template-columns:280px minmax(0, 1fr); }
+  aside { border-right:1px solid var(--line); padding:12px 12px 16px; overflow:auto; background:var(--card); }
+  aside h2 { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:14px 0 6px; }
+  aside h2:first-child { margin-top:0; }
+  .item { display:block; width:100%; text-align:left; border:1px solid transparent; background:none; border-radius:6px; padding:5px 8px; overflow-wrap:anywhere; }
+  .item:hover { background:var(--hover); border-color:var(--line); }
+  .item.active { background:var(--active); border-color:var(--accent); }
+  .item small { display:block; color:var(--muted); }
+  .item.nosrc { color:var(--muted); cursor:default; }
+  main { min-width:0; padding:12px 16px 24px; display:flex; flex-direction:column; gap:8px; }
+  .bar { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 12px; }
+  .bar b { font-size:15px; overflow-wrap:anywhere; }
+  .empty, .err { padding:16px; border:1px dashed var(--line); border-radius:8px; color:var(--muted); }
+  .err { color:var(--err-fg); background:var(--err-bg); border-style:solid; border-color:var(--err); }
+  #src { border:1px solid var(--line); border-radius:8px; background:var(--well); overflow:auto; max-height:calc(100dvh - 160px); padding:6px 0; font:12.5px/1.5 ui-monospace, Menlo, Consolas, monospace; tab-size:4; }
+  .sp-row { display:flex; min-width:max-content; }
+  .sp-row.hit { background:var(--hit); box-shadow:inset 3px 0 0 var(--accent); }
+  .sp-no { flex:0 0 auto; min-width:4.2ch; padding:0 10px 0 8px; text-align:right; color:var(--muted); text-decoration:none; user-select:none; position:sticky; left:0; background:var(--well); }
+  .sp-no:hover { color:var(--accent); }
+  .sp-code { white-space:pre; padding-right:16px; }
+  .sp-kw { color:var(--c-kw); font-weight:600; } .sp-ty { color:var(--c-ty); } .sp-dir { color:var(--c-dir); } .sp-ev { color:var(--c-ev); font-weight:600; }
+  .sp-fn { color:var(--c-fn); } .sp-num { color:var(--c-num); } .sp-str { color:var(--c-str); } .sp-com { color:var(--c-com); font-style:italic; }
+  #pick { display:none; }
+  @media (max-width: 760px) {
+    .layout { grid-template-columns:1fr; }
+    aside { display:none; }
+    #pick { display:block; width:100%; }
+    header, main { padding-left:12px; padding-right:12px; }
+    #src { max-height:none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>SIMPL+ source</h1>
+  <select id="slot" aria-label="Program slot"></select>
+  <span class="sp"></span>
+  <button class="theme-btn" data-theme-toggle></button>
+  <a id="logl" href="log.html">Log</a>
+  <a href="/">Console</a>
+</header>
+<div class="layout">
+  <aside id="side" aria-label="SIMPL+ modules and source files"></aside>
+  <main>
+    <select id="pick" aria-label="Source file"></select>
+    <div class="bar" id="bar" hidden><b id="fname"></b><span class="muted mono" id="fmeta"></span><span class="sp"></span><span class="muted" id="fhint"></span></div>
+    <div id="msg" class="empty">Loading…</div>
+    <div id="src" hidden tabindex="0" aria-label="Source code"></div>
+  </main>
+</div>
+<script src="openvp-auth.js"></script>
+<script src="openvp-splus.js"></script>
+<script>
+openvpAuth.init();
+const $ = s => document.querySelector(s);
+const q = new URLSearchParams(location.search);
+let slot = Number(q.get("slot")) || 1, current = null, data = { modules: [], sources: [] };
+
+async function api(path) {
+  const r = await fetch(path);
+  if (openvpAuth.check(r)) throw new Error("Log in with the access key first.");
+  const ct = r.headers.get("content-type") || "";
+  const body = ct.includes("json") ? await r.json() : await r.text();
+  if (!r.ok) throw new Error(body.error || body || r.statusText);
+  return body;
+}
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+function lineFromHash() { const m = /^#L(\d+)$/.exec(location.hash); return m ? Number(m[1]) : 0; }
+
+function url(file, line) { return `?slot=${slot}` + (file ? `&file=${encodeURIComponent(file)}` : "") + (line ? `&line=${line}` : ""); }
+
+function paintSide() {
+  const side = $("#side"); side.replaceChildren();
+  const pick = $("#pick"); pick.replaceChildren();
+  if (data.modules.length) {
+    side.appendChild(el("h2", null, "SIMPL+ modules"));
+    for (const m of data.modules) {
+      const b = el("button", "item" + (m.source ? "" : " nosrc") + (m.source && m.source === current ? " active" : ""));
+      b.append(m.dll, el("small", null, m.source ? m.source : "no source found"));
+      if (m.source) b.onclick = () => openFile(m.source, 0, true); else b.disabled = true;
+      side.appendChild(b);
+    }
+  }
+  side.appendChild(el("h2", null, "Source files"));
+  if (!data.sources.length) side.appendChild(el("div", "muted", "None found."));
+  for (const f of data.sources) {
+    const b = el("button", "item" + (f.name === current ? " active" : ""));
+    b.append(f.name, el("small", null, (f.origin === "archive" ? "in the program's archive" : "next to the program") + " · " + f.size.toLocaleString() + " bytes"));
+    b.onclick = () => openFile(f.name, 0, true);
+    side.appendChild(b);
+    const o = el("option", null, f.name); o.value = f.name; pick.appendChild(o);
+  }
+  if (current) pick.value = current;
+  pick.onchange = () => openFile(pick.value, 0, true);
+}
+
+async function openFile(name, line, push) {
+  current = name; paintSide();
+  if (push) history.pushState(null, "", url(name, line));
+  $("#msg").hidden = false; $("#msg").className = "empty"; $("#msg").textContent = "Loading…"; $("#src").hidden = true; $("#bar").hidden = true;
+  try {
+    const f = await api(`/api/slots/${slot}/splus/source?name=${encodeURIComponent(name)}`);
+    if (current !== name) return;
+    $("#msg").hidden = true; $("#src").hidden = false; $("#bar").hidden = false;
+    $("#fname").textContent = f.name;
+    $("#fmeta").textContent = `${f.lines.toLocaleString()} lines · ${f.origin === "archive" ? "from the program's archive" : "next to the program"}`;
+    $("#fhint").textContent = "Click a line number to link to it.";
+    document.title = `${f.name} · SIMPL+ source · slot ${slot}`;
+    OpenVPSplus.render($("#src"), f.text, { onLine: n => { history.replaceState(null, "", url(f.name, n)); show(n); } });
+    const want = line || lineFromHash();
+    if (want) show(want); else $("#src").scrollTop = 0;
+  } catch (e) {
+    $("#msg").hidden = false; $("#msg").className = "err"; $("#msg").textContent = e.message;
+  }
+}
+
+function show(n) {
+  const box = $("#src");
+  box.querySelectorAll(".hit").forEach(r => r.classList.remove("hit"));
+  const row = box.querySelector("#L" + n);
+  if (!row) return;
+  row.classList.add("hit");
+  if (box.scrollHeight > box.clientHeight + 2) box.scrollTop = Math.max(0, row.offsetTop - box.clientHeight / 3);
+  else row.scrollIntoView({ block: "center" });   // narrow screens: the page scrolls, not the box
+}
+
+async function load() {
+  $("#logl").href = `log.html?slot=${slot}`;
+  try { data = await api(`/api/slots/${slot}/splus`); } catch (e) { data = { modules: [], sources: [] }; $("#msg").className = "err"; $("#msg").textContent = e.message; paintSide(); return; }
+  const want = q.get("file");
+  const names = data.sources.map(s => s.name.toLowerCase());
+  const start = want && names.includes(want.toLowerCase()) ? data.sources[names.indexOf(want.toLowerCase())].name
+    : (data.modules.find(m => m.source)?.source || data.sources[0]?.name);
+  paintSide();
+  if (start) openFile(start, Number(q.get("line")) || 0, false);
+  else {
+    $("#msg").className = "empty";
+    $("#msg").textContent = data.modules.length
+      ? "This program has SIMPL+ modules, but their source files weren't found. Put the .usp files in the same folder as the program when you load it (pick them along with the program), or compile with the source archive on."
+      : "This program has no SIMPL+ modules, and there are no .usp files next to it.";
+  }
+}
+
+async function loadSlots() {
+  const slots = await api("/api/slots").catch(() => []);
+  const sel = $("#slot");
+  sel.replaceChildren(...slots.map(s => {
+    const o = el("option", null, `Slot ${String(s.number).padStart(2, "0")}${s.name ? " " + s.name : ""}${s.program ? " · " + s.program : ""}`); o.value = s.number; return o;
+  }));
+  sel.value = slot;
+}
+$("#slot").onchange = e => { slot = Number(e.target.value); current = null; history.replaceState(null, "", url()); load(); };
+addEventListener("popstate", () => { const f = new URLSearchParams(location.search).get("file"); if (f) openFile(f, Number(new URLSearchParams(location.search).get("line")) || 0, false); });
+loadSlots(); load();
+</script>
+</body>
+</html>

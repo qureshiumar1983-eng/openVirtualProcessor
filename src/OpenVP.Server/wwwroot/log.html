@@ -43,6 +43,7 @@
   <span class="sp"></span>
   <button id="bundle" title="Download a zip with this slot's log, recent trace, compatibility report and settings, to send when asking for help">Support bundle…</button>
   <button class="theme-btn" data-theme-toggle></button>
+  <a id="splusl" href="splus.html" target="_blank" rel="noopener" title="The SIMPL+ source of this slot's program">SIMPL+ source</a>
   <a id="dbg" href="debugger.html" target="_blank" rel="noopener">Debugger</a>
   <a href="/">Console</a>
   <a href="help.html#log" target="openvp-help">Help</a>
@@ -125,6 +126,7 @@ async function loadSlots() {
   const s = slots.find(x => x.number === slot);
   $("#prog").textContent = s?.file ? `${s.file} · ${s.kind} · ${s.state}` : "no program";
   document.title = `Log · slot ${slot}${s?.name ? " " + s.name : ""}`;
+  $("#splusl").href = `splus.html?slot=${slot}`;
   $("#dbg").href = `debugger.html?slot=${slot}`;
   $("#dbg").onclick = e => { e.preventDefault(); OpenVPLog.openDebugger(slot); };
 }
@@ -132,7 +134,7 @@ async function loadSlots() {
 async function loadExceptions() {
   let list = [];
   try { list = await api(`/api/slots/${slot}/exceptions`); } catch { }
-  OpenVPLog.renderExceptions($("#pane-exc"), list);
+  OpenVPLog.renderExceptions($("#pane-exc"), list, undefined, { slot });
   $("#exc-n").hidden = !list.length; $("#exc-n").textContent = list.length;
 }
 

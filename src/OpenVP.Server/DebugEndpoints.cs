@@ -258,6 +258,29 @@ internal static class DebugEndpoints
         }));
         slotApi.MapDelete("/exceptions", (int n) => { processor.Slot(n).Exceptions.Clear(); return Results.Ok(); });
 
+        // ------------------------------------------------------------------ SIMPL+ source
+
+        // The program's SIMPL+ modules and the source files found for it (next to the program, or in the .lpz's source archive).
+        slotApi.MapGet("/splus", (int n) =>
+        {
+            var s = processor.Slot(n);
+            var sources = SplusSources.List(s.ProgramPath);
+            var modules = SplusSources.Modules((s.Runtime as LpzRuntime)?.Package.SplusModules ?? new List<SplusModule>(), sources);
+            return Results.Ok(new
+            {
+                modules = modules.Select(m => new { dll = m.Dll, size = m.Size, source = m.Source }),
+                sources = sources.Select(f => new { name = f.Name, origin = f.Origin, size = f.Size })
+            });
+        });
+
+        // One source file, by name from the list above (never a path).
+        slotApi.MapGet("/splus/source", (int n, string? name) =>
+        {
+            var text = SplusSources.Read(processor.Slot(n).ProgramPath, name, out var file);
+            if (text == null || file == null) return Results.NotFound(new { error = "No such SIMPL+ source file for this program." });
+            return Results.Ok(new { name = file.Name, origin = file.Origin, size = file.Size, lines = text.Split('\n').Length, text });
+        });
+
         // ------------------------------------------------------------------ signal search across slots
 
         app.MapGet("/api/search/signals", (string? q, int? max) =>

@@ -110,6 +110,8 @@ public static class PolicyTable
         View GET /api/slots/{n:int}/signals/{name}
         View GET /api/slots/{n:int}/signals/{name}/stream
         View GET /api/slots/{n:int}/simulators
+        View GET /api/slots/{n:int}/splus
+        View GET /api/slots/{n:int}/splus/source
         View GET /api/slots/{n:int}/snapshots
         View GET /api/slots/{n:int}/sockets
         View GET /api/slots/{n:int}/sockets/{id:long}/traffic

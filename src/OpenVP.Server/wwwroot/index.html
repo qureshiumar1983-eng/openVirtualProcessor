@@ -579,6 +579,7 @@
           <button id="log-bigger" title="Make the log taller">+</button>
           <button id="log-max" title="Fill the window with the log (Esc to restore)">Maximize</button>
           <button id="log-full" class="lnk" title="Open the log on its own page, for this slot">Full page ↗</button>
+          <button id="splus-open" class="lnk" title="Show the SIMPL+ source of this slot's program, with highlighting">SIMPL+ source ↗</button>
           <button id="bundle-open" class="lnk" title="Download a zip with this slot's log, recent trace, report and settings, to send when asking for help">Support bundle…</button>
         </div>
         <div id="logw"></div>
@@ -1102,7 +1103,7 @@ async function refreshExceptions() {
   if (my !== sel) return;
   $("#exc-det").hidden = !list.length;
   $("#exc-sum").textContent = `Exceptions (${list.length})`;
-  OpenVPLog.renderExceptions($("#exc-box"), list);
+  OpenVPLog.renderExceptions($("#exc-box"), list, undefined, { slot: my });
 }
 
 // Links from log lines and the full-page log: #slot:N  #ipid:N:XX  #files:N:root|path
@@ -1126,6 +1127,7 @@ function applyHash() {
 addEventListener("hashchange", applyHash);
 
 $("#log-full").onclick = () => window.open(`log.html?slot=${sel}`, `openvp-log-${sel}`);
+$("#splus-open").onclick = () => window.open(`splus.html?slot=${sel}`, `openvp-splus-${sel}`);
 $("#bundle-open").onclick = () => { $("#bundle-slot").textContent = sel; $("#bundle-dlg").showModal(); };
 $("#bundle-cancel").onclick = () => $("#bundle-dlg").close();
 $("#bundle-go").onclick = () => {
