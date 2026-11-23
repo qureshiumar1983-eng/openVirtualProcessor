@@ -52,6 +52,15 @@ public static class PolicyTable
         View GET /api/metrics/history
         View GET /api/network
         View GET /api/panels
+        View GET /api/panels/sg
+        View GET /api/rack
+        View GET /emulate/{ps:int}/{pi}/as/{ts:int}/{ti}
+        View GET /emulate/{ps:int}/{pi}/as/{ts:int}/{ti}/{**path}
+        View GET /api/slots/{n:int}/autopanel
+        View GET /api/slots/{n:int}/layouts
+        View GET /api/slots/{n:int}/layouts/{name}
+        View GET /api/slots/{n:int}/panels/{ipid}/sg
+        View GET /api/slots/{n:int}/panels/{ipid}/sg/assets/{name}
         View GET /api/presence
         View GET /api/recent
         View GET /api/reports/data
@@ -152,6 +161,10 @@ public static class PolicyTable
         LoadProgram DELETE /api/recent/{id}
         LoadProgram DELETE /api/slots/{n:int}/panels/{ipid}/ch5
         LoadProgram POST /api/slots/{n:int}/panels/{ipid}/ch5
+        LoadProgram POST /api/slots/{n:int}/panels/{ipid}/sg
+        LoadProgram DELETE /api/slots/{n:int}/panels/{ipid}/sg
+        LoadProgram PUT /api/slots/{n:int}/layouts/{name}
+        LoadProgram DELETE /api/slots/{n:int}/layouts/{name}
         LoadProgram POST /api/slots/{n:int}/program +lock
         LoadProgram POST /api/slots/{n:int}/program/path +lock
         LoadProgram POST /api/slots/{n:int}/program/recent/{id} +lock

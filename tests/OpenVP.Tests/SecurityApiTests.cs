@@ -175,6 +175,9 @@ public static class SecurityApiTests
     [
         ("GET", "/api/slots", "viewer", null), ("GET", "/api/slots/1/signals", "viewer", null), ("GET", "/api/log", "viewer", null), ("GET", "/api/metrics", "viewer", null), ("GET", "/api/slots/1/iptable", "viewer", null),
         ("GET", "/api/activity", "viewer", null), ("GET", "/api/slots/1/files", "viewer", null), ("GET", "/api/schedules", "viewer", null), ("GET", "/api/locks", "viewer", null), ("GET", "/api/presence", "viewer", null),
+        ("GET", "/api/rack", "viewer", null), ("GET", "/api/slots/1/autopanel", "viewer", null), ("GET", "/api/slots/1/layouts", "viewer", null), ("GET", "/api/panels/sg", "viewer", null),
+        ("GET", "/emulate/1/03/as/1/03/", "viewer", null), ("PUT", "/api/slots/1/layouts/t", "programmer", new { controls = new { } }), ("DELETE", "/api/slots/1/layouts/t", "programmer", null),
+        ("DELETE", "/api/slots/1/panels/03/sg", "programmer", null),
         ("POST", "/api/slots/1/signals", "technician", new { name = "x", value = 1 }), ("POST", "/api/slots/1/start", "technician", null), ("POST", "/api/slots/1/stop", "technician", null),
         ("POST", "/api/slots/1/restart", "technician", null), ("POST", "/api/slots/1/iptable/03/identify", "technician", null), ("POST", "/api/shares", "technician", new { }),
         ("GET", "/api/shares", "technician", null), ("POST", "/api/alerts/nope/ack", "technician", null), 

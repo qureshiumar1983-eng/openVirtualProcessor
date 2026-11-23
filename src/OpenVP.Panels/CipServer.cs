@@ -30,6 +30,13 @@ public sealed class CipServer : IDisposable
     }
 
     public bool LogPackets { get; set; }
+    /// <summary>
+    /// Also send our own heartbeat request (0x0D) to each connected panel every <see cref="ProbeInterval"/> and time the answer (0x0E),
+    /// for a live round-trip time. Off by default: it is untested against real panels, so it must be asked for (OpenVP:CipHeartbeatProbe).
+    /// Without it the round trip OpenVP shows for a CIP panel is the one measured at connect (WhoAreYou to connect request).
+    /// </summary>
+    public bool ProbeHeartbeats { get; set; }
+    public TimeSpan ProbeInterval { get; set; } = TimeSpan.FromSeconds(10);
     /// <summary>Connections currently open (a diagnostic).</summary>
     public int SessionCount { get { lock (_sessions) return _sessions.Count; } }
     public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
@@ -336,6 +343,9 @@ internal sealed class CipSession
     private JoinDevice? _device;
     private DeviceConnection _conn = null!;
     private DateTimeOffset? _lastHeartbeat;
+    private long _whoAreYouAt;   // Stopwatch timestamp of the WhoAreYou we sent, until the first connect request
+    private Task? _probe;
+    private long _probeAt;       // Stopwatch timestamp of the heartbeat request in flight, 0 = none
 
     public CipSession(TcpClient client, Processor processor, CipServer server)
     {
@@ -359,7 +369,9 @@ internal sealed class CipSession
         var sender = SendLoop(_sendCts.Token);
         try
         {
+            _whoAreYouAt = System.Diagnostics.Stopwatch.GetTimestamp();
             Send(Cip.WhoAreYouPacket());
+            if (_server.ProbeHeartbeats) _probe = ProbeLoop(_sendCts.Token);
             var header = new byte[3];
             while (!ct.IsCancellationRequested)
             {
@@ -398,6 +410,9 @@ internal sealed class CipSession
     {
         if (Cip.DecodeConnectIpId(type, payload) is uint ipId)
         {
+            // WhoAreYou out, connect request back: a real round trip over this connection (plus the panel's own think time).
+            if (Interlocked.Exchange(ref _whoAreYouAt, 0) is var t0 and not 0)
+                _conn.RecordLatency(System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds, "CIP handshake");
             Detach();
             var known = _processor.FindPanelDevice(ipId) != null;
             _device = DeviceDirectory.Resolve(_processor, ipId, null)!;
@@ -419,6 +434,10 @@ internal sealed class CipSession
                 _lastHeartbeat = now;
                 Interlocked.Increment(ref _conn.Heartbeats);
                 Send(Cip.Heartbeat());
+                return;
+            case Cip.HeartbeatResponse:
+                if (Interlocked.Exchange(ref _probeAt, 0) is var p0 and not 0)
+                    _conn.RecordLatency(System.Diagnostics.Stopwatch.GetElapsedTime(p0).TotalMilliseconds, "CIP heartbeat");
                 return;
             case Cip.Disconnect:
                 _client.Close();
@@ -445,6 +464,21 @@ internal sealed class CipSession
             _device.ReceiveInput(key, value);
         }
         foreach (var (sub, raw) in unknown) _server.LogUnknownSub(type, sub, raw);
+    }
+
+    private async Task ProbeLoop(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(_server.ProbeInterval, ct);
+                if (_device == null) continue;   // not registered yet
+                Volatile.Write(ref _probeAt, System.Diagnostics.Stopwatch.GetTimestamp());
+                Send(Cip.Frame(Cip.HeartbeatRequest, 0x00, 0x00));
+            }
+        }
+        catch (OperationCanceledException) { }
     }
 
     private void OnFeedback(JoinDevice dev, JoinKey key, object value)

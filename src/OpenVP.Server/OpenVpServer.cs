@@ -95,7 +95,7 @@ public static class OpenVpServer
         {
             try
             {
-                cip = new CipServer(processor, cfg.GetValue("CipPort", 41794)) { LogPackets = cfg.GetValue("CipLogPackets", false) };
+                cip = new CipServer(processor, cfg.GetValue("CipPort", 41794)) { LogPackets = cfg.GetValue("CipLogPackets", false), ProbeHeartbeats = cfg.GetValue("CipHeartbeatProbe", false) };
                 cip.Start();
                 Console.WriteLine($"CIP listener (experimental) on port {cip.Port}");
             }
@@ -294,6 +294,7 @@ public static class OpenVpServer
             heartbeats = Interlocked.Read(ref c.Heartbeats),
             errors = Interlocked.Read(ref c.Errors),
             latencyMs = c.LatencyMs < 0 ? (double?)null : c.LatencyMs,
+            latencySource = c.LatencySource,
             queued = c.QueueDepth?.Invoke(),
             details = c.Details
         };
@@ -1635,6 +1636,8 @@ public static class OpenVpServer
             }
         }
         ShareEndpoints.Map(app, processor, shares, ch5Panels, tunnel, gate, tunnelUnavailable, activity, Who);
+        // Generated panel and layouts, the emulator, smart graphics and the rack view. None of it is served on the tunnel port (TunnelGate).
+        PanelEndpoints.Map(app, slotApi, processor, ch5Panels, new SmartGraphicsStore(processor.DataDirectory), new PanelLayouts(processor.DataDirectory), () => cip, activity, Who, Visible);
         if (tunnel != null && alerts != null) tunnel.Changed += () => { var st = tunnel.Status(); alerts.Monitor.OnTunnel(st.State, st.State == TunnelState.Error ? st.Message : null); };
         if (tunnel != null && cfg.GetValue("TunnelAutoStart", false)) activity.Add("internet.on", "Internet access started at start-up (OpenVP:TunnelAutoStart)", null, Actors.Auto);
 
