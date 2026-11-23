@@ -70,6 +70,9 @@
     <a href="#security">Security</a>
     <a href="#metrics">Metrics</a>
     <a href="#panel">Test panel</a>
+    <a href="#autopanel">Generated panel</a>
+    <a href="#emulate">Emulate</a>
+    <a href="#rack">Rack</a>
     <input type="search" id="find" placeholder="Find a button…" autocomplete="off">
   </nav>
 </div>
@@ -826,6 +829,44 @@
     <dt>Digital joins <span class="b">1</span>–<span class="b">20</span></dt><dd>Press and hold to send that digital join high; let go to send it low. A button turns green when the program sends feedback on that join.</dd>
     <dt>Analog sliders</dt><dd>Drag to send an analog value (0–65535) on that join. The feedback value from the program is shown underneath.</dd>
     <dt>Serial boxes</dt><dd>Type text and press <kbd>Enter</kbd> to send it on that serial join. The feedback text from the program is shown underneath.</dd>
+    <dt><span class="b">-- ms</span> badge</dt><dd>The round-trip time to OpenVP. The server pings the page every few seconds; hover for the minimum, average and maximum of the last 30. Green is under 50 ms, amber under 200 ms, red slower.</dd>
+    <dt><span class="b">Kiosk</span></dt><dd>Reopens the page full screen with no menus, keeps the screen awake where the browser allows and reconnects by itself. To leave, tap the top-left corner five times within three seconds (and type the PIN if the address had <code>kioskpin=</code>). You can also put <code>kiosk=1</code> on any panel address, including a shared link or a CH5 project. In the desktop app, start <code>OpenVP.exe --kiosk</code> for a full-screen generated panel.</dd>
+  </dl>
+</section>
+
+<section id="autopanel">
+  <h2>Generated panel</h2>
+  <p class="muted">A panel made from the selected slot's signals, so you can press and watch without writing a panel. Open it from <span class="b">Generated panel ↗</span> in the console's top bar.</p>
+  <dl>
+    <dt><b>Slot</b></dt><dd>Whose program to draw. Digital signals become buttons (held while pressed, green while the signal is on), analog ones sliders and serial ones text boxes.</dd>
+    <dt><b>Search</b></dt><dd>Type to show only controls whose label, signal name or group matches. Press <kbd>/</kbd> to jump to it.</dd>
+    <dt>Groups</dt><dd>By device (the IP ID of a SIMPL# program's panels, the device a SIMPL Windows signal is wired to) and then by a name prefix. Click a group's title to fold it.</dd>
+    <dt><b>Layout</b>, <span class="b">Save</span>, <span class="b">Save as…</span>, <span class="b">Delete</span></dt><dd>Saved arrangements of this slot, kept on the server. Saving and deleting need the Programmer role; anyone who can view can load one. A layout made for another program says so.</dd>
+    <dt><span class="b">Export</span> · <span class="b">Import…</span></dt><dd>Download the layout as a JSON file · load one from a file. An import is only applied on screen until you save it. Controls in the file that this program doesn't have are ignored.</dd>
+    <dt><span class="b">Edit layout</span></dt><dd>Drag a control to move it, drag its corner to resize it, ✎ to relabel it and ✕ to hide it. <b>show hidden</b> brings hidden ones back to unhide them. A group's title has ✎ and ✕ too, and <b>+ join</b> on IP ID groups adds a join the program hasn't used yet (<code>d12</code>, <code>a3</code>, <code>s4</code>). <b>Reset layout</b> forgets every change on screen. Not offered at phone width.</dd>
+    <dt>Round-trip badge, <span class="b">Kiosk</span></dt><dd>As on the <a href="#panel">test panel</a>. The badge here times a small request to the server.</dd>
+  </dl>
+</section>
+
+<section id="emulate">
+  <h2>Emulate</h2>
+  <p class="muted">Runs an uploaded panel project in your browser as if it were a touch panel, and talks to the running program. No panel needed.</p>
+  <dl>
+    <dt><b>Project</b></dt><dd>A stored CH5 project (<code>.ch5z</code>) or smart-graphics project (<code>.vtz</code>, <code>.c3p</code>, XML or JSON).</dd>
+    <dt><b>Run against slot</b> · <b>As IP ID</b></dt><dd>Where it connects. It need not be the slot and IP ID the project was uploaded for. The line under the form says whether a client is connected at that IP ID and how fast it answers.</dd>
+    <dt><b>Screen</b></dt><dd>The size of the frame: a phone, a tablet, the size of common touch panels, or fit this window.</dd>
+    <dt><span class="b">Open</span> · <span class="b">Reload</span> · <span class="b">Open in a new tab</span> · <span class="b">Kiosk</span></dt><dd>Show it, load it again, show it on its own page or full screen with no menus.</dd>
+    <dt><span class="b">Upload project…</span> · <span class="b">Remove</span></dt><dd>Keep a project for the slot and IP ID typed in the form (a <code>.ch5z</code> is a CH5 project; anything else is read as smart graphics). Programmer role needed. Smart graphics that OpenVP can't draw are listed under the form: binary <code>.vtp</code> files can't be decoded, and video windows, web views and the like are skipped.</dd>
+  </dl>
+</section>
+
+<section id="rack">
+  <h2>Rack view</h2>
+  <p class="muted">The processor as a rack, updated every 2 seconds.</p>
+  <dl>
+    <dt>A unit</dt><dd>One per loaded slot: its colour, program and state light, and a link to its generated panel. <b>show empty slots</b> adds the empty ones.</dd>
+    <dt>A tile</dt><dd>One per IP ID in the slot's IP table: green when something is connected, red when not, with the worst round-trip time of its clients. Dashed tiles are EISCs and say which slot they link to. Click one for its clients (how they connect, their address, how long, joins in and out) and a trend line of their round trips with the minimum, average and maximum.</dd>
+    <dt>Round trip</dt><dd>Browser panels are pinged by the server every 5 seconds. A CIP panel shows the time of its connect handshake; set <code>OpenVP:CipHeartbeatProbe=true</code> for a live heartbeat measurement (off by default, untested on real panels).</dd>
   </dl>
 </section>
 

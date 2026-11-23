@@ -154,6 +154,32 @@ A **redirect** says: when the program connects to *this address*, connect to *th
 
 A panel can connect before its program loads. It binds to the IP ID and comes online when the program registers it.
 
+#### Emulate: run a panel project without a panel
+
+**Emulate ↗** in the console's top bar (or `emulate.html`; **emulate…** in an IP ID's details) opens an uploaded project in your browser as if it were a touch panel. Choose the project, the slot to run it against and the IP ID to run it as (it need not be the one it was uploaded for), pick a screen size (phone, tablet, 1024 × 600, 1280 × 800, 1920 × 1080 or fit), and click **Open**. The page under it shows whether that IP ID has a client connected. **Upload project…** keeps a `.ch5z` (CH5) or a `.vtz`, `.c3p`, `.xml` or `.json` (smart graphics, below) for the slot and IP ID typed (needs the Programmer role); **Remove** deletes it. CH5 projects are served from `/emulate/{projectSlot}/{projectIpId}/as/{slot}/{ipId}/` with the target set in the page and the shim added; the panel's WebSocket is the normal `/ws/panel`, so everything counts as a panel client in the IP table.
+
+#### Smart graphics in the browser (`.vtz`, `.c3p`)
+
+Crestron's two project formats aren't public. OpenVP reads an archive by looking for pages, subpages and objects with names, positions, sizes and join numbers in its XML or JSON files, and draws buttons (press, feedback, text), text and text entry, sliders, gauges, lists, images and boxes, with pages and subpages as tabs. Everything it can't draw is listed on the emulator page and in the panel (a binary `.vtp` inside a `.vtz` can't be decoded at all; video, web views, SVG, visibility joins and the like are skipped), and a placeholder marks the spot of each skipped object. Only the parsed model and the images that are used are kept (`data/panels/slotNN/ipidXX.sg/`), never the archive. OpenVP's own `.openvp-sg.json` format is also read. No Crestron project files were available while this was written, so it is tested against hand-made XML and JSON, **not against real `.vtz` or `.c3p` files**.
+
+#### Generated panel
+
+**Generated panel ↗** (`autopanel.html?slot=2`) draws a panel from the selected slot's signals: digital signals become buttons with feedback (held while pressed), analog ones sliders with a read-out, serial ones a text box with the current text. Labels come from the signal names (the `.sig` names for SIMPL Windows programs), and controls are grouped by device (the IP ID for SIMPL# panels, the device a SIMPL Windows signal is wired to) and then by a shared name prefix (`Lobby_Light_On` goes under *Lobby*). The search box (press `/`) filters by label, name or group. Controls drive signals the way the debugger does, by name, and update live from the program. A SIMPL# program doesn't list its joins, so only the ones it has touched appear; **+ join** (in edit mode, on an IP ID group) adds more.
+
+**Saved layouts.** **Edit layout** lets you drag controls on a 12-column grid, drag the corner to resize, ✎ to relabel, ✕ to hide (and *show hidden* to bring them back), and rename or hide whole groups. **Save** / **Save as…** keeps the layout on the server per slot (`data/layouts/slotNN/NAME.json`, up to 100 per slot; saving needs the Programmer role, loading only View); the layout remembers which program it was made for and says so when the slot runs another. **Export** downloads it as JSON; **Import…** loads a JSON file (applied on screen until you save). `?layout=NAME` opens a layout directly. Layouts follow control ids, so controls that no longer exist are ignored. Editing is off at phone width.
+
+#### Kiosk mode
+
+Add `kiosk=1` to a panel page (`panel.html`, `autopanel.html`, an emulated panel, a shared link or a CH5 project that loads `openvp-crcomlib.js`) and it fills the screen with no menus: the page's chrome is hidden, full screen is requested on the first tap, the screen is kept awake with the Wake Lock API where the browser has it (it needs `https` or `localhost`), text selection and the context menu are off, and a panel that was offline for over a minute reloads when it is back. The WebSocket reconnects by itself (1 to 10 seconds, with jitter, and straight away when the tab becomes visible or the network returns). The setting is remembered in the browser, so a reload stays in kiosk mode. **Exit:** tap the top-left corner five times within three seconds; add `kioskpin=1234` to the address to ask for that PIN first (it is in the address, so it stops accidents, not people). `kiosk=0` leaves it. In the desktop app, `OpenVP.exe --kiosk` opens the generated panel full screen with no frame, menu or tray, and `--kiosk=panel.html?ipid=03&slot=1` opens that page instead (only pages of the local server); the exit gesture gives the window back. The desktop option has not been run on a real display.
+
+#### Latency
+
+Every browser panel shows a small round-trip indicator (`panel.html`; add `latency=1` to any page that loads the shim, including CH5 projects). The server pings each browser panel every 5 seconds and measures the round trip itself (`latencySource` is `server ping`; a page too old to answer falls back to the time it measures itself, `client ping`). For CIP panels the round trip of the connect handshake (WhoAreYou out, connect request back) is recorded. Setting `OpenVP:CipHeartbeatProbe=true` also has the server send its own CIP heartbeat request every 10 seconds and time the answer; it is off by default because it is **untested against real panels**. The last 30 measurements, with min, average and max, show in the rack view and in each client's row of the IP table (`latencyMs`, `latencySource`).
+
+#### Rack view
+
+**Rack ↗** (`rack.html`) draws the processor as a rack: a unit per slot (colour, program, state), the devices in its IP table as tiles (online or offline, the clients connected, the worst round trip), dashed tiles for EISCs, and a list of the EISC links between slots. Click a tile for its clients (transport, address, join counts, latency with a trend line). It refreshes every 2 seconds from `GET /api/rack`.
+
 ### Sharing a panel
 
 To let someone else use a panel, click **Share…** on an IP ID in the IP table. OpenVP makes a link for that slot and IP ID. Send it, and the person opens it in their browser (a phone works well; the box also shows a QR code) and controls the program straight away. For someone outside your network, turn on [Internet access](#internet-access-tunnel) first.
@@ -171,7 +197,8 @@ What works with CH5, and what doesn't:
 
 - OpenVP adds its `openvp-crcomlib.js` to every HTML page of the project, before the project's own scripts, and sets it up for that link. Pages that call the global `CrComLib.publishEvent(type, join, value)` and `CrComLib.subscribeState(type, join, callback)` with numeric join names (`"1"`, `"27"`, types `b`, `n`, `s`) work: presses reach the program, feedback comes back.
 - Projects normally bundle Crestron's own CrComLib. OpenVP pins `window.CrComLib` to its own version, so when the bundle loads and assigns `window.CrComLib` the assignment is ignored and the page keeps talking to OpenVP. A script that declares it with `let` or `const` at the top level would still fail.
-- **Not covered:** the CH5 web components (`ch5-button`, `ch5-slider`, and so on) and anything else that uses the bundled library's own internal signal system instead of the global `CrComLib` functions, contract-editor signal names, and the library's own connection code. A project made entirely of CH5 components with contract names will load but will not control the program. This has been tested with a small hand-made page, not with real Crestron CH5 Studio output.
+- **Components and contract names (basic).** If a page uses `ch5-button`, `ch5-toggle`, `ch5-slider`, `ch5-label` / `ch5-text`, `ch5-textinput`, `ch5-select`, `ch5-list` or `ch5-image` and nothing has defined them, OpenVP defines small versions that read the usual attributes (`sendeventonclick`, `receivestateselected`, `receivestatelabel`, `receivestatevalue`, `receivestatesize`, `receivestateurl`, and so on). Signal names can be join numbers, typed joins (`d12`, `a3`, `s7`), smart-object joins (`so4.d1`) or **contract names**: put an `openvp-contract.json` next to `index.html` (see the header of `openvp-crcomlib.js` for the format) or a Contract Editor export named `contract.cse2j` (read as far as its layout is known: joins numbered from 1 per type and direction in file order, which you should check), and `Room1.Light.Press`, `Rooms[2].Volume.Set` and the like map to joins. A name with no mapping is ignored with one console warning. The full list of what is and isn't covered is in [docs/unsupported.md](docs/unsupported.md). The mapping logic has unit tests (`tests/js/crcomlib.test.js`); none of it has been tried against Crestron CH5 Studio output.
+- **Not covered:** the rest of the CH5 library (subpage reference lists, modal dialogs, video, keypads, themes), a bundle's own components when they talk to their own copy of CrComLib instead of `window.CrComLib`, and the library's own connection code.
 - Classic VT Pro-e XPanels are not CH5. They connect over CIP.
 
 ### Internet access (tunnel)
@@ -787,6 +814,7 @@ kubectl port-forward svc/openvp-openvp 8080:8080     # then open http://localhos
 | `OpenVP:SlotSpinMicroseconds` | `0` | After a slot's queue runs dry, its thread keeps polling for this many µs (max 10,000) before it sleeps, which skips the ~60 µs wake-up for the next event. Costs CPU while idle (see `docs/performance-plan.md`); leave at 0 unless a device streams tight request/response traffic |
 | `OpenVP:CipEnabled` / `CipPort` | `true` / `41794` | CIP listener |
 | `OpenVP:CipLogPackets` | `false` (code default); `true` in the shipped `appsettings.json` | Hex-log CIP traffic. The shipped file turns it on while CIP is being validated against real panels; set it to `false` to stop |
+| `OpenVP:CipHeartbeatProbe` | `false` | Also send a CIP heartbeat request to each connected panel every 10 s and time the answer, for a live round trip in the rack view. Untested against real panels |
 | `OpenVP:ApiKey` | (generated) | Access key for the console and API; `off` disables it. See [Security](#security) |
 | `OpenVP:LocalRequiresKey` | `false` | Require the key (or a login) from localhost too, even before any user exists. With users, the exemption is also a setting on the Security page (on by default; see [Security](#requests-from-this-computer-localhost)) |
 | `OpenVP:PanelsRequireKey` | `false` | Require a login or the key for browser panels (`/ws/panel`); they then need the Signal permission |
@@ -947,6 +975,14 @@ Every endpoint needs a credential except the [public ones](#public-endpoints) (s
 | GET / POST | `/api/shares` | List the active share links (id, token, `path` (`/s/{token}`), label, slot, IP ID, `kind` `ch5` or `test`, `hasPin`, created, expires, last used, `connected`) · create one with `{"slot":2,"ipId":"03","label":"Client","pin":"482913","expires":"1d"}` (`pin` optional, 4-8 digits; `expires` is `1h`, `1d`, `1w` or `never`) |
 | DELETE | `/api/shares/{id}` | Revoke a link; open connections close within a few seconds |
 | GET | `/api/panels` | The uploaded CH5 projects (slot, IP ID, name, files, size) |
+| GET | `/api/panels/sg` | The stored smart-graphics projects (slot, IP ID, name, format, pages, objects) |
+| GET · POST · DELETE | `/api/slots/{n}/panels/{ipid}/sg` | A smart-graphics project's parsed model with its report of what was left out · upload a `.vtz`, `.c3p`, `.xml` or `.json` as multipart `file` (Programmer; 400 with the reason if unreadable) · remove it |
+| GET | `/api/slots/{n}/panels/{ipid}/sg/assets/{name}` | An image kept from the project (`imgN.png` and so on, from the model) |
+| GET | `/emulate/{slot}/{ipId}/as/{targetSlot}/{targetIpId}/…` | A stored CH5 project served for the emulator, with the shim and the target slot and IP ID added to its pages (View) |
+| GET | `/api/slots/{n}/autopanel` | The generated panel: groups of controls (`id`, `label`, `kind`, `driveName`, `feedbackName`, `value`), `controlCount`, `truncated` |
+| GET | `/api/slots/{n}/layouts` · `/layouts/{name}` | Saved panel layouts of the slot (name, program, saved time, control count) · one layout as JSON |
+| PUT · DELETE | `/api/slots/{n}/layouts/{name}` | Save a layout (`controls` keyed by control id with `x`, `y`, `w`, `h`, `label`, `hidden`; `groups`; `extras`; checked and clamped; Programmer) · delete it |
+| GET | `/api/rack` | The rack view's data: slots, their devices with clients (transport, address, latency, history), EISC links, CIP status |
 | POST / DELETE | `/api/slots/{n}/panels/{ipid}/ch5` | Upload a `.ch5z` as multipart `file` (replaces any project there; 400 with the reason if it is refused) · remove the project |
 | GET | `/api/network` | This computer's LAN addresses, for building a link someone else can reach |
 | GET | `/api/tunnel` | Internet access: `state` (`off`, `downloading`, `starting`, `on`, `error`), `url`, `message`, `needsDownload`, `available`, recent `cloudflared` output |
