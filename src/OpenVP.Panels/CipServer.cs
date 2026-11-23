@@ -76,6 +76,32 @@ public sealed class CipServer : IDisposable
         Log($"unhandled data sub-type {sub:X2} in a {frameType:X2} frame (logged once): {Convert.ToHexString(raw)}");
     }
 
+    // What a real VC-4 answers to a Room ID sign-on isn't known, and a Crestron XPanel drops the connection when it
+    // doesn't like the answer. Until one is seen to work, the candidates in Cip.RoomAnswers are tried in turn (the
+    // panel keeps reconnecting, each one gets two attempts) and the one the panel carries on after is kept.
+    private int _roomFailures;
+    private int _roomAccepted = -1;
+
+    internal int RoomAnswer => Volatile.Read(ref _roomAccepted) is >= 0 and var ok ? ok : Volatile.Read(ref _roomFailures) / 2 % Cip.RoomAnswers.Length;
+
+    /// <summary>A panel carried on after a Room ID answer (accepted), or hung up without another word.</summary>
+    internal void RoomAnswerResult(int index, bool accepted, int slot)
+    {
+        if (Volatile.Read(ref _roomAccepted) >= 0) return;
+        if (accepted)
+        {
+            if (Interlocked.CompareExchange(ref _roomAccepted, index, -1) == -1)
+                Event(slot, $"the panel accepted Room ID answer {index + 1} of {Cip.RoomAnswers.Length} ({Cip.RoomAnswers[index].Name}); using it from now on. Please report this line.");
+            return;
+        }
+        var before = RoomAnswer;
+        Interlocked.Increment(ref _roomFailures);
+        var after = RoomAnswer;
+        if (after != before)
+            Event(slot, $"the panel hung up after Room ID answer {before + 1} of {Cip.RoomAnswers.Length} ({Cip.RoomAnswers[before].Name}); trying answer {after + 1} ({Cip.RoomAnswers[after].Name}) on its next attempts"
+                + (after == 0 ? ". Every answer has been tried without success: please report the log." : ""));
+    }
+
     /// <summary>Connection events are always logged.</summary>
     internal void Event(int slot, string message) => _processor.Slot(Math.Max(1, slot)).Log("Notice", "[Panel] " + message);
 
@@ -355,11 +381,22 @@ public static class Cip
         }
     }
 
+    /// <summary>One way of answering a <see cref="RoomConnectRequest"/>: the packets to send, and the handle the panel is given.</summary>
+    public sealed record RoomAnswer(string Name, byte[][] Packets, ushort Handle = 0);
+
     /// <summary>
-    /// Answers to a <see cref="RoomConnectRequest"/>: the ordinary connect answers under the next type number,
-    /// as every other CIP request is answered (01/02, 0B/0C, 0D/0E). Not confirmed against a real VC-4.
+    /// Candidate answers to a Room ID sign-on, tried in this order until a panel accepts one (see CipServer.RoomAnswer).
+    /// None is confirmed against a real VC-4. "27 00 00 00 1F" alone is not here: a Crestron XPanel hangs up on it.
     /// </summary>
-    public static byte[] RoomConnectOk() => Frame(RoomConnectResponse, 0x00, 0x00, 0x00, 0x1F);
+    public static readonly RoomAnswer[] RoomAnswers =
+    {
+        new("the ordinary connect answer, 02 0000001F", new[] { Frame(ConnectResponse, 0x00, 0x00, 0x00, 0x1F) }),
+        new("27 with a three-byte result, 000000", new[] { Frame(RoomConnectResponse, 0x00, 0x00, 0x00) }),
+        new("27 0000001F, then program ready (0F) so the panel signs on again", new[] { Frame(RoomConnectResponse, 0x00, 0x00, 0x00, 0x1F), WhoAreYouPacket() }),
+        new("27 with handle 0001", new[] { Frame(RoomConnectResponse, 0x00, 0x01, 0x00, 0x1F) }, 0x0001),
+        new("27 00000003", new[] { Frame(RoomConnectResponse, 0x00, 0x00, 0x00, 0x03) }),
+        new("27 0000001F followed by 02 0000001F", new[] { Frame(RoomConnectResponse, 0x00, 0x00, 0x00, 0x1F), Frame(ConnectResponse, 0x00, 0x00, 0x00, 0x1F) }),
+    };
 
     public static byte[] RoomConnectRefused() => Frame(RoomConnectResponse, 0xFF, 0xFF, 0x02);
 
@@ -390,6 +427,9 @@ internal sealed class CipSession
     private Task? _probe;
     private long _probeAt;       // Stopwatch timestamp of the heartbeat request in flight, 0 = none
     private int _strays;         // packets logged from this client before it registered
+    private string? _roomId;     // the Room ID this client signed on with, kept for a second sign-on on the same connection
+    private int _roomAnswer = -1; // index of the Room ID answer sent and not yet seen to be accepted
+    private ushort _handle;      // the handle given to the panel in that answer; stamped on what we send it
     private const int MaxStraysLogged = 4;
 
     public CipSession(TcpClient client, Processor processor, CipServer server)
@@ -436,6 +476,7 @@ internal sealed class CipSession
             {
                 _processor.DeviceUnregistered -= OnUnregistered;
                 _server.Event(_device?.Slot ?? 1, $"{remote} disconnected" + (_device != null ? $" (IP ID {_device.IpId:X2})" : ""));
+                if (Interlocked.Exchange(ref _roomAnswer, -1) is >= 0 and var unanswered) _server.RoomAnswerResult(unanswered, false, _device?.Slot ?? 1);
             }
             finally
             {
@@ -453,6 +494,9 @@ internal sealed class CipSession
 
     private void Handle(byte type, byte[] payload)
     {
+        // Anything the panel says after a Room ID answer, other than goodbye or the same sign-on again, means it took the answer.
+        if (_roomAnswer >= 0 && type is not (Cip.Disconnect or Cip.RoomConnectRequest))
+            _server.RoomAnswerResult(Interlocked.Exchange(ref _roomAnswer, -1), true, _device?.Slot ?? 1);
         if (Cip.DecodeRoomConnect(type, payload) is { } rc)
         {
             if (rc.Hostname != null) _conn.Hostname ??= rc.Hostname;
@@ -464,7 +508,7 @@ internal sealed class CipSession
         }
         if (Cip.DecodeConnectIpId(type, payload) is uint ipId)
         {
-            Register(ipId, null, type, payload);
+            Register(ipId, _roomId, type, payload);
             return;
         }
         // A client that says something other than a sign-on before it has an IP ID is using a handshake OpenVP
@@ -525,6 +569,7 @@ internal sealed class CipSession
             _conn.RecordLatency(System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds, "CIP handshake");
         Detach();
         var byRoom = type == Cip.RoomConnectRequest;
+        if (byRoom) _roomId = roomId;
         var who = _conn.Hostname ?? _conn.Model;
         var from = who != null ? $" from {who}" : "";
         var device = DeviceDirectory.Resolve(_processor, ipId, null, roomId);
@@ -546,7 +591,12 @@ internal sealed class CipSession
         if (roomId != null) _conn.SetDetail("Room ID requested", roomId);
         device.FeedbackChanged += OnFeedback;
         device.AttachConnection(_conn);
-        Send(byRoom ? Cip.RoomConnectOk() : Cip.ConnectOk(ipId));
+        if (!byRoom) { Send(Cip.ConnectOk(ipId)); return; }
+        var index = _server.RoomAnswer;
+        var answer = Cip.RoomAnswers[index];
+        _handle = answer.Handle;
+        _roomAnswer = index;
+        foreach (var packet in answer.Packets) Send((byte[])packet.Clone());
     }
 
     private async Task ProbeLoop(CancellationToken ct)
@@ -588,6 +638,12 @@ internal sealed class CipSession
     /// <summary>Queue a packet; never blocks the caller (often the slot thread).</summary>
     private void Send(byte[] packet)
     {
+        // Join data and heartbeats start with the handle the panel was given at sign-on (zero unless a Room ID answer set one).
+        if (_handle != 0 && packet.Length >= 5 && packet[0] is Cip.Data or Cip.SerialData or Cip.HeartbeatResponse or Cip.HeartbeatRequest)
+        {
+            packet[3] = (byte)(_handle >> 8);
+            packet[4] = (byte)_handle;
+        }
         if (Interlocked.Increment(ref _queued) <= Volatile.Read(ref _queueLimit))
         {
             if (_outbox.Writer.TryWrite(packet)) return;
