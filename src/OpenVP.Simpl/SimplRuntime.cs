@@ -224,6 +224,11 @@ public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
         {
             if (sym.Disabled) continue; // switched off in SIMPL Windows: not part of the program
             if (BuildPort(sym)) continue;
+            if (IsSystemControl(sym))
+            {
+                Register(new SystemControlNode(this, sym));
+                continue;
+            }
             if (IsDevice(sym))
             {
                 var dev = new DeviceNode(this, sym);
@@ -720,8 +725,9 @@ public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
     {
         private readonly Primitive _prim;
         private readonly LogicSymbol _logic;
-        private readonly int[] _in;         // signal handle per input pin; 0 = unconnected
-        private readonly bool[] _unwiredHigh;
+        private int[] _in;                  // signal handle per input pin (the primitive's order); 0 = unconnected
+        private readonly int[]? _fromSmw;   // .smw pin -> primitive pin (0: the primitive ignores it); null when they are the same
+        private bool[] _unwiredHigh;
         private readonly BinSymbol _bin;
         private readonly (long? Number, string? Text)[] _params;
         private readonly string _source;
@@ -733,6 +739,22 @@ public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
             _in = sym.Inputs.ToArray();
             _unwiredHigh = new bool[_in.Length + 1];
             for (int pin = 1; pin <= _in.Length; pin++) _unwiredHigh[pin] = _in[pin - 1] <= 0 && logic.UnwiredHigh(pin);
+            if (logic.SmwPinOrder?.Invoke(_in.Length, sym.Outputs.Count) is { } order)
+            {
+                // The primitive takes the compiled pin order; this symbol's pins sit differently in the .smw.
+                _fromSmw = new int[_in.Length + 1];
+                var in2 = new int[order.Length];
+                var high2 = new bool[order.Length + 1];
+                for (int i = 0; i < order.Length; i++)
+                {
+                    if (order[i] < 1 || order[i] > _in.Length) continue;
+                    in2[i] = _in[order[i] - 1];
+                    high2[i + 1] = _unwiredHigh[order[i]];
+                    _fromSmw[order[i]] = i + 1;
+                }
+                _in = in2;
+                _unwiredHigh = high2;
+            }
             // A compiled-style record for primitives that look at it: 0 and 1 are the constants, signal handles
             // are moved past them so they never collide.
             _bin = new BinSymbol
@@ -762,25 +784,27 @@ public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
         public override bool WantsStartEdge => _prim.WantsStartEdge;
         public override void Start() => _prim.Start(this);
 
+        private int Pin(int smwPin) => _fromSmw == null ? smwPin : smwPin < _fromSmw.Length ? _fromSmw[smwPin] : 0;
+
         public override void OnInput(int pin, object o, object n)
         {
             if (pin < 0) ((IWatchesOutputs)_prim).OnOutputChanged(this, -pin, n);
-            else _prim.OnInput(this, pin, o, n);
+            else if (Pin(pin) is var q and > 0) _prim.OnInput(this, q, o, n);
         }
         public override void OnDigital(int pin, bool o, bool n)
         {
             if (pin < 0) ((IWatchesOutputs)_prim).OnOutputChanged(this, -pin, SigValue.Box(n));
-            else _prim.OnDigital(this, pin, o, n);
+            else if (Pin(pin) is var q and > 0) _prim.OnDigital(this, q, o, n);
         }
         public override void OnAnalog(int pin, ushort o, ushort n)
         {
             if (pin < 0) ((IWatchesOutputs)_prim).OnOutputChanged(this, -pin, n);
-            else _prim.OnAnalog(this, pin, o, n);
+            else if (Pin(pin) is var q and > 0) _prim.OnAnalog(this, q, o, n);
         }
         public override void OnSerial(int pin, string o, string n)
         {
             if (pin < 0) ((IWatchesOutputs)_prim).OnOutputChanged(this, -pin, n);
-            else _prim.OnSerial(this, pin, o, n);
+            else if (Pin(pin) is var q and > 0) _prim.OnSerial(this, q, o, n);
         }
 
         // ------------------------------------------------ IPrimitiveContext

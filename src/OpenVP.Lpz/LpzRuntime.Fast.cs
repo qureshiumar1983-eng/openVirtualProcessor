@@ -87,7 +87,7 @@ public sealed partial class LpzRuntime
         public override void OnDigital(int pin, bool o, bool n)
         {
             if (o || !n) return;
-            var selected = pin - 1;
+            var selected = pin == Symbol.Inputs.Length ? 0 : pin; // the last input clears
             for (int k = 1; k <= Symbol.Outputs.Length; k++) Set(k, k == selected);
         }
         public override void OnAnalog(int pin, ushort o, ushort n) { }
@@ -108,15 +108,15 @@ public sealed partial class LpzRuntime
         public override void OnSerial(int pin, string o, string n) { }
     }
 
-    /// <summary>Set/Reset latch: input 1 sets, input 2 resets (reset wins); every change re-drives out, out*.</summary>
+    /// <summary>Set/Reset latch: input 1 resets, input 2 sets (reset wins); every change re-drives out, out*.</summary>
     private sealed class LatchNode(LpzRuntime rt, BinSymbol sym, SrLatchPrim latch) : LogicNode(rt, sym, latch)
     {
-        public override void OnDigital(int pin, bool o, bool n) => Step(pin == 1 && !o && n);
+        public override void OnDigital(int pin, bool o, bool n) => Step(pin == SrLatchPrim.SetPin && !o && n);
         public override void OnAnalog(int pin, ushort o, ushort n) => Step(false);
         public override void OnSerial(int pin, string o, string n) => Step(false);
         private void Step(bool set)
         {
-            if (Symbol.Inputs.Length >= 2 && Digital(2)) latch._state = false;
+            if (Symbol.Inputs.Length >= 2 && Digital(SrLatchPrim.ResetPin)) latch._state = false;
             else if (set) latch._state = true;
             Set(1, latch._state);
             Set(2, !latch._state);

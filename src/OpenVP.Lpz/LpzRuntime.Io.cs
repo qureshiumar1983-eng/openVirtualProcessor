@@ -84,6 +84,9 @@ public sealed partial class LpzRuntime
                     break;
                 }
                 return true;
+            case -12 when ProcessorSymbols.IsSystemControl(_pkg.Logic, sym):
+                Register(new SystemControlNode(this, sym));
+                return true;
             case 213:
                 var eq = new XEquipmentNode(this, sym);
                 _xEquipment[eq.Id] = eq;
@@ -111,6 +114,26 @@ public sealed partial class LpzRuntime
                 return true;
         }
         return false;
+    }
+
+    // ------------------------------------------------------------------ processor
+
+    /// <summary>The processor's System Control symbol (see <see cref="ProcessorSymbols"/>): output 1, the program-start
+    /// feedback, goes high when the program starts and stays high while it runs, so a one-shot on it fires the
+    /// program's start-up chain. Other outputs stay low; inputs are logged once and ignored.</summary>
+    private sealed class SystemControlNode(LpzRuntime rt, BinSymbol sym) : Node(rt, sym)
+    {
+        public override SigKind? InputKind(int pin) => SigKind.Digital;
+        public override SigKind? OutputKind(int pin) => SigKind.Digital;
+
+        public override void Start()
+        {
+            if (Symbol.Inputs.Any(s => s > 1))
+                Runtime._slot.Log("Info", "System Control: its inputs (reboot, restart a program...) are not acted on by OpenVP.");
+            Runtime.DriveOut(this, ProcessorSymbols.ProgramStartOutput, true);
+        }
+
+        public override void OnInput(int pin, object o, object n) { }
     }
 
     // ------------------------------------------------------------------ Smart Graphics

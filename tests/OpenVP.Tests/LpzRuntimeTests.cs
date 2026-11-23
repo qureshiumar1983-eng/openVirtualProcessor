@@ -24,7 +24,7 @@ public static class LpzRuntimeTests
         bin.AddRange(Record(-12, "IP-ID-03", panelIns, panelOuts,
             Int(6, 3), Int(10, 4), Int(11, 6), Int(12, 5), Int(13, 7)));
         bin.AddRange(Record(10, "S-1", [Press1], [Fb1, 0]));                       // Toggle
-        bin.AddRange(Record(11, "S-2", [Clear, Press2, Press3], [Fb2, Fb3]));      // Interlock
+        bin.AddRange(Record(11, "S-2", [Press2, Press3, Clear], [Fb2, Fb3]));      // Interlock
         bin.AddRange(Record(0, "S-3", [BothA, BothB], [BothFb]));                  // AND
         bin.AddRange(Record(38, "S-4", [1], [Hello], Int(15, 1), Str(3, "ready"))); // init string at start
         bin.AddRange(Record(88, "S-5", [1, Rx], [Echo]));                          // Serial Buffer, always enabled

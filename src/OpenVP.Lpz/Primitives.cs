@@ -279,17 +279,19 @@ public sealed class FollowPrim : Primitive
     }
 }
 
-/// <summary>Type 9, Set/Reset Latch: input 1 set, input 2 reset (reset wins); outputs out, out*.</summary>
+/// <summary>Type 9, Set/Reset Latch, compiled pin order: input 1 reset, input 2 set (the .smw symbol lists set first;
+/// see <see cref="LogicSymbol.SmwPinOrder"/>). Reset wins when both are high. Outputs out, out*.</summary>
 public sealed class SrLatchPrim : Primitive
 {
     internal bool _state;
+    internal const int ResetPin = 1, SetPin = 2;
     public override void Start(IPrimitiveContext c) => Out(c);
-    public override void OnDigital(IPrimitiveContext c, int p, bool o, bool n) => Step(c, p == 1 && !o && n);
+    public override void OnDigital(IPrimitiveContext c, int p, bool o, bool n) => Step(c, p == SetPin && !o && n);
     public override void OnAnalog(IPrimitiveContext c, int p, ushort o, ushort n) => Step(c, false);
-    public override void OnInput(IPrimitiveContext c, int p, object o, object n) => Step(c, p == 1 && Rising(o, n));
+    public override void OnInput(IPrimitiveContext c, int p, object o, object n) => Step(c, p == SetPin && Rising(o, n));
     private void Step(IPrimitiveContext c, bool set)
     {
-        if (c.InputCount >= 2 && c.Digital(2)) _state = false;
+        if (c.InputCount >= 2 && c.Digital(ResetPin)) _state = false;
         else if (set) _state = true;
         Out(c);
     }
@@ -309,12 +311,14 @@ public sealed class TogglePrim : EdgePrim
     private void Out(IPrimitiveContext c) { c.Set(1, _state); c.Set(2, !_state); }
 }
 
-/// <summary>Type 11, Interlock: input 1 clears; rising input k+1 drives output k high and the rest low.</summary>
+/// <summary>Type 11, Interlock, compiled pin order: rising input k drives output k high and the rest low; the last
+/// input clears them all. (The .smw symbol lists clear first and has a spare second pin; see
+/// <see cref="LogicSymbol.SmwPinOrder"/>.)</summary>
 public sealed class InterlockPrim : EdgePrim
 {
     protected override void OnEdge(IPrimitiveContext c, int p)
     {
-        var selected = p - 1; // 0 = clear
+        var selected = p == c.InputCount ? 0 : p; // 0 = clear
         for (int k = 1; k <= c.OutputCount; k++) c.Set(k, k == selected);
     }
 }
@@ -357,18 +361,47 @@ public sealed class MultiOneShotPrim : EdgePrim
     }
 }
 
-/// <summary>Type 27, Delay: output goes high P1 after the input goes high (if still high); low as soon as it drops.</summary>
+/// <summary>Type 27, Delay: output k goes high P(k) after the input goes high (if still high); all go low as soon as it
+/// drops. A Delay symbol can have several outputs, each with its own time (a real program's one symbol has six).
+/// A processor runs its logic in 10 ms ticks, so an input pulse that is exactly as long as an output's delay (a
+/// program fed from a one-shot of the same time does this) still releases that output; a pulse shorter by more
+/// than a tick does not.</summary>
 public sealed class DelayPrim : Primitive
 {
-    private IDisposable? _timer;
+    private const double TickMs = 10;
+    private IDisposable?[] _timers = new IDisposable?[1];
+    private double[] _dueMs = new double[1];
+    private long _armedAt;
     public override void Start(IPrimitiveContext c) { if (c.Digital(1)) Arm(c); }
     public override void OnInput(IPrimitiveContext c, int p, object o, object n)
     {
         if (p != 1) return;
-        _timer?.Dispose();
-        if (n is true) Arm(c); else c.Set(1, false);
+        var elapsedMs = (System.Diagnostics.Stopwatch.GetTimestamp() - _armedAt) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        var outputs = Math.Max(1, c.OutputCount);
+        for (int k = 1; k <= outputs && k <= _timers.Length; k++)
+        {
+            var pending = _timers[k - 1] != null;
+            _timers[k - 1]?.Dispose();
+            _timers[k - 1] = null;
+            // The input dropped in the tick the delay ends: the delay has elapsed.
+            if (n is not true && pending && elapsedMs + TickMs >= _dueMs[k - 1]) { c.Set(k, true); }
+        }
+        if (n is true) Arm(c);
+        else for (int k = 1; k <= outputs; k++) c.Set(k, false);
     }
-    private void Arm(IPrimitiveContext c) => _timer = c.AfterTicks(c.Number(0, 100), () => c.Set(1, true));
+    private void Arm(IPrimitiveContext c)
+    {
+        var n = Math.Max(1, c.OutputCount);
+        if (_timers.Length < n) { _timers = new IDisposable?[n]; _dueMs = new double[n]; }
+        _armedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+        for (int k = 1; k <= n; k++)
+        {
+            var pin = k;
+            var ticks = c.Number(k - 1 < c.ParamCount ? k - 1 : 0, 100);
+            _dueMs[k - 1] = ticks * 10.0;
+            _timers[k - 1] = c.AfterTicks(ticks, () => { _timers[pin - 1] = null; c.Set(pin, true); });
+        }
+    }
 }
 
 /// <summary>Type 16, Pulse Stretcher: output high while input high and for P1 after it drops.</summary>

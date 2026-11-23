@@ -9,7 +9,7 @@ public static partial class GoldenTests
     /// <summary>
     /// The .smw interpreter running the shared logic primitives (AND, OR, XOR, NOT, Buffer in three kinds,
     /// Interlock, Toggle, SR Latch, Analog Initialize, Equate, Serial Send) with the pin layouts confirmed from
-    /// compiled programs (Interlock's clear pin first; Toggle clock, reset, set; SR Latch out and out*), the
+    /// compiled programs (compiled: Interlock clear last, Toggle clock, reset, set, SR Latch reset, set; the .smw lists them the other way round), the
     /// constant signals "0" and "1", a NOT wired to an analog signal (reads as "not high") and an input nobody
     /// uses. Timers have their own scenario in GoldenTimerTests; the rest of the catalog is in SymbolCatalogTests.
     /// </summary>
@@ -43,7 +43,7 @@ public static partial class GoldenTests
         Sym(22, "XOR", [10, 11, 12], [42]);
         Sym(23, "NOT", [10, 11], [43, 44]);
         Sym(24, "Interlock", [0, 12, 13, 14], [45, 46, 47]); // clear unconnected
-        Sym(25, "Toggle", [15, 17, 16], [48]);               // clock d6, reset d8, set d7
+        Sym(25, "Toggle", [16, 17, 15], [48]);               // .smw order: set d7, reset d8, clock d6
         Sym(26, "SR Latch", [15, 16], [49]);
         Sym(27, "Buffer", [12, 10, 11], [50, 51]);
         Sym(28, "Analog Buffer", [12, 20], [52]);

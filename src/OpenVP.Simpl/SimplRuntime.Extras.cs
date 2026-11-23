@@ -295,6 +295,29 @@ public sealed partial class SimplRuntime
         }
     }
 
+    // ------------------------------------------------------------------ processor
+
+    /// <summary>The processor's System Control symbol: a device-linked symbol named "... System Control" (SmC 6543 on an RMC4).</summary>
+    private static bool IsSystemControl(SmwSymbol s) => s.DeviceHandle > 0 && ProcessorSymbols.IsSystemControlName(s.Name);
+
+    /// <summary>Same as the compiled program's node: output 1 (program-start feedback) goes high at start and stays high.</summary>
+    private sealed class SystemControlNode : Node
+    {
+        public SystemControlNode(SimplRuntime rt, SmwSymbol sym) : base(rt, sym) { }
+        public override SigKind? InputKind(int pin) => SigKind.Digital;
+        public override SigKind? OutputKind(int pin) => SigKind.Digital;
+        public override bool WantsStartEdge => false;
+
+        public override void Start()
+        {
+            if (Symbol.Inputs.Any(h => h > 0))
+                Runtime._slot.Log("Info", "System Control: its inputs (reboot, restart a program...) are not acted on by OpenVP.");
+            Runtime.DriveOut(this, ProcessorSymbols.ProgramStartOutput, true);
+        }
+
+        public override void OnInput(int pin, object o, object n) { }
+    }
+
     // ------------------------------------------------------------------ crosspoints
 
     private static long CrosspointId(SmwSymbol sym) =>
