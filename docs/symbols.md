@@ -52,7 +52,7 @@ Every symbol has one implementation, used both for `.smw` source and compiled `.
 | Multiple One Shots | compiled | 21 | 29 | in: t1..tN, spare (the .smw lists the spare pin first) · out: o1..oN · params: time |
 | Debounce | compiled | 50 | 56 | in: i · out: o · params: time |
 | Stepper | compiled | 98 | 139 | in: start · out: busy, o1..oN · params: delay, duration, ... |
-| Stepper with Progress & Reset | compiled | 777 | 241 | in: start, reset · out: running, ... |
+| Stepper with Progress & Reset | compiled | 777 | 241 | in: start, reset · out: running, progress, 2 analog, steps from output 5 |
 
 ## Analog
 

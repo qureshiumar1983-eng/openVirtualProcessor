@@ -577,15 +577,17 @@ public sealed class WaveDelayPrim : Primitive
 
 /// <summary>
 /// Type 241, Stepper with Progress &amp; Reset. Input 1 starts, input 2 resets. Outputs: 1 running,
-/// 2 progress (0-65535), 3-4 reserved, 5 progress text, then the steps. Timing as Stepper:
-/// P1 initial delay, then (pulse time, gap) per step.
+/// 2-4 analog (2 = progress 0-65535; 3 and 4 unknown, left alone), then the steps from output 5. Timing as
+/// Stepper: P1 delay, then (pulse time, delay before the next step) per step. The steps starting at output 5
+/// come from a real program checked against its compiled record (a three-step sequence wired to outputs 5-7
+/// with six times; outputs 2-4 tied to analog placeholders); the meaning of output 2 is still a guess.
 /// </summary>
 public sealed class StepperProgressPrim : Primitive
 {
-    private const int FirstStep = 6;
+    private const int FirstStep = 5;
     private readonly List<IDisposable> _timers = new();
 
-    public override SigKind? OutputKind(int pin) => pin switch { 2 or 3 or 4 => SigKind.Analog, 5 => SigKind.Serial, _ => SigKind.Digital };
+    public override SigKind? OutputKind(int pin) => pin is 2 or 3 or 4 ? SigKind.Analog : SigKind.Digital;
 
     public override void OnInput(IPrimitiveContext c, int p, object o, object n)
     {
@@ -600,7 +602,7 @@ public sealed class StepperProgressPrim : Primitive
     private void OnEdge(IPrimitiveContext c, int p)
     {
         Cancel(c);
-        if (p == 2) { c.Set(1, false); c.Set(2, (ushort)0); c.Set(5, ""); return; }
+        if (p == 2) { c.Set(1, false); c.Set(2, (ushort)0); return; }
 
         var steps = Math.Max(0, c.OutputCount - FirstStep + 1);
         var starts = new long[steps];
@@ -628,7 +630,6 @@ public sealed class StepperProgressPrim : Primitive
     private static void Progress(IPrimitiveContext c, long pct)
     {
         c.Set(2, (ushort)(pct * 65535 / 100));
-        c.Set(5, $"{pct}%");
     }
 
     private void Cancel(IPrimitiveContext c)
