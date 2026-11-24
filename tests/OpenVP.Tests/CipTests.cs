@@ -207,6 +207,202 @@ public static class CipTests
     }
 
     [Test]
+    public static void Connect_request_ip_id_is_read_from_both_sign_on_forms()
+    {
+        Assert.Equal((uint?)0x03, Cip.DecodeConnectIpId(Cip.ConnectRequest, new byte[] { 0, 0, 0, 0, 0, 0x03, 0x40, 0xFF, 0xFF, 0xF1, 0x01 }), "long sign-on");
+        Assert.Equal((uint?)0x04, Cip.DecodeConnectIpId(Cip.ConnectRequest, new byte[] { 0x7F, 0, 0, 1, 0, 0x04, 0x40 }), "older long sign-on");
+        // Short sign-on (XPanels, apps): the IP ID is the second byte, not the one before the 0x40.
+        Assert.Equal((uint?)0x05, Cip.DecodeConnectIpId(Cip.ConnectRequestAlt, new byte[] { 0x00, 0x05, 0xA3, 0x42, 0x40, 0x02, 0, 0, 0, 0 }), "short sign-on, 10 bytes");
+        Assert.Equal((uint?)0x06, Cip.DecodeConnectIpId(Cip.ConnectRequestAlt, new byte[] { 0x00, 0x06, 0xA3, 0x42, 0x40, 0x02, 0, 0, 0xD1, 0x01, 0 }), "short sign-on, 11 bytes");
+        Assert.True(Cip.DecodeConnectIpId(Cip.Data, new byte[] { 0, 0, 3, 0, 0, 0 }) == null, "data is not a sign-on");
+    }
+
+    [Test]
+    public static void Short_sign_on_binds_to_the_right_ip_id()
+    {
+        using var p = new Processor(Paths.TempData());
+        p.Slot(1).RegisterDevice(0x05, "XPanel", "x");
+        using var server = new CipServer(p, 0, IPAddress.Loopback);
+        server.Start();
+        using var client = new TcpClient();
+        client.Connect(IPAddress.Loopback, server.Port);
+        var s = client.GetStream();
+        s.ReadTimeout = 3000;
+        Read(s);
+        s.Write(Cip.Frame(Cip.ConnectRequestAlt, 0x00, 0x05, 0xA3, 0x42, 0x40, 0x02, 0x00, 0x00, 0x00, 0x00));
+        Assert.Equal(Cip.ConnectResponse, Read(s).type, "connect response");
+        Assert.Eventually(() => p.Slot(1).FindDevice(0x05)!.Online, "IP ID 05 online");
+        Assert.True(p.Slot(1).FindDevice(0x40) == null, "nothing bound to the 0x40 marker byte");
+    }
+
+    [Test]
+    public static void An_unknown_handshake_is_logged_with_its_bytes()
+    {
+        using var p = new Processor(Paths.TempData());
+        using var server = new CipServer(p, 0, IPAddress.Loopback); // packet logging off
+        server.Start();
+        using var client = new TcpClient();
+        client.Connect(IPAddress.Loopback, server.Port);
+        var s = client.GetStream();
+        s.ReadTimeout = 3000;
+        Read(s);
+        for (int i = 0; i < 10; i++) s.Write(Cip.Frame(0x31, 0x00, 0x03, 0x40, 0xAB));
+        s.Write(Cip.Frame(Cip.HeartbeatRequest, 0x00, 0x00));
+        Assert.Equal(Cip.HeartbeatResponse, Read(s).type, "still answers heartbeats");
+        var lines = p.RecentLog(1).Where(e => e.Message.Contains("31 000340AB")).ToList();
+        Assert.Equal(4, lines.Count, "logged, but only the first few");
+        Assert.True(lines[0].Message.Contains("report"), "first line asks for the bytes");
+    }
+
+    // The sign-on a Crestron XPanel sent to OpenVP with IP ID 03 and Room ID SLOT01, as logged.
+    private const string XPanelRoomSignOn =
+        "000340F101000000010232353F7516"
+        + "4372657374726F6E000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        + "5850616E656C0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        + "534C4F5430310000000000000000000000000000000000000000000000000000"
+        + "5850616E656C202D2030322D33322D33352D33462D37352D3136000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+
+    private static byte[] RoomSignOn(uint ipId, string room)
+    {
+        var b = Convert.FromHexString(XPanelRoomSignOn);
+        b[1] = (byte)ipId;
+        Array.Clear(b, 115, 32);
+        System.Text.Encoding.ASCII.GetBytes(room).CopyTo(b, 115);
+        return Cip.Frame(Cip.RoomConnectRequest, b);
+    }
+
+    [Test]
+    public static void Room_sign_on_from_an_xpanel_decodes()
+    {
+        var rc = Cip.DecodeRoomConnect(Cip.RoomConnectRequest, Convert.FromHexString(XPanelRoomSignOn))!;
+        Assert.Equal(3u, rc.IpId, "IP ID");
+        Assert.Equal("SLOT01", rc.RoomId, "Room ID");
+        Assert.Equal("Crestron", rc.Make, "make");
+        Assert.Equal("XPanel", rc.Model, "model");
+        Assert.Equal("XPanel - 02-32-35-3F-75-16", rc.Hostname, "hostname");
+        Assert.Equal("02:32:35:3F:75:16", rc.Mac, "MAC");
+        Assert.True(Cip.DecodeRoomConnect(Cip.RoomConnectRequest, new byte[] { 0, 3, 0x40 }) == null, "too short");
+        Assert.True(Cip.DecodeRoomConnect(Cip.ConnectRequest, Convert.FromHexString(XPanelRoomSignOn)) == null, "other type");
+        var full = new byte[211];
+        Array.Fill(full, (byte)'A', 115, 32);
+        Assert.Equal(new string('A', 32), Cip.DecodeRoomConnect(Cip.RoomConnectRequest, full)!.RoomId, "a 32-character Room ID has no NUL after it");
+    }
+
+    private static NetworkStream Dial(CipServer server, out TcpClient client)
+    {
+        client = new TcpClient();
+        client.Connect(IPAddress.Loopback, server.Port);
+        var s = client.GetStream();
+        s.ReadTimeout = 3000;
+        Read(s);
+        return s;
+    }
+
+    [Test]
+    public static void Two_slots_with_the_same_ip_id_are_told_apart_by_room_id()
+    {
+        using var p = new Processor(Paths.TempData(), 3);
+        p.Slot(2).SetRoomId("Boardroom");
+        var d1 = p.Slot(1).RegisterDevice(0x03, "XPanel", "a");
+        var d2 = p.Slot(2).RegisterDevice(0x03, "XPanel", "b");
+        using var server = new CipServer(p, 0, IPAddress.Loopback);
+        server.Start();
+
+        var s2 = Dial(server, out var c2);
+        using var _2 = c2;
+        s2.Write(RoomSignOn(3, "BOARDROOM")); // not case-sensitive
+        Assert.Equal("0000001F", Convert.ToHexString(Read(s2).payload), "accepted");
+        Assert.Eventually(() => d2.Online, "slot 2's panel online");
+        Assert.True(!d1.Online, "slot 1's panel untouched");
+
+        var s1 = Dial(server, out var c1);
+        using var _1 = c1;
+        s1.Write(RoomSignOn(3, "SLOT01"));
+        Read(s1);
+        Assert.Eventually(() => d1.Online, "slot 1's panel online");
+
+        // A press on the slot 2 panel reaches slot 2 only.
+        var got1 = 0; var got2 = 0;
+        d1.InputReceived += (_, _, _) => Interlocked.Increment(ref got1);
+        d2.InputReceived += (_, _, _) => Interlocked.Increment(ref got2);
+        s2.Write(Cip.Digital(7, true));
+        Assert.Eventually(() => Volatile.Read(ref got2) == 1, "press reached slot 2");
+        Assert.Equal(0, Volatile.Read(ref got1), "and not slot 1");
+    }
+
+    [Test]
+    public static void Room_sign_on_with_an_unknown_room_is_refused_and_logged()
+    {
+        using var p = new Processor(Paths.TempData(), 2);
+        using var server = new CipServer(p, 0, IPAddress.Loopback);
+        server.Start();
+        var s = Dial(server, out var c);
+        using var _ = c;
+        s.Write(RoomSignOn(3, "NOPE"));
+        var r = Read(s);
+        Assert.Equal(Cip.RoomConnectResponse, r.type, "answered");
+        Assert.Equal("FFFF02", Convert.ToHexString(r.payload), "refused");
+        Assert.True(p.RecentLog(1).Any(e => e.Message.Contains("'NOPE'") && e.Message.Contains("SLOT02")), "log names the room and lists the ones that exist");
+        Assert.True(p.Slot(1).FindDevice(0x03) == null, "no device created");
+        // The panel can correct itself on the same connection.
+        s.Write(RoomSignOn(3, "SLOT02"));
+        Assert.Equal("0000001F", Convert.ToHexString(Read(s).payload), "accepted the second time");
+        Assert.Eventually(() => p.Slot(2).FindDevice(0x03)?.Online == true, "online in slot 2");
+    }
+
+    [Test]
+    public static void Room_answers_are_tried_in_turn_until_a_panel_carries_on()
+    {
+        using var p = new Processor(Paths.TempData(), 2);
+        p.Slot(2).RegisterDevice(0x03, "XPanel", "x");
+        using var server = new CipServer(p, 0, IPAddress.Loopback);
+        server.Start();
+        // A panel that hangs up on every answer but the third: two attempts each, as the server gives each answer.
+        string Attempt(bool carryOn)
+        {
+            var s = Dial(server, out var c);
+            using var _ = c;
+            s.Write(RoomSignOn(3, "SLOT02"));
+            var (type, payload) = Read(s);
+            var seen = $"{type:X2} {Convert.ToHexString(payload)}";
+            if (carryOn)
+            {
+                Assert.Equal(Cip.WhoAreYou, Read(s).type, "third answer ends with program ready");
+                s.Write(Cip.Frame(Cip.ConnectRequest, 0, 0, 0, 0, 0, 0x03, 0x40, 0xFF, 0xFF, 0xF1, 0x01)); // no Room ID in this one
+                Assert.Equal(Cip.ConnectResponse, Read(s).type, "second sign-on answered");
+                Assert.Eventually(() => p.Slot(2).FindDevice(0x03)!.Online, "still bound to the room's slot, not slot 1");
+                Assert.True(p.Slot(1).FindDevice(0x03) == null, "nothing in slot 1");
+            }
+            var before = server.SessionCount;
+            c.Close();
+            Assert.Eventually(() => server.SessionCount < before || server.SessionCount == 0, "session ended");
+            return seen;
+        }
+        Assert.Equal("02 0000001F", Attempt(false), "first answer");
+        Assert.Equal("02 0000001F", Attempt(false), "first answer, second try");
+        Assert.Equal("27 000000", Attempt(false), "second answer");
+        Assert.Equal("27 000000", Attempt(false), "second answer, second try");
+        Assert.Equal("27 0000001F", Attempt(true), "third answer");
+        Assert.Equal("27 0000001F", Attempt(false), "kept once accepted");
+        Assert.Equal("27 0000001F", Attempt(false), "and not changed by later hang-ups");
+        Assert.True(p.RecentLog().Any(e => e.Message.Contains("accepted Room ID answer 3 of")), "the accepted answer is logged");
+    }
+
+    [Test]
+    public static void Room_sign_on_without_a_room_id_routes_by_ip_id()
+    {
+        using var p = new Processor(Paths.TempData(), 2);
+        p.Slot(2).RegisterDevice(0x09, "XPanel", "x");
+        using var server = new CipServer(p, 0, IPAddress.Loopback);
+        server.Start();
+        var s = Dial(server, out var c);
+        using var _ = c;
+        s.Write(RoomSignOn(9, ""));
+        Read(s);
+        Assert.Eventually(() => p.Slot(2).FindDevice(0x09)!.Online, "found by IP ID");
+    }
+
+    [Test]
     public static void Unknown_data_sub_types_are_reported()
     {
         var unknown = new List<(byte sub, byte[] raw)>();

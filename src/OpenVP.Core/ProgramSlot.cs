@@ -319,7 +319,7 @@ public sealed class ProgramSlot : IDisposable
         {
             var other = Processor.Slots.FirstOrDefault(s => s != this && s.FindDevice(ipId) != null);
             if (other != null)
-                Log("Warning", $"IP ID {ipId:X2} is also registered in slot {other.Number}. CIP panels can't tell slots apart yet and will bind to the lowest slot ({Math.Min(Number, other.Number)}); give each slot its own IP IDs, or use Room IDs with browser panels (?room=).");
+                Log("Warning", $"IP ID {ipId:X2} is also registered in slot {other.Number}. A panel with no Room ID binds to the lowest slot ({Math.Min(Number, other.Number)}); set this slot's Room ID ({RoomId}) on its panels, or give each slot its own IP IDs.");
         }
         dev.Type = type;
         dev.Description = description;
