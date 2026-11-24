@@ -97,6 +97,7 @@ public static class PolicyTable
         View GET /api/slots/{n:int}/iptable
         View GET /api/slots/{n:int}/monitor
         View GET /api/slots/{n:int}/never-changed
+        View GET /api/slots/{n:int}/wiring
         View GET /api/slots/{n:int}/ports
         View GET /api/slots/{n:int}/ports/traffic
         View GET /api/slots/{n:int}/recording/status

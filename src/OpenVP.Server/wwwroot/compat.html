@@ -26,6 +26,11 @@
   #rp-body { min-height:16em; }
   .warns { margin:0; padding-left:1.2em; }
   .meta { display:flex; flex-wrap:wrap; gap:4px 16px; font-size:12px; color:var(--muted); }
+  .wc h2 .sub { font-weight:400; color:var(--muted); font-size:13px; }
+  .wc tr.bad td { background:color-mix(in srgb, var(--err) 12%, transparent); }
+  .wc .map { margin:2px 0 0; padding-left:1.1em; font-size:12px; overflow-wrap:anywhere; }
+  .wc .map li { margin:1px 0; }
+  .wc .ex { color:var(--muted); }
   @media (max-width:700px) { td.chk { width:auto; } }
 </style>
 </head>
@@ -47,7 +52,7 @@
     <p class="muted" style="margin-bottom:0">What OpenVP can run, from the programs loaded now and from everything it has ever noted as unsupported. <b>Supported</b>: it runs. <b>Partial</b>: some of it runs (a SIMPL# type with a missing member, a CH5 component with basic behaviour). <b>Unsupported</b>: it does nothing yet. Reporting is optional and always goes through a preview you can edit.</p>
   </div>
   <div class="tabs" role="tablist" id="tabs"><button class="active" data-t="programs">Loaded programs</button><button data-t="logged">Ever logged</button><button data-t="panels">Panel features</button></div>
-  <div class="pane on" id="pane-programs"><div id="programs" class="stack"></div></div>
+  <div class="pane on" id="pane-programs"><div id="programs" class="stack"></div><div id="wiring" class="stack" style="margin-top:12px"></div></div>
   <div class="pane" id="pane-logged">
     <div class="card">
       <div class="bar"><span id="lg-sum" class="muted"></span><span class="sp"></span><button class="primary small" id="lg-report" disabled>Report selected…</button><a href="/api/unsupported" download="unsupported.md" class="small">Download unsupported.md</a></div>
@@ -160,7 +165,44 @@ $("#rp-go").onclick = async () => {
   $("#rp-dlg").close(); flash("Opened GitHub in your browser");
 };
 
-async function load() { try { data = await api("/api/compat"); draw(); } catch (e) { fail(e.message); } }
+// ---- Wiring check: the pin order OpenVP assumes for each symbol type against what the program's own .smw, .lpz and .sig show.
+const WST = { agree: ["ok", "agrees"], disagree: ["err", "disagrees"], ambiguous: ["warn", "ambiguous"], "no-evidence": ["", "no evidence"], unmodelled: ["warn", "not modelled"] };
+const wiringCache = new Map();
+function wiringHtml(slot, w) {
+  if (!w.available) return `<h2>Wiring check · slot ${slot}</h2><p class="muted" style="margin:0">${esc(w.message)}</p>`;
+  const r = w.report, order = { disagree: 0, unmodelled: 1, ambiguous: 2, agree: 3, "no-evidence": 4 };
+  const types = [...r.types].sort((a, b) => order[a.status] - order[b.status] || a.name.localeCompare(b.name));
+  const rows = types.map(t => {
+    const bad = t.pairs.filter(p => p.expectedCompiledPin !== p.compiledPin);
+    const detail = (t.status === "disagree" || t.status === "unmodelled") ? `<ul class="map">` +
+      (t.status === "unmodelled" ? `<li>OpenVP has no model for compiled type ${t.lpzType}${t.smwNames.length ? " (the .smw calls it " + t.smwNames.map(esc).join(", ") + ")" : ""}.</li>` : "") +
+      bad.map(p => `<li>smw ${p.direction === "in" ? "I" : "O"}${p.smwPin} → compiled ${p.compiledPin} <span class="ex">(OpenVP expects ${p.expectedCompiledPin || "none"}) × ${p.count}</span></li>`).join("") +
+      t.examples.map(x => `<li class="ex">${esc(x.path)}: ${esc(x.problem)}</li>`).join("") + `</ul>` : "";
+    const probs = Object.entries(t.problems).map(([k, n]) => `${k} ${n}`).join(", ");
+    return `<tr class="${t.status === "disagree" ? "bad" : ""}"><td class="wrap" data-l="Symbol"><b>${esc(t.name)}</b> <span class="muted">type ${t.lpzType}</span>${detail}</td><td data-l="Status">${pill(WST[t.status][0], WST[t.status][1])}</td><td class="num" data-l="Instances">${t.instances}</td><td class="num" data-l="Agree">${t.agree}</td><td class="num" data-l="Disagree">${t.disagree}</td><td class="num" data-l="Ambiguous">${t.ambiguous}</td><td class="wrap muted" data-l="Problems">${esc(probs)}</td></tr>`;
+  }).join("");
+  const notes = [r.macros && r.macros + " macro" + (r.macros === 1 ? "" : "s"), r.modules && r.modules + " SIMPL+ module" + (r.modules === 1 ? "" : "s"), r.unpaired && r.unpaired + " without a compiled record"].filter(Boolean);
+  return `<h2>Wiring check · slot ${slot} <span class="sub">${esc(r.program)}</span> ${pill(r.typesDisagree ? "err" : r.typesChecked ? "ok" : "", r.typesDisagree ? "differs" : "agrees")}</h2>
+    <div>${esc(r.summary)}. <span class="muted">${num(r.instancesChecked)} symbols compared${notes.length ? "; not compared: " + notes.join(", ") : ""}.</span></div>
+    <p class="muted" style="margin:4px 0">Each compiled primitive's input and output signals are matched by name to the pins of the same symbol in the .smw, and the resulting pin order is compared with OpenVP's model of the symbol.</p>
+    ${types.length ? `<div class="scroll-x"><table class="cards"><thead><tr><th>Symbol type</th><th>Status</th><th class="num">Symbols</th><th class="num">Agree</th><th class="num">Disagree</th><th class="num">Ambiguous</th><th>Problems</th></tr></thead><tbody>${rows}</tbody></table></div>` : ""}`;
+}
+async function loadWiring() {
+  const W = $("#wiring"), slots = data.programs.map(p => p.slot);
+  for (const p of data.programs) {
+    const key = p.slot + "|" + (p.program || "") + "|" + (p.kind || "");
+    if (!wiringCache.has(p.slot) || wiringCache.get(p.slot).key !== key) {
+      let w; try { w = await api(`/api/slots/${p.slot}/wiring`); } catch (e) { w = { available: false, message: e.message }; }
+      wiringCache.set(p.slot, { key, w });
+    }
+  }
+  W.innerHTML = "";
+  for (const p of data.programs) {
+    const el = document.createElement("div"); el.className = "card wc"; el.id = "wiring-" + p.slot;
+    el.innerHTML = wiringHtml(p.slot, wiringCache.get(p.slot).w); W.appendChild(el);
+  }
+}
+async function load() { try { data = await api("/api/compat"); draw(); await loadWiring(); } catch (e) { fail(e.message); } }
 load(); setInterval(() => { if (!$("#rp-dlg").open) load(); }, 10000);
 </script>
 </body>

@@ -65,28 +65,10 @@ public sealed partial class SimplRuntime
     private void PlanBorrowing(LpzPackage pkg, ref int max)
     {
         if (pkg.Signals is not { } sig) { _slot.Log("Warning", "The compiled program has no signal names (.sig), so its macros and SIMPL+ modules can't be matched to the .smw."); return; }
-        var logic = _file.Symbols.Values.FirstOrDefault(s => (s.Parent <= 0 || !_file.Symbols.ContainsKey(s.Parent)) && s.Name.Trim() == "Logic");
-        if (logic == null) return;
+        if (CompiledPairing.LogicRoot(_file) == null) return;
 
-        // Compiled path of every symbol under Logic.
-        var paths = new Dictionary<int, string>();
-        var seen = new HashSet<int>();
-        void Walk(int handle, string path)
-        {
-            if (!seen.Add(handle) || !_file.Symbols.TryGetValue(handle, out var s)) return;
-            paths[handle] = path;
-            for (int i = 0; i < s.Children.Count; i++) Walk(s.Children[i], $"{path}.{i + 1}");
-        }
-        for (int i = 0; i < logic.Children.Count; i++) Walk(logic.Children[i], $"S-{i + 1}");
-
-        var scopes = new Dictionary<string, List<BinSymbol>>(StringComparer.Ordinal);
-        foreach (var r in pkg.Logic.Symbols)
-        {
-            if (!r.Path.StartsWith("S-", StringComparison.Ordinal)) continue;
-            var colon = r.Path.IndexOf(':');
-            var key = colon < 0 ? r.Path : r.Path[..colon];
-            (scopes.TryGetValue(key, out var l) ? l : scopes[key] = new()).Add(r);
-        }
+        var paths = CompiledPairing.SymbolPaths(_file);
+        var scopes = CompiledPairing.Scopes(pkg);
 
         var byName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (var sg in _file.Signals.Values)
@@ -148,6 +130,14 @@ public sealed partial class SimplRuntime
         if (_compiled == null) return;
         _slot.Log("Notice", $"Compiled program {Path.GetFileName(_compiled.Path)}: {_borrowed.Count} symbol(s) run from it, macros and SIMPL+ modules included" +
                             (_borrowRejected > 0 ? $"; {_borrowRejected} don't match it (the .smw changed after that compile?) and run natively or stay unsupported." : "."));
+        if (_compiled.Signals == null) return;
+        try
+        {
+            var wiring = WiringCheck.Analyze(_file, _compiled, null, _primitiveOverrides);
+            if (wiring.TypesDisagree > 0)
+                _slot.Log("Warning", $"Wiring check: {wiring.TypesDisagree} symbol type{(wiring.TypesDisagree == 1 ? "'s" : "s'")} pin order differs from OpenVP's model; see Compatibility.");
+        }
+        catch (Exception e) when (e is InvalidOperationException or InvalidDataException or KeyNotFoundException) { /* the check is advisory */ }
     }
 
     /// <summary>The compiler wrote every signal's kind into the .sig; with one at hand those beat the kinds guessed
