@@ -102,14 +102,15 @@
   <p class="muted">Load programs, see who is connected, manage the program's files, and read its log. Everything on the page is about the slot selected in <b>Program slots</b>.</p>
 
   <h3 id="top-bar">Top bar</h3>
+  <p class="muted">The pages are grouped in menus: <b>Panels</b>, <b>Tools</b>, <b>Monitor</b> (its count shows active alerts), <b>Admin</b> and <b>Help</b>. Click a menu or press <kbd>↓</kbd> on it, use the arrow keys to move, <kbd>Enter</kbd> to open and <kbd>Esc</kbd> to close. The command palette (<kbd>Ctrl</kbd> <kbd>K</kbd>) finds every page too.</p>
   <dl>
-    <dt id="top-devices"><span class="b">Devices ↗</span></dt><dd>Opens the <a href="#devices">Devices</a> page for the selected slot: simulators, COM terminal, sockets, redirects and discovery.</dd>
-    <dt id="top-templates"><span class="b">Templates</span></dt><dd>Starter projects to download, see <a href="#templates">Templates</a>.</dd>
-    <dt><span class="b">Metrics ↗</span></dt><dd>Opens the <a href="#metrics">Metrics</a> page: CPU, memory and how busy each slot is.</dd>
-    <dt id="top-backups"><span class="b">Backups ↗</span></dt><dd>Opens <a href="#backups">Backups and export</a>: export or import the whole processor, daily backups and Git-backed config.</dd>
-    <dt id="top-schedules"><span class="b">Schedules ↗</span></dt><dd>Opens <a href="#schedules">Schedules</a>: restart a slot nightly, load a program, run a backup or set a signal at a time.</dd>
-    <dt id="top-push"><span class="b">Push ↗</span></dt><dd>Opens <a href="#push">Push to other machines</a>: send a program version or a whole export to other OpenVP servers.</dd>
-    <dt><span class="b">Test panel ↗</span></dt><dd>Opens a blank <a href="#panel">test panel</a>. Type the IP ID you want and click Connect.</dd>
+    <dt id="top-devices"><span class="b">Tools → Devices</span></dt><dd>Opens the <a href="#devices">Devices</a> page for the selected slot: simulators, COM terminal, sockets, redirects and discovery.</dd>
+    <dt id="top-templates"><span class="b">Tools → Templates</span></dt><dd>Starter projects to download, see <a href="#templates">Templates</a>.</dd>
+    <dt><span class="b">Monitor → Metrics</span></dt><dd>Opens the <a href="#metrics">Metrics</a> page: CPU, memory and how busy each slot is.</dd>
+    <dt id="top-backups"><span class="b">Tools → Backups</span></dt><dd>Opens <a href="#backups">Backups and export</a>: export or import the whole processor, daily backups and Git-backed config.</dd>
+    <dt id="top-schedules"><span class="b">Tools → Schedules</span></dt><dd>Opens <a href="#schedules">Schedules</a>: restart a slot nightly, load a program, run a backup or set a signal at a time.</dd>
+    <dt id="top-push"><span class="b">Tools → Push</span></dt><dd>Opens <a href="#push">Push to other machines</a>: send a program version or a whole export to other OpenVP servers.</dd>
+    <dt><span class="b">Panels → Test panel</span></dt><dd>Opens a blank <a href="#panel">test panel</a>. Type the IP ID you want and click Connect.</dd>
     <dt><span class="b">Help</span></dt><dd>Opens this page.</dd>
     <dt><span class="b">Search ⌘K</span></dt><dd>Opens the command palette, see <a href="#palette">Search, shortcuts and undo</a>.</dd>
     <dt><span class="b">?</span></dt><dd>Lists the keyboard shortcuts.</dd>
@@ -341,7 +342,7 @@
 
 <section id="devices">
   <h2>Devices</h2>
-  <p class="muted">Open it with <b>Devices ↗</b> in the console's top bar. Everything on it is for the slot chosen at the top. It helps you test a program without its real devices: fake devices that answer, a window on the COM ports, a list of the program's sockets, and a way to point a device's address at a fake one.</p>
+  <p class="muted">Open it with <b>Tools → Devices</b> in the console's top bar. Everything on it is for the slot chosen at the top. It helps you test a program without its real devices: fake devices that answer, a window on the COM ports, a list of the program's sockets, and a way to point a device's address at a fake one.</p>
 
   <h3 id="simulators">Simulators</h3>
   <p class="muted">Fake devices that answer a COM port or a TCP/UDP connection with canned replies. The profiles are generic, made-up protocols, not any maker's; edit the rules to match your device.</p>
@@ -568,7 +569,7 @@
 
 <section id="integrations">
   <h2>Integrations</h2>
-  <p class="muted">Open it with <b>Integrations ↗</b> in the console's top bar. It connects slots to other systems: MQTT and Home Assistant, webhooks, OSC, Art-Net and Prometheus. The slot chosen at the top decides which signals you pick; the connection settings (broker, ports) are for the whole of OpenVP. Every change is written to the Activity feed. A signal list shows what the loaded program has, so load the program first.</p>
+  <p class="muted">Open it with <b>Tools → Integrations</b> in the console's top bar. It connects slots to other systems: MQTT and Home Assistant, webhooks, OSC, Art-Net and Prometheus. The slot chosen at the top decides which signals you pick; the connection settings (broker, ports) are for the whole of OpenVP. Every change is written to the Activity feed. A signal list shows what the loaded program has, so load the program first.</p>
 
   <h3 id="int-mqtt">MQTT</h3>
   <p class="muted">Publishes chosen signals to an MQTT broker and lets the broker set them. The bridge uses its own thread and a limited queue, so a slow or dead broker never holds up a program; if the queue fills, the oldest changes are dropped and counted.</p>
@@ -652,7 +653,7 @@
 
 <section id="backups">
   <h2>Backups and export</h2>
-  <p class="muted">Open it with <b>Backups ↗</b> in the console's top bar. It has three tabs. Everything here is written to the Activity feed.</p>
+  <p class="muted">Open it with <b>Tools → Backups</b> in the console's top bar. It has three tabs. Everything here is written to the Activity feed.</p>
 
   <h3 id="export">Export and import</h3>
   <dl>
@@ -725,7 +726,7 @@
 
 <section id="alerts">
   <h2>Alerts</h2>
-  <p class="muted">Open it with <b>Alerts ↗</b> in the console's top bar. It sends a message when something goes wrong, to email, Microsoft Teams, Slack, ntfy, a webhook or the desktop, and says when it is fine again. Every change here is written to the Activity feed.</p>
+  <p class="muted">Open it with <b>Monitor → Alerts</b> in the console's top bar. It sends a message when something goes wrong, to email, Microsoft Teams, Slack, ntfy, a webhook or the desktop, and says when it is fine again. Every change here is written to the Activity feed.</p>
 
   <h3 id="alerts-tab">Alerts tab</h3>
   <dl>
@@ -842,7 +843,7 @@
 
 <section id="autopanel">
   <h2>Generated panel</h2>
-  <p class="muted">A panel made from the selected slot's signals, so you can press and watch without writing a panel. Open it from <span class="b">Generated panel ↗</span> in the console's top bar.</p>
+  <p class="muted">A panel made from the selected slot's signals, so you can press and watch without writing a panel. Open it from <span class="b">Panels → Generated panel</span> in the console's top bar.</p>
   <dl>
     <dt><b>Slot</b></dt><dd>Whose program to draw. Digital signals become buttons (held while pressed, green while the signal is on), analog ones sliders and serial ones text boxes.</dd>
     <dt><b>Search</b></dt><dd>Type to show only controls whose label, signal name or group matches. Press <kbd>/</kbd> to jump to it.</dd>
@@ -922,7 +923,7 @@
   <dl>
     <dt>A plugin</dt><dd>Name, version, author and the permissions it asks for. Plugins are off until an Admin enables each one. Plugin code is not sandboxed; only enable plugins you trust.</dd>
     <dt><span class="b">Enable…</span> · <span class="b">Disable</span></dt><dd>Enabling shows what the plugin asks to do and needs your approval. A plugin that throws, or doesn't answer in 10 seconds, is unloaded and disabled with the reason shown; OpenVP keeps running. If an updated plugin asks for new permissions it stays off until you enable it again.</dd>
-    <dt><span class="b">Open</span></dt><dd>A plugin with a page of its own shows it inside the console, and adds a link to the console's top bar while it is enabled.</dd>
+    <dt><span class="b">Open</span></dt><dd>A plugin with a page of its own shows it inside the console, and adds an item to the console's <b>Tools</b> menu while it is enabled.</dd>
   </dl>
 </section>
 
