@@ -59,6 +59,8 @@ public sealed class SmwSignal
 {
     public int Handle { get; init; }
     public string Name { get; init; } = string.Empty;
+    /// <summary>SgTp from the .smw: 0 (absent) digital, 2 analog, 4 serial.</summary>
+    public int Type { get; init; }
 }
 
 /// <summary>
@@ -150,7 +152,7 @@ public sealed class SmwFile
                 if (b.GetInt("H") is > 0 and var dh) Devices[dh] = b;
                 break;
             case "Sg":
-                var sg = new SmwSignal { Handle = b.GetInt("H"), Name = b.Get("Nm") ?? string.Empty };
+                var sg = new SmwSignal { Handle = b.GetInt("H"), Name = b.Get("Nm") ?? string.Empty, Type = b.GetInt("SgTp") };
                 Signals[sg.Handle] = sg;
                 break;
             case "Sm":
