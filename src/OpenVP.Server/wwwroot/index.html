@@ -33,7 +33,7 @@
   .mono { font-family: ui-monospace, Menlo, monospace; font-size:12px; }
   #log, #console-out { height:220px; overflow:auto; background:var(--well); border:1px solid var(--line); border-radius:6px; padding:8px; white-space:pre-wrap; }
   #log, #console-out { resize:vertical; min-height:120px; overflow-wrap:anywhere; }
-  .sec-head { display:flex; align-items:center; gap:6px; margin-bottom:10px; }
+  .sec-head { display:flex; align-items:center; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
   .sec-head h2 { margin:0; flex:1; }
   .sec-head button { padding:2px 8px; font-size:12px; }
   section.max { position:fixed; inset:16px; z-index:50; display:flex; flex-direction:column; box-shadow:0 10px 40px #000c; }
@@ -225,6 +225,20 @@
 
   /* ---- header buttons, saved indicator, toasts */
   header .hbtn, .theme-btn { font-size:12px; padding:2px 9px; white-space:nowrap; }
+  /* ---- top-bar dropdown menus */
+  #topmenus { display:flex; gap:4px; flex-wrap:wrap; align-items:center; }
+  .dd { position:relative; display:inline-block; }
+  .dd-btn[aria-expanded="true"] { background:var(--selrow); }
+  .dd-menu { position:absolute; left:0; top:calc(100% + 4px); z-index:80; min-width:260px; max-width:min(360px, calc(100vw - 24px)); background:var(--menu); border:1px solid var(--line); border-radius:8px; box-shadow:0 8px 28px #0006; padding:4px 0; }
+  .dd-menu.dd-right { left:auto; right:0; }
+  .dd-menu a, .dd-menu button { display:block; width:100%; box-sizing:border-box; text-align:left; border:0; border-radius:0; background:transparent; color:var(--text); text-decoration:none; padding:7px 12px; font:inherit; font-size:13px; cursor:pointer; min-height:0; }
+  .dd-menu a:hover, .dd-menu button:hover, .dd-menu a:focus-visible, .dd-menu button:focus-visible { background:var(--selrow); outline:none; }
+  .dd-menu b { font-weight:600; display:block; }
+  .dd-menu small { display:block; color:var(--muted); font-size:12px; margin-top:1px; }
+  .dd-menu hr { border:0; border-top:1px solid var(--line); margin:4px 0; }
+  .dd-menu [hidden] { display:none !important; }
+  /* The desktop app has these pages in its own menu bar (Panels, Tools, Monitor, Admin, Help), so the page doesn't repeat them. */
+  html.desktop-app #topmenus { display:none; }
   #saved { font-size:12px; color:var(--ok-fg); background:var(--ok-bg); border-radius:20px; padding:1px 9px; opacity:0; transition:opacity .25s; pointer-events:none; min-width:60px; text-align:center; }
   #saved.show { opacity:1; }
   #toasts { position:fixed; left:50%; bottom:16px; transform:translateX(-50%); z-index:200; display:flex; flex-direction:column; gap:8px; align-items:center; width:min(520px, calc(100vw - 24px)); pointer-events:none; }
@@ -327,6 +341,8 @@
     body { font-size:15px; }
     header { padding:10px 12px; } header small { display:none; }
     header a, header .hbtn, .theme-btn { padding:8px 6px; }
+    #topmenus { width:100%; order:10; } .dd { position:static; } .dd-menu, .dd-menu.dd-right { left:12px; right:12px; max-width:none; min-width:0; }
+    header { position:relative; } .dd-menu a, .dd-menu button { padding:10px 14px; }
     #net-bar { margin:10px 12px 0; } #board { margin:12px 12px 0; }
     main { padding:12px; gap:12px; }
     main section, #board { padding:12px; }
@@ -366,9 +382,10 @@
 </style>
 </head>
 <body>
+<script>if (window.openvpDesktop) document.documentElement.classList.add("desktop-app");</script>
 <header>
   <h1>OpenVP</h1><small>open-source virtual control processor</small>
-  <span style="flex:1"></span><span id="saved" role="status" aria-live="polite"></span><span id="sigfind-wrap"><input id="sigfind" type="search" placeholder="Find a signal in all slots" aria-label="Find a signal by name in every loaded slot" autocomplete="off" title="Finds signals by name across all loaded slots and opens that slot's debugger on the one you pick (press F)" data-help="signal-search"><div id="sigfind-res" hidden></div></span><button class="hbtn" id="pal-open" title="Search every action and every help topic (Ctrl+K or Cmd+K)" data-help="palette">Search ⌘K</button><button class="hbtn" id="keys-open" title="Keyboard shortcuts (?)" data-help="palette">?</button><button class="hbtn" id="tpl-open" title="Starter projects to download: a SIMPL# Pro program and a CH5 panel" data-help="templates">Templates</button><button class="theme-btn" data-theme-toggle data-help="top-bar"></button><a href="devices.html" id="devices-link" target="openvp-devices" data-help="devices" title="Device simulators, COM terminal, socket sniffer, network redirects and discovery for the selected slot">Devices ↗</a><a href="metrics.html" target="openvp-metrics" data-help="metrics" title="CPU, memory and how busy each slot is">Metrics ↗</a><a href="alerts.html" id="alerts-link" target="openvp-alerts" data-help="alerts" title="Alerts to email, Teams, Slack and your phone; thresholds and health reports">Alerts ↗<span class="abadge" id="alerts-badge" hidden></span></a><a href="integrations.html" id="integrations-link" target="openvp-integrations" data-help="integrations" title="MQTT and Home Assistant, webhooks, OSC, Art-Net and Prometheus for the selected slot">Integrations ↗</a><a href="backup.html" id="backup-link" target="openvp-backup" data-help="backups" title="Export the whole processor, daily backups, and Git-backed config">Backups ↗</a><a href="schedules.html" target="openvp-schedules" data-help="schedules" title="Restart a slot nightly, load a program, run a backup or set a signal at a time">Schedules ↗</a><a href="targets.html" target="openvp-push" data-help="push" title="Push programs and exports to other OpenVP machines">Push ↗</a><a href="panel.html" target="_blank" data-help="panel" title="A browser touch panel for pressing joins and seeing feedback">Test panel ↗</a><a href="autopanel.html" id="autopanel-link" target="openvp-autopanel" title="A panel generated from the selected slot's signals, with saved layouts">Generated panel ↗</a><a href="emulate.html" target="openvp-emulate" title="Run a CH5 or smart-graphics project in the browser against a slot, without a real panel">Emulate ↗</a><a href="rack.html" target="openvp-rack" title="The processor as a rack: slots, panels per IP ID online or offline, EISC links and round-trip latency">Rack ↗</a><a href="examples.html" target="openvp-examples" title="Small example programs you can load into a slot in one click">Examples ↗</a><a href="compat.html" target="openvp-compat" title="What OpenVP supports: primitives, SIMPL# APIs and panel features, and a one-click report to the project">Compatibility ↗</a><span id="plugin-menu" style="display:contents"></span><a href="labs.html" target="openvp-labs" title="Experimental features, off by default">Labs ↗</a><a href="security.html" id="security-link" data-perm="Admin" data-perm-hide target="openvp-security" title="Users, API tokens, HTTPS, single sign-on and the audit log">Security ↗</a><span id="who-chip"></span><a href="help.html#console" target="openvp-help" title="What every button on this page does">Help</a><a href="#welcome" id="welcome-link" title="Show the welcome screen again">Welcome</a>
+  <span style="flex:1"></span><span id="saved" role="status" aria-live="polite"></span><span id="sigfind-wrap"><input id="sigfind" type="search" placeholder="Find a signal in all slots" aria-label="Find a signal by name in every loaded slot" autocomplete="off" title="Finds signals by name across all loaded slots and opens that slot's debugger on the one you pick (press F)" data-help="signal-search"><div id="sigfind-res" hidden></div></span><button class="hbtn" id="pal-open" title="Search every action and every help topic (Ctrl+K or Cmd+K)" data-help="palette">Search ⌘K</button><nav id="topmenus" aria-label="Pages"><span class="dd"><button class="hbtn dd-btn" aria-haspopup="menu" aria-expanded="false" data-help="panel">Panels ▾</button><div class="dd-menu" role="menu" hidden><a role="menuitem" href="panel.html" id="nav-panel" target="_blank" data-help="panel"><b>Test panel</b><small>Press joins and see feedback in the browser</small></a><a role="menuitem" href="autopanel.html" id="autopanel-link" target="openvp-autopanel"><b>Generated panel</b><small>A panel built from the selected slot's signals, with saved layouts</small></a><a role="menuitem" href="emulate.html" id="nav-emulate" target="openvp-emulate"><b>Emulate</b><small>Run a CH5 or smart-graphics project against a slot</small></a><a role="menuitem" href="rack.html" id="nav-rack" target="openvp-rack"><b>Rack</b><small>Slots, panels online or offline, EISC links and latency</small></a></div></span><span class="dd"><button class="hbtn dd-btn" aria-haspopup="menu" aria-expanded="false">Tools ▾</button><div class="dd-menu" role="menu" hidden><a role="menuitem" href="devices.html" id="devices-link" target="openvp-devices" data-help="devices"><b>Devices</b><small>Simulators, COM terminal, socket sniffer, redirects and discovery</small></a><a role="menuitem" href="integrations.html" id="integrations-link" target="openvp-integrations" data-help="integrations"><b>Integrations</b><small>MQTT and Home Assistant, webhooks, OSC, Art-Net</small></a><a role="menuitem" href="schedules.html" id="nav-schedules" target="openvp-schedules" data-help="schedules"><b>Schedules</b><small>Restart, load a program, back up or set a signal at a time</small></a><a role="menuitem" href="backup.html" id="backup-link" target="openvp-backup" data-help="backups"><b>Backups</b><small>Export the processor, daily backups, Git-backed config</small></a><a role="menuitem" href="targets.html" id="nav-push" target="openvp-push" data-help="push"><b>Push</b><small>Send programs and exports to other OpenVP machines</small></a><hr><button type="button" role="menuitem" id="tpl-open" data-help="templates"><b>Templates</b><small>Starter SIMPL# Pro program and CH5 panel to download</small></button><a role="menuitem" href="examples.html" id="nav-examples" target="openvp-examples"><b>Examples</b><small>Small example programs to load in one click</small></a><span id="plugin-menu" style="display:contents"></span></div></span><span class="dd"><button class="hbtn dd-btn" aria-haspopup="menu" aria-expanded="false" data-help="alerts">Monitor<span class="abadge" id="alerts-badge-menu" hidden></span> ▾</button><div class="dd-menu" role="menu" hidden><a role="menuitem" href="metrics.html" id="nav-metrics" target="openvp-metrics" data-help="metrics"><b>Metrics</b><small>CPU, memory and how busy each slot is</small></a><a role="menuitem" href="alerts.html" id="alerts-link" target="openvp-alerts" data-help="alerts"><b>Alerts<span class="abadge" id="alerts-badge" hidden></span></b><small>Email, Teams, Slack and phone alerts; thresholds and health reports</small></a><a role="menuitem" href="compat.html" id="nav-compat" target="openvp-compat"><b>Compatibility</b><small>What OpenVP supports, the wiring check, and issue reports</small></a></div></span><span class="dd"><button class="hbtn dd-btn" aria-haspopup="menu" aria-expanded="false">Admin ▾</button><div class="dd-menu" role="menu" hidden><a role="menuitem" href="security.html" id="security-link" data-perm="Admin" data-perm-hide target="openvp-security"><b>Security</b><small>Users, API tokens, HTTPS, single sign-on and the audit log</small></a><a role="menuitem" href="labs.html" id="nav-labs" target="openvp-labs"><b>Labs</b><small>Experimental features, off by default</small></a></div></span><span class="dd"><button class="hbtn dd-btn" aria-haspopup="menu" aria-expanded="false">Help ▾</button><div class="dd-menu dd-right" data-right="1" role="menu" hidden><a role="menuitem" href="help.html#console" id="nav-help" target="openvp-help"><b>Help</b><small>What every button on this page does</small></a><button type="button" role="menuitem" id="keys-open" data-help="palette"><b>Keyboard shortcuts</b><small>Or press ?</small></button><a role="menuitem" href="#welcome" id="welcome-link"><b>Welcome</b><small>Show the welcome screen again</small></a></div></span></nav><button class="theme-btn" data-theme-toggle data-help="top-bar"></button><span id="who-chip"></span>
 </header>
 <div id="slot-strip" aria-label="Selected slot"><select id="strip-slot" aria-label="Slot"></select><button id="strip-start" title="Start">▶</button><button id="strip-stop" title="Stop">■</button><button id="strip-restart" title="Restart">↻</button></div>
 <div id="net-bar" data-help="internet">
@@ -719,7 +736,7 @@ openvpAuth.init();
 fetch("/api/plugins").then(r => r.ok ? r.json() : null).then(d => {
   if (!d || !d.active) return;
   const m = document.getElementById("plugin-menu");
-  for (const p of d.plugins) if (p.enabled && p.hasUi && p.menu) { const a = document.createElement("a"); a.href = `/api/plugins/${encodeURIComponent(p.name)}/ui/${encodeURI(p.uiPage || "")}`; a.target = "_blank"; a.textContent = p.menu + " ↗"; m.appendChild(a); }
+  for (const p of d.plugins) if (p.enabled && p.hasUi && p.menu) { const a = document.createElement("a"); a.setAttribute("role", "menuitem"); a.href = `/api/plugins/${encodeURIComponent(p.name)}/ui/${encodeURI(p.uiPage || "")}`; a.target = "_blank"; const b = document.createElement("b"); b.textContent = p.menu; const sm = document.createElement("small"); sm.textContent = "Plugin: " + p.name; a.append(b, sm); m.appendChild(a); }
 }).catch(() => {});
 const $ = s => document.querySelector(s);
 let sel = 1, ws = null, curRoom, bulkSel = new Set();
@@ -2167,6 +2184,7 @@ function renderStrip() {
 const recentMenu = $("#recent-menu");
 function closeRecent() { recentMenu.hidden = true; $("#recent-btn").setAttribute("aria-expanded", "false"); }
 async function openRecent() {
+  closeDropdowns();
   recentMenu.hidden = false; $("#recent-btn").setAttribute("aria-expanded", "true");
   recentMenu.innerHTML = `<div class="none">Loading…</div>`;
   try { renderRecent(await api("/api/recent")); } catch (e) { recentMenu.innerHTML = `<div class="none">${esc(e.message)}</div>`; }
@@ -2191,6 +2209,37 @@ async function loadRecent(r) {
 }
 $("#recent-btn").onclick = e => { e.stopPropagation(); if (recentMenu.hidden) openRecent(); else closeRecent(); };
 document.addEventListener("click", e => { if (!recentMenu.hidden && !e.target.closest(".menu-wrap")) closeRecent(); });
+// Top-bar dropdown menus: click or Enter/Space/ArrowDown opens, arrows move, Esc or a click outside closes, picking an item closes.
+const ddMenus = [...document.querySelectorAll("#topmenus .dd")];
+function closeDropdowns(except) {
+  for (const d of ddMenus) if (d !== except) { d.querySelector(".dd-menu").hidden = true; d.querySelector(".dd-btn").setAttribute("aria-expanded", "false"); }
+}
+const ddItems = d => [...d.querySelectorAll(".dd-menu [role=menuitem]")].filter(x => !x.hidden && x.offsetParent !== null);
+function openDropdown(d, focusFirst) {
+  closeDropdowns(d); closeRecent();
+  d.querySelector(".dd-menu").hidden = false; d.querySelector(".dd-btn").setAttribute("aria-expanded", "true");
+  const m = d.querySelector(".dd-menu");
+  if (!m.dataset.right) { m.classList.remove("dd-right"); if (m.getBoundingClientRect().right > innerWidth - 8) m.classList.add("dd-right"); }
+  if (focusFirst) ddItems(d)[0]?.focus();
+}
+for (const d of ddMenus) {
+  const btn = d.querySelector(".dd-btn"), menu = d.querySelector(".dd-menu");
+  let hoverOpenedAt = 0; // a click that lands right after hovering opened this menu keeps it open
+  btn.addEventListener("click", e => { e.stopPropagation(); if (menu.hidden) openDropdown(d, false); else if (performance.now() - hoverOpenedAt > 500) closeDropdowns(); });
+  btn.addEventListener("keydown", e => { if (e.key === "ArrowDown") { e.preventDefault(); openDropdown(d, true); } });
+  // Moving the pointer to a neighbouring menu while one is open switches to it, like a desktop menu bar.
+  btn.addEventListener("mouseenter", () => { if (ddMenus.some(x => x !== d && !x.querySelector(".dd-menu").hidden)) { openDropdown(d, false); hoverOpenedAt = performance.now(); } });
+  menu.addEventListener("click", e => { if (e.target.closest("[role=menuitem]")) closeDropdowns(); });
+  menu.addEventListener("keydown", e => {
+    const items = ddItems(d), at = items.indexOf(document.activeElement);
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); items[(at + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus(); }
+    else if (e.key === "Home") { e.preventDefault(); items[0]?.focus(); }
+    else if (e.key === "End") { e.preventDefault(); items[items.length - 1]?.focus(); }
+    else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeDropdowns(); btn.focus(); }
+    else if (e.key === "Tab") closeDropdowns();
+  });
+}
+document.addEventListener("click", e => { if (!e.target.closest("#topmenus .dd")) closeDropdowns(); });
 
 // ------------------------------------------------------------------ drop a program anywhere
 let dragDepth = 0;
@@ -2242,6 +2291,7 @@ addEventListener("keydown", e => {
     if (palBack.classList.contains("open")) { closePalette(); return; }
     if (keysBack.classList.contains("open")) { toggleKeys(false); return; }
     if (!recentMenu.hidden) { closeRecent(); return; }
+    if (ddMenus.some(d => !d.querySelector(".dd-menu").hidden)) { closeDropdowns(); return; }
   }
   if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented || isTyping(e)) return;
   if (document.querySelector("dialog[open]") || palBack.classList.contains("open")) return;
@@ -2718,7 +2768,7 @@ refreshHistory();
 setInterval(() => { if (!document.hidden) pollRecording(); }, 700);
 setInterval(refreshSlots, 3000);
 refreshBoard(); setInterval(refreshBoard, 2000);
-openvpAlerts.badge($("#alerts-badge"));
+openvpAlerts.badge($("#alerts-badge")); openvpAlerts.badge($("#alerts-badge-menu"));
 refreshActivity(); setInterval(() => { if (!document.hidden) refreshActivity(); }, 3000);
 setInterval(() => { if (!document.hidden) refreshIpTable(); }, 2000);
 </script>

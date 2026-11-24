@@ -199,7 +199,7 @@ function createWindow(width, height) {
     ...(KIOSK_PAGE ? { kiosk: true, fullscreen: true, frame: false } : {}),
     title: 'OpenVP',
     backgroundColor: '#202020',
-    autoHideMenuBar: true,
+    autoHideMenuBar: !!KIOSK_PAGE,   // the menu bar holds OpenVP's pages, so it stays visible (hidden on a kiosk)
     icon: path.join(__dirname, 'build', 'icon.ico'),
     // The preload lets the console ask where a picked program file is, to load it with its .sig and watch it.
     webPreferences: { contextIsolation: true, sandbox: true, preload: path.join(__dirname, 'preload.js') },
@@ -238,6 +238,8 @@ async function start() {
   if (!mainWindow) return;
   mainWindow.loadURL(KIOSK_PAGE ? kioskUrl() : BASE);
   startAlerts();
+  refreshPlugins();
+  setInterval(refreshPlugins, 60000);   // a plugin enabled or turned off on the Plugins page shows up within a minute
   if (DEV) watchForChanges();
   else if (KIOSK_PAGE) { /* no update pop-ups on a kiosk screen */ }
   else updater.start({ getWindow: () => mainWindow, beforeRestart: restartInto });
@@ -306,8 +308,8 @@ function startAlerts() {
   stream = alertsStream.subscribe({
     base: BASE,
     onAlert: notify,
-    onStatus: s => { alertStatus = s; updateTray(); },
-    onConnection: c => { if (!c) { alertStatus = null; updateTray(); } },
+    onStatus: s => { const was = alertStatus; alertStatus = s; updateTray(); if (!was || was.critical !== s.critical || was.warning !== s.warning) setMenu(); },
+    onConnection: c => { if (!c) { alertStatus = null; updateTray(); setMenu(); } },
   });
 }
 
@@ -320,20 +322,82 @@ async function restartInto(exe) {
   app.exit(0);
 }
 
-/** The menu bar (hidden until Alt is pressed): the usual items plus Help > Check for updates. */
+/**
+ * The menu bar. Besides the usual File, Edit, View and Window menus it holds OpenVP's pages, grouped as Panels,
+ * Tools, Monitor, Admin and Help; the console page hides its own copy of these menus when it runs in the app.
+ * Each page item clicks the same link in the console, so it opens for the slot selected there, in the same named
+ * window, exactly as the browser version does. Before the console has loaded, the page opens directly.
+ */
+let pluginPages = [];   // [{ name, menu, url }] for enabled plugins with a page, refreshed from the server
+
+function openPage(selector, href) {
+  const win = mainWindow;
+  const direct = () => openPopup(new URL(href, BASE).toString(), '');
+  if (!win || win.isDestroyed() || !isOpenVpUrl(win.webContents.getURL())) return direct();
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.webContents.executeJavaScript(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; el.click(); return true; })()`, true)
+    .then(ok => { if (!ok) direct(); }, direct);
+}
+
+async function refreshPlugins() {
+  try {
+    const r = await fetch(new URL('/api/plugins', BASE));
+    if (!r.ok) return;
+    const d = await r.json();
+    const next = (d.plugins || []).filter(p => p.enabled && p.hasUi && p.menu)
+      .map(p => ({ name: p.name, menu: p.menu, url: new URL(`/api/plugins/${encodeURIComponent(p.name)}/ui/${encodeURI(p.uiPage || '')}`, BASE).toString() }));
+    if (JSON.stringify(next) !== JSON.stringify(pluginPages)) { pluginPages = next; setMenu(); }
+  } catch { }
+}
+
 function setMenu() {
-  Menu.setApplicationMenu(Menu.buildFromTemplate([
+  const page = (label, selector, href) => ({ label, click: () => openPage(selector, href) });
+  const alerts = alertStatus ? (alertStatus.critical || 0) + (alertStatus.warning || 0) : 0;
+  const template = [
+    ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
     { role: 'fileMenu' },
     { role: 'editMenu' },
     { role: 'viewMenu' },
+    { label: 'Panels', submenu: [
+      page('Test panel', '#nav-panel', 'panel.html'),
+      page('Generated panel', '#autopanel-link', 'autopanel.html'),
+      page('Emulate', '#nav-emulate', 'emulate.html'),
+      page('Rack', '#nav-rack', 'rack.html'),
+    ] },
+    { label: 'Tools', submenu: [
+      page('Devices', '#devices-link', 'devices.html'),
+      page('Integrations', '#integrations-link', 'integrations.html'),
+      page('Schedules', '#nav-schedules', 'schedules.html'),
+      page('Backups', '#backup-link', 'backup.html'),
+      page('Push to other machines', '#nav-push', 'targets.html'),
+      { type: 'separator' },
+      page('Templates…', '#tpl-open', '/'),
+      page('Examples', '#nav-examples', 'examples.html'),
+      ...(pluginPages.length ? [{ type: 'separator' }, ...pluginPages.map(p => ({ label: p.menu, click: () => openPopup(p.url, 'openvp-plugin-' + p.name) }))] : []),
+    ] },
+    { label: alerts ? `Monitor (${alerts > 99 ? '99+' : alerts})` : 'Monitor', submenu: [
+      page('Metrics', '#nav-metrics', 'metrics.html'),
+      page(alerts ? `Alerts (${alertStatus.critical} critical, ${alertStatus.warning} warning)` : 'Alerts', '#alerts-link', 'alerts.html'),
+      page('Compatibility', '#nav-compat', 'compat.html'),
+    ] },
+    { label: 'Admin', submenu: [
+      page('Security', '#security-link', 'security.html'),
+      page('Labs', '#nav-labs', 'labs.html'),
+    ] },
     { role: 'windowMenu' },
-    { label: 'Help', submenu: [
+    { role: 'help', submenu: [
+      page('OpenVP help', '#nav-help', 'help.html#console'),
+      page('Keyboard shortcuts', '#keys-open', '/'),
+      page('Welcome screen', '#welcome-link', '/'),
+      { type: 'separator' },
       { label: 'Check for updates…', click: () => updater.check(true) },
       { label: 'Releases page', click: () => shell.openExternal('https://github.com/qureshiumar1983-eng/openVirtualProcessor/releases') },
       { type: 'separator' },
       { label: `OpenVP v${app.getVersion()}`, enabled: false },
     ] },
-  ]));
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 function stopServer() {
