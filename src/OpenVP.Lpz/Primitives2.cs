@@ -65,11 +65,11 @@ public sealed class TruthTablePrim : EvalPrim
 /// values into the selected bank, recall drives them to the outputs. Memory is non-volatile and addressed
 /// (field 5), so two symbols with the same address share it.
 /// </summary>
-public sealed class AnalogRamPrim : EdgePrim
+public sealed class AnalogRamPrim(bool digital = false) : EdgePrim
 {
     private int N(IPrimitiveContext c) => c.OutputCount;
     public override SigKind? InputKind(int pin) => null;
-    public override SigKind? OutputKind(int pin) => SigKind.Analog;
+    public override SigKind? OutputKind(int pin) => digital ? SigKind.Digital : SigKind.Analog;
 
     protected override void OnEdge(IPrimitiveContext c, int p)
     {
@@ -85,14 +85,16 @@ public sealed class AnalogRamPrim : EdgePrim
         return c.InputCount <= N(c) + 2 ? 0 : -1;
     }
 
-    private string Key(IPrimitiveContext c, int bank, int i) =>
-        $"aram@{(c.Symbol.FieldInt(5) ?? 0) + ((long)bank * N(c) + i) * 4}";
+    // Compiled programs give the memory an address (field 5); a .smw symbol has none, so it gets its own memory.
+    private string Key(IPrimitiveContext c, int bank, int i) => c.Symbol.FieldInt(5) is int addr
+        ? $"{(digital ? "dram" : "aram")}@{addr + ((long)bank * N(c) + i) * 4}"
+        : $"{(digital ? "dram" : "aram")}@{c.Symbol.Path}/{bank}/{i}";
 
     private void Store(IPrimitiveContext c)
     {
         var bank = Bank(c);
         if (bank < 0) return;
-        for (int i = 0; i < N(c); i++) c.RememberKey(Key(c, bank, i), c.Analog(i + 1));
+        for (int i = 0; i < N(c); i++) c.RememberKey(Key(c, bank, i), digital ? c.Digital(i + 1) : c.Analog(i + 1));
     }
 
     private void Recall(IPrimitiveContext c)
@@ -359,13 +361,23 @@ public sealed class AnalogScalerPrim : ReactPrim
     }
 }
 
-/// <summary>Type 99, Analog Scaler w/o Zero Pass: output = input × P1 / 65535 + P2 (signed result).</summary>
+/// <summary>Type 99, Analog Scaler w/o Zero Pass: output = input × P1 / 65535 + P2 (signed result). The .smw symbol has
+/// three parameters like Analog Scaler (divisor, multiplier, offset): output = input × multiplier / divisor + offset. A real
+/// program's "convert 1s to ascii" uses 1d, 1d, 48d, so a digit comes out as its ASCII code.</summary>
 public sealed class AnalogScalerSignedPrim : ReactPrim
 {
     public override SigKind? InputKind(int pin) => SigKind.Analog;
     public override SigKind? OutputKind(int pin) => SigKind.Analog;
     protected override void React(IPrimitiveContext c, int p)
     {
+        if (c.ParamCount >= 3)
+        {
+            var div = c.Number(0, 1);
+            if (div == 0) div = 1;
+            var s3 = c.Analog(1) * c.Number(1, 1) / div + c.Number(2);
+            c.Set(1, (ushort)(short)Math.Clamp(s3, short.MinValue, ushort.MaxValue));
+            return;
+        }
         var v = (long)Math.Round(c.Analog(1) * (double)c.Number(0, 65535) / 65535.0) + c.Number(1);
         c.Set(1, (ushort)(short)Math.Clamp(v, short.MinValue, ushort.MaxValue));
     }

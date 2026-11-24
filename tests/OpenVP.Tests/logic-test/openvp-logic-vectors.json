@@ -1,6 +1,6 @@
 {
  "program": "OpenVP_Logic_Test.smw",
- "description": "Deterministic vectors for every logic symbol in OpenVP_Logic_Test.smw. Steps run in order: set = drive signals; expect = must hold right after the previous step settles; eventually = must hold within timeout_ms; wait_ms = sleep; expect_count_high = exactly N of these digital signals high. confidence: high = documented Crestron behaviour; medium = behaviour or pin order inferred from real programs; load = only checks the symbol loads.",
+ "description": "Deterministic vectors for every logic symbol in OpenVP_Logic_Test.smw. Steps run in order: set = drive signals; expect = must hold right after the previous step settles; eventually = must hold within timeout_ms; wait_ms = sleep; expect_count_high = exactly N of these digital signals high. confidence: high = documented Crestron behaviour or pin order confirmed by real programs; medium = behaviour inferred from real programs; load = only checks the symbol loads and is implemented; unverified = a guess still to be checked on a real processor (reported, never fails the build).",
  "signal_types": {
   "T01_AND_i01": "d",
   "T01_AND_i02": "d",
@@ -3941,7 +3941,7 @@
   "T65_A2S_a30": "a",
   "T65_A2S_a31": "a",
   "T65_A2S_out": "s",
-  "T66_DPAI_trig": "d",
+  "T66_DPAI_i1": "d",
   "T66_DPAI_i2": "d",
   "T66_DPAI_i3": "d",
   "T66_DPAI_i4": "d",
@@ -23222,7 +23222,7 @@
    "id": "T57B",
    "symbol": "Analog Sum (overflow)",
    "smc": 57,
-   "confidence": "medium",
+   "confidence": "unverified",
    "note": "16-bit wrap: 65535 + 2 = 1 (assumed; Crestron analogs are 16-bit)",
    "steps": [
     {
@@ -23486,9 +23486,58 @@
    "id": "T66",
    "symbol": "Double-Precision Analog Initialize",
    "smc": 635,
-   "confidence": "load",
-   "note": "",
-   "steps": []
+   "confidence": "medium",
+   "note": "input k sends parameter k as a 32-bit value: output 1 high word, output 2 low word (real programs send fade times this way)",
+   "steps": [
+    {
+     "set": {
+      "T66_DPAI_i2": true
+     }
+    },
+    {
+     "set": {
+      "T66_DPAI_i2": false
+     }
+    },
+    {
+     "expect": {
+      "T66_DPAI_hi": 1,
+      "T66_DPAI_lo": 4464
+     }
+    },
+    {
+     "set": {
+      "T66_DPAI_i1": true
+     }
+    },
+    {
+     "set": {
+      "T66_DPAI_i1": false
+     }
+    },
+    {
+     "expect": {
+      "T66_DPAI_hi": 0,
+      "T66_DPAI_lo": 200
+     }
+    },
+    {
+     "set": {
+      "T66_DPAI_i4": true
+     }
+    },
+    {
+     "set": {
+      "T66_DPAI_i4": false
+     }
+    },
+    {
+     "expect": {
+      "T66_DPAI_hi": 1,
+      "T66_DPAI_lo": 0
+     }
+    }
+   ]
   },
   {
    "id": "T70",
@@ -26941,17 +26990,59 @@
    "id": "T75",
    "symbol": "Serial Demultiplexor",
    "smc": 86,
-   "confidence": "load",
-   "note": "",
-   "steps": []
+   "confidence": "medium",
+   "note": "base 0: a string goes to output (selector - base); selector 2 has no output here",
+   "steps": [
+    {
+     "set": {
+      "T75_SDMX_sel": 2
+     }
+    },
+    {
+     "set": {
+      "T75_SDMX_in": "skip"
+     }
+    },
+    {
+     "expect": {
+      "T75_SDMX_out": ""
+     }
+    },
+    {
+     "set": {
+      "T75_SDMX_sel": 1
+     }
+    },
+    {
+     "set": {
+      "T75_SDMX_in": "hello"
+     }
+    },
+    {
+     "expect": {
+      "T75_SDMX_out": "hello"
+     }
+    }
+   ]
   },
   {
    "id": "T76",
    "symbol": "Serial Substring (Expandable)",
    "smc": 1317,
-   "confidence": "load",
-   "note": "",
-   "steps": []
+   "confidence": "medium",
+   "note": "parameters 1d, 0120h (from a real program): from position 1 up to the first space",
+   "steps": [
+    {
+     "set": {
+      "T76_SUB_in": "route 3 4"
+     }
+    },
+    {
+     "expect": {
+      "T76_SUB_out": "route"
+     }
+    }
+   ]
   },
   {
    "id": "T77",

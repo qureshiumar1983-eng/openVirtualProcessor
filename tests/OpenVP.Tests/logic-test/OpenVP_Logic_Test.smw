@@ -7350,7 +7350,7 @@ PrH=103
 CF=2
 n1I=5
 n1O=2
-Cmn1=T66 Double-Precision Analog Initialize\\
+Cmn1=T66 Double-Precision Analog Initialize x5\\
 mI=5
 I1=3959
 I2=3960
@@ -7363,10 +7363,10 @@ O1=3964
 O2=3965
 mP=5
 P1=200t
-P2=200t
-P3=200t
-P4=200t
-P5=200t
+P2=70000d
+P3=1d
+P4=65536d
+P5=0d
 ]
 [
 ObjTp=Sm
@@ -31130,7 +31130,7 @@ SgTp=4
 [
 ObjTp=Sg
 H=3959
-Nm=T66_DPAI_trig
+Nm=T66_DPAI_i1
 ]
 [
 ObjTp=Sg
