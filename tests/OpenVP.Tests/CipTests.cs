@@ -311,7 +311,9 @@ public static class CipTests
         var s2 = Dial(server, out var c2);
         using var _2 = c2;
         s2.Write(RoomSignOn(3, "BOARDROOM")); // not case-sensitive
-        Assert.Equal("0000001F", Convert.ToHexString(Read(s2).payload), "accepted");
+        var r2 = Read(s2);
+        Assert.Equal(Cip.ConnectResponse, r2.type, "answered with the ordinary connect response, which is what an XPanel accepts");
+        Assert.Equal("0000001F", Convert.ToHexString(r2.payload), "accepted");
         Assert.Eventually(() => d2.Online, "slot 2's panel online");
         Assert.True(!d1.Online, "slot 1's panel untouched");
 
@@ -340,7 +342,7 @@ public static class CipTests
         using var _ = c;
         s.Write(RoomSignOn(3, "NOPE"));
         var r = Read(s);
-        Assert.Equal(Cip.RoomConnectResponse, r.type, "answered");
+        Assert.Equal(Cip.ConnectResponse, r.type, "answered");
         Assert.Equal("FFFF02", Convert.ToHexString(r.payload), "refused");
         Assert.True(p.RecentLog(1).Any(e => e.Message.Contains("'NOPE'") && e.Message.Contains("SLOT02")), "log names the room and lists the ones that exist");
         Assert.True(p.Slot(1).FindDevice(0x03) == null, "no device created");
@@ -348,44 +350,6 @@ public static class CipTests
         s.Write(RoomSignOn(3, "SLOT02"));
         Assert.Equal("0000001F", Convert.ToHexString(Read(s).payload), "accepted the second time");
         Assert.Eventually(() => p.Slot(2).FindDevice(0x03)?.Online == true, "online in slot 2");
-    }
-
-    [Test]
-    public static void Room_answers_are_tried_in_turn_until_a_panel_carries_on()
-    {
-        using var p = new Processor(Paths.TempData(), 2);
-        p.Slot(2).RegisterDevice(0x03, "XPanel", "x");
-        using var server = new CipServer(p, 0, IPAddress.Loopback);
-        server.Start();
-        // A panel that hangs up on every answer but the third: two attempts each, as the server gives each answer.
-        string Attempt(bool carryOn)
-        {
-            var s = Dial(server, out var c);
-            using var _ = c;
-            s.Write(RoomSignOn(3, "SLOT02"));
-            var (type, payload) = Read(s);
-            var seen = $"{type:X2} {Convert.ToHexString(payload)}";
-            if (carryOn)
-            {
-                Assert.Equal(Cip.WhoAreYou, Read(s).type, "third answer ends with program ready");
-                s.Write(Cip.Frame(Cip.ConnectRequest, 0, 0, 0, 0, 0, 0x03, 0x40, 0xFF, 0xFF, 0xF1, 0x01)); // no Room ID in this one
-                Assert.Equal(Cip.ConnectResponse, Read(s).type, "second sign-on answered");
-                Assert.Eventually(() => p.Slot(2).FindDevice(0x03)!.Online, "still bound to the room's slot, not slot 1");
-                Assert.True(p.Slot(1).FindDevice(0x03) == null, "nothing in slot 1");
-            }
-            var before = server.SessionCount;
-            c.Close();
-            Assert.Eventually(() => server.SessionCount < before || server.SessionCount == 0, "session ended");
-            return seen;
-        }
-        Assert.Equal("02 0000001F", Attempt(false), "first answer");
-        Assert.Equal("02 0000001F", Attempt(false), "first answer, second try");
-        Assert.Equal("27 000000", Attempt(false), "second answer");
-        Assert.Equal("27 000000", Attempt(false), "second answer, second try");
-        Assert.Equal("27 0000001F", Attempt(true), "third answer");
-        Assert.Equal("27 0000001F", Attempt(false), "kept once accepted");
-        Assert.Equal("27 0000001F", Attempt(false), "and not changed by later hang-ups");
-        Assert.True(p.RecentLog().Any(e => e.Message.Contains("accepted Room ID answer 3 of")), "the accepted answer is logged");
     }
 
     [Test]
