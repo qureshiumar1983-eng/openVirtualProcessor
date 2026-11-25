@@ -606,7 +606,11 @@ public sealed class StringLengthPrim : EvalPrim
 {
     public override SigKind? InputKind(int pin) => SigKind.Serial;
     public override SigKind? OutputKind(int pin) => SigKind.Analog;
-    protected override void Eval(IPrimitiveContext c) => c.Set(1, (ushort)Math.Min(c.Serial(1).Length, 65535));
+    // Expandable: string k's length goes to output k (real programs use up to 10 pairs).
+    protected override void Eval(IPrimitiveContext c)
+    {
+        for (int k = 1; k <= Math.Min(c.InputCount, c.OutputCount); k++) c.Set(k, (ushort)Math.Min(c.Serial(k).Length, 65535));
+    }
 }
 
 /// <summary>Type 100, Analog Sum and Digital Sum (both compile to it): the sum of the analog inputs plus the
@@ -699,12 +703,13 @@ public sealed class PermanentPrim : Primitive, IWatchesOutputs
 /// <summary>Type 56, Debounce: the output follows the input once it has been stable for P1.</summary>
 public sealed class DebouncePrim : Primitive
 {
-    private IDisposable? _timer;
+    // Expandable: each input k has its own output k and its own timer (real programs use up to 3 pairs).
+    private readonly Dictionary<int, IDisposable> _timers = new();
     public override void OnInput(IPrimitiveContext c, int p, object o, object n)
     {
-        if (p != 1) return;
-        _timer?.Dispose();
-        _timer = c.AfterTicks(Math.Max(1, c.Number(0, 10)), () => c.Set(1, c.Digital(1)));
+        if (p < 1 || p > c.OutputCount) return;
+        if (_timers.Remove(p, out var t)) t.Dispose();
+        _timers[p] = c.AfterTicks(Math.Max(1, c.Number(0, 10)), () => { _timers.Remove(p); c.Set(p, c.Digital(p)); });
     }
 }
 

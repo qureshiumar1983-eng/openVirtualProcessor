@@ -72,6 +72,18 @@ public static class LogicSymbolCatalog
         return [.. order];
     }
 
+    /// <summary>Analog and Digital RAM in a real .smw: store, recall, then the N values, then the bank selects. Real programs
+    /// wire …STORE… and …RECALL… to pins 1 and 2 and the values (also wired to the outputs) from pin 3.</summary>
+    private static int[] RamSmwOrder(int inputs, int outputs)
+    {
+        var order = new List<int>();
+        for (int p = 3; p <= Math.Min(inputs, outputs + 2); p++) order.Add(p);
+        order.Add(1);
+        order.Add(2);
+        for (int p = outputs + 3; p <= inputs; p++) order.Add(p);
+        return [.. order];
+    }
+
     public static readonly IReadOnlyList<LogicSymbol> All =
     [
         // ---------------------------------------------------------------- digital
@@ -90,7 +102,7 @@ public static class LogicSymbolCatalog
         C("Set/Reset Latch", "Digital", () => new SrLatchPrim(), "in: reset, set (the .smw lists set, reset) · out: out, out*", [12], [9], "SR Latch") with { SmwPinOrder = static (_, _) => [2, 1] },
         C("Toggle", "Digital", () => new TogglePrim(), "in: clock, reset, set (the .smw lists set, reset, clock) · out: out, out*", [13], [10]) with { SmwPinOrder = static (_, _) => [3, 2, 1] },
         C("Interlock", "Digital", () => new InterlockPrim(), "in: i1..iN, clear (the .smw lists clear, a spare pin, then i1..iN) · out: o1..oN", [19], [11]) with { SmwPinOrder = static (inputs, outputs) => InterlockSmwOrder(inputs, outputs) },
-        C("Interlock-Toggle", "Digital", () => new InterlockTogglePrim(), "in: i1..iN, clear · out: o1..oN", [419], [207]),
+        C("Interlock-Toggle", "Digital", () => new InterlockTogglePrim(), "in: i1..iN, clear (the .smw lists clear, a spare pin, then i1..iN) · out: o1..oN", [419], [207]) with { SmwPinOrder = static (inputs, outputs) => InterlockSmwOrder(inputs, outputs) },
         C("Ring Counter", "Digital", () => new RingCounterPrim(), "in: clock, reset · out: o1..oN", [17, 451], [23]),
         C("Decade", "Digital", () => new DecadePrim(), "in: analog · out: units 0-9, tens 0-9, hundreds 0-9", [78], [52]),
         C("Button Presser", "Digital", () => new FollowPrim(), "in: i · out: o1..oN follow the input", [99], [138]),
@@ -120,7 +132,11 @@ public static class LogicSymbolCatalog
         C("Analog Scaler", "Analog", () => new AnalogScalerPrim(), "in: a · out: a · params: divisor, multiplier, offset", [24], [30]),
         C("Analog Scaler w/o Zero Pass", "Analog", () => new AnalogScalerSignedPrim(), "in: a · out: a", [65], [99]),
         C("Analog Scaler with I/O Limits", "Analog", () => new AnalogScalerLimitsPrim(), "in: a · out: a · params: in lo, in hi, out lo, out hi", [541], [224]),
-        C("Analog RAM", "Analog", () => new AnalogRamPrim(), "in: a1..aN, store, recall, bank selects · out: a1..aN", [34], [36]),
+        C("Analog RAM", "Analog", () => new AnalogRamPrim(), "in: a1..aN, store, recall, bank selects (the .smw lists store, recall, a1..aN, bank selects) · out: a1..aN", [34], [36]) with { SmwPinOrder = static (inputs, outputs) => RamSmwOrder(inputs, outputs) },
+        D("Digital RAM", "Digital", () => new AnalogRamPrim(digital: true), "in: d1..dN, store, recall, bank selects (the .smw lists store, recall, d1..dN, bank selects) · out: d1..dN") with { SmCodes = [90], SmwPinOrder = static (inputs, outputs) => RamSmwOrder(inputs, outputs) },
+        D("Digital To Scaled Analog", "Analog", () => new DigitalToScaledAnalogPrim(), "in: d · out: a (high = 65535, low = 0)") with { SmCodes = [36] },
+        D("Analog Value Sample", "Analog", () => new AnalogValueSamplePrim(), "in: (tied to 0), sample, a1..aN · out: a1..aN") with { SmCodes = [122] },
+        D("Double-Precision Analog Initialize", "Analog", () => new DoubleAnalogInitPrim(), "in: t1..tN · out: high word, low word · params: v1..vN (32-bit)") with { SmCodes = [635] },
         C("Analog Step", "Analog", () => new AnalogStepPrim(), "in: clock, reset · out: a · params: values", [45], [37]),
         C("Analog Ramp", "Analog", () => new AnalogRampPrim(), "in: up, down · out: a · params: full-range time", [22], [20]),
         C("Analog Ramp (Bounds Limited)", "Analog", () => new BoundedRampPrim(), "in: up, down · out: a · params: time, lower, upper, initial", [540], [223]),
@@ -129,7 +145,7 @@ public static class LogicSymbolCatalog
         C("Analog Sum", "Analog", () => new AnalogSumPrim(), "in: a1..aN, or digitals · out: sum (a high digital counts 1)", [57, 61], [100], "Digital Sum"),
         C("Analog DivMod", "Analog", () => new DivModPrim(), "in: a · out: quotient, remainder · params: divisor", [114], [136]),
         I("Analog Compare", "Analog", () => new AnalogComparePrim(), "in: a, b · out: a > b, a = b, a < b", [35], [45]),
-        I("Preset", "Analog", () => new PresetPrim(), "in: trigger · out: v1..vN · params: -, v1..vN", [], [21]),
+        I("Preset", "Analog", () => new PresetPrim(), "in: trigger · out: v1..vN · params: ramp time (not modeled: values are set at once), v1..vN", [23], [21], "Analog Preset"),
         I("Numeric Keypad", "Analog", () => new NumericKeypadPrim(), "in: 0-9, clear, up, down, enter · out: value, entered · params: max, min", [], [41]),
         C("Analog Comparison (Full Set)", "Analog", () => new ComparePrim(), "in: a, b · out: =, ≠, <, ≤, >, ≥", [492], [220]),
         C("Analog Increment", "Analog", () => new AnalogIncrementPrim(), "in: up, down, ... · out: a · params: step, hold, repeat, ...", [543], [230]),
@@ -168,6 +184,12 @@ public static class LogicSymbolCatalog
         I("Password Memory", "Serial", () => new PasswordMemoryPrim(), "in: text, store, recall, enter · out: stored text · params: default", [], [66]),
         I("Password Match", "Serial", () => new PasswordMatchPrim(), "in: text, enter, enable, reference · out: match · params: password", [], [144]),
         D("Serial Force", "Serial", () => new NoOpPrim(), "in: s1..sN (no outputs; does nothing)") with { SmCodes = [470] },
+        D("Digital Force", "Digital", () => new NoOpPrim(), "in: d1..dN (no outputs; does nothing)") with { SmCodes = [471] },
+        D("Analog Force", "Analog", () => new NoOpPrim(), "in: a1..aN (no outputs; does nothing)") with { SmCodes = [472] },
+        D("Serial Demultiplexor", "Serial", () => new SerialDemuxPrim(), "in: s, selector · out: s1..sN · params: base (s goes to output selector − base)") with { SmCodes = [86] },
+        D("Serial Substring (Expandable)", "Serial", () => new SerialSubstringExpandablePrim(), "in: s · out: s1..sN · params: start, end per output (position/length, or CCXXh delimiter)") with { SmCodes = [1317] },
+        D("Message to Computer Port", "Serial", () => new ConsoleMessagePrim(), "in: trigger · params: text (written to the console)") with { SmCodes = [94] },
+        D("Variable Oscillator", "Timers", () => new VariableOscillatorPrim(), "in: enable, high time, low time (analog, 1/100 s) · out: o") with { SmCodes = [410] },
         D("Serial Substring", "Serial", () => new SerialSubstringPrim(), "in: s · out: s · params: start (1-based), length"),
         C("Serial to Analog", "Serial", () => new SerialToAnalogPrim(), "in: s · out: a", [96], [103]),
         C("Analog to Serial", "Serial", () => new AnalogToSerialPrim(), "in: trigger, a1..aN · out: s · params: strings", [77], [82]),
@@ -236,7 +258,8 @@ public static class LogicSymbolCatalog
         sb.Append("Every symbol has one implementation, used both for `.smw` source and compiled `.lpz` programs.\n\n");
         sb.Append("- **compiled**: checked against compiled programs that ship their source: primitive type, pin order and parameters.\n");
         sb.Append("- **documented**: written from the SIMPL Windows symbol descriptions. It runs from `.smw` (matched by name). Pin order and parameter units are best guesses, ");
-        sb.Append("and the compiled type is unknown until a real program shows it. To run one in a compiled program, name its type in `primitives.json`.\n");
+        sb.Append("and the compiled type is unknown until a real program shows it. To run one in a compiled program, name its type in `primitives.json`. ");
+        sb.Append("Where a documented symbol has an SmC, it was found in real `.smw` programs: its pins come from how they wire and name it (`src/OpenVP.Lpz/Primitives6.cs` says what each rests on), and `tests/OpenVP.Tests/logic-test` checks it.\n");
         sb.Append("- **inferred**: the compiled type and pins were seen in real programs (a private test set, not in this repo), but the behavior is inferred from how those programs wire and name the pins, usually because the symbol sits inside a macro whose source isn't available. ");
         sb.Append("Each one's code comment (`src/OpenVP.Lpz/Primitives4.cs`) says what the inference rests on.\n\n");
         int Count(SymbolEvidence e) => All.Count(x => x.Evidence == e);

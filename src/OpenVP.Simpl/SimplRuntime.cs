@@ -220,6 +220,9 @@ public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
     {
         var subDevices = new List<SmwSymbol>();
         var otherHardware = new List<SmwSymbol>();
+        // The signal's own declared type (SgTp) decides first: n1I/n2I/n3I on a logic symbol are expansion groups, not kinds.
+        foreach (var sg in _file.Signals.Values)
+            if (sg.Handle > 0 && sg.Handle < _kinds.Length && sg.Type is 2 or 4) SetKind(sg.Handle, sg.Type == 2 ? SigKind.Analog : SigKind.Serial);
         foreach (var sym in _file.Symbols.Values.OrderBy(s => s.Handle))
         {
             if (sym.Disabled) continue; // switched off in SIMPL Windows: not part of the program

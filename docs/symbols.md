@@ -5,10 +5,10 @@ Generated from `src/OpenVP.Lpz/LogicSymbols.cs` (`LogicSymbolCatalog`); the test
 Every symbol has one implementation, used both for `.smw` source and compiled `.lpz` programs.
 
 - **compiled**: checked against compiled programs that ship their source: primitive type, pin order and parameters.
-- **documented**: written from the SIMPL Windows symbol descriptions. It runs from `.smw` (matched by name). Pin order and parameter units are best guesses, and the compiled type is unknown until a real program shows it. To run one in a compiled program, name its type in `primitives.json`.
+- **documented**: written from the SIMPL Windows symbol descriptions. It runs from `.smw` (matched by name). Pin order and parameter units are best guesses, and the compiled type is unknown until a real program shows it. To run one in a compiled program, name its type in `primitives.json`. Where a documented symbol has an SmC, it was found in real `.smw` programs: its pins come from how they wire and name it (`src/OpenVP.Lpz/Primitives6.cs` says what each rests on), and `tests/OpenVP.Tests/logic-test` checks it.
 - **inferred**: the compiled type and pins were seen in real programs (a private test set, not in this repo), but the behavior is inferred from how those programs wire and name the pins, usually because the symbol sits inside a macro whose source isn't available. Each one's code comment (`src/OpenVP.Lpz/Primitives4.cs`) says what the inference rests on.
 
-110 symbols: 67 compiled, 9 inferred, 34 documented.
+120 symbols: 67 compiled, 9 inferred, 44 documented.
 
 ## Digital
 
@@ -29,7 +29,7 @@ Every symbol has one implementation, used both for `.smw` source and compiled `.
 | Set/Reset Latch (also: SR Latch) | compiled | 12 | 9 | in: reset, set (the .smw lists set, reset) · out: out, out* |
 | Toggle | compiled | 13 | 10 | in: clock, reset, set (the .smw lists set, reset, clock) · out: out, out* |
 | Interlock | compiled | 19 | 11 | in: i1..iN, clear (the .smw lists clear, a spare pin, then i1..iN) · out: o1..oN |
-| Interlock-Toggle | compiled | 419 | 207 | in: i1..iN, clear · out: o1..oN |
+| Interlock-Toggle | compiled | 419 | 207 | in: i1..iN, clear (the .smw lists clear, a spare pin, then i1..iN) · out: o1..oN |
 | Ring Counter | compiled | 17, 451 | 23 | in: clock, reset · out: o1..oN |
 | Decade | compiled | 78 | 52 | in: analog · out: units 0-9, tens 0-9, hundreds 0-9 |
 | Button Presser | compiled | 99 | 138 | in: i · out: o1..oN follow the input |
@@ -37,6 +37,8 @@ Every symbol has one implementation, used both for `.smw` source and compiled `.
 | Logic Wave Delay | compiled | 408 | 203 | in: i1..iN · out: o1..oN · params: waves |
 | Digital Multiplexer (also: Digital Mux) | documented | ? | ? | in: select (analog), i1..iN · out: i(select), low if none |
 | Digital Demultiplexer (also: Digital Demux) | documented | ? | ? | in: select (analog), i · out: o1..oN, only o(select) follows |
+| Digital RAM | documented | 90 | ? | in: d1..dN, store, recall, bank selects (the .smw lists store, recall, d1..dN, bank selects) · out: d1..dN |
+| Digital Force | documented | 471 | ? | in: d1..dN (no outputs; does nothing) |
 
 ## Timers
 
@@ -53,6 +55,7 @@ Every symbol has one implementation, used both for `.smw` source and compiled `.
 | Debounce | compiled | 50 | 56 | in: i · out: o · params: time |
 | Stepper | compiled | 98 | 139 | in: start · out: busy, o1..oN · params: delay, duration, ... |
 | Stepper with Progress & Reset | compiled | 777 | 241 | in: start, reset · out: running, progress, 2 analog, steps from output 5 |
+| Variable Oscillator | documented | 410 | ? | in: enable, high time, low time (analog, 1/100 s) · out: o |
 
 ## Analog
 
@@ -64,7 +67,10 @@ Every symbol has one implementation, used both for `.smw` source and compiled `.
 | Analog Scaler | compiled | 24 | 30 | in: a · out: a · params: divisor, multiplier, offset |
 | Analog Scaler w/o Zero Pass | compiled | 65 | 99 | in: a · out: a |
 | Analog Scaler with I/O Limits | compiled | 541 | 224 | in: a · out: a · params: in lo, in hi, out lo, out hi |
-| Analog RAM | compiled | 34 | 36 | in: a1..aN, store, recall, bank selects · out: a1..aN |
+| Analog RAM | compiled | 34 | 36 | in: a1..aN, store, recall, bank selects (the .smw lists store, recall, a1..aN, bank selects) · out: a1..aN |
+| Digital To Scaled Analog | documented | 36 | ? | in: d · out: a (high = 65535, low = 0) |
+| Analog Value Sample | documented | 122 | ? | in: (tied to 0), sample, a1..aN · out: a1..aN |
+| Double-Precision Analog Initialize | documented | 635 | ? | in: t1..tN · out: high word, low word · params: v1..vN (32-bit) |
 | Analog Step | compiled | 45 | 37 | in: clock, reset · out: a · params: values |
 | Analog Ramp | compiled | 22 | 20 | in: up, down · out: a · params: full-range time |
 | Analog Ramp (Bounds Limited) | compiled | 540 | 223 | in: up, down · out: a · params: time, lower, upper, initial |
@@ -73,7 +79,7 @@ Every symbol has one implementation, used both for `.smw` source and compiled `.
 | Analog Sum (also: Digital Sum) | compiled | 57, 61 | 100 | in: a1..aN, or digitals · out: sum (a high digital counts 1) |
 | Analog DivMod | compiled | 114 | 136 | in: a · out: quotient, remainder · params: divisor |
 | Analog Compare | inferred | 35 | 45 | in: a, b · out: a > b, a = b, a < b |
-| Preset | inferred | ? | 21 | in: trigger · out: v1..vN · params: -, v1..vN |
+| Preset (also: Analog Preset) | inferred | 23 | 21 | in: trigger · out: v1..vN · params: ramp time (not modeled: values are set at once), v1..vN |
 | Numeric Keypad | inferred | ? | 41 | in: 0-9, clear, up, down, enter · out: value, entered · params: max, min |
 | Analog Comparison (Full Set) | compiled | 492 | 220 | in: a, b · out: =, ≠, <, ≤, >, ≥ |
 | Analog Increment | compiled | 543 | 230 | in: up, down, ... · out: a · params: step, hold, repeat, ... |
@@ -96,6 +102,7 @@ Every symbol has one implementation, used both for `.smw` source and compiled `.
 | Analog Multiplexer (also: Analog Mux) | documented | ? | ? | in: select, a1..aN · out: a(select), 0 if none |
 | Analog Demultiplexer (also: Analog Demux) | documented | ? | ? | in: select, a · out: o1..oN, only o(select) follows |
 | Time Split (also: Time to Analog) | documented | ? | ? | in: time of day text · out: hour, minute, second |
+| Analog Force | documented | 472 | ? | in: a1..aN (no outputs; does nothing) |
 
 ## Serial
 
@@ -114,6 +121,9 @@ Every symbol has one implementation, used both for `.smw` source and compiled `.
 | Password Memory | inferred | ? | 66 | in: text, store, recall, enter · out: stored text · params: default |
 | Password Match | inferred | ? | 144 | in: text, enter, enable, reference · out: match · params: password |
 | Serial Force | documented | 470 | ? | in: s1..sN (no outputs; does nothing) |
+| Serial Demultiplexor | documented | 86 | ? | in: s, selector · out: s1..sN · params: base (s goes to output selector − base) |
+| Serial Substring (Expandable) | documented | 1317 | ? | in: s · out: s1..sN · params: start, end per output (position/length, or CCXXh delimiter) |
+| Message to Computer Port | documented | 94 | ? | in: trigger · params: text (written to the console) |
 | Serial Substring | documented | ? | ? | in: s · out: s · params: start (1-based), length |
 | Serial to Analog | compiled | 96 | 103 | in: s · out: a |
 | Analog to Serial | compiled | 77 | 82 | in: trigger, a1..aN · out: s · params: strings |
