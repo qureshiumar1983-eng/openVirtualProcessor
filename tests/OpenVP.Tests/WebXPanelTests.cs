@@ -88,7 +88,7 @@ public static class WebXPanelTests
         var resp = Read(ws);
         Assert.Equal(Cip.RoomConnectResponse, resp.type, "the 0x26 sign-on is answered with 0x27 on a WebSocket");
         Assert.Equal(38, resp.payload.Length, "handle, mode, flags, extra flags and a 30-byte model");
-        Assert.Equal("0000", Convert.ToHexString(resp.payload, 0, 2), "handle 0, as in every packet sent");
+        Assert.Equal("000000", Convert.ToHexString(resp.payload, 0, 3), "handle 0 and result 0 (Virtual Panel reads 03 there as 'Connection timed out')");
         Assert.Eventually(() => p.Slot(1).FindDevice(0x03)!.Online, "panel online in the program");
 
         // The client asks for every join's state, then presses d1; the sample program answers with feedback d1 high.
@@ -214,5 +214,47 @@ public static class WebXPanelTests
         // A client that signs on the classic way over a WebSocket is answered the classic way.
         Write(ws, Cip.Frame(Cip.ConnectRequest, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x40, 0xFF, 0xFF, 0xF1, 0x01));
         Assert.Equal(Cip.ConnectResponse, Read(ws).type, "0x01 gets 0x02");
+    }
+
+    [Test]
+    public static void Sign_on_answers_are_tried_in_turn_until_a_client_carries_on()
+    {
+        var (p, cip, web) = Start();
+        using var _p = p; using var _c = cip; using var _w = web;
+        var d = p.Slot(1).RegisterDevice(0x03, "XPanel", "a");
+
+        // Two attempts that hang up straight after the answer, as Crestron Virtual Panel does with one it refuses.
+        var seen = new List<string>();
+        for (int i = 0; i < 2; i++)
+        {
+            using var ws = Dial(web);
+            Read(ws);
+            Write(ws, SignOn(0x03));
+            seen.Add(Convert.ToHexString(Read(ws).payload));
+            ws.Abort();
+            var n = i + 1;
+            Assert.Eventually(() => p.RecentLog(1).Count(e => e.Message.Contains("hung up after sign-on answer")) == n, $"attempt {n} noted as refused");
+        }
+        Assert.True(seen[0] != seen[1], "the second attempt got a different answer");
+        Assert.Equal("0000001F", seen[1], "the classic four bytes, second");
+
+        // The third answer gives handle 0001. This client carries on, so it is kept, and feedback carries that handle.
+        using var ok = Dial(web);
+        Read(ok);
+        Write(ok, SignOn(0x03));
+        var third = Read(ok);
+        Assert.Equal("0001", Convert.ToHexString(third.payload, 0, 2), "handle 0001");
+        Write(ok, Cip.Frame(Cip.Data, 0x00, 0x01, 0x02, 0x03, 0x00)); // update request
+        Assert.Eventually(() => p.RecentLog(1).Any(e => e.Message.Contains("accepted sign-on answer 3")), "accepted answer logged");
+        Assert.Equal("0001020316", Convert.ToHexString(Read(ok).payload), "end of update, with the handle");
+        d.SetFeedback(new JoinKey(SigKind.Digital, 5), true);
+        var fb = Read(ok);
+        Assert.Equal("0001", Convert.ToHexString(fb.payload, 0, 2), "feedback carries the handle");
+        Assert.Equal(new JoinKey(SigKind.Digital, 5), Cip.DecodeJoin(fb.type, fb.payload)!.Value.key, "and still decodes");
+
+        using var again = Dial(web);
+        Read(again);
+        Write(again, SignOn(0x03));
+        Assert.Equal(Convert.ToHexString(third.payload), Convert.ToHexString(Read(again).payload), "later clients get the accepted answer");
     }
 }

@@ -85,6 +85,32 @@ public sealed class CipServer : IDisposable
         Log($"unhandled data sub-type {sub:X2} in a {frameType:X2} frame (logged once): {Convert.ToHexString(raw)}");
     }
 
+    // What a processor puts in its 0x27 answer isn't known, and Crestron Virtual Panel drops the connection when it
+    // doesn't like it ("Connection refused!"), then tries again by itself after 5, 10, 20... seconds. So the candidates
+    // in Cip.RouterAnswers are tried in turn, one per attempt, and the one the client carries on after is kept.
+    private int _routerFailures;
+    private int _routerAccepted = -1;
+
+    internal int RouterAnswer => Volatile.Read(ref _routerAccepted) is >= 0 and var ok ? ok : Volatile.Read(ref _routerFailures) % Cip.RouterAnswers.Length;
+
+    /// <summary>A CH5 client carried on after a 0x27 answer (accepted), or hung up without another word.</summary>
+    internal void RouterAnswerResult(int index, bool accepted, int slot)
+    {
+        if (Volatile.Read(ref _routerAccepted) >= 0) return;
+        var n = Cip.RouterAnswers.Length;
+        if (accepted)
+        {
+            if (Interlocked.CompareExchange(ref _routerAccepted, index, -1) == -1)
+                Event(slot, $"the panel accepted sign-on answer {index + 1} of {n} ({Cip.RouterAnswers[index].Name}); using it from now on. Please report this line.");
+            return;
+        }
+        if (index != RouterAnswer) return; // an older connection ending late
+        Interlocked.Increment(ref _routerFailures);
+        var next = RouterAnswer;
+        Event(slot, $"the panel hung up after sign-on answer {index + 1} of {n} ({Cip.RouterAnswers[index].Name}); trying answer {next + 1} ({Cip.RouterAnswers[next].Name}) on its next attempt"
+            + (next == 0 ? ". Every answer has been tried without success: please report the panel's own log." : ""));
+    }
+
     /// <summary>Connection events are always logged.</summary>
     internal void Event(int slot, string message) => _processor.Slot(Math.Max(1, slot)).Log("Notice", "[Panel] " + message);
 
@@ -147,15 +173,35 @@ public static class Cip
     /// Crestron Virtual Panel's own log says so: sent the ordinary 0x02 it stops with "Event CONNECT_RESPONSE has no
     /// handler!". Layout as the community client siegeld/pycrestron describes it (its mock processor):
     ///   [handle:2] [mode] [flags] [extra flags:4] [model:30, NUL-padded]
-    /// The handle is 0, as in every packet OpenVP sends. The mode and flag values are that mock's, not a capture.
+    /// Which values a processor puts in it is not known. That mock's mode byte, 03, is wrong: Crestron Virtual Panel
+    /// reads it as "Connection refused! Connection timed out.", much as "FF FF 02" in a 0x02 means "not defined". So the
+    /// third byte looks like a result code, and <see cref="RouterAnswers"/> holds the candidates tried in turn.
     /// </summary>
-    public static byte[] RoomConnectOk()
+    public static byte[] RoomConnectOk(ushort handle = 0, byte mode = 0, byte flags = 0)
     {
         var p = new byte[2 + 1 + 1 + 4 + 30];
-        p[2] = 0x03;
+        p[0] = (byte)(handle >> 8); p[1] = (byte)handle; p[2] = mode; p[3] = flags;
         Encoding.ASCII.GetBytes("OpenVP").CopyTo(p, 8);
         return Frame(RoomConnectResponse, p);
     }
+
+    /// <summary>One way of answering a 0x26 sign-on on a WebSocket: the packet, and the handle the client is given in it.</summary>
+    public sealed record RouterAnswer(string Name, byte[] Packet, ushort Handle = 0);
+
+    /// <summary>
+    /// Candidate answers to a CH5 client's sign-on, tried in this order until one is accepted (see CipServer.RouterAnswer).
+    /// None is confirmed against a processor. Not here because Crestron Virtual Panel refuses them: 0x02 "00 00 00 1F"
+    /// ("Event CONNECT_RESPONSE has no handler!") and 0x27 with a third byte of 03 ("Connection timed out").
+    /// </summary>
+    public static readonly RouterAnswer[] RouterAnswers =
+    {
+        new("27, handle 0000, result 00, with a model name", RoomConnectOk()),
+        new("27 0000001F, the classic answer's four bytes", Frame(RoomConnectResponse, 0x00, 0x00, 0x00, 0x1F)),
+        new("27, handle 0001, result 00, with a model name", RoomConnectOk(handle: 1), 1),
+        new("27, handle 0000, mode 40 as the client asked, with a model name", RoomConnectOk(mode: 0x40)),
+        new("27 0001001F, the classic four bytes with handle 0001", Frame(RoomConnectResponse, 0x00, 0x01, 0x00, 0x1F), 1),
+        new("27, handle 0001, mode 40, with a model name", RoomConnectOk(handle: 1, mode: 0x40), 1),
+    };
 
     public static byte[] RoomConnectRefused() => Frame(RoomConnectResponse, 0xFF, 0xFF, 0x02);
 
@@ -430,6 +476,8 @@ internal sealed class CipSession
     private Task? _probe;
     private long _probeAt;       // Stopwatch timestamp of the heartbeat request in flight, 0 = none
     private int _strays;         // packets logged from this client before it registered
+    private int _routerAnswer = -1; // index of the 0x27 answer sent and not yet seen to be accepted
+    private ushort _handle;      // the handle given to the client in that answer; stamped on what we send it
     private const int MaxStraysLogged = 4;
 
     public CipSession(ICipTransport client, Processor processor, CipServer server)
@@ -472,6 +520,7 @@ internal sealed class CipSession
             {
                 _processor.DeviceUnregistered -= OnUnregistered;
                 _server.Event(_device?.Slot ?? 1, $"{remote} disconnected" + (_device != null ? $" (IP ID {_device.IpId:X2})" : ""));
+                if (Interlocked.Exchange(ref _routerAnswer, -1) is >= 0 and var unanswered) _server.RouterAnswerResult(unanswered, false, _device?.Slot ?? 1);
             }
             finally
             {
@@ -489,6 +538,10 @@ internal sealed class CipSession
 
     private void Handle(byte type, byte[] payload)
     {
+        // Anything a CH5 client says after its sign-on was answered, other than signing on again or leaving, means it took the answer.
+        if (_routerAnswer >= 0 && type is not (Cip.RoomConnectRequest or Cip.ConnectRequest or Cip.ConnectRequestAlt or Cip.Disconnect)
+            && Interlocked.Exchange(ref _routerAnswer, -1) is >= 0 and var taken)
+            _server.RouterAnswerResult(taken, true, _device?.Slot ?? 1);
         if (Cip.DecodeRoomConnect(type, payload) is { } rc)
         {
             if (rc.Hostname != null) _conn.Hostname ??= rc.Hostname;
@@ -583,7 +636,12 @@ internal sealed class CipSession
         if (roomId != null) _conn.SetDetail("Room ID requested", roomId);
         device.FeedbackChanged += OnFeedback;
         device.AttachConnection(_conn);
-        Send(routerAnswer ? Cip.RoomConnectOk() : Cip.ConnectOk(ipId));
+        if (!routerAnswer) { Send(Cip.ConnectOk(ipId)); return; }
+        var index = _server.RouterAnswer;
+        var answer = Cip.RouterAnswers[index];
+        _handle = answer.Handle;
+        Send(answer.Packet);
+        Volatile.Write(ref _routerAnswer, index);
     }
 
     private async Task ProbeLoop(CancellationToken ct)
@@ -625,6 +683,12 @@ internal sealed class CipSession
     /// <summary>Queue a packet; never blocks the caller (often the slot thread).</summary>
     private void Send(byte[] packet)
     {
+        // Join data and heartbeats start with the connection's handle. It is 0 unless the sign-on answer gave another.
+        if (_handle != 0 && packet.Length >= 5 && packet[0] is Cip.Data or Cip.SerialData or Cip.HeartbeatRequest or Cip.HeartbeatResponse)
+        {
+            packet[3] = (byte)(_handle >> 8);
+            packet[4] = (byte)_handle;
+        }
         if (Interlocked.Increment(ref _queued) <= Volatile.Read(ref _queueLimit))
         {
             if (_outbox.Writer.TryWrite(packet)) return;
