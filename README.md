@@ -37,7 +37,7 @@ Download the latest from the [Releases](https://github.com/qureshiumar1983-eng/o
 
 ### Linux and macOS packages
 
-The **Packages** workflow (`.github/workflows/packages.yml`) builds these when a tag like `v0.2.0` is pushed (they are attached to that tag's release, not marked *Latest*) or when started by hand under Actions > Packages (they are kept as artifacts of the run). Everything is self-contained: no .NET install needed.
+The **Packages** workflow (`.github/workflows/packages.yml`) builds these on every push to the `production` branch or when started by hand under Actions > Packages (they are kept as artifacts of the run), and when a tag like `v0.2.0` is pushed (they are attached to that tag's release, not marked *Latest*). Pushes to `main` do not build anything; merge `main` into `production` to build. The **Windows app** workflow also runs on every push to `production` and publishes `OpenVP.exe` as the *Latest* release. Everything is self-contained: no .NET install needed.
 
 | What | Files |
 | --- | --- |

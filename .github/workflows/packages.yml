@@ -4,12 +4,14 @@ name: Packages
 #     - linux-x64 and linux-arm64: a .tar.gz, a .deb and an .rpm (systemd service, dedicated openvp user, data in /var/lib/openvp)
 #     - osx-x64 and osx-arm64: a .tar.gz
 #   Desktop app (Electron, with the server inside): Linux x64 AppImage and .deb, macOS x64 and arm64 .dmg
-# Runs when a tag like v0.2.0 is pushed (the packages are attached to that tag's GitHub release) and when started by hand
-# (Actions > Packages > Run workflow: the packages are kept as artifacts of the run, and nothing is released).
+# Runs by itself on every push to the production branch and when started by hand (Actions > Packages > Run workflow): the
+# packages are kept as artifacts of the run, and nothing is released. Also runs when a tag like v0.2.0 is pushed: the packages
+# are then attached to that tag's GitHub release. It does not run on pushes to main.
 # macOS signing and notarization happen only if the signing secrets named in the env block of the desktop-macos job (and in the
 # README section "Linux and macOS packages") are set; without them the .dmg is built unsigned, which is fine for testing.
 on:
   push:
+    branches: [production]
     tags: ['v*']
   workflow_dispatch:
     inputs:

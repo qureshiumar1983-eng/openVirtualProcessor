@@ -1,17 +1,20 @@
 name: Windows app
 # Builds OpenVP.exe, the Electron desktop app (portable: one file, no install, no .NET needed), starts it to
 # check the console loads, and publishes it as a GitHub release.
-# It runs ONLY when started by hand (Actions > Windows app > Run workflow), because Windows runners bill
-# minutes at twice the Linux rate and building on every push was using up the Actions budget.
-#   - Run it on main: makes a release numbered from desktop/package.json's version plus the run number
-#     (e.g. v0.1.15), marked Latest. Fill in "release" to choose the version yourself.
-#   - Run it on any other branch: just builds and tests it (download from the run's "OpenVP-windows" artifact),
-#     unless you fill in "release".
+# It runs by itself on every push to the production branch (merge main into production to ship), and can also be
+# started by hand (Actions > Windows app > Run workflow). It does not run on pushes to main or other branches,
+# because Windows runners bill minutes at twice the Linux rate.
+#   - On production (a push, or run by hand there): makes a release numbered from desktop/package.json's version
+#     plus the run number (e.g. v0.1.15), marked Latest. When run by hand, fill in "release" to choose the version.
+#   - Run by hand on any other branch (main included): just builds and tests it (download from the run's
+#     "OpenVP-windows" artifact), unless you fill in "release".
 on:
+  push:
+    branches: [production]
   workflow_dispatch:
     inputs:
       release:
-        description: Make a release with this version (e.g. v0.2.0). Leave empty to use the automatic number on main, or no release on other branches.
+        description: Make a release with this version (e.g. v0.2.0). Leave empty to use the automatic number on production, or no release on other branches.
         required: false
         default: ''
 concurrency:
@@ -73,8 +76,8 @@ jobs:
         with:
           name: OpenVP-windows
           path: desktop/dist/OpenVP.exe
-      - name: Release (run on main, or a version was given)
-        if: github.ref == 'refs/heads/main' || inputs.release != ''
+      - name: Release (on production, or a version was given)
+        if: github.ref == 'refs/heads/production' || inputs.release != ''
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
