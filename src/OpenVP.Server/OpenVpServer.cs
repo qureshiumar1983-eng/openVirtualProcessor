@@ -107,6 +107,33 @@ public static class OpenVpServer
             catch (Exception e) { Console.WriteLine($"CIP listener not started: {e.Message}"); }
         }
 
+        // CH5 clients (Crestron Virtual Panel, the HTML5 Web XPanel) speak the same CIP inside a secure WebSocket on 49200,
+        // and may first ask for a token over HTTPS on 443. Both are best effort: a port that can't be opened is only reported.
+        var webXPanels = new List<WebXPanelServer>();
+        if (cip != null && cfg.GetValue("WebXPanelEnabled", true))
+        {
+            var cipServer = cip;
+            var xpCert = new Lazy<System.Security.Cryptography.X509Certificates.X509Certificate2>(() => WebXPanelCertificate(httpsMgr, dataDir));
+            var consolePorts = (baseUrls + ";" + string.Join(";", extraUrls)).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(u => Uri.TryCreate(u.Replace("://*", "://localhost").Replace("://+", "://localhost"), UriKind.Absolute, out var uri) ? uri.Port : 0).ToHashSet();
+            void Listen(string setting, int fallback, string what)
+            {
+                var port = cfg.GetValue(setting, fallback);
+                if (port <= 0 || webXPanels.Any(w => w.Port == port)) return;
+                if (consolePorts.Contains(port)) { Console.WriteLine($"{what} not started: port {port} is used by the console (OpenVP:{setting})."); return; }
+                try
+                {
+                    var w = new WebXPanelServer(cipServer, port, () => xpCert.Value);
+                    w.Start();
+                    webXPanels.Add(w);
+                    Console.WriteLine($"{what} (experimental) on port {w.Port}");
+                }
+                catch (Exception e) { Console.WriteLine($"{what} not started on port {port}: {e.Message}"); }
+            }
+            Listen("WebXPanelPort", 49200, "CH5 panel listener (CIP over WebSocket)");
+            Listen("WebXPanelTokenPort", 443, "CH5 panel token listener");
+        }
+
         var auth = ApiAuth.FromConfig(cfg, processor.DataDirectory);
         if (!auth.Enabled)
             Console.WriteLine("WARNING: access key is OFF (OpenVP:ApiKey=off). Anyone who can reach this port can upload and run code.");
@@ -1808,7 +1835,7 @@ public static class OpenVpServer
         }, (c, a, t, sl) => Note(c, a, t, sl));
 
         app.Lifetime.ApplicationStarted.Register(() => { try { integrations.Start(); } catch (Exception e) { Console.WriteLine("Integrations not started: " + e.Message); } });
-        app.Lifetime.ApplicationStopping.Register(() => { scheduler.Dispose(); backups.Dispose(); git.Dispose(); alerts?.Dispose(); integrations.Dispose(); telnet?.Dispose(); ssh?.Dispose(); mdns?.Dispose(); for (var i = 1; i <= watches.Length; i++) StopWatching(i); tunnel?.Dispose(); cip?.Dispose(); crash.Dispose(); trashTimer.Dispose(); lockTimer.Dispose(); acmeTimer.Dispose(); tokens.Flush(); recordings.Dispose(); eisc.Dispose(); plugins.Dispose(); processor.Dispose(); });
+        app.Lifetime.ApplicationStopping.Register(() => { scheduler.Dispose(); backups.Dispose(); git.Dispose(); alerts?.Dispose(); integrations.Dispose(); telnet?.Dispose(); ssh?.Dispose(); mdns?.Dispose(); for (var i = 1; i <= watches.Length; i++) StopWatching(i); tunnel?.Dispose(); foreach (var w in webXPanels) w.Dispose(); cip?.Dispose(); crash.Dispose(); trashTimer.Dispose(); lockTimer.Dispose(); acmeTimer.Dispose(); tokens.Flush(); recordings.Dispose(); eisc.Dispose(); plugins.Dispose(); processor.Dispose(); });
         // If the process ends some other way (not a clean stop), still take cloudflared down with it.
         AppDomain.CurrentDomain.ProcessExit += (_, _) => tunnel?.Stop();
         return app;
@@ -1844,6 +1871,33 @@ public static class OpenVpServer
         try { var l = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Any, port); l.Start(); l.Stop(); }
         catch (System.Net.Sockets.SocketException) { return $"port {port} is already in use. Choose another HTTPS port."; }
         return null;
+    }
+
+    /// <summary>
+    /// The certificate CH5 panels are shown on the WebSocket port: the console's own when it has one, otherwise a
+    /// self-signed one kept in <c>data/security/certs/webxpanel.pfx</c> so it stays the same from one start to the next.
+    /// </summary>
+    private static System.Security.Cryptography.X509Certificates.X509Certificate2 WebXPanelCertificate(HttpsManager https, string dataDir)
+    {
+        if (https.Holder.Current is { } own) return own;
+        var path = Path.Combine(dataDir, "security", "certs", "webxpanel.pfx");
+        try
+        {
+            if (File.Exists(path) && CertificateTools.FromPfx(File.ReadAllBytes(path), "") is { } kept && kept.NotAfter > DateTime.Now.AddDays(7)) return kept;
+        }
+        catch { /* unreadable or damaged: make a new one */ }
+        var (dns, ips) = CertificateTools.LocalNames();
+        var cert = CertificateTools.CreateSelfSigned(dns, ips);
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            var tmp = path + ".tmp";
+            File.WriteAllBytes(tmp, CertificateTools.ToPfx(cert, ""));
+            if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(tmp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            File.Move(tmp, path, true);
+        }
+        catch { /* not saved: a new one is made at the next start */ }
+        return cert;
     }
 
     /// <summary>Null if 127.0.0.1:<paramref name="port"/> can be used for the tunnel listener, else why not.</summary>

@@ -55,10 +55,19 @@ public sealed class CipServer : IDisposable
             try { client = await _listener.AcceptTcpClientAsync(_cts.Token); }
             catch { break; }
             client.NoDelay = true; // small feedback packets should go out now, not wait for Nagle to coalesce them
-            var session = new CipSession(client, _processor, this);
-            lock (_sessions) _sessions.Add(session);
-            _ = session.RunAsync(_cts.Token).ContinueWith(_ => { lock (_sessions) _sessions.Remove(session); });
+            _ = Run(new TcpCipTransport(client));
         }
+    }
+
+    /// <summary>
+    /// Serve one client over a transport that is already open. The TCP listener calls this for each connection;
+    /// <see cref="WebXPanelServer"/> calls it for each WebSocket, so both kinds of client are the same session.
+    /// </summary>
+    internal Task Run(ICipTransport transport)
+    {
+        var session = new CipSession(transport, _processor, this);
+        lock (_sessions) _sessions.Add(session);
+        return session.RunAsync(_cts.Token).ContinueWith(_ => { lock (_sessions) _sessions.Remove(session); });
     }
 
     internal void Log(string message)
@@ -104,6 +113,8 @@ public static class Cip
     public const byte SubDigitalAlt = 0x27;    // digital press as some clients send it
     public const byte SubUpdateRequest = 0x03;
     public const byte SubAnalog = 0x14;
+    public const byte SubAnalogShort = 0x01;   // analog as CH5 / WebXPanel clients may send it: 1- or 2-byte join, 1- or 2-byte value
+    public const byte SubSerial = 0x15;        // serial as CH5 / WebXPanel clients send it, inside a 0x05 frame: [join-1:2 BE][flags][UTF-8 text]
     public const byte SubSerialMarker = 0x34;
     public const byte SubSmartObject = 0x38;   // Smart Graphics: [object id:4 BE] then nested sub-packets (digital, analog)
     public const byte SubSmartObjectExt = 0x39; // same, inside an extended (0x12) frame, where serials travel
@@ -282,6 +293,16 @@ public static class Cip
                     for (int k = 0; k + 3 < body.Length; k += 4)
                         joins.Add((new JoinKey(SigKind.Analog, (uint)((body[k] << 8) | body[k + 1]) + 1, so), (ushort)((body[k + 2] << 8) | body[k + 3])));
                     break;
+                case SubAnalogShort:
+                    // Layouts as community WebXPanel clients describe them (siegeld/pycrestron protocol.py): the size says which.
+                    if (body.Length == 2) joins.Add((new JoinKey(SigKind.Analog, body[0] + 1u, so), (ushort)body[1]));
+                    else if (body.Length == 3) joins.Add((new JoinKey(SigKind.Analog, body[0] + 1u, so), (ushort)((body[1] << 8) | body[2])));
+                    else for (int k = 0; k + 3 < body.Length; k += 4)
+                        joins.Add((new JoinKey(SigKind.Analog, (uint)((body[k] << 8) | body[k + 1]) + 1, so), (ushort)((body[k + 2] << 8) | body[k + 3])));
+                    break;
+                case SubSerial when body.Length >= 3:
+                    joins.Add((new JoinKey(SigKind.Serial, (uint)((body[0] << 8) | body[1]) + 1, so), Utf8OrLatin1(body[3..])));
+                    break;
                 case SubSerialMarker when body.Length >= 3:
                     // Flag 0x04 is UTF-16LE. Text split over several messages (start/end flags) isn't reassembled.
                     var raw = body[3..];
@@ -305,6 +326,14 @@ public static class Cip
                     break;
             }
         }
+    }
+
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+
+    private static string Utf8OrLatin1(ReadOnlySpan<byte> raw)
+    {
+        try { return StrictUtf8.GetString(raw); }
+        catch (ArgumentException) { return Encoding.Latin1.GetString(raw); }
     }
 
     /// <summary>
@@ -362,7 +391,7 @@ public static class Cip
 
 internal sealed class CipSession
 {
-    private readonly TcpClient _client;
+    private readonly ICipTransport _client;
     private readonly Processor _processor;
     private readonly CipServer _server;
     // Packets wait here for the sender, which writes everything pending in one go. Bounded, so a client
@@ -375,7 +404,6 @@ internal sealed class CipSession
     private readonly CancellationTokenSource _sendCts = new(); // cancelled when the session ends, to free a write stuck on a dead peer
     private int _queued;                     // packets in _outbox
     private int _queueLimit = MaxQueuedPackets;
-    private NetworkStream? _stream;
     private JoinDevice? _device;
     private DeviceConnection _conn = null!;
     private DateTimeOffset? _lastHeartbeat;
@@ -385,7 +413,7 @@ internal sealed class CipSession
     private int _strays;         // packets logged from this client before it registered
     private const int MaxStraysLogged = 4;
 
-    public CipSession(TcpClient client, Processor processor, CipServer server)
+    public CipSession(ICipTransport client, Processor processor, CipServer server)
     {
         _client = client;
         _processor = processor;
@@ -395,14 +423,14 @@ internal sealed class CipSession
     public async Task RunAsync(CancellationToken ct)
     {
         using var _ = _client;
-        _stream = _client.GetStream();
-        var remote = _client.Client.RemoteEndPoint?.ToString() ?? "?";
-        var ep = _client.Client.RemoteEndPoint as IPEndPoint;
+        var ep = _client.Remote;
+        var remote = ep?.ToString() ?? "?";
         var addr = ep?.Address is { IsIPv4MappedToIPv6: true } a4 ? a4.MapToIPv4() : ep?.Address;
         _conn = new DeviceConnection("CIP", addr?.ToString(), ep?.Port ?? 0) { QueueDepth = () => Volatile.Read(ref _queued) };
-        _conn.SetDetail("Local port", ((IPEndPoint?)_client.Client.LocalEndPoint)?.Port.ToString());
+        _conn.SetDetail("Local port", _client.LocalPort.ToString());
+        if (_client.Carrier is { } carrier) _conn.SetDetail("Carried over", carrier);
         ClientIdentifier.Begin(_conn); // hostname, model, firmware: in the background, ready by the time anyone looks
-        _server.Event(1, $"connection from {remote}");
+        _server.Event(1, $"connection from {remote}" + (_client.Carrier is { } over ? $" over {over}" : ""));
         _processor.DeviceUnregistered += OnUnregistered;
         var sender = SendLoop(_sendCts.Token);
         try
@@ -410,19 +438,15 @@ internal sealed class CipSession
             _whoAreYouAt = System.Diagnostics.Stopwatch.GetTimestamp();
             Send(Cip.WhoAreYouPacket());
             if (_server.ProbeHeartbeats) _probe = ProbeLoop(_sendCts.Token);
-            var header = new byte[3];
             while (!ct.IsCancellationRequested)
             {
-                if (!await ReadExactly(header, ct)) break;
-                var len = (header[1] << 8) | header[2];
-                var payload = new byte[len];
-                if (len > 0 && !await ReadExactly(payload, ct)) break;
-                if (_server.LogPackets) _server.Log($"<- {header[0]:X2} {Convert.ToHexString(payload)}"); // hex only when logging
-                _conn.RecordIn(3 + len);
-                Handle(header[0], payload);
+                if (await _client.ReadPacketAsync(ct) is not var (type, payload)) break;
+                if (_server.LogPackets) _server.Log($"<- {type:X2} {Convert.ToHexString(payload)}"); // hex only when logging
+                _conn.RecordIn(3 + payload.Length);
+                Handle(type, payload);
             }
         }
-        catch (Exception e) when (e is IOException or SocketException or OperationCanceledException or ObjectDisposedException) { }
+        catch (Exception e) when (e is IOException or SocketException or OperationCanceledException or ObjectDisposedException or System.Net.WebSockets.WebSocketException) { }
         finally
         {
             try
@@ -588,7 +612,7 @@ internal sealed class CipSession
         }
         Interlocked.Decrement(ref _queued);
         if (_outbox.Reader.Completion.IsCompleted) return; // already shutting down
-        _server.Event(_device?.Slot ?? 1, $"{_client.Client?.RemoteEndPoint} is not reading fast enough ({_queueLimit} packets queued); disconnecting it");
+        _server.Event(_device?.Slot ?? 1, $"{_client.Remote} is not reading fast enough ({_queueLimit} packets queued); disconnecting it");
         _client.Close();
     }
 
@@ -602,17 +626,65 @@ internal sealed class CipSession
             while (await reader.WaitToReadAsync(ct))
             {
                 buf.Clear();
-                while (buf.WrittenCount < MaxWriteBytes && reader.TryRead(out var packet))
+                // A WebSocket client reads one CIP packet per message, so there each packet is its own write.
+                while (buf.WrittenCount < MaxWriteBytes && (buf.WrittenCount == 0 || !_client.PacketPerWrite) && reader.TryRead(out var packet))
                 {
                     Interlocked.Decrement(ref _queued);
                     if (_server.LogPackets) _server.Log($"-> {Convert.ToHexString(packet)}");
                     _conn.RecordOut(packet.Length);
                     buf.Write(packet);
                 }
-                await _stream!.WriteAsync(buf.WrittenMemory, ct);
+                await _client.WriteAsync(buf.WrittenMemory, ct);
             }
         }
         catch (Exception) { _client.Close(); } // dead peer: the read loop notices and cleans up
+    }
+}
+
+/// <summary>
+/// What carries a CIP session's packets: a TCP connection, or a WebSocket (<see cref="WebXPanelServer"/>).
+/// One read and one write may be in flight at a time.
+/// </summary>
+internal interface ICipTransport : IDisposable
+{
+    IPEndPoint? Remote { get; }
+    int LocalPort { get; }
+    /// <summary>What CIP travels inside, for the log and the client's details; null for plain TCP.</summary>
+    string? Carrier { get; }
+    /// <summary>True if each CIP packet must be written on its own (a WebSocket message per packet).</summary>
+    bool PacketPerWrite { get; }
+    /// <summary>The next CIP packet (its type byte and its payload), or null when the client has gone.</summary>
+    ValueTask<(byte type, byte[] payload)?> ReadPacketAsync(CancellationToken ct);
+    ValueTask WriteAsync(ReadOnlyMemory<byte> data, CancellationToken ct);
+    /// <summary>Drop the connection now; pending reads and writes fail. Safe to call more than once and from any thread.</summary>
+    void Close();
+}
+
+internal sealed class TcpCipTransport : ICipTransport
+{
+    private readonly TcpClient _client;
+    private readonly NetworkStream _stream;
+
+    public TcpCipTransport(TcpClient client)
+    {
+        _client = client;
+        _stream = client.GetStream();
+        Remote = client.Client.RemoteEndPoint as IPEndPoint;
+        LocalPort = (client.Client.LocalEndPoint as IPEndPoint)?.Port ?? 0;
+    }
+
+    public IPEndPoint? Remote { get; }
+    public int LocalPort { get; }
+    public string? Carrier => null;
+    public bool PacketPerWrite => false;
+    private readonly byte[] _header = new byte[3];
+
+    public async ValueTask<(byte type, byte[] payload)?> ReadPacketAsync(CancellationToken ct)
+    {
+        if (!await ReadExactly(_header, ct)) return null;
+        var payload = new byte[(_header[1] << 8) | _header[2]];
+        if (payload.Length > 0 && !await ReadExactly(payload, ct)) return null;
+        return (_header[0], payload);
     }
 
     private async Task<bool> ReadExactly(byte[] buffer, CancellationToken ct)
@@ -620,10 +692,14 @@ internal sealed class CipSession
         var read = 0;
         while (read < buffer.Length)
         {
-            var n = await _stream!.ReadAsync(buffer.AsMemory(read), ct);
+            var n = await _stream.ReadAsync(buffer.AsMemory(read), ct);
             if (n == 0) return false;
             read += n;
         }
         return true;
     }
+
+    public ValueTask WriteAsync(ReadOnlyMemory<byte> data, CancellationToken ct) => _stream.WriteAsync(data, ct);
+    public void Close() { try { _client.Close(); } catch { } }
+    public void Dispose() => Close();
 }

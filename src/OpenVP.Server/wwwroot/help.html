@@ -126,7 +126,7 @@
     <dt>The address · <span class="b">Copy</span></dt><dd>The public address while the tunnel is on. While it is on, new share links use it. The address changes each time the tunnel starts, so links you copied earlier need the new address.</dd>
     <dt id="stop"><span class="b">Stop</span></dt><dd>Turns the tunnel off and kills <code>cloudflared</code>. Everyone outside is cut off at once.</dd>
     <dt><span class="b">Download cloudflared and start</span></dt><dd>Shown the first time, if <code>cloudflared</code> isn't installed. OpenVP downloads Cloudflare's official build from github.com/cloudflare/cloudflared into its data folder (<code>tools</code>), only after you click this. <span class="b">Cancel</span> downloads nothing. If you'd rather install <code>cloudflared</code> yourself, put it on the PATH or set <code>OpenVP:CloudflaredPath</code>.</dd>
-    <dt>Not for XPanel</dt><dd>Classic VT Pro-e XPanels and the Crestron apps connect over CIP (port 41794), which can't go through the tunnel. Browser panels and CH5 projects can.</dd>
+    <dt>Not for XPanel</dt><dd>Classic VT Pro-e XPanels and the Crestron apps connect over CIP (port 41794), and Crestron Virtual Panel over a secure WebSocket on port 49200; neither can go through the tunnel. Browser panels and CH5 projects can.</dd>
   </dl>
 
   <h3 id="status-board">Status board</h3>
