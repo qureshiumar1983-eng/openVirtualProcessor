@@ -505,6 +505,18 @@ public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
         finally { _solving = false; _dispOn = false; if (_pending.Count == 0) _metaCount = 0; }
     }
 
+    /// <summary>An analog driven to the value it already has: only the nodes that take repeats (SIMPL+) hear it.</summary>
+    private void RepeatAnalog(ushort v, int first, int end)
+    {
+        for (int e = first; e < end; e++)
+        {
+            var edge = _edges[e];
+            if (!edge.Node.TakesRepeatedAnalogs) continue;
+            try { edge.Node.OnAnalog(edge.Pin, v, v); }
+            catch (Exception ex) { _slot.Log("Error", $"{edge.Node.Symbol}: {ex.Message}"); }
+        }
+    }
+
     private void SolveLoop<TMode>() where TMode : struct, ITraceMode
     {
         {
@@ -552,7 +564,7 @@ public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
                     {
                         var v = (ushort)change.Value;
                         var old = _ana[h];
-                        if (old == v) continue;
+                        if (old == v) { RepeatAnalog(v, first, end); continue; }
                         _ana[h] = v;
                         if (TMode.On) { DispatchTraced(h, change, first, end, SigKind.Analog, oa: old, na: v); break; }
                         for (int e = first; e < end; e++)
@@ -703,6 +715,11 @@ public sealed partial class SimplRuntime : IProgramRuntime, IProgramGraphSource
         public virtual bool WatchesOutputs => false;
         /// <summary>Whether a pin wired to the constant 1 gets a rising edge at start-up.</summary>
         public virtual bool WantsStartEdge => true;
+        /// <summary>Whether an analog driven again with the value it already has still reaches this node. On a processor
+        /// a SIMPL+ CHANGE runs every time its analog input is driven, even to the same value (an Analog Initialize
+        /// triggered twice sends its level twice). Only SIMPL+ nodes say yes: logic symbols keep settling on equal
+        /// values, so feedback loops between them can't start cycling.</summary>
+        public virtual bool TakesRepeatedAnalogs => false;
         public virtual void Start() { }
         public abstract void OnInput(int pin, object oldValue, object newValue);
         // Typed entry points the engine calls. The defaults box (digital uses the shared boxes) and call OnInput.

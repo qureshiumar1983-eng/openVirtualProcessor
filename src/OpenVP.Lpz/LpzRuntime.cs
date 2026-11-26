@@ -459,7 +459,7 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource, I
                     {
                         var v = (ushort)change.Value;
                         var old = _ana[s];
-                        if (old == v) continue;
+                        if (old == v) { RepeatAnalog(s, v, first, end); continue; }
                         _ana[s] = v;
                         if (TMode.On) { DispatchTraced(s, change, first, end, SigKind.Analog, oa: old, na: v); break; }
                         for (int e = first; e < end; e++)
@@ -487,6 +487,18 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource, I
                     }
                 }
             }
+        }
+    }
+
+    /// <summary>An analog driven to the value it already has: only the nodes that take repeats (SIMPL+) hear it.</summary>
+    private void RepeatAnalog(int s, ushort v, int first, int end)
+    {
+        for (int e = first; e < end; e++)
+        {
+            var edge = _edges[e];
+            if (!edge.Node.TakesRepeatedAnalogs) continue;
+            try { edge.Node.OnAnalog(edge.Pin, v, v); }
+            catch (Exception ex) { _slot.Log("Error", $"{edge.Node.Symbol}: {ex.Message}"); }
         }
     }
 
@@ -704,6 +716,11 @@ public sealed partial class LpzRuntime : IProgramRuntime, IProgramGraphSource, I
         /// <summary>Whether this node wants a rising edge on an input pin wired to the constant 1 at start-up
         /// (as a processor gives it). Nodes that already act on a high input in their Start say no.</summary>
         public virtual bool WantsStartEdge(int pin) => false;
+        /// <summary>Whether an analog driven again with the value it already has still reaches this node. On a processor
+        /// a SIMPL+ CHANGE runs every time its analog input is driven, even to the same value (an Analog Initialize
+        /// triggered twice sends its level twice). Only SIMPL+ nodes say yes: logic symbols keep settling on equal
+        /// values, so feedback loops between them can't start cycling.</summary>
+        public virtual bool TakesRepeatedAnalogs => false;
         public virtual void Start() { }
         public virtual void Stop() { }
         /// <summary>A change on one of this node's input pins, boxed. Nodes that don't need the typed

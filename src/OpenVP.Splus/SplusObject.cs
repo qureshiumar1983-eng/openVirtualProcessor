@@ -521,6 +521,21 @@ namespace Crestron.Logos.SplusObjects
 
         void ISplusModule.Preset(SigKind kind, uint id, object value) => Apply(kind, id, value, fire: false);
 
+        void ISplusModule.PresetFromZero(SigKind kind, uint id, object value)
+        {
+            object zero = kind switch { SigKind.Digital => 0, SigKind.Analog => (ushort)0, _ => "" };
+            lock (_eventGate)
+            {
+                Apply(kind, id, zero, fire: false);
+                Apply(kind, id, value, fire: false);
+                var now = Raw(kind, id);
+                if (now == null || Equals(now, zero)) return;
+                // Held until StartMain opens the window and Main lets go, like a change that arrives during start-up.
+                if (!_pendingInputs.Exists(x => x.Kind == kind && x.Id == id))
+                    _pendingInputs.Add(new PendingInput { Kind = kind, Id = id, Baseline = zero });
+            }
+        }
+
         // ------------------------------------------------------------------ input events during start-up
         //
         // On a processor a module's event handlers don't run until its Function Main has finished or has

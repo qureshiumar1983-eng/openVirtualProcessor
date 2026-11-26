@@ -69,6 +69,7 @@ internal sealed class SplusNode : LpzRuntime.Node
     public override SigKind? InputKind(int pin) => _host.InputKind(pin);
     public override SigKind? OutputKind(int pin) => _host.OutputKind(pin);
     public override bool WantsStartEdge(int pin) => _host.WantsStartEdge(pin);
+    public override bool TakesRepeatedAnalogs => true;
     public override void Start() => _host.Start();
     public override void OnInput(int pin, object o, object n) => _host.OnInput(pin, n);
     public override void Stop() => _host.Stop();

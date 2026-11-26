@@ -29,6 +29,10 @@ public interface ISplusModule
     void SetParameter(uint id, object value);
     /// <summary>Set an input's value without running events (initial values).</summary>
     void Preset(SigKind kind, uint id, object value);
+    /// <summary>Set an input's starting value as a change from 0 (or empty): on a processor every signal starts there, so a
+    /// value the logic already holds when the module starts runs the input's PUSH/CHANGE once the module lets events in.
+    /// Call before <see cref="StartMain"/>.</summary>
+    void PresetFromZero(SigKind kind, uint id, object value) => Preset(kind, id, value);
     /// <summary>Set an input and run its events.</summary>
     void Input(SigKind kind, uint id, object value);
     void Initialize();

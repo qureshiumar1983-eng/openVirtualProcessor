@@ -71,6 +71,49 @@ public static class SplusTests
     }
 
     [Test]
+    public static void Splus_change_runs_when_an_analog_is_driven_again_with_the_same_value()
+    {
+        // On a processor CHANGE runs every time an analog input is driven, even to the value it has (an Analog
+        // Initialize triggered twice sends its level twice; a "Config - Serial" module re-looks-up its file on it).
+        using var p = new Processor(Paths.TempData());
+        p.AddLoader(new LpzLoader());
+        p.LoadProgram(1, BuildProgram());
+        var panel = p.Slot(1).FindDevice(4)!;
+        Assert.Eventually(() => (string)panel.GetFeedback(S(1)) == "ready", "module started");
+
+        panel.ReceiveInput(A(1), 21);
+        Assert.Eventually(() => (ushort)panel.GetFeedback(A(1)) == 42, "CHANGE LEVEL ran");
+        Assert.True(p.Slot(1).ForceSignal($"#{Doubled}", (ushort)0), "force DOUBLED");
+        Assert.Eventually(() => (ushort)panel.GetFeedback(A(1)) == 0, "DOUBLED forced to 0");
+
+        Assert.True(p.Slot(1).ForceSignal($"#{Level}", (ushort)21), "drive LEVEL with the level it already has");
+        Assert.Eventually(() => (ushort)panel.GetFeedback(A(1)) == 42, "CHANGE LEVEL ran again for the same value");
+    }
+
+    [Test]
+    public static void Splus_inputs_already_set_when_the_module_starts_count_as_changes_from_zero()
+    {
+        var m = new OrderModule();
+        m.MainBody = o => { o.Log($"main level={o.Level.UshortValue}"); o.WaitForInitializationComplete(); };
+        var host = (ISplusModule)m;
+        try
+        {
+            host.Initialize();
+            host.PresetFromZero(SigKind.Analog, 0, (ushort)7);   // set by the logic before the module started
+            host.PresetFromZero(SigKind.Digital, 0, true);
+            host.PresetFromZero(SigKind.Digital, 1, false);      // low, as at power-up: no event
+            host.StartMain();
+            Assert.Eventually(() => m.Seen().Length == 3, "Main ran and the starting values were delivered");
+            var seen = m.Seen();
+            Assert.Equal("main level=7", seen[0], "Main reads the starting value");
+            Assert.Equal("level 7|press push", string.Join("|", seen.Skip(1).OrderBy(x => x)), "one CHANGE for the level, one PUSH for the high digital");
+            Thread.Sleep(200);
+            Assert.Equal(3, m.Seen().Length, "nothing for the input that started low");
+        }
+        finally { host.Stop(); }
+    }
+
+    [Test]
     public static void Splus_module_keeps_working_while_stepping()
     {
         using var p = new Processor(Paths.TempData());

@@ -322,6 +322,7 @@ public sealed partial class SimplRuntime
         public override SigKind? OutputKind(int pin) => Host.OutputKind(pin);
         // Digital inputs get the start-up edge of the constant 1, as in compiled programs (SplusModuleHost.Start
         // presets them low for that).
+        public override bool TakesRepeatedAnalogs => true;
         public override bool WantsStartEdge => true;
         public override void Start() => Host.Start();
         public override void OnInput(int pin, object o, object n)

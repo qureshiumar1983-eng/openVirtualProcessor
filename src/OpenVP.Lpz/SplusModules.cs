@@ -147,9 +147,15 @@ public sealed class SplusModuleHost : ISplusHost
     {
         // A digital input tied to the constant 1 starts low here: the runtime's start-up edge on "1" then raises
         // it, so the module gets the PUSH/CHANGE a processor gives an input held high by a typed 1.
+        // Any other input the logic has already set (a level from an Analog Initialize, a digital held high, a
+        // serial sent at start) counts as a change from 0, as on a processor where every signal starts at 0: its
+        // PUSH/CHANGE runs once Main lets events in.
         for (int pin = 1; pin <= _sym.Inputs.Length; pin++)
             if (InputOf(pin) is var (kind, id))
-                _module.Preset(kind, id, _sym.Inputs[pin - 1] == _one && kind == SigKind.Digital ? SigValue.False : _engine.Value(_sym.Inputs[pin - 1]));
+            {
+                if (_sym.Inputs[pin - 1] == _one && kind == SigKind.Digital) _module.Preset(kind, id, SigValue.False);
+                else _module.PresetFromZero(kind, id, _engine.Value(_sym.Inputs[pin - 1]));
+            }
         _module.StartMain();
     }
 
