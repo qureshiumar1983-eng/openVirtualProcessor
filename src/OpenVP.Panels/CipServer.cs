@@ -107,7 +107,8 @@ public static class Cip
     public const byte HeartbeatResponse = 0x0E;
     public const byte WhoAreYou = 0x0F;        // processor -> panel right after TCP connect
     public const byte SerialData = 0x12;
-    public const byte RoomConnectRequest = 0x26;  // panel -> processor: sign-on that also names a Room ID; answered like 0x01
+    public const byte RoomConnectRequest = 0x26;  // panel -> processor: sign-on that also names a Room ID
+    public const byte RoomConnectResponse = 0x27; // processor -> panel: its answer for CH5 clients on a WebSocket; an XPanel on TCP wants 0x02
 
     public const byte SubDigital = 0x00;
     public const byte SubDigitalAlt = 0x27;    // digital press as some clients send it
@@ -140,6 +141,23 @@ public static class Cip
     public static byte[] ConnectOk(uint ipId) => Frame(ConnectResponse, 0x00, 0x00, 0x00, 0x1F);
 
     public static byte[] ConnectRefused() => Frame(ConnectResponse, 0xFF, 0xFF, 0x02);
+
+    /// <summary>
+    /// The answer a CH5 client on a WebSocket (Crestron Virtual Panel, the HTML5 Web XPanel) wants to its 0x26 sign-on.
+    /// Crestron Virtual Panel's own log says so: sent the ordinary 0x02 it stops with "Event CONNECT_RESPONSE has no
+    /// handler!". Layout as the community client siegeld/pycrestron describes it (its mock processor):
+    ///   [handle:2] [mode] [flags] [extra flags:4] [model:30, NUL-padded]
+    /// The handle is 0, as in every packet OpenVP sends. The mode and flag values are that mock's, not a capture.
+    /// </summary>
+    public static byte[] RoomConnectOk()
+    {
+        var p = new byte[2 + 1 + 1 + 4 + 30];
+        p[2] = 0x03;
+        Encoding.ASCII.GetBytes("OpenVP").CopyTo(p, 8);
+        return Frame(RoomConnectResponse, p);
+    }
+
+    public static byte[] RoomConnectRefused() => Frame(RoomConnectResponse, 0xFF, 0xFF, 0x02);
 
     public static byte[] Heartbeat() => Frame(HeartbeatResponse, 0x00, 0x00);
 
@@ -364,8 +382,9 @@ public static class Cip
     /// XPanel sent to OpenVP with IP ID 03 and Room ID SLOT01 (the text fields are plain to see in it):
     ///   [IP ID:2 BE] 40 F1 01 [flags:4, 00 00 00 01 seen] [MAC:6]
     ///   [make:50 "Crestron"] [model:50 "XPanel"] [Room ID:32] [hostname:64], each text field NUL-padded.
-    /// It is answered with the ordinary connect response (<see cref="ConnectOk"/>, <see cref="ConnectRefused"/>): the
-    /// XPanel carries on after "02 00 00 00 1F", and hangs up on the same result sent as type 0x27.
+    /// On TCP it is answered with the ordinary connect response (<see cref="ConnectOk"/>, <see cref="ConnectRefused"/>): the
+    /// XPanel carries on after "02 00 00 00 1F", and hangs up on the same result sent as type 0x27. A CH5 client on a
+    /// WebSocket is the other way round and gets <see cref="RoomConnectOk"/>.
     /// Returns null if it is not that packet or is too short to hold the Room ID field.
     /// </summary>
     public static RoomConnect? DecodeRoomConnect(byte type, ReadOnlySpan<byte> p)
@@ -541,6 +560,8 @@ internal sealed class CipSession
         if (Interlocked.Exchange(ref _whoAreYouAt, 0) is var t0 and not 0)
             _conn.RecordLatency(System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds, "CIP handshake");
         Detach();
+        // Same sign-on, two answers: an XPanel on TCP wants 0x02, a CH5 client on a WebSocket wants 0x27 (see Cip.RoomConnectOk).
+        var routerAnswer = type == Cip.RoomConnectRequest && _client.Carrier != null;
         var who = _conn.Hostname ?? _conn.Model;
         var from = who != null ? $" from {who}" : "";
         var device = DeviceDirectory.Resolve(_processor, ipId, null, roomId);
@@ -548,7 +569,7 @@ internal sealed class CipSession
         {
             var rooms = string.Join(", ", _processor.Slots.Select(x => x.RoomId));
             _server.Event(1, $"panel{from} asked for Room ID '{roomId}' (IP ID {ipId:X2}), but no slot has that Room ID, so it is not connected. Room IDs here: {rooms}");
-            Send(Cip.ConnectRefused());
+            Send(routerAnswer ? Cip.RoomConnectRefused() : Cip.ConnectRefused());
             return;
         }
         var slot = _processor.Slot(device.Slot);
@@ -562,7 +583,7 @@ internal sealed class CipSession
         if (roomId != null) _conn.SetDetail("Room ID requested", roomId);
         device.FeedbackChanged += OnFeedback;
         device.AttachConnection(_conn);
-        Send(Cip.ConnectOk(ipId));
+        Send(routerAnswer ? Cip.RoomConnectOk() : Cip.ConnectOk(ipId));
     }
 
     private async Task ProbeLoop(CancellationToken ct)

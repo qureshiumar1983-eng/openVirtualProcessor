@@ -84,8 +84,11 @@ public static class WebXPanelTests
         Assert.Equal("02", Convert.ToHexString(ready.payload), "ready");
 
         Write(ws, SignOn(0x03, token: "abc.def.ghi"));
+        // Crestron Virtual Panel stops with "Event CONNECT_RESPONSE has no handler!" if this sign-on is answered with 0x02.
         var resp = Read(ws);
-        Assert.Equal(Cip.ConnectResponse, resp.type, "connect response");
+        Assert.Equal(Cip.RoomConnectResponse, resp.type, "the 0x26 sign-on is answered with 0x27 on a WebSocket");
+        Assert.Equal(38, resp.payload.Length, "handle, mode, flags, extra flags and a 30-byte model");
+        Assert.Equal("0000", Convert.ToHexString(resp.payload, 0, 2), "handle 0, as in every packet sent");
         Assert.Eventually(() => p.Slot(1).FindDevice(0x03)!.Online, "panel online in the program");
 
         // The client asks for every join's state, then presses d1; the sample program answers with feedback d1 high.
@@ -121,7 +124,7 @@ public static class WebXPanelTests
         using var ws = Dial(web, tls: false, path: "/");
         Read(ws);
         Write(ws, SignOn(0x03, room: "Boardroom"));
-        Assert.Equal(Cip.ConnectResponse, Read(ws).type, "connect response");
+        Assert.Equal(Cip.RoomConnectResponse, Read(ws).type, "connect response");
         Assert.Eventually(() => d2.Online, "slot 2's panel online");
         Assert.True(!d1.Online, "slot 1's panel untouched");
 
@@ -194,5 +197,22 @@ public static class WebXPanelTests
         Write(ws, Cip.Digital(4, true));
         Assert.Eventually(() => { lock (presses) return presses.Count == 4; }, "all four presses arrived");
         Assert.Equal("1,2,3,4", string.Join(",", presses), "in order");
+    }
+
+    [Test]
+    public static void An_unknown_room_is_refused_with_the_same_kind_of_answer_and_the_older_sign_on_still_gets_0x02()
+    {
+        var (p, cip, web) = Start();
+        using var _p = p; using var _c = cip; using var _w = web;
+        using var ws = Dial(web);
+        Read(ws);
+        Write(ws, SignOn(0x03, room: "NOSUCHROOM"));
+        var refused = Read(ws);
+        Assert.Equal(Cip.RoomConnectResponse, refused.type, "refused as 0x27");
+        Assert.Equal("FFFF02", Convert.ToHexString(refused.payload), "refused");
+
+        // A client that signs on the classic way over a WebSocket is answered the classic way.
+        Write(ws, Cip.Frame(Cip.ConnectRequest, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x40, 0xFF, 0xFF, 0xF1, 0x01));
+        Assert.Equal(Cip.ConnectResponse, Read(ws).type, "0x01 gets 0x02");
     }
 }
