@@ -1551,6 +1551,13 @@ public static class OpenVpServer
 
         app.MapGet("/api/log", (int? slot, int? max) => processor.RecentLog(slot, max ?? 500).Where(l => Visible(l.Slot)));
 
+        // Panel connections and CIP packets on their own, as plain text to copy into a report (see CipServer.RecentTrace). Admins only: it shows join traffic of every slot.
+        app.MapGet("/api/cip/trace", () =>
+        {
+            if (Principal.Current is { } tp && !tp.Has(Perm.Admin)) return Results.Json(new { error = "Only an Admin can read the CIP trace." }, statusCode: 403);
+            return Results.Text(cip == null ? "The CIP listener is off (OpenVP:CipEnabled)." : string.Join("\n", cip.RecentTrace()) + "\n", "text/plain; charset=utf-8");
+        });
+
         app.MapGet("/api/devices", () => processor.AllDevices.Where(d => Visible(d.Slot)).OrderBy(d => d.Slot).ThenBy(d => d.IpId).Select(DeviceDto));
 
         // ------------------------------------------------------------------ WebSockets

@@ -72,8 +72,30 @@ public sealed class CipServer : IDisposable
 
     internal void Log(string message)
     {
+        Keep("[CIP] " + message);
         if (LogPackets) _processor.Slot(1).Log("Info", "[CIP] " + message);
     }
+
+    // The last panel events and packets, on their own: in a slot's log they scroll away under a busy program's lines.
+    private readonly Queue<string> _trace = new();
+    private const int MaxTraceLines = 4000;
+    /// <summary>Packets of each connection that are kept for <see cref="RecentTrace"/> even with packet logging off.</summary>
+    internal const int TracedPacketsPerSession = 400;
+
+    private void Keep(string line)
+    {
+        lock (_trace)
+        {
+            _trace.Enqueue($"{DateTime.Now:HH:mm:ss.fff} {line}");
+            while (_trace.Count > MaxTraceLines) _trace.Dequeue();
+        }
+    }
+
+    /// <summary>
+    /// Connections, sign-ons and packets of CIP clients (TCP and WebSocket), oldest first: every event, and the first
+    /// <see cref="TracedPacketsPerSession"/> packets of each connection (all of them with <see cref="LogPackets"/> on).
+    /// </summary>
+    public IReadOnlyList<string> RecentTrace() { lock (_trace) return _trace.ToArray(); }
 
     private readonly HashSet<byte> _unknownSubs = new();
 
@@ -86,7 +108,11 @@ public sealed class CipServer : IDisposable
     }
 
     /// <summary>Connection events are always logged.</summary>
-    internal void Event(int slot, string message) => _processor.Slot(Math.Max(1, slot)).Log("Notice", "[Panel] " + message);
+    internal void Event(int slot, string message)
+    {
+        Keep("[Panel] " + message);
+        _processor.Slot(Math.Max(1, slot)).Log("Notice", "[Panel] " + message);
+    }
 
     public void Dispose()
     {
@@ -433,6 +459,7 @@ internal sealed class CipSession
     private Task? _probe;
     private long _probeAt;       // Stopwatch timestamp of the heartbeat request in flight, 0 = none
     private int _strays;         // packets logged from this client before it registered
+    private int _traced;         // packets of this connection kept for the trace (a diagnostic; races only miscount it)
     private const int MaxStraysLogged = 4;
 
     public CipSession(ICipTransport client, Processor processor, CipServer server)
@@ -462,13 +489,21 @@ internal sealed class CipSession
             if (_server.ProbeHeartbeats) _probe = ProbeLoop(_sendCts.Token);
             while (!ct.IsCancellationRequested)
             {
-                if (await _client.ReadPacketAsync(ct) is not var (type, payload)) break;
-                if (_server.LogPackets) _server.Log($"<- {type:X2} {Convert.ToHexString(payload)}"); // hex only when logging
+                if (await _client.ReadPacketAsync(ct) is not var (type, payload)) { _server.Log($"{remote}: the client closed the connection"); break; }
+                if (_server.LogPackets || _traced++ < CipServer.TracedPacketsPerSession) _server.Log($"<- {type:X2} {Convert.ToHexString(payload)}"); // hex only when logging or tracing
                 _conn.RecordIn(3 + payload.Length);
                 Handle(type, payload);
             }
         }
-        catch (Exception e) when (e is IOException or SocketException or OperationCanceledException or ObjectDisposedException or System.Net.WebSockets.WebSocketException) { }
+        catch (Exception e) when (e is IOException or SocketException or OperationCanceledException or ObjectDisposedException or System.Net.WebSockets.WebSocketException)
+        {
+            if (e is not OperationCanceledException) _server.Log($"{remote}: connection ended by {e.GetType().Name}: {e.Message}");
+        }
+        catch (Exception e)
+        {
+            // A packet OpenVP could not handle must not end silently: say what happened, then drop the connection as before.
+            _server.Event(_device?.Slot ?? 1, $"{remote}: error while handling a packet, connection closed: {e.GetType().Name}: {e.Message}");
+        }
         finally
         {
             try
@@ -523,7 +558,8 @@ internal sealed class CipSession
                 if (_lastHeartbeat is { } prev) _conn.SetDetail("Heartbeat interval", $"{(now - prev).TotalSeconds:0.0} s");
                 _lastHeartbeat = now;
                 Interlocked.Increment(ref _conn.Heartbeats);
-                Send(Cip.Heartbeat());
+                // A CH5 client on a WebSocket gets its own heartbeat bytes back, as the community mock processor does; an XPanel on TCP is content with 00 00.
+                Send(_client.Carrier != null && payload.Length > 0 ? Cip.Frame(Cip.HeartbeatResponse, payload) : Cip.Heartbeat());
                 return;
             case Cip.HeartbeatResponse:
                 if (Interlocked.Exchange(ref _probeAt, 0) is var p0 and not 0)
@@ -654,7 +690,7 @@ internal sealed class CipSession
                 while (buf.WrittenCount < MaxWriteBytes && (buf.WrittenCount == 0 || !_client.PacketPerWrite) && reader.TryRead(out var packet))
                 {
                     Interlocked.Decrement(ref _queued);
-                    if (_server.LogPackets) _server.Log($"-> {Convert.ToHexString(packet)}");
+                    if (_server.LogPackets || _traced++ < CipServer.TracedPacketsPerSession) _server.Log($"-> {Convert.ToHexString(packet)}");
                     _conn.RecordOut(packet.Length);
                     buf.Write(packet);
                 }

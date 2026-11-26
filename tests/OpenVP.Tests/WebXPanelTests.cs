@@ -107,6 +107,12 @@ public static class WebXPanelTests
         for (int i = 0; i < 40 && !sawHeartbeat; i++) sawHeartbeat = Read(ws).type == Cip.HeartbeatResponse;
         Assert.True(sawHeartbeat, "heartbeat answered");
 
+        // The exchange is kept on its own, packet logging on or off, to copy into a report.
+        var trace = cip.RecentTrace();
+        Assert.True(trace.Any(l => l.Contains("[Panel] connection from") && l.Contains("over WebSocket (TLS)")), "the connection is in the trace");
+        Assert.True(trace.Any(l => l.Contains("[CIP] <- 26 0003")), "and the sign-on it sent");
+        Assert.True(trace.Any(l => l.Contains("[CIP] -> 270026")), "and the answer");
+
         var conn = p.Slot(1).FindDevice(0x03)!.Connections.Single();
         Assert.Equal("WebSocket (TLS)", conn.Details["Carried over"], "the IP table says how it is connected");
         Assert.Equal("WebXPanel", conn.Model, "and what the client called itself");
