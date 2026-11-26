@@ -241,8 +241,8 @@ async function start() {
   refreshPlugins();
   setInterval(refreshPlugins, 60000);   // a plugin enabled or turned off on the Plugins page shows up within a minute
   if (DEV) watchForChanges();
-  else if (KIOSK_PAGE) { /* no update pop-ups on a kiosk screen */ }
-  else updater.start({ getWindow: () => mainWindow, beforeRestart: restartInto });
+  else if (KIOSK_PAGE) { /* no update banner or pop-ups on a kiosk screen */ }
+  else updater.start({ getWindow: () => mainWindow, isConsoleUrl: isOpenVpUrl, beforeRestart: restartInto });
 }
 
 // ---------------------------------------------------------------- alerts: tray icon and desktop notifications

@@ -1,8 +1,9 @@
 // Update check for the packaged desktop app (OpenVP.exe).
 //
-// Every push to main publishes a GitHub release with a new OpenVP.exe (see .github/workflows/windows-app.yml).
-// This asks GitHub's public API for the latest release, a few seconds after start and then every few hours. If
-// it's newer than this app, a pop-up offers to update. "Update now" downloads the new OpenVP.exe, checks its
+// Every push to the production branch publishes a GitHub release with a new OpenVP.exe (see
+// .github/workflows/windows-app.yml). This asks GitHub's public API for the latest release, a few seconds after
+// start and then every few hours. If it's newer than this app, a banner at the bottom of the console window says
+// so; pressing it (or Help > Check for updates) opens a pop-up that offers to update. "Update now" downloads the new OpenVP.exe, checks its
 // size (and SHA-256, when GitHub lists one), puts it in place of the current file and restarts the app.
 //
 // Free: the releases API needs no account or token (GitHub allows 60 unauthenticated requests an hour per IP;
@@ -12,7 +13,7 @@
 // OpenVP.exe becomes OpenVP.exe.old, the download takes its name, and the .old file is deleted on the next
 // start. If the folder can't be written (say, OpenVP.exe sits in Program Files), the new version is saved to
 // Downloads instead and shown in Explorer.
-const { app, dialog, net, shell } = require('electron');
+const { app, dialog, ipcMain, net, shell } = require('electron');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -29,6 +30,8 @@ const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
 let opts = null;          // { getWindow, beforeRestart }
 let busy = false;         // a check, prompt or download is in progress
 let timer = null;
+let pending = null;       // { latest, current }: a newer release the banner is offering
+let hiddenTag = null;     // the release whose banner was closed (until the app restarts)
 
 const settingsPath = () => path.join(app.getPath('userData'), 'update.json');
 function loadSettings() {
@@ -83,12 +86,15 @@ async function check(manual = false) {
     }
     const current = app.getVersion();
     if (!isNewer(latest.tag, current)) {
+      pending = null; hideBanner();
       if (manual) dialog.showMessageBox(win(), { type: 'info', title: 'OpenVP', message: `You have the latest version (v${current}).` });
       return;
     }
     const settings = loadSettings();
     if (!manual && settings.skipVersion === latest.tag) return;
-    await prompt(latest, current, settings);
+    pending = { latest, current };
+    if (manual) await prompt(latest, current, settings);
+    else showBanner();
   } finally {
     busy = false;
   }
@@ -114,10 +120,72 @@ async function prompt(latest, current, settings) {
     cancelId: 1,
     noLink: true,
   });
-  if (response === 2) { saveSettings({ ...settings, skipVersion: latest.tag }); return; }
+  if (response === 2) { saveSettings({ ...settings, skipVersion: latest.tag }); pending = null; hideBanner(); return; }
   if (response !== 0) return;
   if (!canSwap) { shell.openExternal(latest.url || RELEASES_PAGE); return; }
   await downloadAndInstall(latest);
+}
+
+const BANNER_ID = 'openvp-update-banner';
+
+/** Runs in the console page: draws the banner. Styles are set from script, so a page's CSP can't block them. */
+function bannerScript(id, tag, current) {
+  const api = window.openvpDesktop;
+  if (!api || !api.updateNow || !document.body) return;
+  const old = document.getElementById(id);
+  if (old) old.remove();
+  const bar = document.createElement('div');
+  bar.id = id;
+  bar.setAttribute('role', 'status');
+  bar.style.cssText = 'position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:2147483647;display:flex;' +
+    'align-items:center;gap:10px;max-width:calc(100vw - 28px);box-sizing:border-box;padding:8px 8px 8px 14px;' +
+    'border-radius:8px;background:#1f6feb;color:#fff;font:13px/1.3 system-ui,"Segoe UI",sans-serif;' +
+    'box-shadow:0 4px 16px rgba(0,0,0,.4)';
+  const text = document.createElement('span');
+  text.textContent = `OpenVP ${tag} is available (you have v${current}).`;
+  const go = document.createElement('button');
+  go.type = 'button';
+  go.textContent = 'Update…';
+  go.style.cssText = 'cursor:pointer;border:0;border-radius:5px;padding:5px 12px;background:#fff;color:#0b3d91;font:inherit;font-weight:600';
+  go.addEventListener('click', () => api.updateNow());
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.textContent = '\u00d7';
+  close.title = 'Hide until OpenVP is restarted';
+  close.setAttribute('aria-label', close.title);
+  close.style.cssText = 'cursor:pointer;border:0;background:transparent;color:#fff;font:inherit;font-size:18px;line-height:1;padding:2px 6px';
+  close.addEventListener('click', () => { bar.remove(); api.hideUpdate(); });
+  bar.append(text, go, close);
+  document.body.appendChild(bar);
+}
+
+/** Console pages only (the loading screen and error pages have nothing to press). */
+function bannerTarget() {
+  const w = win();
+  if (!w) return null;
+  const url = w.webContents.getURL();
+  return opts.isConsoleUrl && !opts.isConsoleUrl(url) ? null : w.webContents;
+}
+
+function showBanner() {
+  if (!pending || hiddenTag === pending.latest.tag) return;
+  const wc = bannerTarget();
+  if (!wc) return;
+  const args = [BANNER_ID, pending.latest.tag, pending.current].map(a => JSON.stringify(a)).join(',');
+  wc.executeJavaScript(`(${bannerScript})(${args})`, true).catch(() => { });
+}
+
+function hideBanner() {
+  const wc = bannerTarget();
+  if (wc) wc.executeJavaScript(`(() => { const b = document.getElementById(${JSON.stringify(BANNER_ID)}); if (b) b.remove(); })()`, true).catch(() => { });
+}
+
+/** The banner was pressed: the same pop-up as Help > Check for updates, with the notes and the choices. */
+async function bannerPressed() {
+  if (!pending || busy) return;
+  busy = true;
+  try { await prompt(pending.latest, pending.current, loadSettings()); }
+  finally { busy = false; }
 }
 
 async function download(asset, dest, onProgress) {
@@ -187,15 +255,22 @@ function cleanUp() {
 }
 
 /**
- * Starts checking. `getWindow` returns the window to attach pop-ups to; `beforeRestart(exe)` stops the server,
+ * Starts checking. `getWindow` returns the window to attach pop-ups and the banner to; `isConsoleUrl(url)` says
+ * whether a page is OpenVP's console (the banner is shown only there); `beforeRestart(exe)` stops the server,
  * starts `exe` and quits.
  */
 function start(options) {
   if (!app.isPackaged || timer) return;
   opts = options;
   cleanUp();
+  // Only the main window's own page may ask; the banner is redrawn after each page change.
+  const fromWindow = e => { const w = win(); return !!w && e.sender === w.webContents; };
+  ipcMain.on('openvp:update-now', e => { if (fromWindow(e)) bannerPressed(); });
+  ipcMain.on('openvp:update-hide', e => { if (fromWindow(e) && pending) hiddenTag = pending.latest.tag; });
+  const w = win();
+  if (w) w.webContents.on('did-finish-load', showBanner);
   setTimeout(() => check(false), FIRST_CHECK_MS);
   timer = setInterval(() => check(false), CHECK_EVERY_MS);
 }
 
-module.exports = { start, check, isNewer, parseVersion };
+module.exports = { start, check, isNewer, parseVersion, bannerScript };
