@@ -229,6 +229,81 @@ public static class SplusTests
         finally { host.Stop(); }
     }
 
+    /// <summary>
+    /// A module with one digital input whose PUSH runs <see cref="OnPush"/>, and a callback shaped like the
+    /// compiler's output for a RegisterDelegate'd function (SplusSimplSharpDelegateThreadStartCode … ObjectFinallyHandler).
+    /// </summary>
+    private sealed class CallbackModule : Crestron.Logos.SplusObjects.SplusObject
+    {
+        public readonly Crestron.Logos.SplusObjects.DigitalInput Trigger;
+        public Action? OnPush;
+        public int Pushes, Callbacks;
+        public string Text = "";
+
+        public CallbackModule(string name) : base(name, name, Crestron.Logos.SplusObjects.CrestronStringEncoding.eEncodingASCII)
+        {
+            Trigger = new(0, this); m_DigitalInputList.Add(0, Trigger);
+            Trigger.OnDigitalPush.Add(new(e =>
+            {
+                var args = (Crestron.Logos.SplusObjects.SignalEventArgs)e;
+                try { SplusThreadStartCode(args); Interlocked.Increment(ref Pushes); OnPush?.Invoke(); }
+                catch (Exception x) { ObjectCatchHandler(x); }
+                finally { ObjectFinallyHandler(args); }
+                return this;
+            }, false));
+        }
+
+        /// <summary>What the library calls: UpdateOutput(index, value) in a "Config - Serial" module.</summary>
+        public void UpdateOutput(string value)
+        {
+            try { SplusSimplSharpDelegateThreadStartCode(); Text = value; Interlocked.Increment(ref Callbacks); }
+            catch (Exception x) { ObjectCatchHandler(x); }
+            finally { ObjectFinallyHandler(); }
+        }
+
+        public override object FunctionMain(object obj)
+        {
+            try { SplusFunctionMainStartCode(); WaitForInitializationComplete(); }
+            catch (Exception e) { ObjectCatchHandler(e); }
+            finally { ObjectFinallyHandler(); }
+            return obj;
+        }
+    }
+
+    [Test]
+    public static void Splus_module_keeps_running_after_its_handler_calls_into_another_modules_callback()
+    {
+        // The "Config - Reader" / "Config - Serial" pattern: the reader's PUSH calls a SIMPL# library, whose event
+        // calls UpdateOutput in each serial module on the reader's thread. The reader used to lose its baton there,
+        // so only the first read ever reached the serial outputs and the reader never ran again.
+        var reader = new CallbackModule("reader");
+        var serials = new[] { new CallbackModule("serial1"), new CallbackModule("serial2") };
+        var file = "first";
+        reader.OnPush = () => { foreach (var s in serials) s.UpdateOutput(file); };
+        // A callback that comes back into the module that is calling must not wait for its own baton.
+        serials[1].OnPush = () => serials[1].UpdateOutput("own");
+        var all = new[] { reader }.Concat(serials).Cast<ISplusModule>().ToArray();
+        try
+        {
+            foreach (var m in all) m.Initialize();
+            foreach (var m in all) m.StartMain();
+
+            for (int read = 1; read <= 3; read++)
+            {
+                file = $"edit {read}";
+                ((ISplusModule)reader).Input(SigKind.Digital, 0, true);
+                Assert.Eventually(() => reader.Pushes == read, $"read {read}: the reader's PUSH ran");
+                Assert.Eventually(() => serials.All(s => s.Text == file), $"read {read}: every serial module got the new text");
+                ((ISplusModule)reader).Input(SigKind.Digital, 0, false);
+            }
+            Assert.Equal(3, serials[0].Callbacks, "one callback per read");
+
+            ((ISplusModule)serials[1]).Input(SigKind.Digital, 0, true);
+            Assert.Eventually(() => serials[1].Text == "own", "a serial module still runs its own events, and can call back into itself");
+        }
+        finally { foreach (var m in all) m.Stop(); }
+    }
+
     [Test]
     public static void Splus_handlers_wait_for_Main_to_resume_after_WaitForInitializationComplete()
     {

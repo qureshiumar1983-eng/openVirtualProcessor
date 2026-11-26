@@ -185,14 +185,46 @@ namespace Crestron.Logos.SplusObjects
                 (Environment.GetEnvironmentVariable("OPENVP_SPLUS_DEBUG") == "1" ? "\n" + e.StackTrace : ""));
         }
 
+        // A SIMPL# library can call a module's callback (a RegisterDelegate'd function) on the thread of another
+        // module's handler: a "Reader" module's PUSH calls the library, whose event calls UpdateOutput in each
+        // "Serial" module. The calling module keeps its baton while the callee runs, so its frame is saved here
+        // and restored when the callee leaves; otherwise the caller's own Leave finds _current pointing elsewhere,
+        // never releases its baton, and the module never runs another event or Main step.
+        private readonly struct BatonFrame
+        {
+            public BatonFrame(SplusObject module, int depth, bool owns) { Module = module; Depth = depth; Owns = owns; }
+            public readonly SplusObject Module;
+            public readonly int Depth;
+            public readonly bool Owns; // false: the baton was already held further down this thread's stack
+        }
+
+        [ThreadStatic] private static Stack<BatonFrame> _outerFrames;
+        [ThreadStatic] private static bool _currentOwns;
+
+        private bool HeldBelowOnThisThread()
+        {
+            if (_outerFrames == null) return false;
+            foreach (var f in _outerFrames) if (f.Module == this && f.Owns) return true;
+            return false;
+        }
+
         private void Enter()
         {
             if (_current == this && _batonDepth > 0) { _batonDepth++; return; }
-            if (TraceOn) Log("Info", $"[S+ {InstanceName}] enter wait (thread {Environment.CurrentManagedThreadId})");
-            _baton.Wait();
-            if (TraceOn) Log("Info", $"[S+ {InstanceName}] entered (thread {Environment.CurrentManagedThreadId})");
+            // Called back into a module this thread already holds (A calls the library, the library calls B, B's
+            // callback ends up in A again): waiting for our own baton would deadlock, so run on the one held below.
+            var owns = !HeldBelowOnThisThread();
+            if (owns)
+            {
+                if (TraceOn) Log("Info", $"[S+ {InstanceName}] enter wait (thread {Environment.CurrentManagedThreadId})");
+                _baton.Wait();
+                if (TraceOn) Log("Info", $"[S+ {InstanceName}] entered (thread {Environment.CurrentManagedThreadId})");
+            }
+            if (_current != null && _batonDepth > 0)
+                (_outerFrames ??= new Stack<BatonFrame>()).Push(new BatonFrame(_current, _batonDepth, _currentOwns));
             _current = this;
             _batonDepth = 1;
+            _currentOwns = owns;
         }
 
         private void Leave()
@@ -200,8 +232,16 @@ namespace Crestron.Logos.SplusObjects
             if (TraceOn) Log("Info", $"[S+ {InstanceName}] leave depth={_batonDepth} current={(_current == this)} (thread {Environment.CurrentManagedThreadId})");
             if (_current != this || _batonDepth == 0) return;
             if (--_batonDepth > 0) return;
-            _current = null;
-            _baton.Release();
+            var owned = _currentOwns;
+            if (_outerFrames is { Count: > 0 })
+            {
+                var outer = _outerFrames.Pop();
+                _current = outer.Module;
+                _batonDepth = outer.Depth;
+                _currentOwns = outer.Owns;
+            }
+            else { _current = null; _currentOwns = false; }
+            if (owned) _baton.Release();
         }
 
         /// <summary>Give the baton away while waiting, then take it back.</summary>
@@ -213,11 +253,12 @@ namespace Crestron.Logos.SplusObjects
             if (releaseEvents && _isMainThread) { ReleaseEvents(); PassTurn(); MarkReady(); }
             SettleEvent(_eventTicket);
             var held = _current == this ? _batonDepth : 0;
-            if (held > 0) { _batonDepth = 0; _current = null; _baton.Release(); }
+            var owns = held > 0 && _currentOwns;
+            if (held > 0) { _batonDepth = 0; _current = null; if (owns) _baton.Release(); }
             try { wait(); }
             finally
             {
-                if (held > 0) { _baton.Wait(); _current = this; _batonDepth = held; }
+                if (held > 0) { if (owns) _baton.Wait(); _current = this; _batonDepth = held; _currentOwns = owns; }
             }
             if (_stopped) throw new OperationCanceledException();
         }
