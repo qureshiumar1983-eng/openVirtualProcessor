@@ -313,12 +313,12 @@ function startAlerts() {
   });
 }
 
-/** After an update: stop the server, wait for the port to free up, start the new OpenVP.exe and quit. */
-async function restartInto(exe) {
+/** After an update: stop the server, wait for the port to free up, start the update helper (`launch`) and quit. */
+async function restartInto(launch) {
   stopServer();
   for (let i = 0; i < 40 && await isPortTaken(); i++) await new Promise(r => setTimeout(r, 250));
   app.releaseSingleInstanceLock();
-  spawn(exe, [], { detached: true, stdio: 'ignore', cwd: path.dirname(exe) }).unref();
+  launch();
   app.exit(0);
 }
 

@@ -9,16 +9,19 @@
 // Free: the releases API needs no account or token (GitHub allows 60 unauthenticated requests an hour per IP;
 // this makes a few a day). Nothing runs in dev mode (`npm start`).
 //
-// Swapping the file: Windows won't let a running .exe be overwritten, but it can be renamed. So the running
-// OpenVP.exe becomes OpenVP.exe.old, the download takes its name, and the .old file is deleted on the next
-// start. If the folder can't be written (say, OpenVP.exe sits in Program Files), the new version is saved to
+// Swapping the file: the portable OpenVP.exe is a launcher that keeps its own file open for as long as the app
+// runs, so Windows refuses to overwrite it and to rename it (EBUSY). The download is therefore saved next to it
+// as OpenVP.exe.download, and a small helper script, started just before the app quits, waits for the file to be
+// released, moves the download into place and starts it. If the folder can't be written (say, OpenVP.exe sits in Program Files), the new version is saved to
 // Downloads instead and shown in Explorer.
 const { app, dialog, ipcMain, net, shell } = require('electron');
 const crypto = require('crypto');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { Readable } = require('stream');
 const { pipeline } = require('stream/promises');
+const { spawn } = require('child_process');
 
 const REPO = 'qureshiumar1983-eng/openVirtualProcessor';
 const LATEST_API = `https://api.github.com/repos/${REPO}/releases/latest`;
@@ -230,22 +233,43 @@ async function downloadAndInstall(latest) {
     return;
   }
 
-  // Swap: running exe -> .old, download -> OpenVP.exe. Put the old one back if the second step fails.
-  const old = exe + '.old';
-  try {
-    fs.rmSync(old, { force: true });
-    fs.renameSync(exe, old);
-    try { fs.renameSync(tmp, exe); }
-    catch (e) { fs.renameSync(old, exe); throw e; }
-  } catch (e) {
+  // The swap happens after this app has quit (see the top of this file).
+  let launch;
+  try { launch = swapHelper(exe, tmp); }
+  catch (e) {
     try { fs.rmSync(tmp, { force: true }); } catch { }
     dialog.showMessageBox(win(), { type: 'error', title: 'OpenVP update', message: "The update couldn't be installed.", detail: e.message });
     return;
   }
-  await opts.beforeRestart(exe);
+  await opts.beforeRestart(launch);
 }
 
-/** Deletes the OpenVP.exe.old an earlier update left behind (it was still running then). */
+/**
+ * Writes the helper script and returns a function that starts it. The script tries for a minute to move
+ * `download` over `exe` (it succeeds once the old launcher has exited and let go of the file), then starts `exe`:
+ * the new version, or the old one again if the move never worked. The paths go in through the environment, so
+ * odd characters in a folder name can't break the script.
+ */
+function swapHelper(exe, download) {
+  const script = path.join(os.tmpdir(), `openvp-update-${process.pid}.cmd`);
+  fs.writeFileSync(script, [
+    '@echo off',
+    'for /l %%i in (1,1,60) do (',
+    '  move /y "%OPENVP_UPDATE_NEW%" "%OPENVP_UPDATE_EXE%" >nul 2>&1 && goto run',
+    '  ping -n 2 127.0.0.1 >nul',
+    ')',
+    ':run',
+    'start "" "%OPENVP_UPDATE_EXE%"',
+    '(goto) 2>nul & del "%~f0"',
+    '',
+  ].join('\r\n'));
+  return () => spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/c', script], {
+    detached: true, stdio: 'ignore', windowsHide: true, cwd: path.dirname(exe),
+    env: { ...process.env, OPENVP_UPDATE_EXE: exe, OPENVP_UPDATE_NEW: download },
+  }).unref();
+}
+
+/** Deletes what an earlier update left behind: a download that was never moved into place, or an old .old file. */
 function cleanUp() {
   const exe = portableExe();
   if (!exe) return;
@@ -256,8 +280,8 @@ function cleanUp() {
 
 /**
  * Starts checking. `getWindow` returns the window to attach pop-ups and the banner to; `isConsoleUrl(url)` says
- * whether a page is OpenVP's console (the banner is shown only there); `beforeRestart(exe)` stops the server,
- * starts `exe` and quits.
+ * whether a page is OpenVP's console (the banner is shown only there); `beforeRestart(launch)` stops the
+ * server, calls `launch()` (which starts the helper that swaps the file and starts the new version) and quits.
  */
 function start(options) {
   if (!app.isPackaged || timer) return;
