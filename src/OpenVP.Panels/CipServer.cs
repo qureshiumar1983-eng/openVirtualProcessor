@@ -169,41 +169,31 @@ public static class Cip
     public static byte[] ConnectRefused() => Frame(ConnectResponse, 0xFF, 0xFF, 0x02);
 
     /// <summary>
-    /// The answer a CH5 client on a WebSocket (Crestron Virtual Panel, the HTML5 Web XPanel) wants to its 0x26 sign-on.
-    /// Crestron Virtual Panel's own log says so: sent the ordinary 0x02 it stops with "Event CONNECT_RESPONSE has no
-    /// handler!". Layout as the community client siegeld/pycrestron describes it (its mock processor):
-    ///   [handle:2] [mode] [flags] [extra flags:4] [model:30, NUL-padded]
-    /// Everything but the handle and the model name is 0. Crestron Virtual Panel takes that: it logs "Licensing is not
-    /// supported!" (a flag that isn't set) and stays connected. With handle 0000 it then never said another word (no
-    /// update request, no presses, no heartbeat, with or without the 0x0C below), so the handle is <see cref="RouterHandle"/>:
-    /// a "device router" answer exists to hand one out, and the community mock gives a non-zero one too. What it
-    /// refuses, each seen in its log: the third byte as 03, which is what that mock sends ("Connection refused!
-    /// Connection timed out.", so that byte is a result code, like the 02 in a refusal), and the classic four bytes
-    /// "00 00 00 1F" sent as 0x27 ("Bad packet received!").
+    /// The answer a CH5 client on a WebSocket (Crestron Virtual Panel, the HTML5 Web XPanel) wants to its 0x26 sign-on;
+    /// sent the ordinary 0x02 it stops with "Event CONNECT_RESPONSE has no handler!".
+    ///   [handle:2] [mode] [flags] [extra flags:4] [model:30, NUL-padded]   (it refuses anything shorter: "Bad packet received!")
+    /// What the client makes of each field was read from Crestron's WebXPanel library, version 2.8.0, the one inside the
+    /// project Virtual Panel was running, at the project owner's decision, after guessing from the app's log ran out.
+    /// No code was copied; this is what it expects on the wire:
+    ///   mode         low five bits are a result: 00 is a standard connection; 02 to 06, 0A and 0B are refusals (03 is
+    ///                "Connection timed out", 0B "IP ID is already allocated"). Bit 0x40 means "now authenticate", which
+    ///                makes the client send its token again in a 0x0B and wait for a 0x0C. OpenVP checks no token, so
+    ///                it never asks, and must not send a 0x0C unasked (the client reports an invalid state).
+    ///   flags        what the processor supports: 01 heartbeat, 02 program ready, 04 Unicode, 08 extended lengths,
+    ///                30 the longest serial. 1F, as in the classic 0x02 answer "00 00 00 1F".
+    ///   extra flags  the low byte must have 08 or 10 set (licensing supported). Without it the client logs
+    ///                "Licensing is not supported!" and stops there: it stays connected but never asks for the joins.
+    /// With those the client asks for every join (<see cref="SubUpdateRequest"/> 00) and starts its heartbeat. It
+    /// holds back its own presses until it has been sent <see cref="EndOfJoinStatusQuery"/>.
     /// </summary>
-    public static byte[] RoomConnectOk(ushort handle = RouterHandle)
+    public static byte[] RoomConnectOk()
     {
         var p = new byte[2 + 1 + 1 + 4 + 30];
-        p[0] = (byte)(handle >> 8); p[1] = (byte)handle;
+        p[3] = 0x1F;
+        p[7] = 0x08;
         Encoding.ASCII.GetBytes("OpenVP").CopyTo(p, 8);
         return Frame(RoomConnectResponse, p);
     }
-
-    /// <summary>The handle a CH5 client on a WebSocket is given in its sign-on answer, and that every packet sent to it then starts with.</summary>
-    public const ushort RouterHandle = 0x0001;
-
-    public const byte AuthenticateResponse = 0x0C; // processor -> panel: [handle:2][access level], 0 = refused
-
-    /// <summary>
-    /// A CH5 client that signs on with a token (extra flag 0x10 in its 0x26, "authenticate") says nothing more after
-    /// the 0x27 until it is told the token was accepted: Crestron Virtual Panel sat silent for as long as it was left.
-    /// Layout from community clients (siegeld/pycrestron, Antonio112009/pycrestron-cip): any level above 0 is a yes.
-    /// OpenVP checks no token, so it is always a yes.
-    /// </summary>
-    public static byte[] Authenticated(ushort handle = RouterHandle) => Frame(AuthenticateResponse, (byte)(handle >> 8), (byte)handle, 0x01);
-
-    /// <summary>True if a 0x26 sign-on asks for its token to be checked (extra flags, a 4-byte field at offset 5; bit 0x10).</summary>
-    public static bool WantsAuthentication(ReadOnlySpan<byte> roomConnectPayload) => roomConnectPayload.Length > 8 && (roomConnectPayload[8] & 0x10) != 0;
 
     public static byte[] RoomConnectRefused() => Frame(RoomConnectResponse, 0xFF, 0xFF, 0x02);
 
@@ -367,7 +357,8 @@ public static class Cip
                         joins.Add((new JoinKey(SigKind.Analog, (uint)((body[k] << 8) | body[k + 1]) + 1, so), (ushort)((body[k + 2] << 8) | body[k + 3])));
                     break;
                 case SubSerial when body.Length >= 3:
-                    joins.Add((new JoinKey(SigKind.Serial, (uint)((body[0] << 8) | body[1]) + 1, so), Utf8OrLatin1(body[3..])));
+                    // A CH5 client sends one byte per character, or UTF-16LE with flag 0x04 when the sign-on answer said Unicode is supported.
+                    joins.Add((new JoinKey(SigKind.Serial, (uint)((body[0] << 8) | body[1]) + 1, so), (body[2] & 0x04) != 0 ? Encoding.Unicode.GetString(body[3..]) : Utf8OrLatin1(body[3..])));
                     break;
                 case SubSerialMarker when body.Length >= 3:
                     // Flag 0x04 is UTF-16LE. Text split over several messages (start/end flags) isn't reassembled.
@@ -454,6 +445,18 @@ public static class Cip
 
     /// <summary>Sent after a full update so the panel knows the snapshot is complete.</summary>
     public static byte[] UpdateComplete() => Frame(Data, 0x00, 0x00, 0x02, 0x03, 0x16);
+
+    /// <summary>Sent to a CH5 client before the snapshot: the values that follow replace what it holds.</summary>
+    public static byte[] UpdateStart() => Frame(Data, 0x00, 0x00, 0x02, 0x03, 0x00);
+
+    /// <summary>
+    /// Sent to a CH5 client after <see cref="UpdateComplete"/>. It answers with command 1D and only then counts
+    /// itself as connected and sends the presses it has been holding back.
+    /// </summary>
+    public static byte[] EndOfJoinStatusQuery() => Frame(Data, 0x00, 0x00, 0x02, 0x03, 0x1C);
+
+    /// <summary>The command byte of a <see cref="SubUpdateRequest"/> sub-packet: 00 asks for every join, 1D answers <see cref="EndOfJoinStatusQuery"/>.</summary>
+    public const byte CommandUpdateRequest = 0x00, CommandEndOfJoinStatusResponse = 0x1D;
 }
 
 internal sealed class CipSession
@@ -478,7 +481,7 @@ internal sealed class CipSession
     private Task? _probe;
     private long _probeAt;       // Stopwatch timestamp of the heartbeat request in flight, 0 = none
     private int _strays;         // packets logged from this client before it registered
-    private ushort _handle;      // the handle given to a CH5 client in its sign-on answer (0 otherwise); stamped on what we send it
+    private bool _ch5;           // signed on the CH5 way (0x26 on a WebSocket): the update exchange has two more steps
     private int _traced;         // packets of this connection kept for the trace (a diagnostic; races only miscount it)
     private const int MaxStraysLogged = 4;
 
@@ -591,7 +594,12 @@ internal sealed class CipSession
         }
         if (type == Cip.Data && payload.Length >= 4 && payload[3] == Cip.SubUpdateRequest)
         {
-            // Panel asks for everything: send a full snapshot.
+            // A command. 00 asks for everything; 1D is a CH5 client's "got it" to the end-of-update query, and answering
+            // that with another snapshot and another query would go round for ever. An XPanel on TCP gets a snapshot
+            // for any other command, as it always has.
+            var command = payload.Length > 4 ? payload[4] : Cip.CommandUpdateRequest;
+            if (command == Cip.CommandEndOfJoinStatusResponse || (_ch5 && command != Cip.CommandUpdateRequest)) return;
+            if (_ch5) Send(Cip.UpdateStart());
             if (_device != null)
             {
                 var snapshot = _device.FeedbackSnapshot();
@@ -600,6 +608,7 @@ internal sealed class CipSession
                 foreach (var (k, v) in snapshot) OnFeedback(_device, k, v);
             }
             Send(Cip.UpdateComplete());
+            if (_ch5) Send(Cip.EndOfJoinStatusQuery());
             return;
         }
         var unknown = new List<(byte sub, byte[] raw)>();
@@ -642,9 +651,8 @@ internal sealed class CipSession
         if (roomId != null) _conn.SetDetail("Room ID requested", roomId);
         device.FeedbackChanged += OnFeedback;
         device.AttachConnection(_conn);
-        if (routerAnswer) _handle = Cip.RouterHandle;
+        _ch5 = routerAnswer;
         Send(routerAnswer ? Cip.RoomConnectOk() : Cip.ConnectOk(ipId));
-        if (routerAnswer && Cip.WantsAuthentication(payload)) Send(Cip.Authenticated());
     }
 
     private async Task ProbeLoop(CancellationToken ct)
@@ -686,12 +694,6 @@ internal sealed class CipSession
     /// <summary>Queue a packet; never blocks the caller (often the slot thread).</summary>
     private void Send(byte[] packet)
     {
-        // Join data and heartbeats start with the connection's handle: 0 on TCP, the one handed out on a WebSocket.
-        if (_handle != 0 && packet.Length >= 5 && packet[0] is Cip.Data or Cip.SerialData or Cip.HeartbeatRequest or Cip.HeartbeatResponse)
-        {
-            packet[3] = (byte)(_handle >> 8);
-            packet[4] = (byte)_handle;
-        }
         if (Interlocked.Increment(ref _queued) <= Volatile.Read(ref _queueLimit))
         {
             if (_outbox.Writer.TryWrite(packet)) return;

@@ -54,15 +54,8 @@ public static class WebXPanelTests
         return (buf[0], buf.AsSpan(3, len).ToArray());
     }
 
-    /// <summary>The answer to a sign-on: 0x27, then "token accepted" (0x0C), which a CH5 client waits for before it says anything.</summary>
-    private static (byte type, byte[] payload) ReadSignOnAnswer(ClientWebSocket ws)
-    {
-        var answer = Read(ws);
-        var auth = Read(ws);
-        Assert.Equal(Cip.AuthenticateResponse, auth.type, "the token is accepted right after the sign-on answer");
-        Assert.Equal("000101", Convert.ToHexString(auth.payload), "the handle, and an access level above 0");
-        return answer;
-    }
+    /// <summary>The answer to a sign-on. Nothing follows it unasked: a 0x0C here puts a CH5 client in an invalid state.</summary>
+    private static (byte type, byte[] payload) ReadSignOnAnswer(ClientWebSocket ws) => Read(ws);
 
     private static void Write(ClientWebSocket ws, byte[] packet) =>
         ws.SendAsync(packet, WebSocketMessageType.Binary, true, CancellationToken.None).GetAwaiter().GetResult();
@@ -98,21 +91,29 @@ public static class WebXPanelTests
         var resp = ReadSignOnAnswer(ws);
         Assert.Equal(Cip.RoomConnectResponse, resp.type, "the 0x26 sign-on is answered with 0x27 on a WebSocket");
         Assert.Equal(38, resp.payload.Length, "handle, mode, flags, extra flags and a 30-byte model");
-        Assert.Equal("00010000", Convert.ToHexString(resp.payload, 0, 4), "a handle that isn't 0, and result 0: Virtual Panel reads 03 there as 'Connection timed out'");
+        // Handle 0, result 0 (03 would be "Connection timed out"), flags 1F, and "licensing supported" in the extra flags,
+        // without which the client stays connected but never asks for the joins.
+        Assert.Equal("0000001F00000008", Convert.ToHexString(resp.payload, 0, 8), "the fields a CH5 client goes by");
         Assert.Eventually(() => p.Slot(1).FindDevice(0x03)!.Online, "panel online in the program");
 
-        // The client asks for every join's state, then presses d1; the sample program answers with feedback d1 high.
+        // The client asks for every join. It is sent "start of update", the joins, "end of update" and then the
+        // end-of-update query, which is what lets it send its own presses.
         Write(ws, Cip.Frame(Cip.Data, 0x00, 0x00, 0x02, 0x03, 0x00));
+        Assert.Equal("0000020300", Convert.ToHexString(Read(ws).payload), "start of update comes first");
+        var sawEnd = false;
+        for (int i = 0; i < 200 && !sawEnd; i++) sawEnd = Convert.ToHexString(Read(ws).payload) == "0000020316";
+        Assert.True(sawEnd, "end of update");
+        Assert.Equal("000002031C", Convert.ToHexString(Read(ws).payload), "then the end-of-update query");
+
+        // Its answer (1D) is not another request, so the next thing sent is the feedback to its press of d1.
+        Write(ws, Cip.Frame(Cip.Data, 0x00, 0x00, 0x02, 0x03, 0x1D));
         Write(ws, Cip.Frame(Cip.Data, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00));
         var gotHigh = false;
         for (int i = 0; i < 40 && !gotHigh; i++)
         {
             var (type, payload) = Read(ws);
-            if (Cip.DecodeJoin(type, payload) is var (k, v) && k == new JoinKey(SigKind.Digital, 1) && v is true)
-            {
-                gotHigh = true;
-                Assert.Equal("0001", Convert.ToHexString(payload, 0, 2), "feedback starts with the handle");
-            }
+            Assert.True(Convert.ToHexString(payload) != "0000020300", "no second snapshot after the 1D");
+            if (Cip.DecodeJoin(type, payload) is var (k, v) && k == new JoinKey(SigKind.Digital, 1) && v is true) gotHigh = true;
         }
         Assert.True(gotHigh, "received d1 feedback over the WebSocket");
 
@@ -155,7 +156,10 @@ public static class WebXPanelTests
         Write(ws, Cip.Frame(Cip.Data, [0x00, 0x00, (byte)(4 + text.Length), 0x15, 0x00, 0x04, 0x03, .. text]));
         Write(ws, Cip.Frame(Cip.Data, 0x00, 0x00, 0x05, 0x01, 0x00, 0x08, 0x12, 0x34));
         Write(ws, Cip.Frame(Cip.Data, 0x00, 0x00, 0x04, 0x01, 0x02, 0xAB, 0xCD));
-        Assert.Eventually(() => { lock (got) return got.Count == 3; }, "three inputs arrived");
+        // Text as the client sends it once told Unicode and extended lengths are supported: UTF-16LE, flags 07, in a 0x12 frame.
+        Write(ws, Cip.Frame(Cip.SerialData, [0x00, 0x00, 0x00, 0x08, 0x34, 0x00, 0x06, 0x07, .. Encoding.Unicode.GetBytes("é€")]));
+        Assert.Eventually(() => { lock (got) return got.Count == 4; }, "four inputs arrived");
+        Assert.Equal((new JoinKey(SigKind.Serial, 7), (object)"é€"), got[3], "serial, UTF-16");
         Assert.Equal((new JoinKey(SigKind.Serial, 5), (object)"Café"), got[0], "serial");
         Assert.Equal((new JoinKey(SigKind.Analog, 9), (object)(ushort)0x1234), got[1], "analog, two-byte join");
         Assert.Equal((new JoinKey(SigKind.Analog, 3), (object)(ushort)0xABCD), got[2], "analog, one-byte join");

@@ -57,6 +57,7 @@ public static class PolicyTable
         View GET /api/locks
         View GET /api/labs
         View GET /api/log
+        Admin GET /api/cip/trace
         View POST /api/me/password
         View GET /api/metrics
         View GET /api/metrics/history
