@@ -54,6 +54,16 @@ public static class WebXPanelTests
         return (buf[0], buf.AsSpan(3, len).ToArray());
     }
 
+    /// <summary>The answer to a sign-on: 0x27, then "token accepted" (0x0C), which a CH5 client waits for before it says anything.</summary>
+    private static (byte type, byte[] payload) ReadSignOnAnswer(ClientWebSocket ws)
+    {
+        var answer = Read(ws);
+        var auth = Read(ws);
+        Assert.Equal(Cip.AuthenticateResponse, auth.type, "the token is accepted right after the sign-on answer");
+        Assert.Equal("000001", Convert.ToHexString(auth.payload), "handle 0, access level above 0");
+        return answer;
+    }
+
     private static void Write(ClientWebSocket ws, byte[] packet) =>
         ws.SendAsync(packet, WebSocketMessageType.Binary, true, CancellationToken.None).GetAwaiter().GetResult();
 
@@ -85,7 +95,7 @@ public static class WebXPanelTests
 
         Write(ws, SignOn(0x03, token: "abc.def.ghi"));
         // Crestron Virtual Panel stops with "Event CONNECT_RESPONSE has no handler!" if this sign-on is answered with 0x02.
-        var resp = Read(ws);
+        var resp = ReadSignOnAnswer(ws);
         Assert.Equal(Cip.RoomConnectResponse, resp.type, "the 0x26 sign-on is answered with 0x27 on a WebSocket");
         Assert.Equal(38, resp.payload.Length, "handle, mode, flags, extra flags and a 30-byte model");
         Assert.Equal("00000000", Convert.ToHexString(resp.payload, 0, 4), "handle 0 and result 0: Virtual Panel reads 03 there as 'Connection timed out'");
@@ -130,7 +140,7 @@ public static class WebXPanelTests
         using var ws = Dial(web, tls: false, path: "/");
         Read(ws);
         Write(ws, SignOn(0x03, room: "Boardroom"));
-        Assert.Equal(Cip.RoomConnectResponse, Read(ws).type, "connect response");
+        Assert.Equal(Cip.RoomConnectResponse, ReadSignOnAnswer(ws).type, "connect response");
         Assert.Eventually(() => d2.Online, "slot 2's panel online");
         Assert.True(!d1.Online, "slot 1's panel untouched");
 
@@ -192,7 +202,7 @@ public static class WebXPanelTests
         using var ws = Dial(web);
         Read(ws);
         Write(ws, SignOn(0x03));
-        Read(ws);
+        ReadSignOnAnswer(ws);
         Assert.Eventually(() => d.Online, "online");
 
         var presses = new List<uint>();

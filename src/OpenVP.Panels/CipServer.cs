@@ -186,6 +186,19 @@ public static class Cip
         return Frame(RoomConnectResponse, p);
     }
 
+    public const byte AuthenticateResponse = 0x0C; // processor -> panel: [handle:2][access level], 0 = refused
+
+    /// <summary>
+    /// A CH5 client that signs on with a token (extra flag 0x10 in its 0x26, "authenticate") says nothing more after
+    /// the 0x27 until it is told the token was accepted: Crestron Virtual Panel sat silent for as long as it was left.
+    /// Layout from community clients (siegeld/pycrestron, Antonio112009/pycrestron-cip): any level above 0 is a yes.
+    /// OpenVP checks no token, so it is always a yes.
+    /// </summary>
+    public static byte[] Authenticated() => Frame(AuthenticateResponse, 0x00, 0x00, 0x01);
+
+    /// <summary>True if a 0x26 sign-on asks for its token to be checked (extra flags, a 4-byte field at offset 5; bit 0x10).</summary>
+    public static bool WantsAuthentication(ReadOnlySpan<byte> roomConnectPayload) => roomConnectPayload.Length > 8 && (roomConnectPayload[8] & 0x10) != 0;
+
     public static byte[] RoomConnectRefused() => Frame(RoomConnectResponse, 0xFF, 0xFF, 0x02);
 
     public static byte[] Heartbeat() => Frame(HeartbeatResponse, 0x00, 0x00);
@@ -623,6 +636,7 @@ internal sealed class CipSession
         device.FeedbackChanged += OnFeedback;
         device.AttachConnection(_conn);
         Send(routerAnswer ? Cip.RoomConnectOk() : Cip.ConnectOk(ipId));
+        if (routerAnswer && Cip.WantsAuthentication(payload)) Send(Cip.Authenticated());
     }
 
     private async Task ProbeLoop(CancellationToken ct)
