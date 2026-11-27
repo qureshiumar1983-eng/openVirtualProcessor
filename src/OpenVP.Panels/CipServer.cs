@@ -173,18 +173,24 @@ public static class Cip
     /// Crestron Virtual Panel's own log says so: sent the ordinary 0x02 it stops with "Event CONNECT_RESPONSE has no
     /// handler!". Layout as the community client siegeld/pycrestron describes it (its mock processor):
     ///   [handle:2] [mode] [flags] [extra flags:4] [model:30, NUL-padded]
-    /// The handle is 0, as in every packet OpenVP sends, and so is everything else but the model name. Crestron Virtual
-    /// Panel takes that: it logs "Licensing is not supported!" (a flag that isn't set) and stays connected. What it
+    /// Everything but the handle and the model name is 0. Crestron Virtual Panel takes that: it logs "Licensing is not
+    /// supported!" (a flag that isn't set) and stays connected. With handle 0000 it then never said another word (no
+    /// update request, no presses, no heartbeat, with or without the 0x0C below), so the handle is <see cref="RouterHandle"/>:
+    /// a "device router" answer exists to hand one out, and the community mock gives a non-zero one too. What it
     /// refuses, each seen in its log: the third byte as 03, which is what that mock sends ("Connection refused!
     /// Connection timed out.", so that byte is a result code, like the 02 in a refusal), and the classic four bytes
     /// "00 00 00 1F" sent as 0x27 ("Bad packet received!").
     /// </summary>
-    public static byte[] RoomConnectOk()
+    public static byte[] RoomConnectOk(ushort handle = RouterHandle)
     {
         var p = new byte[2 + 1 + 1 + 4 + 30];
+        p[0] = (byte)(handle >> 8); p[1] = (byte)handle;
         Encoding.ASCII.GetBytes("OpenVP").CopyTo(p, 8);
         return Frame(RoomConnectResponse, p);
     }
+
+    /// <summary>The handle a CH5 client on a WebSocket is given in its sign-on answer, and that every packet sent to it then starts with.</summary>
+    public const ushort RouterHandle = 0x0001;
 
     public const byte AuthenticateResponse = 0x0C; // processor -> panel: [handle:2][access level], 0 = refused
 
@@ -194,7 +200,7 @@ public static class Cip
     /// Layout from community clients (siegeld/pycrestron, Antonio112009/pycrestron-cip): any level above 0 is a yes.
     /// OpenVP checks no token, so it is always a yes.
     /// </summary>
-    public static byte[] Authenticated() => Frame(AuthenticateResponse, 0x00, 0x00, 0x01);
+    public static byte[] Authenticated(ushort handle = RouterHandle) => Frame(AuthenticateResponse, (byte)(handle >> 8), (byte)handle, 0x01);
 
     /// <summary>True if a 0x26 sign-on asks for its token to be checked (extra flags, a 4-byte field at offset 5; bit 0x10).</summary>
     public static bool WantsAuthentication(ReadOnlySpan<byte> roomConnectPayload) => roomConnectPayload.Length > 8 && (roomConnectPayload[8] & 0x10) != 0;
@@ -472,6 +478,7 @@ internal sealed class CipSession
     private Task? _probe;
     private long _probeAt;       // Stopwatch timestamp of the heartbeat request in flight, 0 = none
     private int _strays;         // packets logged from this client before it registered
+    private ushort _handle;      // the handle given to a CH5 client in its sign-on answer (0 otherwise); stamped on what we send it
     private int _traced;         // packets of this connection kept for the trace (a diagnostic; races only miscount it)
     private const int MaxStraysLogged = 4;
 
@@ -635,6 +642,7 @@ internal sealed class CipSession
         if (roomId != null) _conn.SetDetail("Room ID requested", roomId);
         device.FeedbackChanged += OnFeedback;
         device.AttachConnection(_conn);
+        if (routerAnswer) _handle = Cip.RouterHandle;
         Send(routerAnswer ? Cip.RoomConnectOk() : Cip.ConnectOk(ipId));
         if (routerAnswer && Cip.WantsAuthentication(payload)) Send(Cip.Authenticated());
     }
@@ -678,6 +686,12 @@ internal sealed class CipSession
     /// <summary>Queue a packet; never blocks the caller (often the slot thread).</summary>
     private void Send(byte[] packet)
     {
+        // Join data and heartbeats start with the connection's handle: 0 on TCP, the one handed out on a WebSocket.
+        if (_handle != 0 && packet.Length >= 5 && packet[0] is Cip.Data or Cip.SerialData or Cip.HeartbeatRequest or Cip.HeartbeatResponse)
+        {
+            packet[3] = (byte)(_handle >> 8);
+            packet[4] = (byte)_handle;
+        }
         if (Interlocked.Increment(ref _queued) <= Volatile.Read(ref _queueLimit))
         {
             if (_outbox.Writer.TryWrite(packet)) return;

@@ -60,7 +60,7 @@ public static class WebXPanelTests
         var answer = Read(ws);
         var auth = Read(ws);
         Assert.Equal(Cip.AuthenticateResponse, auth.type, "the token is accepted right after the sign-on answer");
-        Assert.Equal("000001", Convert.ToHexString(auth.payload), "handle 0, access level above 0");
+        Assert.Equal("000101", Convert.ToHexString(auth.payload), "the handle, and an access level above 0");
         return answer;
     }
 
@@ -98,7 +98,7 @@ public static class WebXPanelTests
         var resp = ReadSignOnAnswer(ws);
         Assert.Equal(Cip.RoomConnectResponse, resp.type, "the 0x26 sign-on is answered with 0x27 on a WebSocket");
         Assert.Equal(38, resp.payload.Length, "handle, mode, flags, extra flags and a 30-byte model");
-        Assert.Equal("00000000", Convert.ToHexString(resp.payload, 0, 4), "handle 0 and result 0: Virtual Panel reads 03 there as 'Connection timed out'");
+        Assert.Equal("00010000", Convert.ToHexString(resp.payload, 0, 4), "a handle that isn't 0, and result 0: Virtual Panel reads 03 there as 'Connection timed out'");
         Assert.Eventually(() => p.Slot(1).FindDevice(0x03)!.Online, "panel online in the program");
 
         // The client asks for every join's state, then presses d1; the sample program answers with feedback d1 high.
@@ -108,7 +108,11 @@ public static class WebXPanelTests
         for (int i = 0; i < 40 && !gotHigh; i++)
         {
             var (type, payload) = Read(ws);
-            if (Cip.DecodeJoin(type, payload) is var (k, v) && k == new JoinKey(SigKind.Digital, 1) && v is true) gotHigh = true;
+            if (Cip.DecodeJoin(type, payload) is var (k, v) && k == new JoinKey(SigKind.Digital, 1) && v is true)
+            {
+                gotHigh = true;
+                Assert.Equal("0001", Convert.ToHexString(payload, 0, 2), "feedback starts with the handle");
+            }
         }
         Assert.True(gotHigh, "received d1 feedback over the WebSocket");
 
