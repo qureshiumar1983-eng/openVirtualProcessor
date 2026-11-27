@@ -405,6 +405,22 @@
   #cmd-bar .seg button { border:0; min-height:34px; }
   .cmd-errs { font-size:12px; font-weight:600; padding:1px 10px; min-height:0 !important; border-radius:20px; background:var(--err-bg); color:var(--err-fg); border:1px solid var(--err-line, var(--err)); }
   #cmd-tp-menu { min-width:240px; }
+  #cmd-bar .cmd-more { flex:1 1 100%; display:flex; flex-wrap:wrap; align-items:center; gap:6px 16px; padding-top:10px; border-top:1px solid var(--line); }
+  #cmd-bar .cmd-more .bar { margin:0; }
+  #cmd-bar .cmd-more #watch-bar { flex:1 1 100%; }
+  /* The bar shows only what fits the selected slot: an empty slot shows the three steps to load a program; a loaded slot
+     shows its run buttons, and the load and tool rows fold behind More. */
+  #cmd-bar[data-mode="empty"] .loaded-only { display:none !important; }
+  #cmd-bar[data-mode="loaded"] .cmd-steps { display:none; }
+  #cmd-bar[data-mode="loaded"]:not(.more-open) .cmd-more > :not(#ready):not(#lock-banner) { display:none !important; }
+  #cmd-bar[data-mode="loaded"]:not(.more-open) .cmd-more:not(:has(> #ready:not([hidden]), > #lock-banner:not([hidden]))) { display:none; }
+  #cmd-bar .cmd-steps { flex:1 1 100%; display:flex; flex-wrap:wrap; gap:6px 22px; margin:0; padding:0; list-style:none; counter-reset:st; font-size:14px; color:var(--muted); }
+  #cmd-bar .cmd-steps li { counter-increment:st; display:flex; align-items:center; gap:8px; }
+  #cmd-bar .cmd-steps li::before { content:counter(st); width:22px; height:22px; border-radius:50%; display:inline-grid; place-items:center; font-size:12px; font-weight:700; border:1px solid var(--line); }
+  #cmd-bar .cmd-steps li.done { opacity:.6; } #cmd-bar .cmd-steps li.done::before { content:"✓"; }
+  #cmd-bar .cmd-steps li.now { color:var(--text); font-weight:600; } #cmd-bar .cmd-steps li.now::before { background:var(--active); border-color:var(--accent); color:#fff; }
+  #cmd-bar .step-now { border-color:var(--accent) !important; box-shadow:0 0 0 2px var(--accent-line, var(--accent)); }
+  #cmd-bar .cmd-more .ready, #cmd-bar .cmd-more #lock-banner { flex:1 1 100%; margin:0; max-height:30vh; overflow:auto; }
   #board-tiles { grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); }
   .btile .bacts { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
   .btile .bacts button { flex:1 1 auto; font-size:13px; padding:3px 8px; }
@@ -457,11 +473,44 @@
     <div class="muted" id="cmd-meta"></div>
   </div>
   <div class="cmd-acts">
-    <button id="open-debugger" class="cmd-debug" data-help="debugger-button" title="Watch and change this slot's signals live, in its own window (D). Open one per slot to debug several programs at once."><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 7V5a4 4 0 0 1 8 0v2"/><rect x="6" y="7" width="12" height="13" rx="6"/><path d="M12 11v9M3 13h3M18 13h3M4 7l3 2M20 7l-3 2M4 20l3-2M20 20l-3-2"/></svg>Open debugger <kbd>D</kbd></button>
-    <button id="cmd-autopanel" title="Open a panel built from this slot's signals, with saved layouts"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Generated panel</button>
-    <span class="menu-wrap"><button id="cmd-testpanel" aria-haspopup="menu" aria-expanded="false" title="Open a browser touch panel connected to one of this slot's IP IDs"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Test panel ▾</button><div id="cmd-tp-menu" class="dd-menu dd-right" role="menu" hidden></div></span>
-    <div class="seg" role="group" aria-label="Program control"><button data-act="start" data-help="start" title="Start the program loaded in this slot"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4v16l13-8z"/></svg>Start</button><button data-act="stop" data-help="stop" title="Stop the program but keep it loaded"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>Stop</button><button data-act="restart" data-help="restart" title="Load the program again from its file and start it"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/></svg>Restart</button></div>
-    <button data-act="unload" data-help="unload" title="Stop the program and remove it from this slot. NVRAM and User files are kept. You can undo it for a few seconds.">Unload</button>
+    <button id="open-debugger" class="cmd-debug loaded-only" data-help="debugger-button" title="Watch and change this slot's signals live, in its own window (D). Open one per slot to debug several programs at once."><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 7V5a4 4 0 0 1 8 0v2"/><rect x="6" y="7" width="12" height="13" rx="6"/><path d="M12 11v9M3 13h3M18 13h3M4 7l3 2M20 7l-3 2M4 20l3-2M20 20l-3-2"/></svg>Open debugger <kbd>D</kbd></button>
+    <button id="cmd-autopanel" class="loaded-only" title="Open a panel built from this slot's signals, with saved layouts"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Generated panel</button>
+    <span class="menu-wrap loaded-only"><button id="cmd-testpanel" aria-haspopup="menu" aria-expanded="false" title="Open a browser touch panel connected to one of this slot's IP IDs"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Test panel ▾</button><div id="cmd-tp-menu" class="dd-menu dd-right" role="menu" hidden></div></span>
+    <div class="seg loaded-only" role="group" aria-label="Program control"><button data-act="start" data-help="start" title="Start the program loaded in this slot"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4v16l13-8z"/></svg>Start</button><button data-act="stop" data-help="stop" title="Stop the program but keep it loaded"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>Stop</button><button data-act="restart" data-help="restart" title="Load the program again from its file and start it"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/></svg>Restart</button></div>
+    <button data-act="unload" class="loaded-only" data-help="unload" title="Stop the program and remove it from this slot. NVRAM and User files are kept. You can undo it for a few seconds.">Unload</button>
+    <button type="button" id="cmd-more-btn" class="loaded-only" aria-expanded="false" aria-controls="cmd-more" title="Show the rest of this slot's actions: load another program, Recent, Inspect, Compatibility, Room ID and Lock">More ▾</button>
+  </div>
+  <div class="cmd-more" id="cmd-more" aria-label="Load and manage this slot">
+    <ol class="cmd-steps" id="cmd-steps" aria-label="How to start"><li data-step="1">Pick a slot on the Status board</li><li data-step="2">Choose its program file</li><li data-step="3">Click <b>Load &amp; start</b></li></ol>
+    <div class="bar">
+      <input type="file" id="file" accept=".cpz,.dll,.zip,.smw,.json,.lpz,.sig" multiple data-help="choose-files" title="Pick the program: .cpz or .dll (SIMPL# Pro), .lpz (add its .sig for signal names) or .smw. OpenVP checks it and says whether it will run.">
+      <button id="upload" data-help="load-start" title="Upload the chosen file(s) into this slot and start the program. Replaces what was in the slot. You can also drop a program anywhere on this page.">Load &amp; start</button>
+      <span class="menu-wrap"><button id="recent-btn" data-help="recent" aria-haspopup="true" aria-expanded="false" title="Load one of the last programs again into this slot">Recent ▾</button><div id="recent-menu" role="menu" hidden></div></span>
+      <button id="inspect" data-help="inspect" title="Report what OpenVP can run in a compiled .lpz (add its .sig for names)">Inspect .lpz</button>
+      <button id="demo-btn" data-help="demo" title="Load the SIMPL# and SIMPL Windows samples into slots 1 and 2, linked over EISC, start them and open a test panel">Try the demo</button>
+    </div>
+    <div id="ready" class="ready" data-help="readiness" hidden aria-live="polite"></div>
+    <div class="bar" id="disk-bar" hidden>
+      <label data-help="reload-on-change" title="Load the program from where it is on this computer and load it again whenever it changes, for example each time you compile in SIMPL Windows"><input type="checkbox" id="watch"> Reload when the file changes</label>
+      <button id="from-path" data-help="load-from-path" hidden title="Type the full path of a program on this computer. Its .sig and sidecar files are loaded with it.">Load from path…</button>
+    </div>
+    <div class="bar" id="watch-bar" hidden>
+      <span class="muted">Reloads when this changes:</span> <span id="watch-path" class="mono" style="word-break:break-all"></span>
+      <button id="watch-stop" data-help="stop-watching" title="Keep the program running but stop reloading it when the file changes">Stop watching</button>
+    </div>
+    <div class="bar loaded-only">
+      <button id="compat" data-help="compat" title="List what the loaded program uses that OpenVP does not support yet (shown in the Console box)">Compatibility</button>
+    </div>
+    <div class="bar loaded-only" id="room-bar" style="display:none">
+      <span class="muted">Room ID</span> <b id="room-id" class="mono"></b>
+      <button id="room-edit" data-help="room-id" title="Virtual Control Room ID for this slot (panels can connect with ?room=ID)">Edit…</button>
+    </div>
+    <div class="bar loaded-only" id="lock-row">
+      <button id="lock-btn" data-perm="LockSlot" title="Lock this slot for a live event. Only an Admin or you can then load, stop, restart, force or edit it. Panels and shared links keep working.">Lock slot…</button>
+      <button id="unlock-btn" data-perm="LockSlot" hidden>Unlock</button>
+      <span id="pres-sel" class="muted"></span>
+    </div>
+    <div id="lock-banner" hidden role="status"></div>
   </div>
 </section>
 <section id="board" data-help="status-board">
@@ -514,35 +563,6 @@
     </section>
     <section style="margin-top:16px" id="slot-sec" data-help="slot">
       <h2 class="sec-t">Slot <span id="sel-num">1</span> <span id="sel-name" class="muted"></span></h2>
-      <div class="bar">
-        <input type="file" id="file" accept=".cpz,.dll,.zip,.smw,.json,.lpz,.sig" multiple data-help="choose-files" title="Pick the program: .cpz or .dll (SIMPL# Pro), .lpz (add its .sig for signal names) or .smw. OpenVP checks it and says whether it will run.">
-        <button id="upload" data-help="load-start" title="Upload the chosen file(s) into this slot and start the program. Replaces what was in the slot. You can also drop a program anywhere on this page.">Load &amp; start</button>
-        <span class="menu-wrap"><button id="recent-btn" data-help="recent" aria-haspopup="true" aria-expanded="false" title="Load one of the last programs again into this slot">Recent ▾</button><div id="recent-menu" role="menu" hidden></div></span>
-        <button id="inspect" data-help="inspect" title="Report what OpenVP can run in a compiled .lpz (add its .sig for names)">Inspect .lpz</button>
-        <button id="demo-btn" data-help="demo" title="Load the SIMPL# and SIMPL Windows samples into slots 1 and 2, linked over EISC, start them and open a test panel">Try the demo</button>
-      </div>
-      <div id="ready" class="ready" data-help="readiness" hidden aria-live="polite"></div>
-      <div class="bar" id="disk-bar" hidden>
-        <label data-help="reload-on-change" title="Load the program from where it is on this computer and load it again whenever it changes, for example each time you compile in SIMPL Windows"><input type="checkbox" id="watch"> Reload when the file changes</label>
-        <button id="from-path" data-help="load-from-path" hidden title="Type the full path of a program on this computer. Its .sig and sidecar files are loaded with it.">Load from path…</button>
-      </div>
-      <div class="bar" id="watch-bar" hidden>
-        <span class="muted">Reloads when this changes:</span> <span id="watch-path" class="mono" style="word-break:break-all"></span>
-        <button id="watch-stop" data-help="stop-watching" title="Keep the program running but stop reloading it when the file changes">Stop watching</button>
-      </div>
-      <div class="bar">
-        <button id="compat" data-help="compat" title="List what the loaded program uses that OpenVP does not support yet (shown in the Console box)">Compatibility</button>
-      </div>
-      <div class="bar" id="room-bar" style="display:none">
-        <span class="muted">Room ID</span> <b id="room-id" class="mono"></b>
-        <button id="room-edit" data-help="room-id" title="Virtual Control Room ID for this slot (panels can connect with ?room=ID)">Edit…</button>
-      </div>
-      <div class="bar" id="lock-row">
-        <button id="lock-btn" data-perm="LockSlot" title="Lock this slot for a live event. Only an Admin or you can then load, stop, restart, force or edit it. Panels and shared links keep working.">Lock slot…</button>
-        <button id="unlock-btn" data-perm="LockSlot" hidden>Unlock</button>
-        <span id="pres-sel" class="muted"></span>
-      </div>
-      <div id="lock-banner" hidden role="status"></div>
       <div id="sel-info" class="muted mono"></div>
       <div id="sel-summary" class="muted" data-help="summary" hidden></div>
       <details id="slot-set" data-help="slotsettings"><summary>Slot settings</summary>
@@ -864,7 +884,7 @@ function renderCmdBar() {
   $("#cmd-auto").hidden = !s.watching;
   $("#cmd-name").textContent = s.name ? (s.program ? `${s.name} · ${s.program}` : s.name) : (s.program || "No program loaded");
   const online = s.devices.filter(d => d.online).length;
-  $("#cmd-meta").textContent = s.program ? `${s.kind} · ${online} of ${s.devices.length} panels online` : "Load a program with Load & start below, or drop a file anywhere on the page.";
+  $("#cmd-meta").textContent = s.program ? `${s.kind} · ${online} of ${s.devices.length} panels online` : "Load a program with Load & start, or drop a file anywhere on the page.";
   const errs = (s.exceptions || 0) + (s.state === "Error" ? 1 : 0);
   const eb = $("#cmd-errs");
   eb.hidden = !errs;
@@ -873,7 +893,24 @@ function renderCmdBar() {
   $("#open-debugger").disabled = !s.program;
   $("#cmd-autopanel").disabled = !s.program;
   $("#cmd-testpanel").disabled = !s.devices.length;
+  renderCmdMode(s);
 }
+// Guide the user: an empty slot shows only the steps and buttons to load a program; once a program is in, the run buttons
+// appear and the loading tools fold behind More (kept open while the user has it open).
+let cmdMoreOpen = false;
+function renderCmdMode(s = boardSlots.find(x => x.number === sel)) {
+  if (!s) return;
+  const bar = $("#cmd-bar"), loaded = !!s.program || s.state === "Error";
+  bar.dataset.mode = loaded ? "loaded" : "empty";
+  bar.classList.toggle("more-open", cmdMoreOpen);
+  const mb = $("#cmd-more-btn"); mb.setAttribute("aria-expanded", String(cmdMoreOpen)); mb.textContent = cmdMoreOpen ? "Less ▴" : "More ▾";
+  const chosen = $("#file").files.length > 0, step = chosen ? 3 : 2;
+  for (const li of document.querySelectorAll("#cmd-steps li")) { const n = +li.dataset.step; li.classList.toggle("done", n < step); li.classList.toggle("now", n === step); }
+  $("#file").classList.toggle("step-now", !loaded && step === 2);
+  $("#upload").classList.toggle("step-now", !loaded && step === 3);
+}
+$("#cmd-more-btn").onclick = () => { cmdMoreOpen = !cmdMoreOpen; renderCmdMode(); };
+$("#file").addEventListener("change", () => renderCmdMode());
 $("#cmd-autopanel").onclick = () => window.open(`autopanel.html?slot=${sel}`, "openvp-autopanel");
 $("#cmd-errs").onclick = () => { showWsTab("log-sec"); $("#workspace").scrollIntoView({ behavior: "smooth", block: "start" }); };
 {
@@ -2292,7 +2329,8 @@ function renderStrip() {
   // Every section on the console folds away: click its title (or Enter/Space on it), or use Collapse all / Expand all in the
   // header. Remembered per browser. The slot bar never folds, so Open debugger stays in reach.
   const KEY = "openvp.collapsed2";
-  let state = {}; try { state = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch { }
+  // First visit: the Program slots table starts folded, since the Status board above shows the same slots.
+  let state = { "slots-sec": true }; try { const v = localStorage.getItem(KEY); if (v) state = JSON.parse(v) || {}; } catch { }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { } };
   const secs = [];
   for (const sec of document.querySelectorAll("section[id]")) {
@@ -2513,7 +2551,7 @@ function paletteItems() {
   add("Choose a theme…", `now ${window.openvpTheme?.names[window.openvpTheme?.get()] ?? "iOS glass"}`, () => window.openvpTheme?.openMenu(), "theme colours dark light glass ios android");
   for (const t of window.openvpTheme?.list ?? []) add(`Theme: ${t.name}`, t.group, () => { window.openvpTheme?.set(t.id); flashSaved(); }, "theme colour mode dark light glass ios android");
   add("Load a program into the selected slot…", "choose a file", () => $("#file").click(), "upload open file");
-  add("Show recent programs", "menu", () => { $("#slot-sec").scrollIntoView({ block: "center" }); setTimeout(() => $("#recent-btn").click(), 50); }, "history last");
+  add("Show recent programs", "menu", () => { cmdMoreOpen = true; renderCmdMode(); $("#cmd-bar").scrollIntoView({ block: "nearest" }); setTimeout(() => $("#recent-btn").click(), 50); }, "history last");
   for (const r of palExtra.recent) if (r.available) add(`Load recent: ${r.name} into slot ${sel}`, r.kind, () => loadRecent(r), "recent program");
   add("Show compatibility report", "Console box", () => $("#compat").click(), "unsupported");
   add("Select every slot", "bulk", () => $("#bulk-all").click(), "bulk all");
