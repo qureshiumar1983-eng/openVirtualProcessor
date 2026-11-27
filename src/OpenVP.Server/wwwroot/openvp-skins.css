@@ -1,0 +1,161 @@
+/* Themes for the console pages, picked from the Theme menu (openvp-theme.js sets data-skin on <html>).
+ * Each theme maps onto the variables the pages already use, so a page needs no changes to follow it.
+ * "original" and "original-light" set nothing here and keep the look in openvp-theme.css and the pages.
+ * Generated from the design canvas tokens; text colours were checked for 4.5:1 on the panel colour they sit on. */
+
+:root[data-skin="ios-glass"] {
+  color-scheme:dark;
+  --bg:#1E1B4B; --card:rgba(255,255,255,0.10); --pane:rgba(255,255,255,0.10); --head:rgba(255,255,255,0.08); --line:rgba(255,255,255,0.18);
+  --text:#FFFFFF; --text2:rgba(255,255,255,0.9); --muted:rgba(255,255,255,0.76); --accent:#D6E8FF; --accent-fill:#0A6CFF; --accent-fg:#FFFFFF;
+  --accent-soft:rgba(10,108,255,0.38); --accent-soft-fg:#FFFFFF; --accent-line:rgba(150,195,255,0.65); --ok:#30D158; --on:#30D158; --warn:#FFB340;
+  --err:#FF6B61; --sel:rgba(255,255,255,0.12); --input:rgba(255,255,255,0.14); --well:rgba(0,0,0,0.28); --tile:rgba(255,255,255,0.10);
+  --soft:rgba(255,255,255,0.18); --hover:rgba(255,255,255,0.3); --selrow:rgba(255,255,255,0.12); --active:rgba(10,108,255,0.38);
+  --chip:rgba(255,255,255,0.18); --chip2:rgba(255,255,255,0.18); --dim:rgba(255,255,255,0.5); --ok-bg:rgba(48,209,88,0.32); --ok-fg:#DCFFE5;
+  --err-bg:rgba(255,69,58,0.34); --err-fg:#FFE6E4; --warn-bg:rgba(255,159,10,0.32); --warn-fg:#FFEACC; --info-bg:rgba(100,170,255,0.3);
+  --info-fg:#E6F1FF; --warn-line:rgba(255,185,90,0.65); --warn-box:rgba(255,159,10,0.32); --overlay:rgba(0,0,0,0.45); --ok-glow:#30D15833;
+  --menu:rgba(30,27,58,0.94); --inv:#FFFFFF; --btn:rgba(255,255,255,0.18); --btn-line:rgba(255,255,255,0.32); --err-line:rgba(255,130,120,0.55);
+  --font:-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI Variable Text', Inter, system-ui, sans-serif; --r-btn:999px; --r-card:22px;
+  --r-card2:18px; --r-sm:14px;
+  --wall:radial-gradient(760px 560px at 10% 4%, #2563EB 0%, rgba(37,99,235,0) 70%), radial-gradient(680px 560px at 92% 8%, #7C3AED 0%, rgba(124,58,237,0) 70%), radial-gradient(760px 640px at 72% 34%, #C2410C 0%, rgba(194,65,12,0) 70%), radial-gradient(720px 620px at 14% 52%, #0F766E 0%, rgba(15,118,110,0) 70%), radial-gradient(760px 640px at 86% 76%, #BE185D 0%, rgba(190,24,93,0) 70%), radial-gradient(760px 640px at 24% 96%, #1D4ED8 0%, rgba(29,78,216,0) 70%), linear-gradient(165deg, #1E1B4B 0%, #2E1065 40%, #0B1026 100%);
+  --blur:blur(18px) saturate(160%);
+  --glass-shadow:0 10px 40px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.4), inset 0 0 0 1px rgba(255,255,255,0.06);
+}
+:root[data-skin="ios-light"] {
+  color-scheme:light;
+  --bg:#F2F2F7; --card:#FFFFFF; --pane:#FFFFFF; --head:#F7F7FA; --line:#E5E5EA; --text:#1C1C1E; --text2:#3C3C43; --muted:#6C6C70; --accent:#0A6CFF;
+  --accent-fill:#0A6CFF; --accent-fg:#FFFFFF; --accent-soft:#E5F0FF; --accent-soft-fg:#0058C2; --accent-line:#99C2F5; --ok:#1E7A35; --on:#34C759;
+  --warn:#A34A00; --err:#D70015; --sel:#EAF3FF; --input:#EEEEF0; --well:#FFFFFF; --tile:#FFFFFF; --soft:#EDEDF0; --hover:#E3E3E8; --selrow:#EAF3FF;
+  --active:#E5F0FF; --chip:#EDEDF0; --chip2:#EDEDF0; --dim:#C7C7CC; --ok-bg:#E3F7E8; --ok-fg:#1E7A35; --err-bg:#FFEBEA; --err-fg:#C4170D;
+  --warn-bg:#FFF1DE; --warn-fg:#A34A00; --info-bg:#E5F0FF; --info-fg:#0058C2; --warn-line:#FFB566; --warn-box:#FFF1DE; --overlay:rgba(0,0,0,0.45);
+  --ok-glow:#34C75933; --menu:#FFFFFF; --inv:#000000; --btn:#EDEDF0; --btn-line:#EDEDF0; --err-line:#FFC9C5;
+  --font:-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI Variable Text', Inter, system-ui, sans-serif; --r-btn:999px; --r-card:22px;
+  --r-card2:18px; --r-sm:14px;
+}
+:root[data-skin="ios-dark"] {
+  color-scheme:dark;
+  --bg:#000000; --card:#1C1C1E; --pane:#1C1C1E; --head:#141416; --line:#38383A; --text:#F2F2F7; --text2:#D1D1D6; --muted:#98989F; --accent:#4DA3FF;
+  --accent-fill:#0A6CFF; --accent-fg:#FFFFFF; --accent-soft:#0A2540; --accent-soft-fg:#64B5FF; --accent-line:#1F5FA8; --ok:#30D158; --on:#30D158;
+  --warn:#FF9F0A; --err:#FF453A; --sel:#0E2A4A; --input:#2C2C2E; --well:#000000; --tile:#1C1C1E; --soft:#2C2C2E; --hover:#3A3A3C; --selrow:#0E2A4A;
+  --active:#0A2540; --chip:#2C2C2E; --chip2:#2C2C2E; --dim:#545458; --ok-bg:#0F2E18; --ok-fg:#30D158; --err-bg:#3A1412; --err-fg:#FF6961;
+  --warn-bg:#3A2A0A; --warn-fg:#FF9F0A; --info-bg:#0A2A38; --info-fg:#64D2FF; --warn-line:#7A5410; --warn-box:#3A2A0A; --overlay:rgba(0,0,0,0.45);
+  --ok-glow:#30D15833; --menu:#1C1C1E; --inv:#FFFFFF; --btn:#2C2C2E; --btn-line:#2C2C2E; --err-line:#5C1F1C;
+  --font:-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI Variable Text', Inter, system-ui, sans-serif; --r-btn:999px; --r-card:22px;
+  --r-card2:18px; --r-sm:14px;
+}
+:root[data-skin="android-light"] {
+  color-scheme:light;
+  --bg:#FEF7FF; --card:#F7F2FA; --pane:#F7F2FA; --head:#F3EDF7; --line:#CAC4D0; --text:#1D1B20; --text2:#49454F; --muted:#5B5662; --accent:#6750A4;
+  --accent-fill:#6750A4; --accent-fg:#FFFFFF; --accent-soft:#EADDFF; --accent-soft-fg:#21005D; --accent-line:#EADDFF; --ok:#1B5E20; --on:#2E7D32;
+  --warn:#5C4300; --err:#B3261E; --sel:#F1E9FF; --input:#ECE6F0; --well:#FFFFFF; --tile:#F7F2FA; --soft:#E8DEF8; --hover:#DED5EE; --selrow:#F1E9FF;
+  --active:#EADDFF; --chip:#E6E0E9; --chip2:#E6E0E9; --dim:#79747E; --ok-bg:#C8E6C9; --ok-fg:#1B5E20; --err-bg:#F9DEDC; --err-fg:#410E0B;
+  --warn-bg:#FFEFC2; --warn-fg:#5C4300; --info-bg:#EADDFF; --info-fg:#21005D; --warn-line:#C99A2E; --warn-box:#FFEFC2; --overlay:rgba(0,0,0,0.45);
+  --ok-glow:#2E7D3233; --menu:#F7F2FA; --inv:#1D1B20; --btn:#E8DEF8; --btn-line:#E8DEF8; --err-line:#E8B4B0;
+  --font:Roboto, 'Google Sans', system-ui, sans-serif; --r-btn:999px; --r-card:20px; --r-card2:16px; --r-sm:12px;
+}
+:root[data-skin="android-dark"] {
+  color-scheme:dark;
+  --bg:#141218; --card:#211F26; --pane:#211F26; --head:#1D1B20; --line:#49454F; --text:#E6E0E9; --text2:#CAC4D0; --muted:#B3ADBA; --accent:#D0BCFF;
+  --accent-fill:#D0BCFF; --accent-fg:#381E72; --accent-soft:#4F378B; --accent-soft-fg:#EADDFF; --accent-line:#4F378B; --ok:#81C784; --on:#81C784;
+  --warn:#FFDF99; --err:#F2B8B5; --sel:#2F2541; --input:#2B2930; --well:#0F0D13; --tile:#211F26; --soft:#4A4458; --hover:#403B4A; --selrow:#2F2541;
+  --active:#4F378B; --chip:#36343B; --chip2:#36343B; --dim:#938F99; --ok-bg:#1B3A1E; --ok-fg:#A5D6A7; --err-bg:#8C1D18; --err-fg:#F9DEDC;
+  --warn-bg:#4A3800; --warn-fg:#FFDF99; --info-bg:#4F378B; --info-fg:#EADDFF; --warn-line:#8A6A1E; --warn-box:#4A3800; --overlay:rgba(0,0,0,0.45);
+  --ok-glow:#81C78433; --menu:#211F26; --inv:#E6E0E9; --btn:#4A4458; --btn-line:#4A4458; --err-line:#8C1D18;
+  --font:Roboto, 'Google Sans', system-ui, sans-serif; --r-btn:999px; --r-card:20px; --r-card2:16px; --r-sm:12px;
+}
+:root[data-skin="rack"] {
+  color-scheme:dark;
+  --bg:#0F0F0E; --card:#181817; --pane:#181817; --head:#141413; --line:#2B2A26; --text:#ECE6DA; --text2:#CFC8BA; --muted:#A39D90; --accent:#FFC94D;
+  --accent-fill:#FFB000; --accent-fg:#1A1400; --accent-soft:#2A2110; --accent-soft-fg:#FFC94D; --accent-line:#E09B00; --ok:#7BD88F; --on:#7BD88F;
+  --warn:#FFC68A; --err:#FF5A4E; --sel:#221F18; --input:#1C1B19; --well:#0A0A09; --tile:#181817; --soft:#24231F; --hover:#302E29; --selrow:#221F18;
+  --active:#2A2110; --chip:#2A2925; --chip2:#2A2925; --dim:#605C53; --ok-bg:#17281B; --ok-fg:#A6E9B4; --err-bg:#331815; --err-fg:#FFB4AD;
+  --warn-bg:#33220F; --warn-fg:#FFC68A; --info-bg:#1E2329; --info-fg:#C9D6E3; --warn-line:#A0601C; --warn-box:#33220F; --overlay:rgba(0,0,0,0.45);
+  --ok-glow:#7BD88F33; --menu:#181817; --inv:#F2ECE0; --btn:#24231F; --btn-line:#4D4A43; --err-line:#7A3530; --font:Inter, system-ui, sans-serif;
+  --r-btn:6px; --r-card:8px; --r-card2:6px; --r-sm:4px;
+}
+:root[data-skin="control-room"] {
+  color-scheme:light;
+  --bg:#E4E4E1; --card:#F3F3F0; --pane:#F3F3F0; --head:#EAEAE7; --line:#D3D3CE; --text:#1E1F21; --text2:#3A3C40; --muted:#585B62; --accent:#00658A;
+  --accent-fill:#00658A; --accent-fg:#FFFFFF; --accent-soft:#DDEFF4; --accent-soft-fg:#004A66; --accent-line:#00658A; --ok:#1D6B2A; --on:#2E8B3A;
+  --warn:#7A4D00; --err:#B42318; --sel:#E3EEF2; --input:#FFFFFF; --well:#FAFAF8; --tile:#F3F3F0; --soft:#FFFFFF; --hover:#F0F0EC; --selrow:#E3EEF2;
+  --active:#DDEFF4; --chip:#E0E0DC; --chip2:#E0E0DC; --dim:#7F7F79; --ok-bg:#DCEFD9; --ok-fg:#1D6B2A; --err-bg:#FBE3E1; --err-fg:#9B1C1C;
+  --warn-bg:#FCEFC7; --warn-fg:#7A4D00; --info-bg:#E3ECF5; --info-fg:#1E4A73; --warn-line:#D8A31A; --warn-box:#FCEFC7; --overlay:rgba(0,0,0,0.45);
+  --ok-glow:#2E8B3A33; --menu:#F3F3F0; --inv:#1A1B1D; --btn:#FFFFFF; --btn-line:#9E9E97; --err-line:#E08A8A; --font:Inter, system-ui, sans-serif;
+  --r-btn:6px; --r-card:10px; --r-card2:8px; --r-sm:6px;
+}
+:root[data-skin="scope"] {
+  color-scheme:dark;
+  --bg:#090D0B; --card:#0F1512; --pane:#0F1512; --head:#0C110E; --line:#1E2B25; --text:#D6F5E3; --text2:#A9D4BC; --muted:#80A893; --accent:#5FE8FF;
+  --accent-fill:#39FF88; --accent-fg:#04140A; --accent-soft:#0E2A1A; --accent-soft-fg:#7DFFB2; --accent-line:#2BD672; --ok:#5FE8FF; --on:#5FE8FF;
+  --warn:#FFD27A; --err:#FF4D4D; --sel:#12231B; --input:#111915; --well:#050806; --tile:#0F1512; --soft:#17201C; --hover:#20302A; --selrow:#12231B;
+  --active:#0E2A1A; --chip:#1B2620; --chip2:#1B2620; --dim:#4C6A5C; --ok-bg:#0C2A30; --ok-fg:#A0F3FF; --err-bg:#2A1010; --err-fg:#FFB3B3;
+  --warn-bg:#2E2410; --warn-fg:#FFD27A; --info-bg:#0C2228; --info-fg:#A0F3FF; --warn-line:#A87A1C; --warn-box:#2E2410; --overlay:rgba(0,0,0,0.45);
+  --ok-glow:#5FE8FF33; --menu:#0F1512; --inv:#DDF7E8; --btn:#17201C; --btn-line:#3A5247; --err-line:#6E2A2A; --font:Inter, system-ui, sans-serif;
+  --r-btn:3px; --r-card:6px; --r-card2:4px; --r-sm:3px;
+}
+
+/* ---- Shapes and type shared by the new themes ---- */
+:root[data-skin]:not([data-skin^="original"]) body { font-family:var(--font); }
+/* The wallpaper is one fixed layer under the page, drawn once, instead of a fixed background that repaints on every scroll. */
+:root[data-skin="ios-glass"] body { background:var(--bg); }
+:root[data-skin="ios-glass"] body::before { content:""; position:fixed; inset:0; z-index:-1; background:var(--wall); pointer-events:none; }
+:root[data-skin]:not([data-skin^="original"]) :is(button, input, select) { border-radius:var(--r-btn); }
+:root[data-skin]:not([data-skin^="original"]) textarea { border-radius:var(--r-sm); }
+:root[data-skin]:not([data-skin^="original"]) button { background:var(--btn); border-color:var(--btn-line); color:var(--text); }
+:root[data-skin]:not([data-skin^="original"]) button:hover:not(:disabled) { background:var(--hover); border-color:var(--accent-line); }
+:root[data-skin]:not([data-skin^="original"]) :is(button, a, input, select, textarea, [tabindex]):focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+:root[data-skin]:not([data-skin^="original"]) :is(section, .card, dialog) { border-radius:var(--r-card); }
+:root[data-skin]:not([data-skin^="original"]) :is(.dd-menu, #sigfind-res, .ovpt-menu, .ovl-list, pre.out, #log, #console-out, .ed-wrap) { border-radius:var(--r-sm); }
+:root[data-skin]:not([data-skin^="original"]) :is(.pill, .state, .bbadge, .abadge, .ovl-chip) { border-radius:999px; }
+
+/* Easier-to-read buttons everywhere except the dense debugger and Paths windows. */
+:root[data-skin]:not([data-skin^="original"]):not([data-page="debugger"]):not([data-page="paths"]) button { min-height:32px; font-size:max(13px, 1em); font-weight:500; padding-inline:max(12px, 0.8em); }
+:root[data-skin]:not([data-skin^="original"]):not([data-page="debugger"]):not([data-page="paths"]) :is(input:not([type=checkbox]):not([type=radio]), select) { min-height:32px; }
+:root[data-skin]:not([data-skin^="original"]):not([data-page="debugger"]):not([data-page="paths"]) button.small, :root[data-skin]:not([data-skin^="original"]):not([data-page="debugger"]):not([data-page="paths"]) .sec-head button { min-height:28px; }
+
+/* Main action (the debugger, Load & start, Save...) and destructive actions. */
+:root[data-skin]:not([data-skin^="original"]) :is(button.primary, button.cta, #open-debugger, .cmd-debug) { background:var(--accent-fill); border-color:transparent; color:var(--accent-fg); font-weight:600; }
+:root[data-skin]:not([data-skin^="original"]) :is(button.primary, button.cta, #open-debugger, .cmd-debug):hover:not(:disabled) { background:var(--accent-fill); filter:brightness(1.1); border-color:transparent; }
+:root[data-skin]:not([data-skin^="original"]) :is(button.tint, .btn-debug) { background:var(--accent-soft); border-color:var(--accent-line); color:var(--accent-soft-fg); font-weight:600; }
+:root[data-skin]:not([data-skin^="original"]) :is(button.danger, [data-act="unload"], [data-bulk="unload"], .btn-danger) { color:var(--err-fg); border-color:var(--err-line); background:transparent; }
+:root[data-skin]:not([data-skin^="original"]) :is(button.danger, [data-act="unload"], [data-bulk="unload"], .btn-danger):hover:not(:disabled) { background:var(--err-bg); border-color:var(--err-line); }
+
+/* Segmented controls (tabs such as NVRAM / User). */
+:root[data-skin]:not([data-skin^="original"]) .tabs { display:inline-flex; gap:2px; padding:3px; background:var(--chip); border:1px solid var(--line); border-radius:var(--r-btn); }
+:root[data-skin]:not([data-skin^="original"]) .tabs button, :root[data-skin]:not([data-skin^="original"]) .tabs button:first-child, :root[data-skin]:not([data-skin^="original"]) .tabs button:last-child { border:0; margin:0; border-radius:var(--r-btn); background:transparent; min-height:28px; }
+:root[data-skin]:not([data-skin^="original"]) .tabs button.active { background:var(--accent-soft); color:var(--accent-soft-fg); font-weight:600; box-shadow:var(--glass-shadow, none); }
+
+/* Glass: see-through panels that blur the wallpaper behind them. */
+/* Glass panels are see-through over the soft wallpaper; blurring a smooth gradient looks the same, so only the bars and menus that
+   have page content scrolling under them blur (each blur is re-drawn on every scroll and refresh, which is slow on a VM with no GPU). */
+:root[data-skin="ios-glass"] :is(section, .card, dialog, .pane, .btile) { box-shadow:var(--glass-shadow); }
+:root[data-skin="ios-glass"] :is(header, #cmd-bar, .title, .dd-menu, #sigfind-res, .ovpt-menu, #recent-menu, #cmd-tp-menu, dialog) { -webkit-backdrop-filter:var(--blur); backdrop-filter:var(--blur); }
+:root[data-skin="ios-glass"] :is(header, #cmd-bar, .title) { background:rgba(30,27,75,0.55); }
+@media (prefers-reduced-transparency: reduce) { :root[data-skin="ios-glass"] * { -webkit-backdrop-filter:none !important; backdrop-filter:none !important; } }
+:root[data-skin="ios-glass"] :is(button.primary, button.cta, #open-debugger, .cmd-debug) { box-shadow:0 4px 16px rgba(10,108,255,0.45), inset 0 1px 0 rgba(255,255,255,0.35); }
+:root[data-skin="ios-glass"] dialog::backdrop { background:rgba(10,8,30,0.55); }
+
+/* ---- The theme menu (openvp-theme.js) ---- */
+.ovpt-wrap { position:relative; display:inline-block; }
+.ovpt-menu { position:fixed; z-index:1000; width:250px; max-height:min(70vh, 520px); overflow:auto; padding:6px; box-sizing:border-box;
+  background:var(--menu); color:var(--text); border:1px solid var(--line); border-radius:12px; box-shadow:0 16px 48px rgba(0,0,0,0.35); font:14px/1.3 var(--font, system-ui, sans-serif); }
+.ovpt-menu[hidden] { display:none; }
+.ovpt-menu h4 { margin:0; padding:10px 10px 4px; font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+.ovpt-menu button { display:flex !important; align-items:center; justify-content:space-between; width:100%; min-height:36px; padding:0 10px !important; border:0 !important;
+  border-radius:8px !important; background:transparent !important; color:var(--text) !important; font:inherit !important; text-align:left; cursor:pointer; box-shadow:none !important; -webkit-backdrop-filter:none !important; backdrop-filter:none !important; }
+.ovpt-menu button:hover, .ovpt-menu button:focus-visible { background:var(--hover) !important; outline:none; }
+.ovpt-menu button[aria-checked="true"] { font-weight:600 !important; }
+.ovpt-menu button[aria-checked="true"]::after { content:"✓"; color:var(--accent); }
+.ovpt-menu .ovpt-sw { display:inline-block; width:14px; height:14px; border-radius:50%; margin-right:10px; flex:none; border:1px solid rgba(127,127,127,0.4); }
+.ovpt-menu .ovpt-l { display:flex; align-items:center; flex:1; }
+
+/* Glass in the data-heavy windows: the debugger, Paths and the log keep the wallpaper but on darker glass, so long lists stay easy to read. */
+:root[data-skin="ios-glass"]:is([data-page="debugger"], [data-page="paths"], [data-page="log"]) { --pane:rgba(22,20,44,0.74); --head:rgba(22,20,44,0.82); --card:rgba(22,20,44,0.74); --well:rgba(10,9,24,0.6); --input:rgba(255,255,255,0.12); }
+:root[data-skin="ios-glass"] .ovl-list { background:rgba(10,9,24,0.55); }
+
+
+/* Desktop app with glass: the window itself is see-through (Windows 11 Acrylic / macOS vibrancy blurs the apps behind it),
+   so the page drops its painted wallpaper and only adds a light tint to keep text readable. */
+:root.os-glass[data-skin="ios-glass"] { background:transparent; }
+:root.os-glass[data-skin="ios-glass"] body { background:rgba(14,12,34,0.38); }
+:root.os-glass[data-skin="ios-glass"] body::before { display:none; }
+:root.os-glass[data-skin="ios-glass"] :is(header, #cmd-bar, .title) { background:rgba(20,18,44,0.5); }

@@ -2,7 +2,7 @@
 
 OpenVP adds a row here whenever a program uses a symbol, type or API it doesn't support yet. Commit this file after running your programs so everyone can see what to build next; **Programs** counts the program loads that hit it, so the top of each kind is the most wanted. Only symbol names are recorded, never program names.
 
-When you implement one, delete its row (the server also drops rows for symbols the catalog supports now, whether matched by library name, SmC code or compiled type, and rows for SIMPL# types and members the API shim implements now; a `SIMPL# member` row with `(N arguments)` is an overload with that many arguments that is missing). If a program still needs it, it comes back on the next run.
+When you implement one, delete its row (the server also drops rows for symbols the catalog supports now, whether matched by library name, SmC code or compiled type). If a program still needs it, it comes back on the next run.
 
 Merging: if two people's edits clash, keep both rows; for the same row, add the Programs counts and keep the earliest First seen and latest Last seen.
 
@@ -39,6 +39,7 @@ Everything here is written for OpenVP from public behaviour; none of it is Crest
 | Kind | Symbol / API | Details | Programs | First seen | Last seen |
 |---|---|---|---:|---|---|
 | Compiled primitive | type 107 | unidentified; inside DENON DN-700R Full Control v1.0.umc (run from the .lpz) | 3 | 2026-11-19 | 2026-11-19 |
+| Compiled primitive | type 265 | unidentified | 3 | 2026-11-26 | 2026-11-26 |
 | Compiled primitive | type 261 | unidentified; inside SACN SenderDirectSockets.cmc (run from the .lpz) | 2 | 2026-11-19 | 2026-11-19 |
 | Compiled primitive | type 113 | unidentified | 1 | 2026-11-19 | 2026-11-19 |
 | SIMPL hardware | GLS-PART-CN (SmC 5206) | processor hardware (Cresnet, COM, IR, relays...) | 5 | 2026-11-19 | 2026-11-19 |

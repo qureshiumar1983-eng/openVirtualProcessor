@@ -1,7 +1,7 @@
 // Runs in the OpenVP console window before the page. A web page only ever gets a picked file's contents; the
 // desktop app can also say where the file is on disk, so OpenVP can bring its .sig along and reload the program
 // when it changes. The page can also tell the app that the "update available" banner (which the app draws in the
-// page, see updater.js) was pressed or closed. Nothing else is exposed to the page.
+// page, see updater.js) was pressed or closed, and ask for a see-through window for the glass theme. Nothing else is exposed to the page.
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('openvpDesktop', {
@@ -11,4 +11,8 @@ contextBridge.exposeInMainWorld('openvpDesktop', {
   updateNow: () => ipcRenderer.send('openvp:update-now'),
   /** The update banner was closed: don't show it again until the app restarts. */
   hideUpdate: () => ipcRenderer.send('openvp:update-hide'),
+  /** True where the window itself can be see-through (Windows 11 Acrylic, macOS vibrancy). */
+  glassSupported: process.platform === 'win32' || process.platform === 'darwin',
+  /** The "iOS glass" theme is on or off: make the window see-through to the apps behind it, or solid again. */
+  setGlass: on => ipcRenderer.send('openvp:glass', !!on),
 });

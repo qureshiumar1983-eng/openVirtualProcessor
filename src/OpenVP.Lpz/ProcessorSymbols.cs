@@ -17,8 +17,9 @@ namespace OpenVP.Lpz;
 /// </summary>
 public static class ProcessorSymbols
 {
-    /// <summary>The System Monitor card sits at slot 8 of the processor in the compiled programs seen (RMC4).</summary>
-    private const int SystemMonitorSlot = 8;
+    /// <summary>The slot the System Monitor card sits at, by processor: 8 on an RMC4, 7 on a CP4 (its .smw has
+    /// "System Monitor" at Ad=07). A program for a processor that puts it elsewhere would need its slot added here.</summary>
+    private static readonly int[] SystemMonitorSlots = [7, 8];
 
     /// <summary>The digital output that is the program-start feedback.</summary>
     public const int ProgramStartOutput = 1;
@@ -33,6 +34,6 @@ public static class ProcessorSymbols
         if (sym.Type != -12 || sym.Path != "Slot-01" || sym.IpId != null) return false;
         if (sym.FieldInt(7) is not int parent || parent <= 0 || parent >= logic.Symbols.Count) return false;
         var card = logic.Symbols[parent];
-        return card.Type == -12 && card.Path.StartsWith("Slot-", StringComparison.Ordinal) && card.FieldInt(6) == SystemMonitorSlot && card.FieldInt(7) is 0 or null;
+        return card.Type == -12 && card.Path.StartsWith("Slot-", StringComparison.Ordinal) && card.FieldInt(6) is int slot && SystemMonitorSlots.Contains(slot) &&card.FieldInt(7) is 0 or null;
     }
 }

@@ -7,7 +7,7 @@
 //   - Dev (`npm start`): runs the server from source with `dotnet watch`, serves the web pages straight from
 //     src/OpenVP.Server/wwwroot, and reloads the windows when a page changes or the server restarts after a
 //     C# change. Needs the .NET 8 SDK.
-const { app, BrowserWindow, Menu, Tray, Notification, nativeImage, dialog, shell, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, Menu, Tray, Notification, nativeImage, dialog, shell, powerSaveBlocker, ipcMain } = require('electron');
 const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const http = require('http');
@@ -187,11 +187,33 @@ function openPopup(url, name) {
     return;
   }
   const win = new BrowserWindow({ ...POPUP_OPTIONS, title: 'OpenVP', icon: path.join(__dirname, 'build', 'icon.ico'),
-    webPreferences: { contextIsolation: true, sandbox: true } });
+    webPreferences: { contextIsolation: true, sandbox: true, preload: path.join(__dirname, 'preload.js') } });
   if (name) { popups.set(name, win); win.on('closed', () => { if (popups.get(name) === win) popups.delete(name); }); }
   wire(win);
   win.loadURL(url);
 }
+
+// ---------------------------------------------------------------- see-through windows for the "iOS glass" theme
+// With the glass theme the page asks (openvpDesktop.setGlass) for the window itself to be see-through: Windows 11 draws
+// its Acrylic material (a blur of the apps and desktop behind the window), macOS its vibrancy. Any other theme, or an
+// older Windows, gets the normal solid window back. Only OpenVP's own pages can ask.
+const SOLID_BG = '#202020';
+function setGlass(win, on) {
+  if (!win || win.isDestroyed()) return;
+  try {
+    if (process.platform === 'win32' && typeof win.setBackgroundMaterial === 'function') {
+      win.setBackgroundColor(on ? '#00000000' : SOLID_BG);
+      win.setBackgroundMaterial(on ? 'acrylic' : 'none');
+    } else if (process.platform === 'darwin') {
+      win.setBackgroundColor(on ? '#00000000' : SOLID_BG);
+      win.setVibrancy(on ? 'under-window' : null);
+    }
+  } catch { /* not supported here: the page keeps its own wallpaper */ }
+}
+ipcMain.on('openvp:glass', (e, on) => {
+  if (!isOpenVpUrl(e.senderFrame?.url || e.sender.getURL())) return;
+  setGlass(BrowserWindow.fromWebContents(e.sender), !!on);
+});
 
 function createWindow(width, height) {
   const win = new BrowserWindow({

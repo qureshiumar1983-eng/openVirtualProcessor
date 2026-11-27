@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="openvp-theme.css">
+<link rel="stylesheet" href="openvp-skins.css">
 <script src="openvp-theme.js"></script>
 <title>OpenVP</title>
 <style>
@@ -356,10 +357,8 @@
     #slot-strip { display:flex; position:sticky; top:0; z-index:40; gap:8px; align-items:center; padding:8px 12px; background:var(--bg); border-bottom:1px solid var(--line); }
     #slot-strip select { flex:1; min-width:0; }
     #slot-strip button { min-width:44px; padding:6px 10px; }
-    section h2.sec-t { cursor:pointer; display:flex; align-items:center; min-height:36px; user-select:none; }
-    section h2.sec-t::after { content:"▾"; margin-left:auto; padding-left:10px; }
-    section.collapsed h2.sec-t::after { content:"▸"; }
-    section.collapsed > :not(h2):not(.sec-head) { display:none !important; }
+    section h2.sec-t { min-height:36px; }
+    section.collapsed:not(#workspace) > :not(h2):not(.sec-head) { display:none !important; }
     section.collapsed h2.sec-t { margin-bottom:0; }
     .sec-head h2.sec-t { min-height:0; }
     #ipt thead, #files-table thead, #slots thead { display:none; }
@@ -379,13 +378,64 @@
     pre.out, #log, #console-out { max-width:100%; }
     #pal-back, #keys-back { padding-top:8vh; }
   }
+  /* Keep the header on one line on a normal screen: the tagline goes first when it gets tight. */
+  @media (max-width: 1600px) { header > small { display:none; } }
+  /* ---- folding sections (any width) */
+  h2.sec-t.fold { cursor:pointer; display:flex; align-items:center; gap:8px; user-select:none; }
+  h2.sec-t.fold::before { content:"▾"; display:inline-block; width:1em; text-align:center; transition:transform .15s; color:var(--muted); }
+  section.collapsed h2.sec-t.fold::before { transform:rotate(-90deg); }
+  section.collapsed:not(#workspace) > :not(h2):not(.sec-head) { display:none !important; }
+  section.collapsed:not(#workspace) h2.sec-t { margin-bottom:0; }
+  #workspace.collapsed > .wpanel { display:none !important; }
+  #workspace.collapsed .ws-head { border-bottom:0; }
+  .ws-fold { min-width:36px; padding:0 !important; font-size:16px; transition:transform .15s; }
+  #workspace.collapsed .ws-fold { transform:rotate(-90deg); }
+  /* ---- slot bar, tile actions, slot tools tabs */
+  .vh { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+  #cmd-bar { margin:12px 16px 0; padding:14px 16px; display:flex; flex-wrap:wrap; align-items:center; gap:12px 20px; border-color:var(--accent-line, var(--accent)); position:sticky; top:0; z-index:30; }
+  #cmd-bar .cmd-info { flex:1 1 300px; min-width:0; display:flex; flex-direction:column; gap:4px; }
+  #cmd-bar .cmd-tags { display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; }
+  #cmd-bar h2 { margin:0; font-size:20px; font-weight:700; letter-spacing:0; text-transform:none; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #cmd-bar .cmd-acts { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+  #cmd-bar .cmd-acts > button, #cmd-bar .cmd-acts .menu-wrap > button, #cmd-bar .seg button { display:inline-flex; align-items:center; gap:7px; min-height:40px; font-size:14px; font-weight:600; }
+  #cmd-bar .cmd-debug { border-color:var(--accent); background:var(--active); font-weight:600; }
+  #cmd-bar .cmd-debug { min-height:44px !important; padding:0 18px; font-size:15px !important; }
+  #cmd-bar .cmd-debug kbd { background:rgba(0,0,0,0.2); border-color:rgba(255,255,255,0.3); color:inherit; }
+  #cmd-bar .seg { display:inline-flex; gap:3px; padding:3px; border:1px solid var(--line); border-radius:var(--r-btn, 8px); background:var(--chip); }
+  #cmd-bar .seg button { border:0; min-height:34px; }
+  .cmd-errs { font-size:12px; font-weight:600; padding:1px 10px; min-height:0 !important; border-radius:20px; background:var(--err-bg); color:var(--err-fg); border:1px solid var(--err-line, var(--err)); }
+  #cmd-tp-menu { min-width:240px; }
+  #board-tiles { grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); }
+  .btile .bacts { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .btile .bacts button { flex:1 1 auto; font-size:13px; padding:3px 8px; }
+  .btile .bacts .bload { border-style:dashed; background:transparent; color:var(--muted); }
+  .btn-debug { border-color:var(--accent); color:var(--accent); font-weight:600; }
+  #slots td.act { text-align:right; white-space:nowrap; } #slots td.act button { padding:2px 8px; font-size:12px; }
+  #workspace { margin:0 16px 24px; padding:0; overflow:hidden; }
+  #workspace .ws-head { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; padding:10px 12px; border-bottom:1px solid var(--line); background:var(--head, transparent); }
+  #workspace .ws-tabs { display:flex; flex-wrap:wrap; gap:2px; padding:3px; background:var(--chip); border:1px solid var(--line); border-radius:var(--r-btn, 8px); }
+  #workspace .ws-tabs button { border:0; background:transparent; min-height:34px; padding:0 14px; font-weight:500; display:inline-flex; align-items:center; gap:6px; }
+  #workspace .ws-tabs button[aria-selected="true"] { background:var(--card); color:var(--text); font-weight:600; box-shadow:0 1px 3px rgba(0,0,0,0.18); }
+  #workspace .ws-slot { margin-left:auto; font-size:13px; }
+  .wbadge { min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:var(--err); color:#fff; font-size:11px; font-weight:700; display:inline-grid; place-items:center; }
+  #workspace .wpanel { border:0; border-radius:0; background:transparent; box-shadow:none; -webkit-backdrop-filter:none; backdrop-filter:none; padding:14px 16px; margin:0; }
+  #workspace .wpanel > h2.sec-t, #workspace .wpanel > .sec-head > h2.sec-t { display:none; }
+  #workspace .wpanel > .sec-head { justify-content:flex-end; }
+  #workspace #console-out { height:420px; }
+  #workspace #logw .ovl-list { height:420px; flex:none; }
+  #workspace section.max { position:fixed; inset:16px; z-index:50; background:var(--card); }
+  @media (max-width: 700px) {
+    #cmd-bar { position:static; margin:10px 12px 0; } #cmd-bar .cmd-acts { width:100%; } #cmd-bar .cmd-debug { flex:1 1 100%; justify-content:center; }
+    #workspace { margin:0 12px 16px; } #workspace .ws-slot { display:none; } #workspace .ws-tabs { overflow-x:auto; flex-wrap:nowrap; max-width:100%; }
+    #workspace #console-out, #workspace #logw .ovl-list { height:320px; }
+  }
 </style>
 </head>
 <body>
 <script>if (window.openvpDesktop) document.documentElement.classList.add("desktop-app");</script>
 <header>
   <h1>OpenVP</h1><small>open-source virtual control processor</small>
-  <span style="flex:1"></span><span id="saved" role="status" aria-live="polite"></span><span id="sigfind-wrap"><input id="sigfind" type="search" placeholder="Find a signal in all slots" aria-label="Find a signal by name in every loaded slot" autocomplete="off" title="Finds signals by name across all loaded slots and opens that slot's debugger on the one you pick (press F)" data-help="signal-search"><div id="sigfind-res" hidden></div></span><button class="hbtn" id="pal-open" title="Search every action and every help topic (Ctrl+K or Cmd+K)" data-help="palette">Search ⌘K</button><nav id="topmenus" aria-label="Pages"><span class="dd"><button class="hbtn dd-btn" aria-haspopup="menu" aria-expanded="false" data-help="panel">Panels ▾</button><div class="dd-menu" role="menu" hidden><a role="menuitem" href="panel.html" id="nav-panel" target="_blank" data-help="panel"><b>Test panel</b><small>Press joins and see feedback in the browser</small></a><a role="menuitem" href="autopanel.html" id="autopanel-link" target="openvp-autopanel"><b>Generated panel</b><small>A panel built from the selected slot's signals, with saved layouts</small></a><a role="menuitem" href="emulate.html" id="nav-emulate" target="openvp-emulate"><b>Emulate</b><small>Run a CH5 or smart-graphics project against a slot</small></a><a role="menuitem" href="rack.html" id="nav-rack" target="openvp-rack"><b>Rack</b><small>Slots, panels online or offline, EISC links and latency</small></a></div></span><span class="dd"><button class="hbtn dd-btn" aria-haspopup="menu" aria-expanded="false">Tools ▾</button><div class="dd-menu" role="menu" hidden><a role="menuitem" href="devices.html" id="devices-link" target="openvp-devices" data-help="devices"><b>Devices</b><small>Simulators, COM terminal, socket sniffer, redirects and discovery</small></a><a role="menuitem" href="integrations.html" id="integrations-link" target="openvp-integrations" data-help="integrations"><b>Integrations</b><small>MQTT and Home Assistant, webhooks, OSC, Art-Net</small></a><a role="menuitem" href="schedules.html" id="nav-schedules" target="openvp-schedules" data-help="schedules"><b>Schedules</b><small>Restart, load a program, back up or set a signal at a time</small></a><a role="menuitem" href="backup.html" id="backup-link" target="openvp-backup" data-help="backups"><b>Backups</b><small>Export the processor, daily backups, Git-backed config</small></a><a role="menuitem" href="targets.html" id="nav-push" target="openvp-push" data-help="push"><b>Push</b><small>Send programs and exports to other OpenVP machines</small></a><hr><button type="button" role="menuitem" id="tpl-open" data-help="templates"><b>Templates</b><small>Starter SIMPL# Pro program and CH5 panel to download</small></button><a role="menuitem" href="examples.html" id="nav-examples" target="openvp-examples"><b>Examples</b><small>Small example programs to load in one click</small></a><span id="plugin-menu" style="display:contents"></span></div></span><span class="dd"><button class="hbtn dd-btn" aria-haspopup="menu" aria-expanded="false" data-help="alerts">Monitor<span class="abadge" id="alerts-badge-menu" hidden></span> ▾</button><div class="dd-menu" role="menu" hidden><a role="menuitem" href="metrics.html" id="nav-metrics" target="openvp-metrics" data-help="metrics"><b>Metrics</b><small>CPU, memory and how busy each slot is</small></a><a role="menuitem" href="alerts.html" id="alerts-link" target="openvp-alerts" data-help="alerts"><b>Alerts<span class="abadge" id="alerts-badge" hidden></span></b><small>Email, Teams, Slack and phone alerts; thresholds and health reports</small></a><a role="menuitem" href="compat.html" id="nav-compat" target="openvp-compat"><b>Compatibility</b><small>What OpenVP supports, the wiring check, and issue reports</small></a></div></span><span class="dd"><button class="hbtn dd-btn" aria-haspopup="menu" aria-expanded="false">Admin ▾</button><div class="dd-menu" role="menu" hidden><a role="menuitem" href="security.html" id="security-link" data-perm="Admin" data-perm-hide target="openvp-security"><b>Security</b><small>Users, API tokens, HTTPS, single sign-on and the audit log</small></a><a role="menuitem" href="labs.html" id="nav-labs" target="openvp-labs"><b>Labs</b><small>Experimental features, off by default</small></a></div></span><span class="dd"><button class="hbtn dd-btn" aria-haspopup="menu" aria-expanded="false">Help ▾</button><div class="dd-menu dd-right" data-right="1" role="menu" hidden><a role="menuitem" href="help.html#console" id="nav-help" target="openvp-help"><b>Help</b><small>What every button on this page does</small></a><button type="button" role="menuitem" id="keys-open" data-help="palette"><b>Keyboard shortcuts</b><small>Or press ?</small></button><a role="menuitem" href="#welcome" id="welcome-link"><b>Welcome</b><small>Show the welcome screen again</small></a></div></span></nav><button class="theme-btn" data-theme-toggle data-help="top-bar"></button><span id="who-chip"></span>
+  <span style="flex:1"></span><span id="saved" role="status" aria-live="polite"></span><span id="sigfind-wrap"><input id="sigfind" type="search" placeholder="Find a signal in all slots" aria-label="Find a signal by name in every loaded slot" autocomplete="off" title="Finds signals by name across all loaded slots and opens that slot's debugger on the one you pick (press F)" data-help="signal-search"><div id="sigfind-res" hidden></div></span><button class="hbtn" id="pal-open" title="Search every action and every help topic (Ctrl+K or Cmd+K)" data-help="palette">Search ⌘K</button><nav id="topmenus" aria-label="Pages"><span class="dd"><button class="hbtn dd-btn" aria-haspopup="menu" aria-expanded="false" data-help="panel">Panels ▾</button><div class="dd-menu" role="menu" hidden><a role="menuitem" href="panel.html" id="nav-panel" target="_blank" data-help="panel"><b>Test panel</b><small>Press joins and see feedback in the browser</small></a><a role="menuitem" href="autopanel.html" id="autopanel-link" target="openvp-autopanel"><b>Generated panel</b><small>A panel built from the selected slot's signals, with saved layouts</small></a><a role="menuitem" href="emulate.html" id="nav-emulate" target="openvp-emulate"><b>Emulate</b><small>Run a CH5 or smart-graphics project against a slot</small></a><a role="menuitem" href="rack.html" id="nav-rack" target="openvp-rack"><b>Rack</b><small>Slots, panels online or offline, EISC links and latency</small></a></div></span><span class="dd"><button class="hbtn dd-btn" aria-haspopup="menu" aria-expanded="false">Tools ▾</button><div class="dd-menu" role="menu" hidden><a role="menuitem" href="devices.html" id="devices-link" target="openvp-devices" data-help="devices"><b>Devices</b><small>Simulators, COM terminal, socket sniffer, redirects and discovery</small></a><a role="menuitem" href="integrations.html" id="integrations-link" target="openvp-integrations" data-help="integrations"><b>Integrations</b><small>MQTT and Home Assistant, webhooks, OSC, Art-Net</small></a><a role="menuitem" href="schedules.html" id="nav-schedules" target="openvp-schedules" data-help="schedules"><b>Schedules</b><small>Restart, load a program, back up or set a signal at a time</small></a><a role="menuitem" href="backup.html" id="backup-link" target="openvp-backup" data-help="backups"><b>Backups</b><small>Export the processor, daily backups, Git-backed config</small></a><a role="menuitem" href="targets.html" id="nav-push" target="openvp-push" data-help="push"><b>Push</b><small>Send programs and exports to other OpenVP machines</small></a><hr><button type="button" role="menuitem" id="tpl-open" data-help="templates"><b>Templates</b><small>Starter SIMPL# Pro program and CH5 panel to download</small></button><a role="menuitem" href="examples.html" id="nav-examples" target="openvp-examples"><b>Examples</b><small>Small example programs to load in one click</small></a><span id="plugin-menu" style="display:contents"></span></div></span><span class="dd"><button class="hbtn dd-btn" aria-haspopup="menu" aria-expanded="false" data-help="alerts">Monitor<span class="abadge" id="alerts-badge-menu" hidden></span> ▾</button><div class="dd-menu" role="menu" hidden><a role="menuitem" href="metrics.html" id="nav-metrics" target="openvp-metrics" data-help="metrics"><b>Metrics</b><small>CPU, memory and how busy each slot is</small></a><a role="menuitem" href="alerts.html" id="alerts-link" target="openvp-alerts" data-help="alerts"><b>Alerts<span class="abadge" id="alerts-badge" hidden></span></b><small>Email, Teams, Slack and phone alerts; thresholds and health reports</small></a><a role="menuitem" href="compat.html" id="nav-compat" target="openvp-compat"><b>Compatibility</b><small>What OpenVP supports, the wiring check, and issue reports</small></a></div></span><span class="dd"><button class="hbtn dd-btn" aria-haspopup="menu" aria-expanded="false">Admin ▾</button><div class="dd-menu" role="menu" hidden><a role="menuitem" href="security.html" id="security-link" data-perm="Admin" data-perm-hide target="openvp-security"><b>Security</b><small>Users, API tokens, HTTPS, single sign-on and the audit log</small></a><a role="menuitem" href="labs.html" id="nav-labs" target="openvp-labs"><b>Labs</b><small>Experimental features, off by default</small></a></div></span><span class="dd"><button class="hbtn dd-btn" aria-haspopup="menu" aria-expanded="false">Help ▾</button><div class="dd-menu dd-right" data-right="1" role="menu" hidden><a role="menuitem" href="help.html#console" id="nav-help" target="openvp-help"><b>Help</b><small>What every button on this page does</small></a><button type="button" role="menuitem" id="keys-open" data-help="palette"><b>Keyboard shortcuts</b><small>Or press ?</small></button><a role="menuitem" href="#welcome" id="welcome-link"><b>Welcome</b><small>Show the welcome screen again</small></a></div></span></nav><button class="hbtn" id="collapse-all" type="button">⊟ Collapse all</button><button class="theme-btn" data-theme-toggle data-help="top-bar"></button><span id="who-chip"></span>
 </header>
 <div id="slot-strip" aria-label="Selected slot"><select id="strip-slot" aria-label="Slot"></select><button id="strip-start" title="Start">▶</button><button id="strip-stop" title="Stop">■</button><button id="strip-restart" title="Restart">↻</button></div>
 <div id="net-bar" data-help="internet">
@@ -400,6 +450,20 @@
   <p id="net-help">Lets people outside your network open the panels you share, through a free Cloudflare tunnel (cloudflared, no account needed). Only shared-panel links work through it: the console, the API and the debugger are never reachable from the internet. Turn it off and all outside access stops.</p>
   <details id="net-log" hidden><summary>cloudflared output</summary><pre></pre></details>
 </div>
+<section id="cmd-bar" aria-label="Selected slot" data-help="slot">
+  <div class="cmd-info">
+    <div class="cmd-tags"><span class="mono muted" id="cmd-num">SLOT 1</span><span class="state" id="cmd-state"></span><span class="bbadge auto" id="cmd-auto" hidden>auto-reload</span><button type="button" id="cmd-errs" class="cmd-errs" hidden title="Show the log"></button></div>
+    <h2 id="cmd-name">Slot 1</h2>
+    <div class="muted" id="cmd-meta"></div>
+  </div>
+  <div class="cmd-acts">
+    <button id="open-debugger" class="cmd-debug" data-help="debugger-button" title="Watch and change this slot's signals live, in its own window (D). Open one per slot to debug several programs at once."><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 7V5a4 4 0 0 1 8 0v2"/><rect x="6" y="7" width="12" height="13" rx="6"/><path d="M12 11v9M3 13h3M18 13h3M4 7l3 2M20 7l-3 2M4 20l3-2M20 20l-3-2"/></svg>Open debugger <kbd>D</kbd></button>
+    <button id="cmd-autopanel" title="Open a panel built from this slot's signals, with saved layouts"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Generated panel</button>
+    <span class="menu-wrap"><button id="cmd-testpanel" aria-haspopup="menu" aria-expanded="false" title="Open a browser touch panel connected to one of this slot's IP IDs"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Test panel ▾</button><div id="cmd-tp-menu" class="dd-menu dd-right" role="menu" hidden></div></span>
+    <div class="seg" role="group" aria-label="Program control"><button data-act="start" data-help="start" title="Start the program loaded in this slot"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4v16l13-8z"/></svg>Start</button><button data-act="stop" data-help="stop" title="Stop the program but keep it loaded"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>Stop</button><button data-act="restart" data-help="restart" title="Load the program again from its file and start it"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/></svg>Restart</button></div>
+    <button data-act="unload" data-help="unload" title="Stop the program and remove it from this slot. NVRAM and User files are kept. You can undo it for a few seconds.">Unload</button>
+  </div>
+</section>
 <section id="board" data-help="status-board">
   <h2 class="sec-t" title="Every slot at a glance. Click a tile to select that slot. Tick the boxes to start, stop, restart or unload several at once.">Status board</h2>
   <div id="board-tiles"></div>
@@ -411,7 +475,42 @@
   <div>
     <section id="slots-sec" data-help="program-slots">
       <h2 class="sec-t">Program slots</h2>
-      <table id="slots"><thead><tr><th><input type="checkbox" id="slots-all" class="bsel" aria-label="Select all slots" title="Tick every slot to act on several at once"></th><th>#</th><th class="roomcol">Room</th><th>Program</th><th>State</th></tr></thead><tbody></tbody></table>
+      <table id="slots"><thead><tr><th><input type="checkbox" id="slots-all" class="bsel" aria-label="Select all slots" title="Tick every slot to act on several at once"></th><th>#</th><th class="roomcol">Room</th><th>Program</th><th>State</th><th><span class="vh">Actions</span></th></tr></thead><tbody></tbody></table>
+    </section>
+  </div>
+  <div>
+    <section id="ipt-sec" data-help="ip-table">
+      <h2 class="sec-t">IP table · slot <span class="sel-num2">1</span><span class="room-tag"></span></h2>
+      <div class="scroll-x">
+      <table id="ipt">
+        <thead><tr><th>Connected client</th><th>Address</th><th>IP ID</th><th>Type</th><th>Status</th><th class="num">Connected</th><th class="num">Joins in / out</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      </div>
+      <div id="ipt-empty" class="muted" style="padding:8px 0">No IP IDs registered in this slot.</div>
+      <div id="ipt-detail">
+        <div class="bar">
+          <b id="d-title"></b><span style="flex:1"></span>
+          <button id="d-identify" title="Run reverse DNS and Crestron autodiscovery again">Re-identify</button>
+          <button id="d-login-toggle" title="Log in over SSH and read hostname, firmware, uptime, network and IP table (read-only commands)">Log in &amp; read…</button>
+          <button id="d-remap" data-help="ip-remap" title="Make panels reach this program IP ID at a different number, without recompiling">Remap IP ID…</button>
+          <button id="d-remap-reset" data-help="ip-remap" title="Panels connect to the program's own IP ID again" style="display:none">Undo remap</button>
+          <button id="d-share" data-help="sharing" title="Make a link that opens this panel for someone else">Share…</button>
+          <a id="d-panel" target="_blank" title="Open a browser touch panel connected to this IP ID">open test panel</a>
+          <a id="d-emulate" target="openvp-emulate" title="Run an uploaded CH5 or smart-graphics project at this IP ID">emulate…</a>
+          <button id="d-close" title="Close">✕</button>
+        </div>
+        <form id="login-form" autocomplete="off">
+          <input id="l-user" placeholder="username" size="12" autocomplete="off">
+          <input id="l-pass" type="password" placeholder="password" size="12" autocomplete="new-password">
+          <input id="l-port" placeholder="22" size="4" title="SSH port">
+          <button type="submit">Log in &amp; read</button>
+          <span class="muted">Used once for this login, never saved. Runs read-only commands: hostname, ver, uptime, ipconfig, ipt, time.</span>
+        </form>
+        <div id="d-status" class="muted" style="margin:6px 0"></div>
+        <div id="d-ch5" class="muted"></div>
+        <div id="d-body" class="kv"></div>
+      </div>
     </section>
     <section style="margin-top:16px" id="slot-sec" data-help="slot">
       <h2 class="sec-t">Slot <span id="sel-num">1</span> <span id="sel-name" class="muted"></span></h2>
@@ -432,7 +531,6 @@
         <button id="watch-stop" data-help="stop-watching" title="Keep the program running but stop reloading it when the file changes">Stop watching</button>
       </div>
       <div class="bar">
-        <button data-act="start" data-help="start" title="Start the program loaded in this slot">Start</button><button data-act="stop" data-help="stop" title="Stop the program but keep it loaded">Stop</button><button data-act="restart" data-help="restart" title="Load the program again from its file and start it">Restart</button><button data-act="unload" data-help="unload" title="Stop the program and remove it from this slot. NVRAM and User files are kept. You can undo it for a few seconds.">Unload</button>
         <button id="compat" data-help="compat" title="List what the loaded program uses that OpenVP does not support yet (shown in the Console box)">Compatibility</button>
       </div>
       <div class="bar" id="room-bar" style="display:none">
@@ -471,56 +569,33 @@
       <div id="devices" class="muted" style="margin-top:8px"></div>
     </section>
   </div>
-  <div>
-    <section id="ipt-sec" data-help="ip-table">
-      <h2 class="sec-t">IP table · slot <span class="sel-num2">1</span><span class="room-tag"></span></h2>
-      <div class="scroll-x">
-      <table id="ipt">
-        <thead><tr><th>Connected client</th><th>Address</th><th>IP ID</th><th>Type</th><th>Status</th><th class="num">Connected</th><th class="num">Joins in / out</th><th></th></tr></thead>
-        <tbody></tbody>
-      </table>
-      </div>
-      <div id="ipt-empty" class="muted" style="padding:8px 0">No IP IDs registered in this slot.</div>
-      <div id="ipt-detail">
-        <div class="bar">
-          <b id="d-title"></b><span style="flex:1"></span>
-          <button id="d-identify" title="Run reverse DNS and Crestron autodiscovery again">Re-identify</button>
-          <button id="d-login-toggle" title="Log in over SSH and read hostname, firmware, uptime, network and IP table (read-only commands)">Log in &amp; read…</button>
-          <button id="d-remap" data-help="ip-remap" title="Make panels reach this program IP ID at a different number, without recompiling">Remap IP ID…</button>
-          <button id="d-remap-reset" data-help="ip-remap" title="Panels connect to the program's own IP ID again" style="display:none">Undo remap</button>
-          <button id="d-share" data-help="sharing" title="Make a link that opens this panel for someone else">Share…</button>
-          <a id="d-panel" target="_blank" title="Open a browser touch panel connected to this IP ID">open test panel</a>
-          <a id="d-emulate" target="openvp-emulate" title="Run an uploaded CH5 or smart-graphics project at this IP ID">emulate…</a>
-          <button id="d-close" title="Close">✕</button>
+</main>
+<section id="workspace" aria-label="Slot tools">
+  <div class="ws-head"><div class="ws-tabs" role="tablist" aria-label="Slot tools"><button type="button" role="tab" id="wt-log" data-ws="log-sec" aria-controls="log-sec" aria-selected="false" tabindex="-1">Log<span class="wbadge" id="ws-log-badge" hidden></span></button><button type="button" role="tab" id="wt-console" data-ws="console-sec" aria-controls="console-sec" aria-selected="false" tabindex="-1">Console</button><button type="button" role="tab" id="wt-files" data-ws="files-sec" aria-controls="files-sec" aria-selected="false" tabindex="-1">Files</button><button type="button" role="tab" id="wt-hist" data-ws="hist-sec" aria-controls="hist-sec" aria-selected="false" tabindex="-1">History</button><button type="button" role="tab" id="wt-rec" data-ws="rec-sec" aria-controls="rec-sec" aria-selected="false" tabindex="-1">Recordings</button><button type="button" role="tab" id="wt-shares" data-ws="shares-sec" aria-controls="shares-sec" aria-selected="false" tabindex="-1">Shared panels</button><button type="button" role="tab" id="wt-act" data-ws="act-sec" aria-controls="act-sec" aria-selected="false" tabindex="-1">Activity</button></div><span class="muted ws-slot">Slot <span class="sel-num2">1</span></span><button type="button" id="ws-collapse" class="ws-fold" aria-controls="workspace" title="Fold the slot tools away">▾</button></div>
+      <section class="wpanel" role="tabpanel" aria-labelledby="wt-log" id="log-sec" data-help="log">
+        <div class="sec-head">
+          <h2 class="sec-t">Log</h2>
+          <button id="log-smaller" title="Make the log shorter">−</button>
+          <button id="log-bigger" title="Make the log taller">+</button>
+          <button id="log-max" title="Fill the window with the log (Esc to restore)">Maximize</button>
+          <button id="log-full" class="lnk" title="Open the log on its own page, for this slot">Full page ↗</button>
+          <button id="splus-open" class="lnk" title="Show the SIMPL+ source of this slot's program, with highlighting">SIMPL+ source ↗</button>
+          <button id="bundle-open" class="lnk" title="Download a zip with this slot's log, recent trace, report and settings, to send when asking for help">Support bundle…</button>
         </div>
-        <form id="login-form" autocomplete="off">
-          <input id="l-user" placeholder="username" size="12" autocomplete="off">
-          <input id="l-pass" type="password" placeholder="password" size="12" autocomplete="new-password">
-          <input id="l-port" placeholder="22" size="4" title="SSH port">
-          <button type="submit">Log in &amp; read</button>
-          <span class="muted">Used once for this login, never saved. Runs read-only commands: hostname, ver, uptime, ipconfig, ipt, time.</span>
-        </form>
-        <div id="d-status" class="muted" style="margin:6px 0"></div>
-        <div id="d-ch5" class="muted"></div>
-        <div id="d-body" class="kv"></div>
-      </div>
-    </section>
-    <section style="margin-top:16px" id="shares-sec" data-help="shared-panels">
-      <h2 class="sec-t" title="Links you have given out. Revoke one and it stops working at once.">Shared panels</h2>
-      <div id="shares-empty" class="muted">No shared panels. Click <b>Share…</b> on an IP ID in the table above to make a link someone else can open.</div>
-      <div class="scroll-x"><table id="shares-table" hidden>
-        <thead><tr><th>Link</th><th>Slot · IP ID</th><th>Panel</th><th>Expires</th><th>Last used</th><th>Now</th><th></th></tr></thead>
-        <tbody></tbody>
-      </table></div>
-    </section>
-    <section style="margin-top:16px" id="dbg-sec" data-help="debugger-button">
-      <h2 class="sec-t">Debugger · slot <span class="sel-num2">1</span></h2>
-      <div class="bar">
-        <button id="open-debugger" title="Watch and change this slot's signals live, in its own window">Open debugger ↗</button>
-        <span class="muted">Signal list and trace window for this slot, in its own window. Open one per slot to debug several programs at once.</span>
-      </div>
-    </section>
-    <section style="margin-top:16px" id="files-sec" data-help="files">
+        <div id="logw"></div>
+        <details id="exc-det" hidden><summary id="exc-sum">Exceptions</summary><div id="exc-box"></div></details>
+      </section>
+      <section class="wpanel" role="tabpanel" aria-labelledby="wt-console" id="console-sec" data-help="console-box">
+        <div class="sec-head">
+          <h2 class="sec-t">Console</h2>
+          <button id="console-smaller" title="Make the console shorter">−</button>
+          <button id="console-bigger" title="Make the console taller">+</button>
+          <button id="console-max" title="Fill the window with the console (Esc to restore)">Maximize</button>
+        </div>
+        <div class="bar"><input id="console-in" class="mono" style="flex:1" placeholder="help, ipt, metrics, taskstat, cpuload, ramfree, or a program command"><button id="console-run" title="Send the command to this slot (Enter does the same). Type help for the list of commands.">Run</button></div>
+        <div id="console-out" class="mono" title="Drag the bottom-right corner to resize"></div>
+      </section>
+    <section class="wpanel" role="tabpanel" aria-labelledby="wt-files" id="files-sec" data-help="files">
       <h2 class="sec-t">Files · slot <span class="sel-num2">1</span></h2>
       <div class="bar">
         <div class="tabs"><button data-root="nvram" class="active" title="The slot's \NVRAM folder">NVRAM</button><button data-root="user" title="The slot's \USER folder">User</button></div>
@@ -539,7 +614,7 @@
         <div id="files-empty" class="muted" style="padding:10px 6px" hidden>Empty. Drop files here, or use Upload.</div>
       </div>
     </section>
-    <section style="margin-top:16px" id="hist-sec" data-help="history">
+    <section class="wpanel" role="tabpanel" aria-labelledby="wt-hist" id="hist-sec" data-help="history">
       <h2 class="sec-t">History · slot <span class="sel-num2">1</span></h2>
       <div class="bar">
         <button id="hist-now" data-help="snapshot-now" title="Save a copy of this slot's program, NVRAM and User files now">Snapshot now</button>
@@ -549,7 +624,7 @@
       <table id="hist-table"><thead><tr><th>Time</th><th>Program</th><th>Reason</th><th class="num">Size</th><th></th></tr></thead><tbody></tbody></table>
       <div id="hist-empty" class="muted" style="padding:10px 6px" hidden>No snapshots yet.</div>
     </section>
-    <section style="margin-top:16px" id="rec-sec" data-help="recordings">
+    <section class="wpanel" role="tabpanel" aria-labelledby="wt-rec" id="rec-sec" data-help="recordings">
       <h2 class="sec-t">Recordings · slot <span class="sel-num2">1</span></h2>
       <div class="bar">
         <button id="rec-toggle" data-help="record" title="Record every input to this slot's program (panels, EISC, forced signals) and the feedback it sends back"><span class="rdot">●</span> <span id="rec-toggle-label">Record</span></button>
@@ -568,7 +643,15 @@
       <div id="rec-empty" class="muted" style="padding:10px 6px" hidden>No recordings yet. Press Record, use the room, then Stop.</div>
       <div id="rec-result"></div>
     </section>
-    <section style="margin-top:16px" id="act-sec" data-help="activity">
+    <section class="wpanel" role="tabpanel" aria-labelledby="wt-shares" id="shares-sec" data-help="shared-panels">
+      <h2 class="sec-t" title="Links you have given out. Revoke one and it stops working at once.">Shared panels</h2>
+      <div id="shares-empty" class="muted">No shared panels. Click <b>Share…</b> on an IP ID in the table above to make a link someone else can open.</div>
+      <div class="scroll-x"><table id="shares-table" hidden>
+        <thead><tr><th>Link</th><th>Slot · IP ID</th><th>Panel</th><th>Expires</th><th>Last used</th><th>Now</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </section>
+    <section class="wpanel" role="tabpanel" aria-labelledby="wt-act" id="act-sec" data-help="activity">
       <h2 class="sec-t">Activity</h2>
       <div class="bar">
         <label class="muted" for="act-filter">Show</label>
@@ -578,33 +661,7 @@
       <table id="act-table"><thead><tr><th>When</th><th>Who</th><th>Slot</th><th>What</th></tr></thead><tbody></tbody></table>
       <div id="act-empty" class="muted" style="padding:10px 6px" hidden>Nothing yet.</div>
     </section>
-    <div class="grid2" style="margin-top:16px">
-      <section id="console-sec" data-help="console-box">
-        <div class="sec-head">
-          <h2 class="sec-t">Console</h2>
-          <button id="console-smaller" title="Make the console shorter">−</button>
-          <button id="console-bigger" title="Make the console taller">+</button>
-          <button id="console-max" title="Fill the window with the console (Esc to restore)">Maximize</button>
-        </div>
-        <div class="bar"><input id="console-in" class="mono" style="flex:1" placeholder="help, ipt, metrics, taskstat, cpuload, ramfree, or a program command"><button id="console-run" title="Send the command to this slot (Enter does the same). Type help for the list of commands.">Run</button></div>
-        <div id="console-out" class="mono" title="Drag the bottom-right corner to resize"></div>
-      </section>
-      <section id="log-sec" data-help="log">
-        <div class="sec-head">
-          <h2 class="sec-t">Log</h2>
-          <button id="log-smaller" title="Make the log shorter">−</button>
-          <button id="log-bigger" title="Make the log taller">+</button>
-          <button id="log-max" title="Fill the window with the log (Esc to restore)">Maximize</button>
-          <button id="log-full" class="lnk" title="Open the log on its own page, for this slot">Full page ↗</button>
-          <button id="splus-open" class="lnk" title="Show the SIMPL+ source of this slot's program, with highlighting">SIMPL+ source ↗</button>
-          <button id="bundle-open" class="lnk" title="Download a zip with this slot's log, recent trace, report and settings, to send when asking for help">Support bundle…</button>
-        </div>
-        <div id="logw"></div>
-        <details id="exc-det" hidden><summary id="exc-sum">Exceptions</summary><div id="exc-box"></div></details>
-      </section>
-    </div>
-  </div>
-</main>
+</section>
 <div id="toasts" aria-live="polite"></div>
 <div id="drop-ov" aria-hidden="true"><div id="drop-text">Drop to load</div></div>
 <div id="pal-back"><div id="pal" role="dialog" aria-modal="true" aria-label="Search actions">
@@ -771,8 +828,8 @@ async function refreshSlots() {
     const tr = document.createElement("tr");
     tr.className = "slot" + (s.number === sel ? " sel" : "");
     if (s.color) tr.style.setProperty("--sc", s.color);
-    tr.innerHTML = `<td><input type="checkbox" class="bsel" data-n="${s.number}" aria-label="Select slot ${s.number}" ${bulkSel.has(s.number) ? "checked" : ""}></td><td>${s.number}</td><td class="roomcol mono">${esc(s.roomId)}</td><td style="overflow-wrap:anywhere">${s.name ? `<b>${esc(s.name)}</b> · ` : ""}${s.program ? `${esc(s.program)} <span class="muted">· ${esc(s.kind)}</span>` : '<span class="muted">empty</span>'}</td><td><span class="state ${s.state}">${s.state}</span></td>`;
-    tr.onclick = e => { if (!e.target.closest(".bsel")) select(s.number); };
+    tr.innerHTML = `<td><input type="checkbox" class="bsel" data-n="${s.number}" aria-label="Select slot ${s.number}" ${bulkSel.has(s.number) ? "checked" : ""}></td><td>${s.number}</td><td class="roomcol mono">${esc(s.roomId)}</td><td style="overflow-wrap:anywhere">${s.name ? `<b>${esc(s.name)}</b> · ` : ""}${s.program ? `${esc(s.program)} <span class="muted">· ${esc(s.kind)}</span>` : '<span class="muted">empty</span>'}</td><td><span class="state ${s.state}">${s.state}</span></td><td class="act">${s.program ? `<button class="btn-debug" data-dbg="${s.number}" aria-label="Open the debugger for slot ${s.number}">Debug</button>` : ""}</td>`;
+    tr.onclick = e => { if (e.target.closest("[data-dbg]")) { e.stopPropagation(); openDebugger(s.number); return; } if (!e.target.closest(".bsel")) select(s.number); };
     tb.appendChild(tr);
     if (s.number === sel) {
       curRoom = s.roomId;
@@ -792,8 +849,68 @@ async function refreshSlots() {
       $("#devices").textContent = s.devices.length ? `${s.devices.length} IP ID${s.devices.length === 1 ? "" : "s"}, ${online} online. Who's connected is in the IP table.` : "";
     }
   }
+  renderCmdBar();
   renderBulk();
   permsApply();
+}
+
+// ---------------- Slot bar (selected slot, Open debugger, panels, Start / Stop / Restart) ----------------
+function renderCmdBar() {
+  const s = boardSlots.find(x => x.number === sel);
+  if (!s) return;
+  const st = s.program || s.state === "Error" ? s.state : "Empty";
+  $("#cmd-num").textContent = "SLOT " + String(s.number).padStart(2, "0") + (typeof s.roomId === "string" ? " · " + s.roomId : "");
+  const stEl = $("#cmd-state"); stEl.textContent = st; stEl.className = "state " + s.state;
+  $("#cmd-auto").hidden = !s.watching;
+  $("#cmd-name").textContent = s.name ? (s.program ? `${s.name} · ${s.program}` : s.name) : (s.program || "No program loaded");
+  const online = s.devices.filter(d => d.online).length;
+  $("#cmd-meta").textContent = s.program ? `${s.kind} · ${online} of ${s.devices.length} panels online` : "Load a program with Load & start below, or drop a file anywhere on the page.";
+  const errs = (s.exceptions || 0) + (s.state === "Error" ? 1 : 0);
+  const eb = $("#cmd-errs");
+  eb.hidden = !errs;
+  eb.textContent = s.state === "Error" ? "⚠ Error · view log" : `⚠ ${s.exceptions} exception${s.exceptions > 1 ? "s" : ""} · view log`;
+  const badge = $("#ws-log-badge"); badge.hidden = !errs; badge.textContent = errs;
+  $("#open-debugger").disabled = !s.program;
+  $("#cmd-autopanel").disabled = !s.program;
+  $("#cmd-testpanel").disabled = !s.devices.length;
+}
+$("#cmd-autopanel").onclick = () => window.open(`autopanel.html?slot=${sel}`, "openvp-autopanel");
+$("#cmd-errs").onclick = () => { showWsTab("log-sec"); $("#workspace").scrollIntoView({ behavior: "smooth", block: "start" }); };
+{
+  const btn = $("#cmd-testpanel"), menu = $("#cmd-tp-menu");
+  const close = () => { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); };
+  btn.addEventListener("click", e => {
+    e.stopPropagation();
+    if (!menu.hidden) return close();
+    const s = boardSlots.find(x => x.number === sel);
+    menu.innerHTML = (s?.devices ?? []).map(d => `<a role="menuitem" href="panel.html?ipid=${esc(pubId(d))}&slot=${sel}" target="_blank"><b>IP ID ${esc(pubId(d))}</b><small>${esc(d.type || "")}${d.online ? " · online" : ""}</small></a>`).join("") || `<div class="muted" style="padding:8px 12px">No IP IDs in this slot.</div>`;
+    menu.hidden = false; btn.setAttribute("aria-expanded", "true");
+  });
+  menu.addEventListener("click", () => close());
+  document.addEventListener("click", e => { if (!e.target.closest("#cmd-testpanel, #cmd-tp-menu")) close(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && !menu.hidden) { close(); btn.focus(); } });
+}
+
+// ---------------- Slot tools: one tab at a time (Log, Console, Files, History, Recordings, Shared panels, Activity) ----------------
+function showWsTab(id, focus) {
+  for (const b of document.querySelectorAll("#workspace [role=tab]")) {
+    const on = b.dataset.ws === id;
+    b.setAttribute("aria-selected", on ? "true" : "false"); b.tabIndex = on ? 0 : -1;
+    $("#" + b.dataset.ws).hidden = !on;
+    if (on && focus) b.focus();
+  }
+  try { localStorage.setItem("openvp.wstab", id); } catch { }
+}
+{
+  const tabs = [...document.querySelectorAll("#workspace [role=tab]")];
+  for (const b of tabs) b.addEventListener("click", () => { showWsTab(b.dataset.ws); if ($("#workspace").classList.contains("collapsed")) $("#ws-collapse").click(); });
+  $("#workspace .ws-tabs").addEventListener("keydown", e => {
+    const i = tabs.indexOf(document.activeElement); if (i < 0) return;
+    const go = j => { e.preventDefault(); showWsTab(tabs[(j + tabs.length) % tabs.length].dataset.ws, true); };
+    if (e.key === "ArrowRight") go(i + 1); else if (e.key === "ArrowLeft") go(i - 1); else if (e.key === "Home") go(0); else if (e.key === "End") go(tabs.length - 1);
+  });
+  let start = "log-sec"; try { start = localStorage.getItem("openvp.wstab") || start; } catch { }
+  showWsTab(document.getElementById(start) ? start : "log-sec");
 }
 
 // ---------------- Status board ----------------
@@ -854,16 +971,24 @@ function renderBoard() {
       <div class="bprog" title="${esc((s.program ?? "") + (s.summary ? "\n" + s.summary.text : ""))}">${s.program ? `${esc(s.program)} <span class="muted">· ${esc(s.kind)}</span>` : "empty"}</div>
       ${presenceHtml(s)}
       <div class="bstats">${st === "Empty" ? "" : `<span>${st}</span>`}<span title="Panels online / IP IDs in this slot's IP table">${online}/${s.devices.length} online</span><span title="Events per second on the slot thread">${eps}</span></div>${crashLine}
+      <div class="bacts">${s.program ? `<button class="btn-debug" data-dbg="${s.number}" aria-label="Open the debugger for slot ${s.number}">Debug</button><button data-apanel="${s.number}" aria-label="Open the generated panel for slot ${s.number}">Panel</button>` : `<button class="bload" data-load="${s.number}" aria-label="Load a program into slot ${s.number}">+ Load program</button>`}</div>
     </div>`;
   }).join("");
   if (html === boardHtml) return; // unchanged: leave the DOM (and any open tooltip) alone
   boardHtml = html;
   $("#board-tiles").innerHTML = html;
 }
-$("#board-tiles").addEventListener("click", e => { if (e.target.closest(".bsel")) return; const t = e.target.closest(".btile"); if (t) select(+t.dataset.n); });
+$("#board-tiles").addEventListener("click", e => {
+  if (e.target.closest(".bsel")) return;
+  const dbg = e.target.closest("[data-dbg]"), ap = e.target.closest("[data-apanel]"), ld = e.target.closest("[data-load]");
+  if (dbg) { e.stopPropagation(); openDebugger(+dbg.dataset.dbg); return; }
+  if (ap) { e.stopPropagation(); window.open(`autopanel.html?slot=${ap.dataset.apanel}`, "openvp-autopanel"); return; }
+  if (ld) { e.stopPropagation(); select(+ld.dataset.load); $("#file").click(); return; }
+  const t = e.target.closest(".btile"); if (t) select(+t.dataset.n);
+});
 $("#board-tiles").addEventListener("keydown", e => {
   const t = e.target.closest(".btile");
-  if (t && !e.target.closest(".bsel") && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); select(+t.dataset.n); }
+  if (t && !e.target.closest(".bsel, button") && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); select(+t.dataset.n); }
 });
 
 async function refreshBoard() {
@@ -892,7 +1017,7 @@ function when(t) { return t ? `${new Date(t).toLocaleString()} (${ago(t)} ago)` 
 // The number panels connect to: the program's own IP ID, unless it was remapped (then publicIpId differs).
 const pubId = d => d.publicIpId || d.ipId;
 const ipIdCell = d => d.remapped ? `<b>${d.ipId}</b><br><small class="muted" title="Panels connect to ${pubId(d)}; the program still sees ${d.ipId}">at ${pubId(d)}</small>` : `<b>${d.ipId}</b>`;
-function shareCell(d) { return `<td class="act"><button class="share-btn" title="Make a link that opens this panel for someone else, with an optional PIN and expiry">Share…</button></td>`; }
+function shareCell(d) { return `<td class="act"><button class="panel-btn" title="Open a browser touch panel connected to this IP ID">Test panel</button> <button class="share-btn" title="Make a link that opens this panel for someone else, with an optional PIN and expiry">Share</button></td>`; }
 
 function whoCell(c) {
   // An EISC is about the slot on the other end; anything else is about the machine.
@@ -928,6 +1053,7 @@ async function refreshIpTable() {
         tr.onclick = () => showDetail(d.ipId, null);
       }
       tr.querySelector(".share-btn")?.addEventListener("click", e => { e.stopPropagation(); openShare(d.slot, pubId(d)); });
+      tr.querySelector(".panel-btn")?.addEventListener("click", e => { e.stopPropagation(); window.open(`panel.html?ipid=${pubId(d)}&slot=${d.slot}`, "_blank"); });
       tb.appendChild(tr);
     }
   }
@@ -2163,21 +2289,37 @@ function renderStrip() {
   if (document.activeElement !== s) s.value = sel;
 }
 {
-  const KEY = "openvp.collapsed";
-  let saved = null; try { saved = JSON.parse(localStorage.getItem(KEY) || "null"); } catch { }
-  const defaults = ["shares-sec", "dbg-sec", "files-sec", "hist-sec", "rec-sec", "console-sec", "log-sec"];
-  const state = saved && typeof saved === "object" ? saved : Object.fromEntries(defaults.map(k => [k, true]));
-  const narrow = () => matchMedia("(max-width: 700px)").matches;
+  // Every section on the console folds away: click its title (or Enter/Space on it), or use Collapse all / Expand all in the
+  // header. Remembered per browser. The slot bar never folds, so Open debugger stays in reach.
+  const KEY = "openvp.collapsed2";
+  let state = {}; try { state = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch { }
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { } };
+  const secs = [];
   for (const sec of document.querySelectorAll("section[id]")) {
-    const h = sec.querySelector(":scope > h2.sec-t, :scope > .sec-head > h2.sec-t");
+    if (sec.classList.contains("wpanel") || sec.id === "cmd-bar") continue;
+    const h = sec.id === "workspace" ? $("#ws-collapse") : sec.querySelector(":scope > h2.sec-t, :scope > .sec-head > h2.sec-t");
     if (!h) continue;
-    h.tabIndex = 0; h.setAttribute("role", "button");
-    const apply = () => { sec.classList.toggle("collapsed", !!state[sec.id]); h.setAttribute("aria-expanded", !state[sec.id]); };
-    const flip = () => { if (!narrow()) return; state[sec.id] = !state[sec.id]; try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { } apply(); };
+    if (h.tagName !== "BUTTON") { h.tabIndex = 0; h.setAttribute("role", "button"); }
+    h.classList.add("fold");
+    const apply = () => { sec.classList.toggle("collapsed", !!state[sec.id]); h.setAttribute("aria-expanded", state[sec.id] ? "false" : "true"); };
+    const flip = e => { if (e && e.target.closest("button, a, input, select") && e.target !== h) return; state[sec.id] = !state[sec.id]; save(); apply(); paintAll(); };
     h.addEventListener("click", flip);
-    h.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); flip(); } });
+    if (h.tagName !== "BUTTON") h.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); flip(); } });
+    secs.push({ sec, apply });
     apply();
   }
+  const all = $("#collapse-all");
+  function paintAll() {
+    const allShut = secs.every(x => state[x.sec.id]);
+    all.textContent = allShut ? "⊞ Expand all" : "⊟ Collapse all";
+    all.title = allShut ? "Open every section again" : "Fold every section down to its title (the slot bar stays)";
+  }
+  all.addEventListener("click", () => {
+    const shut = !secs.every(x => state[x.sec.id]);
+    for (const x of secs) { state[x.sec.id] = shut; x.apply(); }
+    save(); paintAll();
+  });
+  paintAll();
 }
 
 // ------------------------------------------------------------------ Recent programs
@@ -2368,8 +2510,8 @@ function paletteItems() {
   add(`Take a snapshot of slot ${sel}`, "History", snapshotNow, "snapshot now save history");
   add(recSt?.mode === "recording" ? `Stop recording slot ${sel}` : `Record slot ${sel}`, "Recordings", () => $("#rec-toggle").click(), "record stop macro");
   add("Turn Internet access " + (tunnelSt && (tunnelSt.state === "on" || tunnelSt.state === "starting") ? "off" : "on"), "tunnel", () => $("#net-switch").click(), "tunnel cloudflare internet toggle");
-  add("Change theme (auto, light, dark)", `now ${window.openvpTheme?.get() ?? "auto"}`, cycleTheme, "toggle dark light mode");
-  for (const t of ["auto", "light", "dark"]) add(`Theme: ${t}`, "", () => { window.openvpTheme?.set(t); flashSaved(); }, "colour mode");
+  add("Choose a theme…", `now ${window.openvpTheme?.names[window.openvpTheme?.get()] ?? "iOS glass"}`, () => window.openvpTheme?.openMenu(), "theme colours dark light glass ios android");
+  for (const t of window.openvpTheme?.list ?? []) add(`Theme: ${t.name}`, t.group, () => { window.openvpTheme?.set(t.id); flashSaved(); }, "theme colour mode dark light glass ios android");
   add("Load a program into the selected slot…", "choose a file", () => $("#file").click(), "upload open file");
   add("Show recent programs", "menu", () => { $("#slot-sec").scrollIntoView({ block: "center" }); setTimeout(() => $("#recent-btn").click(), 50); }, "history last");
   for (const r of palExtra.recent) if (r.available) add(`Load recent: ${r.name} into slot ${sel}`, r.kind, () => loadRecent(r), "recent program");
