@@ -16,6 +16,30 @@ internal static class PanelEndpoints
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static readonly FileExtensionContentTypeProvider Mime = new();
 
+    /// <summary>The generated panel for the slot's program (every button, slider and text box it has), or null with no program loaded.
+    /// The console's generated panel and the MCP tools both use this, so they show the same controls.</summary>
+    public static AutoPanelModel? AutoPanelFor(ProgramSlot slot)
+    {
+        var rt = slot.Runtime;
+        if (rt == null) return null;
+        var signals = rt.GetSignals();
+        var types = slot.Devices.ToDictionary(d => d.IpId, d => d.Type);
+        Func<string, string?>? deviceOf = null;
+        if (rt is IProgramGraphSource g)
+        {
+            try
+            {
+                var map = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var sym in g.GetGraph().Symbols.Where(s => s.Device))
+                    foreach (var pin in sym.Inputs.Concat(sym.Outputs))
+                        if (pin.Length > 0 && pin is not ("0" or "1")) map.TryAdd(pin, sym.Name);
+                deviceOf = map.GetValueOrDefault;
+            }
+            catch (Exception) { /* a runtime that can't describe its wiring just gets prefix groups */ }
+        }
+        return AutoPanel.Build(slot.Number, rt.ProgramName, signals, types, deviceOf);
+    }
+
     public static void Map(WebApplication app, RouteGroupBuilder slotApi, Processor processor, Ch5Panels ch5, SmartGraphicsStore sg, PanelLayouts layouts,
         Func<CipServer?> cip, ActivityLog activity, Func<HttpContext, string> actor, Func<int, bool> visible, Func<object?>? remoteEisc = null)
     {
@@ -33,23 +57,7 @@ internal static class PanelEndpoints
         slotApi.MapGet("/autopanel", (int n) =>
         {
             var slot = processor.Slot(n);
-            if (slot.Runtime == null) return Results.NotFound(new { error = "No program in that slot." });
-            var signals = slot.Runtime.GetSignals();
-            var types = slot.Devices.ToDictionary(d => d.IpId, d => d.Type);
-            Func<string, string?>? deviceOf = null;
-            if (slot.Runtime is IProgramGraphSource g)
-            {
-                try
-                {
-                    var map = new Dictionary<string, string>(StringComparer.Ordinal);
-                    foreach (var sym in g.GetGraph().Symbols.Where(s => s.Device))
-                        foreach (var pin in sym.Inputs.Concat(sym.Outputs))
-                            if (pin.Length > 0 && pin is not ("0" or "1")) map.TryAdd(pin, sym.Name);
-                    deviceOf = map.GetValueOrDefault;
-                }
-                catch (Exception) { /* a runtime that can't describe its wiring just gets prefix groups */ }
-            }
-            var model = AutoPanel.Build(n, slot.Runtime.ProgramName, signals, types, deviceOf);
+            if (AutoPanelFor(slot) is not { } model) return Results.NotFound(new { error = "No program in that slot." });
             return Results.Ok(new { model.Slot, model.Program, model.Groups, model.ControlCount, model.Truncated, state = slot.State.ToString() });
         });
 

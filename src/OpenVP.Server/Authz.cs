@@ -119,7 +119,7 @@ public sealed class Authz
     public static bool IsProtectedPath(PathString p, bool metricsPublic, bool panelsRequireKey) =>
         (!metricsPublic && p.StartsWithSegments("/metrics"))
         || (p.StartsWithSegments("/api") && !p.StartsWithSegments("/api/info") && !p.StartsWithSegments("/api/login") && !p.StartsWithSegments("/api/logout"))
-        || p.StartsWithSegments("/ws/trace") || p.StartsWithSegments("/ws/metrics") || p.StartsWithSegments("/ws/eisc")
+        || p.StartsWithSegments("/ws/trace") || p.StartsWithSegments("/ws/metrics") || p.StartsWithSegments("/ws/eisc") || p.StartsWithSegments("/mcp")
         || (panelsRequireKey && p.StartsWithSegments("/ws/panel"));
 
     private static async Task Refuse(HttpContext ctx, int status, string error, object? extra = null)

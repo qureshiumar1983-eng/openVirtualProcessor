@@ -32,6 +32,9 @@ public static class PolicyTable
         cws * /cws/{n:int}
         cws * /cws/{n:int}/{**path}
 
+        # MCP for AI assistants (OpenVP:McpEnabled): sign-in as for the API; each tool then checks the permission, slot and lock its REST twin needs (see Mcp/OpenVpTools).
+        View POST /mcp/
+
         # Prometheus: open with OpenVP:MetricsPublic, else View.
         metrics GET /metrics
 

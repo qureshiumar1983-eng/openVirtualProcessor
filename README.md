@@ -458,6 +458,35 @@ Extra feedback is only a warning, unless the device also ends in a different sta
 
 Download a recording to keep it with a project, and Upload it into any slot (it gets a new ID); the IP IDs and signal names must match the program. Nothing else may press, force or drive the slot's panels during a replay, or the result will show it.
 
+### Testing with an AI assistant (MCP)
+
+OpenVP is an [MCP](https://modelcontextprotocol.io) server at `/mcp`, so an AI assistant such as Claude Code or Claude Desktop can test a program the way a person at a touch panel would. It can load a freshly built program, press each button on its panel, set sliders and text, and check what the program did. With Claude Code on the computer OpenVP runs on:
+
+```bash
+claude mcp add --transport http openvp http://localhost:8080/mcp
+```
+
+Then ask, for example, *"load bin/Room.cpz into slot 1, press every button on panel 03 and tell me which ones do nothing"*, or *"press Source 2 and check the projector input feedback comes on within 2 seconds"*. From another computer, add `--header "Authorization: Bearer <access key or API token>"`. Use your server's port if it isn't 8080.
+
+| Tool | What it does |
+|---|---|
+| `list_slots`, `get_slot` | What's loaded in each slot, its state and its panels |
+| `load_program` | Load a `.cpz`, `.dll`, `.lpz` or `.smw` from a path on the OpenVP computer (only when the assistant runs on that computer) |
+| `control_slot` | Start, stop or restart a slot (restart gives a clean start between test runs) |
+| `list_controls` | Every button, slider and text field on the slot's [generated panel](#panels), with the signal each drives and the one its feedback comes from |
+| `press_button` | Press and release a button, wait for the program to settle, and report the feedback before and after, every signal that changed in order (brief pulses included), log lines and exceptions |
+| `set_value` | Set a slider, text field or held digital, with the same report |
+| `wait_for_signal` | Wait until a signal has a value: a test assertion with pass/fail and the actual value |
+| `test_all_buttons` | Smoke test: press every button (or those matching a search, such as `IPID03`) and list the ones that did nothing visible, logged an error or threw |
+| `read_signals`, `read_log`, `get_exceptions`, `run_console_command` | Look closer |
+| `list_recordings`, `replay_recording` | Run a [recording](#record-and-replay) as a regression test and get PASS or FAIL with the differences |
+
+**Presses are real.** Whatever the program drives (serial ports, relays, IR, other slots over EISC) reacts, as if someone pressed the button on a panel. Point the assistant at a test slot, not one running a live room; a [locked](#slot-lock-and-presence) slot refuses presses and loads.
+
+**Sign-in and permissions** are the same as the [REST API](#rest-api). Each tool checks what its REST twin needs: reading needs View, pressing needs Signal, start and stop need Operate, loading needs LoadProgram, and so on. A read-only [API token](#api-tokens) can look but not press; a token limited to some slots sees only those. Everything an assistant changes is in the activity feed and the audit log like any other change, and presses, starts, stops and restarts are marked `(MCP)`. Pages on other sites can't call `/mcp`. To turn it off: `OpenVP:McpEnabled=false`.
+
+For unit tests of the C# in a SIMPL# program, the assistant runs the project's own tests as usual (`dotnet test`). The MCP tools test the program running in OpenVP, from the panel's side.
+
 ### Debugger
 
 Click **Open debugger** in the console (or go to `/debugger.html?slot=N`; add `&signal=NAME` to open it on a signal). It's laid out like the classic SIMPL Debugger:
@@ -910,6 +939,7 @@ kubectl port-forward svc/openvp-openvp 8080:8080     # then open http://localhos
 | `OpenVP:Slots` | `10` | Number of program slots |
 | `OpenVP:SlotSpinMicroseconds` | `0` | After a slot's queue runs dry, its thread keeps polling for this many µs (max 10,000) before it sleeps, which skips the ~60 µs wake-up for the next event. Costs CPU while idle (see `docs/performance-plan.md`); leave at 0 unless a device streams tight request/response traffic |
 | `OpenVP:CipEnabled` / `CipPort` | `true` / `41794` | CIP listener |
+| `OpenVP:McpEnabled` | `true` | The [MCP server](#testing-with-an-ai-assistant-mcp) at `/mcp` for AI assistants (same sign-in and permissions as the REST API) |
 | `OpenVP:CipLogPackets` | `false` (code default); `true` in the shipped `appsettings.json` | Hex-log CIP traffic. The shipped file turns it on while CIP is being validated against real panels; set it to `false` to stop |
 | `OpenVP:CipHeartbeatProbe` | `false` | Also send a CIP heartbeat request to each connected panel every 10 s and time the answer, for a live round trip in the rack view. Untested against real panels. Also a [Labs](#labs) switch; this key keeps working and switches it on |
 | `OpenVP:Labs:<id>` | | `true` or `false` fixes a [Labs](#labs) feature on or off (`remote-eisc`, `plugins`, `cip-heartbeat-probe`) and locks its switch. Without it the switch on the Labs page decides (all off) |

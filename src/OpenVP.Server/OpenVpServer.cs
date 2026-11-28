@@ -160,6 +160,23 @@ public static class OpenVpServer
         builder.Services.AddSingleton(acmeSvc);
         if (users.Any) Console.WriteLine($"{users.Count} user{(users.Count == 1 ? "" : "s")}: sign in at /login.html. The access key still works for scripts and Admins." + (authz.LocalExempt ? " This computer (localhost) needs no login." : ""));
 
+        // MCP (Model Context Protocol) at /mcp: an AI assistant loads programs, presses panel buttons and reads what happened (see Mcp/).
+        // Same sign-in and permissions as the REST API. Stateless, so each tool call runs inside its own HTTP request and sees its caller.
+        var mcpEnabled = cfg.GetValue("McpEnabled", true);
+        var mcp = new OpenVP.Server.Mcp.McpBridge(processor, authz);
+        if (mcpEnabled)
+        {
+            builder.Services.AddHttpContextAccessor();
+            builder.Services.AddSingleton(mcp);
+            builder.Services.AddMcpServer(o =>
+            {
+                o.ServerInfo = new ModelContextProtocol.Protocol.Implementation { Name = "openvp", Version = typeof(OpenVpServer).Assembly.GetName().Version?.ToString(3) ?? "0.1.0" };
+                o.ServerInstructions = OpenVP.Server.Mcp.McpInstructions.Text;
+            })
+                .WithHttpTransport(o => o.Stateless = true)
+                .WithTools<OpenVP.Server.Mcp.OpenVpTools>();
+        }
+
         var app = builder.Build();
         oidc.Attach(app.Services);
         var gate = new TunnelGate(tunnelUnavailable == null ? tunnelPort : 0);
@@ -824,6 +841,34 @@ public static class OpenVpServer
             }
             finally { uploadLocks[n - 1].Release(); }
         });
+
+        // ------------------------------------------------------------------ MCP: the same load, start and stop as the endpoints above
+        if (mcpEnabled)
+        {
+            var mcpHttp = app.Services.GetRequiredService<IHttpContextAccessor>();
+            mcp.Recordings = recordings;
+            mcp.SlotDto = SlotDto;
+            mcp.Who = c => c == null ? Actors.ThisComputer : Who(c);
+            mcp.Note = (action, text, slot) => { if (mcpHttp.HttpContext is { } c) Note(c, action, text, slot); else activity.Add(action, text, slot, Actors.ThisComputer); };
+            mcp.LoadFromPath = async (n, path, start, who) =>
+            {
+                await uploadLocks[n - 1].WaitAsync();
+                try
+                {
+                    StopWatching(n);
+                    var result = LoadFromDisk(n, path, Array.Empty<string>(), start, watch: false, who: who);
+                    if (result is IStatusCodeHttpResult { StatusCode: 200 }) return null;
+                    var value = (result as IValueHttpResult)?.Value;
+                    return value?.GetType().GetProperty("error")?.GetValue(value) as string ?? "the program didn't load (see the slot's log).";
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return $"couldn't read the program: {e.Message}"; }
+                finally { uploadLocks[n - 1].Release(); }
+            };
+            mcp.Start = async n => { await uploadLocks[n - 1].WaitAsync(); try { StartSlot(n); } finally { uploadLocks[n - 1].Release(); } };
+            mcp.Stop = StopSlot;
+            mcp.Restart = async n => { await uploadLocks[n - 1].WaitAsync(); try { RestartSlot(n); } finally { uploadLocks[n - 1].Release(); } };
+            app.MapMcp("/mcp");
+        }
 
 
         // ------------------------------------------------------------------ export and import, backups, versions, schedules, push, git (OpenVP.Core.Ops)
